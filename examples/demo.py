@@ -7,8 +7,17 @@ speed correlation, a population pipeline on re-binned data (PCA, decoding, GLM),
 a comparison of null distributions, overlap and clustering of response classes,
 and a small cohort / cross-session check.
 
-    python examples/demo.py            # full run (1000 shuffles)
-    python examples/demo.py --quick    # well under a minute
+The third increment treats activity amplitude as a dimension: mutual information
+between state and discretised activity (with a levels-versus-on/off comparison and
+a sweep over the number of levels and recording duration), and a naive-Bayes
+population decoder (Gaussian and Poisson likelihoods) on position and on social
+behaviors, each against a label-shuffle null.
+
+    python examples/demo.py            # full run (1000 shuffles; roughly 4 minutes)
+    python examples/demo.py --quick    # about 40 s
+
+Outputs in --out: results.csv, nulls_compared.csv, levels_sweep.csv, provenance
+files and figures 01 to 26 (20 to 26 are the amplitude / decoding figures).
 """
 
 from __future__ import annotations
@@ -66,41 +75,96 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
             {"name": "resample_signal", "source": "position"},
             {"name": "speed"},
             # fixed arena extent so grids are identical across sessions (needed for cross-session maps)
-            {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 20.0, "output": "position",
-             "extent": [(0.0, 400.0), (0.0, 400.0)]},
+            {
+                "name": "bin_grid",
+                "signals": ["x", "y"],
+                "bin_size": 20.0,
+                "output": "position",
+                "extent": [(0.0, 400.0), (0.0, 400.0)],
+            },
             {"name": "bouts_to_states", "source": "social", "output": "social"},
             {"name": "labels_to_states", "source": "syllables", "output": "syllables"},
+            # one behavior per frame (plus 'rest'), as the Bayesian decoder requires
+            {
+                "name": "bouts_to_states",
+                "source": "social",
+                "output": "social_exclusive",
+                "exclusive": True,
+                "add_rest": True,
+            },
         ],
         preprocess=[{"name": "speed_threshold", "min_speed": 20.0}],
         analyses=[
-            AnalysisSpec(metric={"name": "information_content", "smooth_sigma_bins": 1.0},
-                         states="position", shuffle=shuf, masks=["speed"]),
-            AnalysisSpec(metric={"name": "split_half_stability", "smooth_sigma_bins": 1.0},
-                         states="position", shuffle=shuf, masks=["speed"]),
-            AnalysisSpec(metric={"name": "pv_stability"}, states="position",
-                         shuffle=shuf, masks=["speed"]),
+            AnalysisSpec(
+                metric={"name": "information_content", "smooth_sigma_bins": 1.0},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={"name": "split_half_stability", "smooth_sigma_bins": 1.0},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={"name": "pv_stability"}, states="position", shuffle=shuf, masks=["speed"]
+            ),
+            # amplitude as a dimension: 5 quantile levels of activity in every grid bin
+            AnalysisSpec(
+                metric={"name": "mutual_information"},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
             # NOT speed-filtered: huddling is stationary.
-            AnalysisSpec(metric={"name": "auroc"}, states="social",
-                         shuffle=shuf, masks=["social_scored"]),
-            AnalysisSpec(metric={"name": "population_vector_overlap"}, states="social",
-                         shuffle=None, masks=["social_scored"]),
+            AnalysisSpec(
+                metric={"name": "auroc"}, states="social", shuffle=shuf, masks=["social_scored"]
+            ),
+            AnalysisSpec(
+                metric={"name": "population_vector_overlap"},
+                states="social",
+                shuffle=None,
+                masks=["social_scored"],
+            ),
             # 'still' is a syllable we want to keep, so no speed mask.
-            AnalysisSpec(metric={"name": "information_content"}, states="syllables",
-                         shuffle=shuf, masks=[]),
-            AnalysisSpec(metric={"name": "auroc"}, states="syllables",
-                         shuffle=shuf, masks=[]),
+            AnalysisSpec(
+                metric={"name": "information_content"}, states="syllables", shuffle=shuf, masks=[]
+            ),
+            AnalysisSpec(metric={"name": "auroc"}, states="syllables", shuffle=shuf, masks=[]),
+            AnalysisSpec(
+                metric={"name": "mutual_information"}, states="syllables", shuffle=shuf, masks=[]
+            ),
             # --- second increment: more analyses on the SAME states and masks ---
             # mean activity in each behavior minus out-of-behavior (0 = no preference)
-            AnalysisSpec(metric={"name": "mean_per_state", "statistic": "difference"},
-                         states="social", shuffle=shuf, masks=["social_scored"]),
+            AnalysisSpec(
+                metric={"name": "mean_per_state", "statistic": "difference"},
+                states="social",
+                shuffle=shuf,
+                masks=["social_scored"],
+            ),
             # peri-event time histogram around bout onsets (bouts >= 1.5 s, >= 1 s apart)
             AnalysisSpec(
-                metric={"name": "peth", "pre_s": 4.0, "post_s": 4.0, "baseline_s": (-4.0, -1.0),
-                        "response_s": (0.0, 1.5), "min_duration_s": 1.5, "min_gap_s": 1.0},
-                states="social", shuffle=shuf, masks=["social_scored"]),
+                metric={
+                    "name": "peth",
+                    "pre_s": 4.0,
+                    "post_s": 4.0,
+                    "baseline_s": (-4.0, -1.0),
+                    "response_s": (0.0, 1.5),
+                    "min_duration_s": 1.5,
+                    "min_gap_s": 1.0,
+                },
+                states="social",
+                shuffle=shuf,
+                masks=["social_scored"],
+            ),
             # a continuous target instead of a state space: speed (+/- 2 s cross-correlation)
-            AnalysisSpec(metric={"name": "signal_correlation", "max_lag_s": 2.0},
-                         signal="speed", shuffle=shuf, masks=[]),
+            AnalysisSpec(
+                metric={"name": "signal_correlation", "max_lag_s": 2.0},
+                signal="speed",
+                shuffle=shuf,
+                masks=[],
+            ),
         ],
     )
 
@@ -111,18 +175,233 @@ def build_population_pipeline(n_pca: int, n_decode: int) -> Pipeline:
     return Pipeline(
         preprocess=[
             {"name": "rebin_time", "bin_s": 0.5},
-            {"name": "design_matrix", "states": ["social"], "signals": ["speed"],
-             "basis": {"n_basis": 4, "pre_s": 1.0, "post_s": 3.0}},
+            {
+                "name": "design_matrix",
+                "states": ["social"],
+                "signals": ["speed"],
+                "basis": {"n_basis": 4, "pre_s": 1.0, "post_s": 3.0},
+            },
         ],
         analyses=[
-            AnalysisSpec(metric={"name": "pca_population"}, states="social", masks=["social_scored"],
-                         shuffle=ShuffleConfig(n_shuffles=n_pca, null=null, seed=0)),
-            AnalysisSpec(metric={"name": "decode_states"}, states="social", masks=["social_scored"],
-                         shuffle=ShuffleConfig(n_shuffles=n_decode, null=null, seed=0)),
-            AnalysisSpec(metric={"name": "glm_encoding"}, signal="design", masks=["social_scored"],
-                         shuffle=None),
+            AnalysisSpec(
+                metric={"name": "pca_population"},
+                states="social",
+                masks=["social_scored"],
+                shuffle=ShuffleConfig(n_shuffles=n_pca, null=null, seed=0),
+            ),
+            AnalysisSpec(
+                metric={"name": "decode_states"},
+                states="social",
+                masks=["social_scored"],
+                shuffle=ShuffleConfig(n_shuffles=n_decode, null=null, seed=0),
+            ),
+            AnalysisSpec(
+                metric={"name": "glm_encoding"},
+                signal="design",
+                masks=["social_scored"],
+                shuffle=None,
+            ),
         ],
     )
+
+
+def build_binary_mi_pipeline(n_shuffles: int) -> Pipeline:
+    """MI with two levels (on/off).  Run separately: results are keyed by (metric, target)."""
+    shuf = ShuffleConfig(n_shuffles=n_shuffles, min_shift_s=20.0, seed=0)
+    return Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "mutual_information", "binning": "binary"},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            )
+        ]
+    )
+
+
+def build_decoder_pipeline(n_shuffles: int) -> Pipeline:
+    """Naive-Bayes decoders on the full-rate session, each against a label_shuffle null."""
+    null = {"name": "label_shuffle", "block_s": 5.0}
+    shuf = ShuffleConfig(n_shuffles=n_shuffles, null=null, seed=0)
+    return Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "likelihood": "gaussian",
+                    "sigma": "per_state",
+                    "smooth_sigma_bins": 1.0,
+                },
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "likelihood": "gaussian",
+                    "sigma": "pooled",
+                    "smooth_sigma_bins": 1.0,
+                },
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "likelihood": "poisson",
+                    "smooth_sigma_bins": 1.0,
+                },
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            # empirical likelihood tables (defaults: pseudocount 0.1), no null: reported vs chance only
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "likelihood": "empirical",
+                    "binning": "binary",
+                    "smooth_sigma_bins": 1.0,
+                },
+                states="position",
+                shuffle=None,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "likelihood": "empirical",
+                    "n_levels": 5,
+                    "smooth_sigma_bins": 1.0,
+                },
+                states="position",
+                shuffle=None,
+                masks=["speed"],
+            ),
+            # same decoder on categorical states: value = recall per behavior
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "sigma": "pooled",
+                    "min_frames_per_class": 20,
+                },
+                states="social_exclusive",
+                shuffle=shuf,
+                masks=["social_exclusive_scored"],
+            ),
+            # cautionary row: Shuman's per-state sigma on unbalanced states; accuracy only, no null
+            AnalysisSpec(
+                metric={
+                    "name": "bayesian_decoder",
+                    "sigma": "per_state",
+                    "min_frames_per_class": 20,
+                },
+                states="social_exclusive",
+                shuffle=None,
+                masks=["social_exclusive_scored"],
+            ),
+        ]
+    )
+
+
+def decoder_table(dec_results) -> pd.DataFrame:
+    """One row per decoder.  p is the median over states of the per-state p-values."""
+    rows = []
+    for r in dec_results:
+        ex = r.extras
+        if r.target == "position":
+            rows.append(
+                {
+                    "likelihood": r.params.get("likelihood", "gaussian")
+                    + (
+                        (
+                            " (binary)"
+                            if r.params.get("binning") == "binary"
+                            else f" ({r.params.get('n_levels', 5)} levels)"
+                        )
+                        if r.params.get("likelihood") == "empirical"
+                        else ""
+                    ),
+                    "sigma": (
+                        r.params.get("sigma", "per_state")
+                        if r.params.get("likelihood", "gaussian") == "gaussian"
+                        else "-"
+                    ),
+                    "smooth_sigma_bins": r.params.get("smooth_sigma_bins"),
+                    "median_error_mm": float(np.ravel(ex["error_overall"])[0]),
+                    "chance_error_mm": float(np.ravel(ex["chance_error"])[0]),
+                    "median_p_over_states": (
+                        float(np.nanmedian(r.shuffle.p_value)) if r.shuffle is not None else np.nan
+                    ),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def levels_sweep(seed: int, quick: bool) -> pd.DataFrame:
+    """Detection and false-positive rate versus number of activity levels and duration."""
+    durations = (300.0, 600.0) if quick else (300.0, 600.0, 1200.0)
+    n_shuf = 50 if quick else 100
+    levels = (2, 3, 5, 8)
+    shuf = ShuffleConfig(n_shuffles=n_shuf, min_shift_s=20.0, seed=0)
+    prep = build_pipeline(1)
+    prep = Pipeline(transforms=prep.transforms, preprocess=prep.preprocess, analyses=[])
+    rows = []
+    for dur in durations:
+        t = time.perf_counter()
+        kw = {"duration_s": dur, "seed": seed}
+        if quick:
+            kw["n_cells"] = 80
+        sess, _ = prep.run(simulate_session(**kw))
+        gt = sess.meta["ground_truth"]
+        rel, unt = list(gt["place_cells"]), list(gt["untuned_cells"])
+        specs = [
+            AnalysisSpec(
+                metric={"name": "information_content", "smooth_sigma_bins": 1.0},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            )
+        ]
+        _, res = Pipeline(analyses=specs).run(sess)
+        sig = np.asarray(res.get("information_content", "position").shuffle.p_value) < 0.05
+        for k in levels:  # Skaggs information does not depend on levels: a flat reference line
+            rows.append(
+                {
+                    "metric": "skaggs_information",
+                    "n_levels": k,
+                    "duration_s": dur,
+                    "detection": float(sig[rel].mean()),
+                    "fpr": float(sig[unt].mean()),
+                    "n_relevant": len(rel),
+                    "n_untuned": len(unt),
+                }
+            )
+        for k in levels:
+            spec = AnalysisSpec(
+                metric={"name": "mutual_information", "n_levels": k},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            )
+            _, res = Pipeline(analyses=[spec]).run(sess)
+            sig = np.asarray(res.get("mutual_information", "position").shuffle.p_value) < 0.05
+            rows.append(
+                {
+                    "metric": "mutual_information",
+                    "n_levels": k,
+                    "duration_s": dur,
+                    "detection": float(sig[rel].mean()),
+                    "fpr": float(sig[unt].mean()),
+                    "n_relevant": len(rel),
+                    "n_untuned": len(unt),
+                }
+            )
+        print(f"  {dur:g} s session: {time.perf_counter() - t:.1f} s")
+    return pd.DataFrame(rows)
 
 
 def nulls_compared(session, n_shuffles: int) -> pd.DataFrame:
@@ -139,19 +418,28 @@ def nulls_compared(session, n_shuffles: int) -> pd.DataFrame:
     rows = []
     for label, null in nulls.items():
         t = time.perf_counter()
-        pipe = Pipeline(analyses=[AnalysisSpec(
-            metric={"name": "auroc"}, states="social", masks=["social_scored"],
-            shuffle=ShuffleConfig(n_shuffles=n_shuffles, null=null, seed=0))])
+        pipe = Pipeline(
+            analyses=[
+                AnalysisSpec(
+                    metric={"name": "auroc"},
+                    states="social",
+                    masks=["social_scored"],
+                    shuffle=ShuffleConfig(n_shuffles=n_shuffles, null=null, seed=0),
+                )
+            ]
+        )
         _, res = pipe.run(session)
         r = res.get("auroc", "social")
         sig = np.asarray(r.shuffle.significant, bool)
         own = [r.state_names.index(d["behavior"]) for d in social]
-        rows.append({
-            "null": label,
-            "frac_social_detected_own_behavior": float(sig[ci, own].mean()),
-            "untuned_FPR_per_state": float(sig[untuned].mean()),
-            "runtime_s": time.perf_counter() - t,
-        })
+        rows.append(
+            {
+                "null": label,
+                "frac_social_detected_own_behavior": float(sig[ci, own].mean()),
+                "untuned_FPR_per_state": float(sig[untuned].mean()),
+                "runtime_s": time.perf_counter() - t,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -174,11 +462,14 @@ def recovery_table(session, results, alpha: float = 0.05) -> pd.DataFrame:
         any_sig = sig if sig.ndim == 1 else sig.any(axis=1)
         pop, cells = pops[r.target]
         row = {
-            "metric": r.metric, "target": r.target, "relevant": pop,
+            "metric": r.metric,
+            "target": r.target,
+            "relevant": pop,
             "n_relevant": len(cells),
             "frac_sig_relevant": float(any_sig[cells].mean()),
             "frac_sig_untuned (FPR)": float(any_sig[untuned].mean()),
-            "frac_sig_own_state": np.nan, "sign_match": np.nan,
+            "frac_sig_own_state": np.nan,
+            "sign_match": np.nan,
         }
         if r.metric in ("auroc", "mean_per_state", "peth") and r.target == "social":
             own = [r.state_names.index(d["behavior"]) for d in social]
@@ -215,12 +506,16 @@ def glm_table(session, glm) -> pd.DataFrame:
     place = list(session.meta["ground_truth"]["place_cells"])
     speed_top = float(np.mean(top[place] == groups.index("speed")))
     de = np.asarray(glm.extras["deviance_explained"], float)
-    return pd.DataFrame([{
-        "frac_social_top_group_is_own_behavior": float(np.mean(top[ci] == np.array(want))),
-        "frac_place_top_group_is_speed": speed_top,
-        "median_dev_explained_social": float(np.nanmedian(de[ci])),
-        "median_dev_explained_untuned": float(np.nanmedian(de[untuned])),
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "frac_social_top_group_is_own_behavior": float(np.mean(top[ci] == np.array(want))),
+                "frac_place_top_group_is_speed": speed_top,
+                "median_dev_explained_social": float(np.nanmedian(de[ci])),
+                "median_dev_explained_untuned": float(np.nanmedian(de[untuned])),
+            }
+        ]
+    )
 
 
 def _has_yaml() -> bool:
@@ -241,8 +536,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
     ap.add_argument("--out", type=Path, default=Path("examples/output"))
-    ap.add_argument("--quick", action="store_true",
-                    help="duration 300 s, 80 cells, 200 shuffles")
+    ap.add_argument(
+        "--quick",
+        action="store_true",
+        help="duration 300 s, 80 cells, 200 shuffles (decoders 20, level sweep 50); ~40 s",
+    )
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
@@ -264,6 +562,14 @@ def main(argv=None) -> int:
     t1 = time.perf_counter()
     session, results = pipe.run(session, progress=True)
     print(f"\nPipeline runtime: {time.perf_counter() - t1:.1f} s ({n_shuffles} shuffles)\n")
+
+    # binary (on/off) MI: same metric and target as the 5-level one, so it runs separately
+    t_b = time.perf_counter()
+    _, bin_res = build_binary_mi_pipeline(n_shuffles).run(session)
+    mi_bin = bin_res.get("mutual_information", "position").model_copy(
+        update={"metric": "mutual_information_binary"}
+    )
+    print(f"Binary MI: {time.perf_counter() - t_b:.1f} s\n")
 
     # --- save tables / provenance ---
     df = results.to_dataframe()
@@ -288,9 +594,13 @@ def main(argv=None) -> int:
     place = np.array(gt["place_cells"])
     top = place[np.argsort(-ic_pos.values[place])[:12]]
     untuned = np.array(gt["untuned_cells"])[:6]
-    save_fig(cabana.plots.plot_rate_maps(session, ic_pos, list(top)), out / "02_rate_maps_place.png")
-    save_fig(cabana.plots.plot_rate_maps(session, ic_pos, list(untuned)),
-             out / "03_rate_maps_untuned.png")
+    save_fig(
+        cabana.plots.plot_rate_maps(session, ic_pos, list(top)), out / "02_rate_maps_place.png"
+    )
+    save_fig(
+        cabana.plots.plot_rate_maps(session, ic_pos, list(untuned)),
+        out / "03_rate_maps_untuned.png",
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), layout="constrained")
     cabana.plots.plot_shuffle_distribution(ic_pos, int(top[0]), ax=axes[0])
@@ -298,12 +608,14 @@ def main(argv=None) -> int:
     save_fig(fig, out / "04_shuffle_distribution.png")
 
     save_fig(cabana.plots.plot_tuning_heatmap(au_soc, sort_by="peak"), out / "05_tuning_social.png")
-    save_fig(cabana.plots.plot_tuning_heatmap(au_syl, sort_by="peak"),
-             out / "06_tuning_syllables.png")
+    save_fig(
+        cabana.plots.plot_tuning_heatmap(au_syl, sort_by="peak"), out / "06_tuning_syllables.png"
+    )
     save_fig(cabana.plots.plot_metric_scatter(ic_pos, sh_pos), out / "07_info_vs_stability.png")
-    save_fig(cabana.plots.plot_population_matrix(pvo, vmin=-1, vmax=1),
-             out / "08_pv_overlap_social.png")
-    rec = cabana.plots.plot_ground_truth_recovery(session, results)
+    save_fig(
+        cabana.plots.plot_population_matrix(pvo, vmin=-1, vmax=1), out / "08_pv_overlap_social.png"
+    )
+    rec = cabana.plots.plot_ground_truth_recovery(session, [*results, mi_bin])
     summary = rec.cabana_summary
     save_fig(rec, out / "09_ground_truth_recovery.png")
 
@@ -317,8 +629,10 @@ def main(argv=None) -> int:
     t2 = time.perf_counter()
     pop_pipe = build_population_pipeline(n_pop, n_dec)
     binned, pop_results = pop_pipe.run(session, progress=True)
-    print(f"  re-binned: {session.n_time} -> {binned.n_time} frames at {binned.fs:g} Hz; "
-          f"runtime {time.perf_counter() - t2:.1f} s")
+    print(
+        f"  re-binned: {session.n_time} -> {binned.n_time} frames at {binned.fs:g} Hz; "
+        f"runtime {time.perf_counter() - t2:.1f} s"
+    )
     if _has_yaml():
         (out / "pipeline_population.yaml").write_text(pop_pipe.to_yaml())
     pop_df = pop_results.to_dataframe()
@@ -335,23 +649,32 @@ def main(argv=None) -> int:
     ic_sig = significant_cells(ic_pos)
     soc_sig = significant_cells(au_soc)
     ov = overlap_vs_chance(ic_sig, soc_sig)
-    print("\nOverlap of place cells (information_content significant) and social-responsive "
-          "cells (auroc significant in any state):")
+    print(
+        "\nOverlap of place cells (information_content significant) and social-responsive "
+        "cells (auroc significant in any state):"
+    )
     print(ov)
     feats, fnames, kept = response_features(
-        results, which=[("auroc", "social"), ("mean_per_state", "social")])
+        results, which=[("auroc", "social"), ("mean_per_state", "social")]
+    )
     clusters = response_clusters(feats, k=None, k_range=(2, 6))
     pop_label = np.full(session.n_cells, "other", dtype=object)
     pop_label[list(gt["place_cells"])] = "place"
-    pop_label[list(gt["syllable_cells"][i]["cell"] for i in range(len(gt["syllable_cells"])))] = "syllable"
+    pop_label[list(gt["syllable_cells"][i]["cell"] for i in range(len(gt["syllable_cells"])))] = (
+        "syllable"
+    )
     pop_label[list(gt["untuned_cells"])] = "untuned"
     for d in gt["social_cells"]:
         pop_label[d["cell"]] = f"social_{d['sign']}"
-    comp = pd.crosstab(pd.Series(clusters.labels, name="cluster"),
-                       pd.Series(pop_label[kept], name="planted population"))
+    comp = pd.crosstab(
+        pd.Series(clusters.labels, name="cluster"),
+        pd.Series(pop_label[kept], name="planted population"),
+    )
     sizes = np.bincount(clusters.labels)
-    print(f"\nResponse clusters: k={clusters.k} chosen by silhouette "
-          f"({ {k_: round(v, 2) for k_, v in clusters.scores.items()} }); sizes {sizes.tolist()}")
+    print(
+        f"\nResponse clusters: k={clusters.k} chosen by silhouette "
+        f"({ {k_: round(v, 2) for k_, v in clusters.scores.items()} }); sizes {sizes.tolist()}"
+    )
     print(comp.to_string())
 
     # --- cohort smoke test ---
@@ -376,10 +699,16 @@ def main(argv=None) -> int:
     n_id = min(session.n_cells, extra_sessions["s1"].n_cells)
     ident = CellMatch(session_a="s0", session_b="s1", pairs=np.c_[np.arange(n_id), np.arange(n_id)])
     cs = cross_session_map_correlation(
-        ic_pos, ic_s1, ident, n_shuffles=200,
-        states=(session.states["position"], extra_sessions["s1"].states["position"]))
-    print("\nCross-session map correlation, s0 vs s1 with an identity (wrong) match "
-          "[negative control, expect ~0 and p_population not small]:")
+        ic_pos,
+        ic_s1,
+        ident,
+        n_shuffles=200,
+        states=(session.states["position"], extra_sessions["s1"].states["position"]),
+    )
+    print(
+        "\nCross-session map correlation, s0 vs s1 with an identity (wrong) match "
+        "[negative control, expect ~0 and p_population not small]:"
+    )
     print(remapping_summary(cs))
 
     # --- new figures ---
@@ -395,11 +724,16 @@ def main(argv=None) -> int:
     best = int(np.argmax(np.abs(np.nan_to_num(pe.values[social_cells, own_idx]))))
     top_cell, top_state = int(social_cells[best]), gt["social_cells"][best]["behavior"]
     save_fig(cabana.plots.plot_peth(pe, session, ncols=4), out / "10_peth_social.png")
-    save_fig(cabana.plots.plot_event_raster(session, pe, top_cell, top_state,
-                                            mask=session.valid_mask(["social_scored"])),
-             out / "11_event_raster_top_social_cell.png")
-    save_fig(cabana.plots.plot_tuning_heatmap(mps_res, sort_by="peak"),
-             out / "12_mean_per_state_social.png")
+    save_fig(
+        cabana.plots.plot_event_raster(
+            session, pe, top_cell, top_state, mask=session.valid_mask(["social_scored"])
+        ),
+        out / "11_event_raster_top_social_cell.png",
+    )
+    save_fig(
+        cabana.plots.plot_tuning_heatmap(mps_res, sort_by="peak"),
+        out / "12_mean_per_state_social.png",
+    )
     place_arr = np.array(gt["place_cells"])
     pc = int(place_arr[np.nanargmax(np.abs(sc.values[place_arr]))])
     fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), layout="constrained")
@@ -408,7 +742,9 @@ def main(argv=None) -> int:
     cabana.plots.plot_shuffle_distribution(sc, int(untuned[0]), ax=axes[1])
     axes[1].set_title(f"speed correlation, untuned cell {int(untuned[0])}")
     save_fig(fig, out / "13_speed_correlation_shuffle.png")
-    save_fig(cabana.plots.plot_population_matrix(pca, cmap="magma"), out / "14_pca_distances_social.png")
+    save_fig(
+        cabana.plots.plot_population_matrix(pca, cmap="magma"), out / "14_pca_distances_social.png"
+    )
     fig, ax = plt.subplots(figsize=(5.5, 3.8), layout="constrained")
     xs = np.arange(len(dec.state_names))
     ax.bar(xs, dec.values, color="C0", label="decoder (held-out blocks)")
@@ -424,16 +760,187 @@ def main(argv=None) -> int:
     save_fig(cabana.plots.plot_cohort_fractions(fracs), out / "18_cohort_fractions.png")
     save_fig(cabana.plots.plot_cross_session(cs), out / "19_cross_session_negative_control.png")
 
+    # ===================== third increment: amplitude as a dimension =====================
+    print("\nAmplitude as a dimension: mutual information and Bayesian decoding")
+    mi_pos = results.get("mutual_information", "position")
+    place_arr = np.array(gt["place_cells"])
+    sig_ic = np.asarray(ic_pos.shuffle.p_value) < 0.05
+    sig_mi = np.asarray(mi_pos.shuffle.p_value) < 0.05
+    sig_bin = np.asarray(mi_bin.shuffle.p_value) < 0.05
+    unt_all = np.array(gt["untuned_cells"])
+    print(
+        pd.DataFrame(
+            {
+                "analysis": ["Skaggs information", "MI, 5 quantile levels", "MI, binary (on/off)"],
+                "detect_place": [sig[place_arr].mean() for sig in (sig_ic, sig_mi, sig_bin)],
+                "FPR_untuned": [sig[unt_all].mean() for sig in (sig_ic, sig_mi, sig_bin)],
+            }
+        ).to_string(index=False, float_format=lambda v: f"{v:.2f}")
+    )
+
+    t_dec = time.perf_counter()
+    n_dec_shuf = 20 if args.quick else 50
+    dec_pipe = build_decoder_pipeline(n_dec_shuf)
+    _, dec_results = dec_pipe.run(session, progress=True)
+    print(
+        f"\nDecoders ({n_dec_shuf} label_shuffle shuffles each; empirical ones unshuffled): "
+        f"{time.perf_counter() - t_dec:.1f} s"
+    )
+    df = pd.concat([df, dec_results.to_dataframe(), mi_bin.to_dataframe()], ignore_index=True)
+    df.to_csv(out / "results.csv", index=False)
+    bd_pos = [
+        r
+        for r in dec_results
+        if r.target == "position" and r.params.get("likelihood") != "empirical"
+    ]
+    bd_socs = [r for r in dec_results if r.target == "social_exclusive"]
+    bd_soc = next(r for r in bd_socs if r.params.get("sigma") == "pooled")
+    bd_soc_ps = next(r for r in bd_socs if r.params.get("sigma", "per_state") == "per_state")
+    print(
+        "\nPosition decoders (error = median over held-out frames, mm; "
+        "p = median over states of the per-state p-values):"
+    )
+    print(decoder_table(dec_results).to_string(index=False, float_format=lambda v: f"{v:.3g}"))
+    print("\nSocial decoder, recall per behavior vs 95th percentile of the label_shuffle null:")
+    print(
+        pd.DataFrame(
+            {
+                "state": bd_soc.state_names,
+                "recall": bd_soc.values,
+                "null_hi": bd_soc.shuffle.null_hi,
+                "p": bd_soc.shuffle.p_value,
+            }
+        ).to_string(index=False, float_format=lambda v: f"{v:.3f}")
+    )
+
+    print(
+        "\nSocial decoder overall accuracy (chance = 1 / n_states = "
+        f"{1 / len(bd_soc.state_names):.2f}): gaussian pooled "
+        f"{float(np.ravel(bd_soc.extras['accuracy_overall'])[0]):.2f} vs gaussian per_state "
+        f"{float(np.ravel(bd_soc_ps.extras['accuracy_overall'])[0]):.2f} (cautionary: rare "
+        "states get a wide sigma and a flat likelihood)"
+    )
+    n_beat = int((np.asarray(bd_soc.shuffle.p_value) < 0.05).sum())
+    print(
+        f"Pooled social decoder beats its label_shuffle null in {n_beat} of "
+        f"{len(bd_soc.state_names)} behaviors (p < 0.05)"
+    )
+
+    t_sw = time.perf_counter()
+    print("\nLevels sweep (planted place-cell detection and untuned FPR):")
+    sweep = levels_sweep(args.seed, args.quick)
+    sweep.to_csv(out / "levels_sweep.csv", index=False)
+    print(
+        sweep.pivot_table(
+            index=["metric", "n_levels"], columns="duration_s", values=["detection", "fpr"]
+        ).to_string(float_format=lambda v: f"{v:.2f}")
+    )
+    print(f"  sweep runtime {time.perf_counter() - t_sw:.1f} s")
+
+    print("\nFigures (amplitude and decoding):")
+    mi_top = place_arr[np.argsort(-np.nan_to_num(mi_pos.values[place_arr]))[:3]]
+    pos_states = session.states["position"]
+    save_fig(
+        cabana.plots.plot_joint_histogram(
+            mi_pos, list(mi_top), states=pos_states, normalize="conditional"
+        ),
+        out / "20_joint_histogram_place.png",
+    )
+    save_fig(
+        cabana.plots.plot_joint_histogram(
+            mi_pos, [*mi_top, int(unt_all[0])], states=pos_states, normalize="lift"
+        ),
+        out / "21_joint_histogram_lift.png",
+    )
+    save_fig(
+        cabana.plots.plot_information_comparison(
+            ic_pos,
+            mi_pos,
+            labels=("Skaggs information (bits/event)", "mutual information (bits)"),
+            highlight=list(place_arr),
+        ),
+        out / "22_info_vs_mi.png",
+    )
+    save_fig(cabana.plots.plot_level_sweep(sweep), out / "23_level_sweep.png")
+    g_dec = bd_pos[1]  # gaussian, pooled sigma
+    save_fig(
+        cabana.plots.plot_decoded_trajectory(g_dec, session, pos_states),
+        out / "24_decoded_trajectory.png",
+    )
+    fig, ax = plt.subplots(figsize=(6.2, 3.8), layout="constrained")
+    top_err = np.nanpercentile(
+        np.concatenate([np.asarray(r.extras["error"]) for r in bd_pos]), 99.5
+    )
+    bins = np.linspace(0, top_err, 50)
+    for i, r in enumerate(bd_pos):
+        lab = r.params.get("likelihood", "gaussian")
+        if lab == "gaussian":
+            lab += f" ({r.params.get('sigma', 'per_state')})"
+        ax.hist(
+            np.asarray(r.extras["error"]),
+            bins=bins,
+            histtype="step",
+            color=f"C{i}",
+            density=True,
+            label=lab,
+        )
+        ax.axvline(float(np.ravel(r.extras["error_overall"])[0]), color=f"C{i}", ls="--", lw=1)
+    ax.axvline(
+        float(np.ravel(g_dec.extras["chance_error"])[0]),
+        color="k",
+        ls=":",
+        label="chance (guess most occupied bin)",
+    )
+    ax.set_xlabel("decoding error (mm); dashed = median")
+    ax.set_ylabel("density of frames")
+    ax.legend(fontsize=8, frameon=False)
+    save_fig(fig, out / "25_decoder_errors.png")
+    conf = np.asarray(bd_soc.extras["confusion"], float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        conf_n = conf / conf.sum(axis=1, keepdims=True)
+    fig, ax = plt.subplots(figsize=(5.2, 4.4), layout="constrained")
+    im = ax.imshow(conf_n, vmin=0, vmax=1, cmap="viridis")
+    names = list(bd_soc.state_names)
+    ax.set_xticks(range(len(names)), names, rotation=45, ha="right")
+    ax.set_yticks(range(len(names)), names)
+    for i in range(len(names)):
+        for j in range(len(names)):
+            if np.isfinite(conf_n[i, j]):
+                ax.text(
+                    j,
+                    i,
+                    f"{conf_n[i, j]:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="w" if conf_n[i, j] < 0.5 else "k",
+                )
+    ax.set_xlabel("decoded behavior")
+    ax.set_ylabel("true behavior")
+    fig.colorbar(im, ax=ax, label="fraction of true-behavior frames")
+    save_fig(fig, out / "26_decoder_social_confusion.png")
+
     print("\nGround-truth recovery (fraction significant, alpha=0.05):")
     print(summary.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
     print("\nGLM unique contributions (population pipeline, Poisson, held-out blocks):")
     print(glm_table(session, glm).to_string(index=False, float_format=lambda v: f"{v:.2f}"))
     print("\nDecoder accuracy vs null (label_shuffle):")
-    print(pd.DataFrame({"state": dec.state_names, "balanced_acc": dec.values,
-                        "null_hi": dec.shuffle.null_hi, "p": dec.shuffle.p_value})
-          .to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    print(
+        pd.DataFrame(
+            {
+                "state": dec.state_names,
+                "balanced_acc": dec.values,
+                "null_hi": dec.shuffle.null_hi,
+                "p": dec.shuffle.p_value,
+            }
+        ).to_string(index=False, float_format=lambda v: f"{v:.3f}")
+    )
     print("\nRecovery by analysis (relevant vs untuned = false-positive rate):")
-    print(recovery_table(session, results).to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+    print(
+        recovery_table(session, [*results, mi_bin]).to_string(
+            index=False, float_format=lambda v: f"{v:.2f}"
+        )
+    )
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0
 

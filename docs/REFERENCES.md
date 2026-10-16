@@ -98,3 +98,8 @@
 98. Zhou P, Resendez SL, Rodriguez-Romaguera J, Jimenez JC, Neufeld SQ, Giovannucci A, et al.. Efficient and accurate extraction of in vivo calcium signals from microendoscopic video data. eLife. 2018;7:e28728. doi:10.7554/eLife.28728
 99. Zhou J, Sajid MS, Hormigo S, Castro-Alamancos MA. A forebrain hub for cautious actions via the midbrain. eLife. 2026;14:RP107796. doi:10.7554/eLife.107796
 100. Zong W, Obenhaus HA, Skytøen ER, Eneqvist H, de Jong NL, Vale R, et al.. Large-scale two-photon calcium imaging in freely moving mice. Cell. 2022;185:1240-1256.e30. doi:10.1016/j.cell.2022.02.017
+101. Zhang K, Ginzburg I, McNaughton BL, Sejnowski TJ. Interpreting neuronal population activity by reconstruction: unified framework with application to hippocampal place cells. Journal of Neurophysiology. 1998;79:1017-1044. doi:10.1152/jn.1998.79.2.1017
+102. Climer JR, Dombeck DA. Information theoretic approaches to deciphering the neural code with functional fluorescence imaging. eNeuro. 2021;8(1):ENEURO.0266-20.2020. doi:10.1523/ENEURO.0266-20.2020
+103. Souza BC, Pavao R, Belchior H, Tort ABL. On information metrics for spatial coding. Neuroscience. 2018;375:62-73. doi:10.1016/j.neuroscience.2018.01.066
+104. Miller G. Note on the bias of information estimates. In: Quastler H, ed. Information Theory in Psychology: Problems and Methods. Glencoe, IL: Free Press; 1955:95-100.
+105. Treves A, Panzeri S. The upward bias in measures of information derived from limited data samples. Neural Computation. 1995;7:399-407. doi:10.1162/neco.1995.7.2.399

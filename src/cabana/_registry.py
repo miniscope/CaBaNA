@@ -161,6 +161,15 @@ class Metric(_Plugin):
         """
         return None
 
+    def resolve_tail(self, target: Target) -> Literal["upper", "lower", "two"]:
+        """Tail to use when ``ShuffleConfig.tail`` is ``None``.
+
+        Defaults to ``default_tail``; metrics whose statistic changes meaning
+        with the target (e.g. decoding *error* on a grid vs *accuracy* on
+        categories) override this.
+        """
+        return self.default_tail
+
     def check_target(self, target: Target) -> None:
         """Raise ``ValueError`` if ``target`` is not what this metric consumes."""
         if self.input == "states":

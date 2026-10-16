@@ -63,7 +63,7 @@ class ShuffleConfig(BaseModel):
         Significance level.
     tail : {"upper", "lower", "two"} | None
         Which tail counts as "extreme".  ``None`` uses the metric's
-        ``default_tail`` (upper for information content, two for AUROC).
+        ``resolve_tail(target)`` (upper for information content, two for AUROC).
     batch_size : int
         How many shifts to evaluate per call to ``compute_shifted`` (bounds
         memory for ``(batch, n_cells, n_states)`` intermediates).
@@ -198,7 +198,7 @@ def shuffle_test(
     activity = np.asarray(activity)
     mask = np.asarray(mask, dtype=bool)
     rng = np.random.default_rng(config.seed)
-    tail: Tail = config.tail if config.tail is not None else metric.default_tail
+    tail: Tail = config.tail if config.tail is not None else metric.resolve_tail(target)
 
     observed = np.asarray(metric.compute(activity, target, mask, fs), dtype=np.float64)
     null = np.empty((config.n_shuffles, *observed.shape), dtype=np.float64)

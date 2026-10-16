@@ -88,6 +88,14 @@ class InformationContent(Metric):
 `build("metric", {"name": "information_content", "min_occupancy_s": 0.1})`
 reconstructs any plugin from a dict, so pipelines serialise to YAML/JSON.
 
+Each metric has a class-level `default_tail` ("upper", "lower" or "two"). The
+shuffle engine calls `Metric.resolve_tail(target)` when `ShuffleConfig.tail` is
+`None`; the default returns `default_tail`, and `bayesian_decoder` overrides it
+because its value is an error in physical units on a grid (smaller is better,
+lower tail) but a per-state recall on categorical states (larger is better,
+upper tail). One metric therefore serves both target types without a second
+registration, and an explicit `ShuffleConfig.tail` still wins.
+
 Metric output shapes: `(n_cells,)` or `(n_cells, n_states)` for
 `level="cell"`; anything for `level="population"`.
 
@@ -287,7 +295,8 @@ modules. Contract changes:
 New metrics: `mean_per_state`, `peth` (with a paired pre/post Wilcoxon in
 extras), `signal_correlation` (with lagged cross-correlation),
 `signal_tuning`, `pca_population`, `population_distance`, `decode_states`
-(contiguous-block cross-validation), `glm_encoding`.
+(contiguous-block cross-validation), `glm_encoding`. The third increment adds
+`mutual_information` and `bayesian_decoder` (below).
 
 Results-level functions (`_posthoc.py`): `significant_cells`,
 `overlap_vs_chance` (hypergeometric), `overlap_matrix`, `response_features`,
@@ -338,3 +347,79 @@ animal)`: `fraction_significant_by_animal`, `compare_states_across_animals`
 (paired Wilcoxon across animals, e.g. behavior vs control), and
 `hierarchical_bootstrap` (resample animals, then cells within animal). The
 animal is the statistical unit, as in CaSA.
+
+## Third increment: amplitude as a dimension
+
+New modules: `_metrics/_discretize.py` (shared level discretiser),
+`_metrics/_mutual_information.py` (`mutual_information`, cell level),
+`_metrics/_bayes.py` (`bayesian_decoder`, population level), and the plot
+functions `plot_joint_histogram`, `plot_information_comparison` and
+`plot_level_sweep` in `cabana.plots`.
+
+**Motivation.** Skaggs information and rate maps collapse a cell's activity in a
+state to its mean. A cell whose amplitude distribution changes with state but
+whose mean barely does, or whose mean is inflated by rare large transients, is
+described poorly by that one number, and Climer & Dombeck (2021) and Souza et
+al. (2018) document how calcium kinetics and event amplitude distort
+Skaggs-style measures. Adding a discretised amplitude axis turns the 1-D tuning
+curve into a 2-D state by level histogram. Mutual information over that
+histogram measures everything the amplitude distribution says about the state,
+not only its mean. If amplitude carries nothing beyond field membership, the
+in-field columns of the conditional histogram are identical to each other (not
+uniform: deconvolved activity is zero-dominated), so the useful view is
+p(level | state), exposed as the `conditional` extra, rather than raw counts.
+
+**One histogram, two consumers.** The same state by level histogram is the
+empirical likelihood table of a naive-Bayes decoder: P(level | state) per cell.
+That is why both plugins share `_discretize.py`. Zero is its own "silent" level
+for non-negative data; the remaining edges come from quantile, log, linear or
+binary rules computed per cell on masked, unshifted frames and then reused for
+every surrogate, so the shuffle changes only the alignment of activity and
+state, never the binning. Joint counts cost one indicator matmul per level
+through `shifted_sums`, so `compute_shifted` accumulates one level at a time
+(about 1.1 s per 100 shifts on the default simulated session).
+
+**`mutual_information`.** Plug-in I(level; state) in bits per cell. Extras:
+`joint`, `conditional`, `edges`, `occupancy_s`, `valid`. The optional
+Miller-Madow correction (Miller 1955; see Treves & Panzeri 1995 on the bias) is
+off by default, because the shuffle null has the same occupancy and the same
+activity marginal and so carries the same finite-sampling bias; subtracting it
+twice would only add noise.
+
+**`bayesian_decoder`.** Cross-validated naive Bayes with contiguous folds.
+`likelihood` selects `gaussian` (Shuman et al. 2020: binarized activity,
+per-block mean and s.d. maps with an s.d. floor, 0.25 s test window, occupancy
+prior), `poisson` (Zhang et al. 1998) or `empirical` (per-cell P(level | state)
+tables from the discretiser with a Dirichlet pseudocount).
+`smooth_sigma_bins` smooths the training maps over a `GridTopology` and applies
+to all three likelihoods. The value is the per-state median decoding error in
+physical units on a grid (lower tail) or the per-state recall on categorical
+states (upper tail), chosen by `resolve_tail`. Extras: `confusion`, `decoded`,
+`error`, `error_overall`, `accuracy_overall`, `chance_error` (always guess the
+prior's mode), `n_frames`, `posterior_mean_confidence`. On the default
+simulation (400 bins of 20 mm, 400 mm arena, chance error 247 mm) the Gaussian
+likelihood with Shuman's per-state sigma reaches 85 mm with one bin of
+smoothing, Poisson 45 mm, and the Gaussian with a pooled sigma (`sigma="pooled"`,
+one within-state sigma per cell, LDA-style) also 45 mm. Per-state sigma fails
+outright on unbalanced categorical states: on the simulator's exclusive social
+space (rest and huddle hold three quarters of the frames) rare states get a wide
+sigma and a flat Gaussian, so the flattest state wins whenever a cell is active,
+and accuracy is 0.06 against 0.42 for pooled sigma and 0.50 for Poisson. Spatial
+bins have similar occupancy, which is why the per-state form works in the paper.
+The empirical likelihood shows the data-sufficiency problem made concrete: with
+the same smoothing and a pseudocount of 0.1 it reaches 100 mm with two levels
+(silent / active) but only 118 mm with five, because the few positive frames
+per bin are split across four levels; with a pseudocount of 1 the five-level
+version sits at chance (255 mm), since the pseudocount swamps the smoothed
+counts. Both trail Poisson, which scores a 0.25 s window of activity rather
+than one frame's level.
+
+**Costs, and when amplitude pays.** Joint bins multiply (n_states by
+n_levels), so finite-sample bias and variance both rise and many cells will have
+empty or near-empty cells in the histogram. The shuffle null absorbs the bias.
+Whether amplitude is worth it is a per-dataset question with two checks: the
+demo's levels sweep (detection and false-positive rate of `mutual_information`
+against `n_levels` in {2, 3, 5, 8} and session length in {300, 600, 1200} s on
+the simulator's planted place cells), and, on real data, whether I(levels)
+exceeds I(binary) by more than the null spread for the cells of interest. If it
+does not, binary activity and the Skaggs form are the better-powered choice.

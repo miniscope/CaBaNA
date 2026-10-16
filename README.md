@@ -45,11 +45,14 @@ Implemented analyses (see [`docs/ANALYSIS_COVERAGE.md`](docs/ANALYSIS_COVERAGE.m
 for the survey they come from and what is still missing):
 
 - **Single-cell tuning to states:** information content, split-half stability, AUROC,
-  mean activity per state, and peri-event time histograms (PETH) with a pre/post test.
+  mean activity per state, mutual information between discretised amplitude levels
+  and state (a state by level histogram per cell), and peri-event time histograms
+  (PETH) with a pre/post test.
 - **Continuous targets:** correlation with a signal such as speed (with lagged
   cross-correlation) and signal tuning curves.
 - **Population analyses on re-binned data:** population-vector overlap, stability
-  and distance, PCA, cross-validated state decoding, and a GLM with a temporal basis
+  and distance, PCA, cross-validated state decoding, a naive-Bayes decoder
+  (Gaussian, Poisson or empirical likelihood), and a GLM with a temporal basis
   that reports each regressor's unique contribution.
 - **Null distributions as plugins:** circular shift, block label shuffle and bout
   shuffle, chosen with one line of `ShuffleConfig`.

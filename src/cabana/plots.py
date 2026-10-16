@@ -16,6 +16,12 @@ from ._plots import (
 )
 from ._plots_cohort import plot_cohort_fractions, plot_cross_session, plot_hierarchical_bootstrap
 from ._plots_events import plot_event_raster, plot_peth
+from ._plots_information import (
+    plot_decoded_trajectory,
+    plot_information_comparison,
+    plot_joint_histogram,
+    plot_level_sweep,
+)
 from ._plots_posthoc import plot_clusters, plot_overlap, plot_overlap_matrix
 
 __all__ = [
@@ -23,9 +29,13 @@ __all__ = [
     "plot_clusters",
     "plot_cohort_fractions",
     "plot_cross_session",
+    "plot_decoded_trajectory",
     "plot_event_raster",
     "plot_ground_truth_recovery",
     "plot_hierarchical_bootstrap",
+    "plot_information_comparison",
+    "plot_joint_histogram",
+    "plot_level_sweep",
     "plot_metric_scatter",
     "plot_overlap",
     "plot_overlap_matrix",

@@ -10,3 +10,4 @@ dist/
 examples/output/
 notebooks/output/
 .DS_Store
+/*.pdf
