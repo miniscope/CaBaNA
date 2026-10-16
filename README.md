@@ -36,10 +36,18 @@ for an end-to-end run on simulated data with planted ground truth.
 
 ## Status
 
-Early design demo. Synthetic data only; loaders for real formats (Minian,
-CaImAn, DeepLabCut, BORIS, `.camap` bundles) are the next step. CaBaNA is
-intended to become an app within [CaLab](https://github.com/miniscope/CaLab)
-and follows its Python conventions.
+Early design demo, run and tested on simulated data with planted ground truth;
+the `.camap` loader has only been tested on synthetic bundles. CaBaNA is intended
+to become an app within [CaLab](https://github.com/miniscope/CaLab) and follows
+its Python conventions.
+
+Recent additions:
+
+- **Multiple-comparison correction:** `ShuffleConfig(correction="max_stat" | "bh" | "bonferroni")` fills `p_adj` and `significant_adj`; on noise it cut the "significant in any state" rate from 29% to 8% (6 syllables).
+- **Fast path for fine grids:** exclusive state spaces above 256 states use per-cell integer-label sums instead of a dense one-hot matmul (6400 states: about 28 s and 2.6 GB down to 0.9 s and 1.0 GB).
+- **Cell classification:** `Criteria` / `Clause` rules (YAML round-trip), `classify`, `place_cell_criteria`, `responsive_cell_criteria` and `plots.plot_classification`.
+- **Loaders:** `cabana.loaders` reads Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files with one clock convention (`t_neural = t_video - t_offset_s`).
+- **Run control:** `RunContext` gives progress callbacks, cancellation with partial results, recorded errors and captured warnings; also `run_set`, `Pipeline.iter_run` and `describe()` for a front end.
 
 Implemented analyses (see [`docs/ANALYSIS_COVERAGE.md`](docs/ANALYSIS_COVERAGE.md)
 for the survey they come from and what is still missing):
@@ -76,7 +84,12 @@ pip install "git+https://github.com/miniscope/CaBaNA.git@framework-demo"
 ```
 
 The `@framework-demo` pin is needed only while the package lives on that
-branch; it goes away after the merge to `main`.
+branch; it goes away after the merge to `main`. To read real files, add the
+loader extras (`cabana[minian]`, `cabana[caiman]`, or `cabana[loaders]` for all):
+
+```bash
+pip install "cabana[loaders] @ git+https://github.com/miniscope/CaBaNA.git@framework-demo"
+```
 
 ## Quick look
 
@@ -86,7 +99,8 @@ from cabana import Pipeline, AnalysisSpec, ShuffleConfig, simulate_session
 
 session = simulate_session()  # 2D arena + social bouts + syllables, planted cells
 
-shuf = ShuffleConfig(n_shuffles=1000, min_shift_s=20.0)
+# max_stat corrects "significant in any state" across each cell's states (see docs/STATISTICS.md)
+shuf = ShuffleConfig(n_shuffles=1000, min_shift_s=20.0, correction="max_stat")
 
 pipe = Pipeline(
     transforms=[
@@ -103,6 +117,8 @@ pipe = Pipeline(
         # here a speed filter for space only. Analyses get names like "auroc[social]".
         AnalysisSpec(metric={"name": "information_content", "smooth_sigma_bins": 1.0},
                      states="position", shuffle=shuf, masks=["speed"]),
+        AnalysisSpec(metric={"name": "split_half_stability"},
+                     states="position", shuffle=shuf, masks=["speed"]),
         AnalysisSpec(metric={"name": "information_content"},
                      states="syllables", shuffle=shuf),
         AnalysisSpec(metric={"name": "auroc"}, states="social", shuffle=shuf),
@@ -118,6 +134,8 @@ session, results = pipe.run(session)
 results["auroc[social]"]  # pick a result by its analysis name (see results.names())
 results.to_dataframe()    # cell × state × metric, with p-values and an `analysis` column
 results.save("results.zip")  # later: cabana.ResultSet.load("results.zip")
+# a cell class from the results: place cells = information AND split-half stability significant
+cabana.classify(results, [cabana.place_cell_criteria("position")]).counts()
 ```
 
 Give an analysis your own name with `AnalysisSpec(name="...", ...)`; otherwise it is
@@ -129,8 +147,9 @@ pipeline YAML to `examples/output/`; the full run takes a few minutes) or open `
 
 ## Bring your own data
 
-There are no file loaders yet, so you build a `Session` from arrays you read
-yourself:
+For Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files use
+`cabana.loaders` ([`docs/LOADERS.md`](docs/LOADERS.md)). Otherwise build a `Session` from
+arrays you read yourself:
 
 ```python
 session = cabana.Session(
@@ -153,8 +172,8 @@ block in it runs.
 
 ## Documentation
 
-- [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results.
-
+- [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results; classifying cells.
+- [`docs/LOADERS.md`](docs/LOADERS.md): reading Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files, and the clock convention.
 - [`docs/DESIGN.md`](docs/DESIGN.md): architecture, module specs, design history.
 - [`docs/ANALYSIS_COVERAGE.md`](docs/ANALYSIS_COVERAGE.md): survey of analyses in the literature and what is implemented.
 - [`docs/STATISTICS.md`](docs/STATISTICS.md): choosing a null, reading p-values, multiple comparisons, per-animal inference.

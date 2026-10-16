@@ -22,10 +22,16 @@ from ._plots_information import (
     plot_joint_histogram,
     plot_level_sweep,
 )
-from ._plots_posthoc import plot_clusters, plot_overlap, plot_overlap_matrix
+from ._plots_posthoc import (
+    plot_classification,
+    plot_clusters,
+    plot_overlap,
+    plot_overlap_matrix,
+)
 
 __all__ = [
     "plot_behavior_overview",
+    "plot_classification",
     "plot_clusters",
     "plot_cohort_fractions",
     "plot_cross_session",

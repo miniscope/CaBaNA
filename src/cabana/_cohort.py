@@ -92,6 +92,25 @@ def _units(df: pd.DataFrame) -> pd.Series:
     return df["cell"].astype(str)
 
 
+def _sig_column(sub: pd.DataFrame, adjusted: bool | None) -> str:
+    """Name of the significance column to use: ``significant`` or ``significant_adj``.
+
+    ``None`` picks ``significant_adj`` when the selected rows have a shuffle
+    (``null`` present) and carry a correction other than "none".
+    """
+    if adjusted is None:
+        if "significant_adj" not in sub.columns or "correction" not in sub.columns:
+            return "significant"
+        has_null = "null" not in sub.columns or sub["null"].notna().any()
+        corrected = (sub["correction"].dropna().astype(str) != "none").any()
+        return "significant_adj" if has_null and corrected else "significant"
+    if adjusted:
+        if "significant_adj" not in sub.columns:
+            raise ValueError("table has no 'significant_adj' column")
+        return "significant_adj"
+    return "significant"
+
+
 def fraction_significant_by_animal(
     table: pd.DataFrame,
     *,
@@ -99,6 +118,7 @@ def fraction_significant_by_animal(
     target: str | None = None,
     analysis: str | None = None,
     by_state: bool = True,
+    adjusted: bool | None = None,
 ) -> pd.DataFrame:
     """Per animal (sessions and cells pooled) fraction of cells significant.
 
@@ -125,6 +145,10 @@ def fraction_significant_by_animal(
         Select the analysis by its unique name (preferred).
     by_state : bool, default True
         One row per (animal, state), or one per animal with ``state == "all"``.
+    adjusted : bool, optional
+        ``None`` uses ``significant_adj`` when the selected analysis has a null
+        and its ``correction`` is not "none", else ``significant``; ``True``
+        forces the adjusted column, ``False`` the raw one.
 
     Returns
     -------
@@ -142,14 +166,16 @@ def fraction_significant_by_animal(
     """
     sub = _select(table, metric, target, analysis).copy()
     sub["_unit"] = _units(sub)
+    sigcol = _sig_column(sub, adjusted)
+    sub["_sig"] = sub[sigcol].astype(bool)
     if by_state and sub["state"].notna().any():
         sub["_state"] = sub["state"].astype(object)
     else:
         sub["_state"] = "all"
     has_bounds = {"null_lo", "null_hi"} <= set(sub.columns)
     if has_bounds:
-        sub["_pos"] = sub["significant"].astype(bool) & (sub["value"] > sub["null_hi"])
-        sub["_neg"] = sub["significant"].astype(bool) & (sub["value"] < sub["null_lo"])
+        sub["_pos"] = sub["_sig"] & (sub["value"] > sub["null_hi"])
+        sub["_neg"] = sub["_sig"] & (sub["value"] < sub["null_lo"])
     rows = []
     analysis_name = (
         str(sub["analysis"].iloc[0]) if "analysis" in sub.columns and len(sub) else analysis
@@ -167,10 +193,8 @@ def fraction_significant_by_animal(
             "state": st,
             "n_cells": int(n),
             "n_undefined": int(undefined.sum()),
-            "n_significant": int(gv["significant"].astype(bool).sum()),
-            "fraction_significant": float(gv["significant"].astype(bool).mean())
-            if len(gv)
-            else float("nan"),
+            "n_significant": int(gv["_sig"].sum()),
+            "fraction_significant": float(gv["_sig"].mean()) if len(gv) else float("nan"),
         }
         if has_bounds:
             row["fraction_positive"] = float(gv["_pos"].mean()) if len(gv) else float("nan")
@@ -410,6 +434,7 @@ def per_animal_summary(
     target: str | None = None,
     *,
     analysis: str | None = None,
+    adjusted: bool | None = None,
 ) -> pd.DataFrame:
     """Per animal: median value, fraction significant, number of cells.
 
@@ -421,6 +446,8 @@ def per_animal_summary(
         Select the analysis by metric and target.
     analysis : str, optional
         Select the analysis by its unique name.
+    adjusted : bool, optional
+        As in :func:`fraction_significant_by_animal`.
 
     Returns
     -------
@@ -430,11 +457,12 @@ def per_animal_summary(
     """
     sub = _select(table, metric, target, analysis).copy()
     sub["_unit"] = _units(sub)
+    sub["_sig"] = sub[_sig_column(sub, adjusted)].astype(bool)
     g = sub.groupby("animal", sort=True)
     return pd.DataFrame(
         {
             "median_value": g["value"].median(),
-            "fraction_significant": g["significant"].apply(lambda s: float(s.astype(bool).mean())),
+            "fraction_significant": g["_sig"].mean(),
             "n_cells": g["_unit"].nunique(),
         }
     ).reset_index()

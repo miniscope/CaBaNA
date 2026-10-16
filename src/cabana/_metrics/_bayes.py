@@ -39,7 +39,7 @@ from scipy.special import logsumexp
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from ._discretize import activity_levels, joint_counts, level_edges
+from ._discretize import activity_levels, joint_counts_for, level_edges
 from ._ratemap import contiguous_folds, rate_maps_from_sums, smooth_over_grid
 
 _EPS = 1e-12
@@ -254,7 +254,7 @@ class BayesianDecoder(Metric):
         """Level edges and ``log P(level | state)`` ``(cells, states, L)``, from training frames only."""
         edges = level_edges(activity, train_full, self.n_levels, self.binning)
         n_lev = edges.shape[1] - 1
-        counts = joint_counts(activity_levels(activity, edges), states.masked(train_full), n_lev)
+        counts = joint_counts_for(activity_levels(activity, edges), states, train_full, n_lev)
         counts = self._smooth_states(counts.transpose(0, 2, 1), states.topology)
         p = counts.transpose(0, 2, 1) + self.pseudocount
         return edges, np.log(np.maximum(p / p.sum(axis=2, keepdims=True), _EPS))

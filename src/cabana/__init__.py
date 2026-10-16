@@ -6,7 +6,7 @@ A pipeline for asking how neural activity relates to behavioral states.  See
 
 from __future__ import annotations
 
-from . import plots
+from . import loaders, plots
 from ._cohort import (
     BootstrapResult,
     cohort_table,
@@ -16,6 +16,16 @@ from ._cohort import (
     per_animal_summary,
 )
 from ._cohort_models import CellMatch, SessionSet
+from ._criteria import (
+    ClassificationResult,
+    Clause,
+    Criteria,
+    classification_table,
+    classify,
+    fraction_classified_by_animal,
+    place_cell_criteria,
+    responsive_cell_criteria,
+)
 from ._design import DesignMatrix, design_columns, raised_cosine_basis
 from ._cross_session import (
     CrossSessionResult,
@@ -50,7 +60,15 @@ from ._models import (
     Session,
     StateSpace,
 )
-from ._pipeline import AnalysisSpec, Pipeline
+from ._pipeline import (
+    AnalysisSpec,
+    Pipeline,
+    ProgressEvent,
+    RunContext,
+    RunSetResult,
+    describe,
+    run_set,
+)
 from ._posthoc import (
     ClusterResult,
     OverlapResult,
@@ -70,8 +88,8 @@ from ._preprocess import (
 )
 from ._nulls import BoutShuffle, CircularShift, LabelShuffle
 from ._registry import Metric, Null, PreprocessStep, Transform, available, build, register
-from ._results import MetricResult, ResultSet, ShuffleResult
-from ._shuffle import ShuffleConfig, shifted_sums, shuffle_test
+from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
+from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
 from ._transform import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
 
@@ -83,6 +101,15 @@ except Exception:  # pragma: no cover - not installed
     __version__ = "0.0.1"
 
 __all__ = [
+    # cell classification
+    "ClassificationResult",
+    "Clause",
+    "Criteria",
+    "classification_table",
+    "classify",
+    "fraction_classified_by_animal",
+    "place_cell_criteria",
+    "responsive_cell_criteria",
     # data model
     "BoutTable",
     "ContinuousSignal",
@@ -158,16 +185,26 @@ __all__ = [
     "CircularShift",
     "LabelShuffle",
     "ShuffleConfig",
+    "adjust_p_values",
     "shifted_sums",
     "shuffle_test",
     # pipeline & results
     "AnalysisSpec",
     "MetricResult",
     "Pipeline",
+    "ProgressEvent",
     "ResultSet",
+    "RunCancelled",
+    "RunContext",
+    "RunError",
+    "RunSetResult",
+    "RunWarning",
+    "describe",
+    "run_set",
     "ShuffleResult",
     # simulation & plots
     "SimulationConfig",
+    "loaders",
     "plots",
     "simulate_session",
 ]

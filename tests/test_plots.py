@@ -223,3 +223,22 @@ def test_ground_truth_recovery(setup, tmp_path):
     fig2 = P.plot_ground_truth_recovery(bare, rs)
     assert fig2.cabana_summary.empty
     _check(fig2, tmp_path, "gt_empty")
+
+
+def test_ground_truth_recovery_adjusted(setup, tmp_path):
+    sess, ic, stab, au, pop = setup
+    sh = au.shuffle
+    adj = sh.model_copy(
+        update={"p_adj": np.minimum(1.0, sh.p_value * 50), "correction": "bonferroni"}
+    )
+    au2 = au.model_copy(update={"shuffle": adj})
+    rs = ResultSet(results=[au2])
+
+    def frac(**kw):
+        df = P.plot_ground_truth_recovery(sess, rs, **kw).cabana_summary
+        return df[df["population"] == "place"]["fraction_significant"].iloc[0]
+
+    raw = (sh.p_value[:3] < 0.05).any(axis=1).mean()
+    ad = (adj.p_adj[:3] < 0.05).any(axis=1).mean()
+    assert frac(adjusted=False) == pytest.approx(raw)
+    assert frac() == pytest.approx(ad) == pytest.approx(frac(adjusted=True))

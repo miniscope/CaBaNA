@@ -578,7 +578,10 @@ def _planted_populations(gt: dict[str, Any]) -> dict[str, list[int]]:
 
 
 def plot_ground_truth_recovery(
-    session: Session, resultset: ResultSet | Sequence[MetricResult], alpha: float = 0.05
+    session: Session,
+    resultset: ResultSet | Sequence[MetricResult],
+    alpha: float = 0.05,
+    adjusted: bool | None = None,
 ) -> Figure:
     """Fraction of each planted population detected, per result.
 
@@ -598,6 +601,10 @@ def plot_ground_truth_recovery(
     alpha : float, default 0.05
         A cell counts as detected when ``p_value < alpha`` in any state; also the
         dashed reference line.
+    adjusted : bool, optional
+        ``None`` uses the multiplicity-adjusted ``p_adj`` for results whose
+        ``correction`` is not "none" and the raw ``p_value`` otherwise; ``True``
+        forces ``p_adj`` (raw where absent), ``False`` forces ``p_value``.
 
     Returns
     -------
@@ -611,7 +618,10 @@ def plot_ground_truth_recovery(
     for r in resultset:
         if r.level != "cell" or r.shuffle is None:
             continue
-        sig = np.asarray(r.shuffle.p_value) < alpha
+        sh = r.shuffle
+        use_adj = (sh.correction != "none") if adjusted is None else adjusted
+        p = sh.p_adj if use_adj and sh.p_adj is not None else sh.p_value
+        sig = np.asarray(p) < alpha
         if sig.ndim > 1:
             sig = sig.reshape(sig.shape[0], -1).any(axis=1)
         name = r.name or f"{r.metric}[{r.target}]"

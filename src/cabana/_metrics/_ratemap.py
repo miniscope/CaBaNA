@@ -139,8 +139,25 @@ def rate_maps_from_sums(
             rate = s / o
         else:
             rate = sums / occ_s
-    rate = np.where(valid, rate, np.nan)
+    rate[..., ~valid] = np.nan  # in place: ``rate`` is always a fresh array here
     return rate, valid
+
+
+def split_half_masks(mask: np.ndarray, n_blocks: int) -> tuple[np.ndarray, np.ndarray]:
+    """Boolean masks of the two interleaved halves of the masked frames.
+
+    Masked frames are cut into ``n_blocks`` contiguous blocks of (nearly)
+    equal count; even blocks form half A, odd blocks half B.  Both masks are
+    subsets of ``mask``.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    idx = np.flatnonzero(mask)
+    block = contiguous_folds(idx.size, n_blocks)
+    half_a = np.zeros(mask.shape[0], dtype=bool)
+    half_b = np.zeros(mask.shape[0], dtype=bool)
+    half_a[idx[block % 2 == 0]] = True
+    half_b[idx[block % 2 == 1]] = True
+    return half_a, half_b
 
 
 def split_half_columns(

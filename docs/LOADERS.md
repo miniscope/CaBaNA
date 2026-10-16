@@ -1,0 +1,166 @@
+# Loading common formats
+
+`cabana.loaders` reads the files your acquisition and tracking software write
+and returns the objects a `Session` is built from. Optional dependencies are
+imported only when you call a loader that needs them, and the error says which
+extra to install. For what to do with the result, see
+[`BRING_YOUR_OWN_DATA.md`](BRING_YOUR_OWN_DATA.md).
+
+| loader | reads | returns | needs |
+| --- | --- | --- | --- |
+| `load_minian` | Minian zarr directory or store, or a netCDF file | `Session` | `xarray` and `zarr` or `netCDF4` (`cabana[minian]`) |
+| `load_caiman` | CaImAn results `.hdf5` | `Session` | `h5py` (`cabana[caiman]`) |
+| `load_camap` | CaMAP `.camap` bundle directory | `Session` | `pyarrow` for `canonical.parquet` (`cabana[loaders]`) |
+| `load_boris` | BORIS events export, `.csv` or `.tsv` | `BoutTable` | nothing extra |
+| `load_dlc` | DeepLabCut single-animal `.csv` or `.h5` | `ContinuousSignal` | `tables` for `.h5` (`cabana[loaders]`) |
+| `load_moseq` | Keypoint-MoSeq `.csv` or `results.h5` | `LabelSeries` | `h5py` for `.h5` (`cabana[loaders]`) |
+
+Helpers: `video_time_to_neural`, `infer_fs`, `validate_time`, `dlc_centroid`.
+
+Install the extras the same way as the package itself:
+
+```bash
+pip install "cabana[loaders] @ git+https://github.com/miniscope/CaBaNA.git@framework-demo"
+```
+
+(`cabana[minian]` and `cabana[caiman]` install only what that one loader needs;
+`cabana[loaders]` installs `xarray`, `zarr`, `h5py`, `tables` and `pyarrow`.)
+
+## The clock convention
+
+CaBaNA works in seconds on the **neural clock**: `Session.t` is the time of each
+imaging frame. The behavior files (BORIS, DeepLabCut, Keypoint-MoSeq) count time
+from the first frame of the behavior video. The loaders convert with one rule:
+
+    t_neural = t_video - t_offset_s
+
+where `t_offset_s` is **the moment imaging started, measured in video time**,
+that is, how long the video had been running when the first imaging frame was
+acquired. Use 0 if both were started together.
+
+Worked example. The video was started 12.4 s before imaging (a trigger or an LED
+flash in the video shows imaging began at 12.4 s of video time), so
+`t_offset_s = 12.4`:
+
+- a BORIS bout from 100.0 s to 104.0 s of video time lands at 87.6 to 91.6 s on
+  the neural clock;
+- DeepLabCut frame 0 (video time 0.0 s) lands at -12.4 s, before imaging; it is
+  kept, and `resample_signal` later marks the frames outside the signal's range
+  as missing;
+- Keypoint-MoSeq frame 300 at 30 Hz (video time 10.0 s) lands at -2.4 s.
+
+```python
+from cabana import loaders
+
+loaders.video_time_to_neural([100.0, 104.0], t_offset_s=12.4)  # array([87.6, 91.6])
+```
+
+`scored_span` for `load_boris` is **already on the neural clock** (after the
+offset). `load_dlc` takes either `t` (one neural-clock time per row) or
+`fs_video` with `t_offset_s`, but not `t` together with a non-zero `t_offset_s`.
+`load_minian` uses a `t` you pass, else a timestamp coordinate on `frame`
+(`t`, `time`, `timestamp`, `timestamps` or `timestamp_s`, in seconds), else
+`fs`; `load_caiman` always uses `arange(n_frames) / fs`.
+
+## What each loader reads
+
+**Minian** (`load_minian(path, *, activity="S", fs=None, t=None)`). `path` is a
+Minian output directory holding `S.zarr` / `C.zarr`, a zarr store with the whole
+dataset, or a netCDF file. The variable (`S` deconvolved, `C` denoised
+fluorescence) needs dims `unit_id` and `frame` in either order. `cell_ids` are the
+`unit_id` values; `activity_kind` is `deconvolved` for `S` and `raw` for `C`.
+
+**CaImAn** (`load_caiman(path, *, activity="S", fs, keep_idx_components=True)`).
+Reads `estimates/S`, `estimates/C` or `estimates/F_dff` (`deconvolved`, `raw`,
+`dff`), shaped `(n_components, n_frames)`. By default only the accepted components
+in `estimates/idx_components` are kept and `cell_ids` are the original component
+indices. `fs` is required; `params/data/fr` is stored in `meta` if present.
+
+**CaMAP** (`load_camap(path)`). Reads the layout written by CaMAP's
+`save_bundle`: `metadata.json`, `config.yaml` (`neural.fps` gives `fs`) and
+`data_config.yaml` are kept in `meta["camap"]`. `canonical.parquet` is preferred:
+its `s_unit_<id>` columns become `activity` (`deconvolved`), `neural_time` becomes
+`t`, and every other numeric column (`x`, `y`, `speed`, ...) becomes a
+`Session.signals` entry on the neural clock. If the parquet is missing or
+`pyarrow` is not installed, `deconv.npz` is used with a warning: activity only,
+`t = arange(n) / fps`, no behavior signals. Not read: `footprints.nc`,
+`traces.nc`, `unit_results/`, `spatial.npz`, `figures/`.
+
+**BORIS** (`load_boris(path, *, t_offset_s=0.0, subject=None, behaviors=None,
+scored_span=None)`). Two layouts, columns matched case-insensitively:
+aggregated (`Behavior`, `Start (s)`, `Stop (s)`, optional `Subject`) and raw
+events (`Time`, `Behavior`, `Status` with START / STOP / POINT rows, START and STOP
+paired per subject and behavior). `subject=` and `behaviors=` filter.
+
+**DeepLabCut** (`load_dlc(path, *, fs_video=None, t=None, t_offset_s=0.0,
+bodyparts=None, likelihood_min=0.6, units="px", px_per_mm=None)`). Single-animal
+CSV (three header rows) or H5. Channels are `<bodypart>_x` and `<bodypart>_y`;
+samples below `likelihood_min` become NaN in both channels; `px_per_mm` converts
+to mm. `dlc_centroid(signal, ["nose", "tail"])` returns the mean position as
+channels `x` and `y`, which is what `speed` and `bin_grid` look for by default.
+
+**Keypoint-MoSeq** (`load_moseq(path, *, fs_video, t_offset_s=0.0, key=None,
+names=None)`). A CSV with `syllable` and `frame_index` (or `frame`) columns, or
+a `results.h5` with one `<recording>/syllable` dataset per recording; `key`
+selects the recording. Frames without a syllable are `-1`; default names are
+`syl00`, `syl01`, ....
+
+## Caveats
+
+- **Behavior times must be on the neural clock.** Get `t_offset_s` wrong and every
+  state is shifted in time; the loaders cannot check it. Check it against an event you can see in both recordings.
+- **Pass the scored span to `load_boris`.** Without `scored_span` the span defaults
+  to the first start and last stop of the loaded bouts, with a warning, and time
+  outside it is then treated as unscored rather than as absence of behavior.
+- **BORIS POINT events** become zero-length bouts (`stop_s == start_s`), and
+  `bouts_to_states` marks frames with `start <= t < stop`, so it ignores them. Use
+  the bout starts directly (`bt.start_s`) for event-aligned work. A warning is
+  issued when any exist.
+- **Several BORIS subjects** are pooled by behavior name unless you pass
+  `subject=` (with a warning).
+- **Multi-animal DeepLabCut** files (four header rows) are not supported.
+- **The `.camap` loader** was written against the `save_bundle` layout and tested
+  only on synthetic bundles, not on bundles from a real CaMAP run. CaMAP binarises
+  events inside its analysis; the loaded activity is the deconvolved amplitude, so
+  use the `binarize` preprocess step to reproduce that.
+- **`canonical.parquet` has gaps.** Frames outside behavior coverage are absent,
+  so a `.camap` session's `t` may not be evenly spaced (the `fs` comes from
+  `config.yaml`).
+
+## A 15-line example
+
+Neural data from CaImAn, behavior from DeepLabCut, BORIS and Keypoint-MoSeq,
+all started 12.4 s before imaging:
+
+```python
+import cabana
+from cabana import AnalysisSpec, Pipeline, ShuffleConfig, loaders
+
+OFFSET = 12.4  # imaging started 12.4 s into the video (video time)
+session = loaders.load_caiman("caiman.hdf5", activity="S", fs=15.0)
+xy = loaders.dlc_centroid(
+    loaders.load_dlc("dlc.csv", fs_video=30.0, t_offset_s=OFFSET, px_per_mm=2.5),
+    ["nose", "tail"],
+)
+bouts = loaders.load_boris("boris.csv", t_offset_s=OFFSET, scored_span=(40 - OFFSET, 600 - OFFSET))
+syllables = loaders.load_moseq("moseq.csv", fs_video=30.0, t_offset_s=OFFSET)
+session.behavior.update(position=xy, social=bouts, syllables=syllables)
+
+pipe = Pipeline(
+    transforms=[{"name": "bouts_to_states", "source": "social", "output": "social"}],
+    analyses=[AnalysisSpec(metric={"name": "auroc"}, states="social",
+                           shuffle=ShuffleConfig(n_shuffles=500, correction="max_stat"))],
+)
+session, results = pipe.run(session)
+```
+
+Each loader's file name above is a placeholder; the example assumes a CaImAn
+file with `estimates/S`, a DeepLabCut CSV with `nose` and
+`tail`, a BORIS aggregated export and a MoSeq CSV. The snippet was run on small
+synthetic versions of all four (the test file `tests/test_loaders.py` shows how
+to build such files).
+
+`session.behavior` holds raw behavior inputs on their own clocks; the pipeline's
+`resample_signal`, `bouts_to_states` and `labels_to_states` transforms put them
+on the neural clock and build the state spaces, as in
+[`BRING_YOUR_OWN_DATA.md`](BRING_YOUR_OWN_DATA.md).

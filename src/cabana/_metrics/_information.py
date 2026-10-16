@@ -10,7 +10,7 @@ from pydantic import Field
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
+from .._statesums import masked_counts, shifted_sums_for, state_sums
 from ._ratemap import rate_maps_from_sums
 
 
@@ -26,8 +26,11 @@ def _si(
     lam = np.where(valid, rate, 0.0)
     mean = (lam * p).sum(axis=-1)
     with np.errstate(divide="ignore", invalid="ignore"):
+        # in-place steps keep the temporaries to two arrays the size of ``rate``
         rel = lam / mean[..., None]
-        term = np.where(lam > 0, p * rel * np.log2(rel), 0.0)
+        term = np.log2(rel, out=np.zeros_like(rel), where=lam > 0)  # 0 where lam <= 0
+        term *= rel
+        term *= p
     si = term.sum(axis=-1)
     si = np.where(mean > 0, si, np.nan)  # a silent cell carries no information: undefined
     if per_second:
@@ -129,9 +132,8 @@ class InformationContent(Metric):
         self.check_target(states)
         self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
-        m = states.masked(mask)
-        sums = self._x(activity) @ m
-        occ = m.sum(axis=0)
+        occ = masked_counts(states, mask)
+        sums = state_sums(self._x(activity), states, mask)
         rate, valid = self._maps(sums, occ, states, fs)
         return _si(rate, occ, valid, self.units == "bits_per_second")
 
@@ -139,9 +141,8 @@ class InformationContent(Metric):
         self.check_target(states)
         self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
-        m = states.masked(mask)
-        occ = m.sum(axis=0)
-        sums = shifted_sums(self._x(activity), m, shifts)
+        occ = masked_counts(states, mask)
+        sums = shifted_sums_for(self._x(activity), states, mask, shifts)
         rate, valid = self._maps(sums, occ, states, fs)
         return _si(rate, occ, valid, self.units == "bits_per_second")
 
@@ -149,7 +150,6 @@ class InformationContent(Metric):
         self.check_target(states)
         self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
-        m = states.masked(mask)
-        occ = m.sum(axis=0)
-        rate, valid = self._maps(self._x(activity) @ m, occ, states, fs)
+        occ = masked_counts(states, mask)
+        rate, valid = self._maps(state_sums(self._x(activity), states, mask), occ, states, fs)
         return {"rate_map": rate, "occupancy_s": occ / fs, "valid_states": valid}

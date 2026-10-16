@@ -309,16 +309,24 @@ class StateSpace(_ArrayModel):
     def n_states(self) -> int:
         return int(self.onehot.shape[1])
 
-    def labels(self) -> np.ndarray:
-        """Integer state per frame, ``-1`` where no state is active.
+    def labels(self, mask: np.ndarray | None = None) -> np.ndarray:
+        """Integer state per frame, ``-1`` where no state is active (or ``mask`` is False).
 
-        Only meaningful for exclusive state spaces.
+        Only meaningful for exclusive state spaces.  Exclusive spaces are
+        processed by metrics as these integer labels (bucketed sums, see
+        ``cabana._statesums``) instead of a dense float ``(n_time, n_states)``
+        matrix, which keeps fine grids (thousands of states) cheap.
         """
         if not self.exclusive:
             raise ValueError("labels() requires an exclusive StateSpace; use onehot instead")
         lab = np.full(self.n_time, -1, dtype=np.int64)
         has = self.onehot.any(axis=1)
-        lab[has] = self.onehot[has].argmax(axis=1)
+        if mask is not None:
+            has &= np.asarray(mask, dtype=bool)
+        rows = np.flatnonzero(has)
+        for a in range(0, rows.size, 2048):  # chunked: no (n_time, n_states) temporary
+            r = rows[a : a + 2048]
+            lab[r] = self.onehot[r].argmax(axis=1)
         return lab
 
     def occupancy(self, mask: np.ndarray | None = None) -> np.ndarray:

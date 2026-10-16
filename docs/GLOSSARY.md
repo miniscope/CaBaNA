@@ -28,3 +28,10 @@
 - **result set**: `ResultSet`, the collection of metric results from a pipeline run; `to_dataframe()` gives a tidy table.
 - **cohort**: a set of sessions grouped by animal, so statistics can use the animal as the unit.
 - **cell match**: a mapping of cell identities between two sessions (for example from CellReg [107]) used for cross-session comparisons.
+- **correction**: the multiple-comparison adjustment chosen in `ShuffleConfig.correction` (`none`, `bh`, `bonferroni`, `max_stat`) over a `correction_scope` (`states`, `cells`, `all`). `max_stat` is a max-statistic across a cell's states computed from the null draws (states scope only).
+- **p_adj**: the adjusted p-value stored in `ShuffleResult.p_adj` (and the `p_adj` table column); `significant_adj` is `p_adj < alpha`. With no correction it equals `p_value`. See `STATISTICS.md`.
+- **clause**: one test on one analysis in the criteria layer (`Clause`): significant, a value threshold, or a null percentile, for a given state (or `"any"`), with an optional sign.
+- **criteria**: `Criteria`, a named combination of clauses and nested criteria (`all_of`, `any_of`, `none_of`) that defines a cell class such as a place cell; serialises to dict and YAML.
+- **classification**: the result of `classify(results, criteria)`: a boolean membership per cell and class (`ClassificationResult`), optionally exclusive with an `unclassified` class.
+- **run context**: `RunContext`, the object passed to `Pipeline.run(..., context=)` or `run_set` carrying the progress callback, cancellation check, error handling (`raise` or `record`), warning capture and log function. A run that is cancelled or has recorded errors returns a `ResultSet` with `status` `cancelled` or `partial`.
+- **loader**: a function in `cabana.loaders` that reads one file format (Minian, CaImAn, CaMAP, BORIS, DeepLabCut, Keypoint-MoSeq) into a `Session`, `BoutTable`, `ContinuousSignal` or `LabelSeries`; behavior loaders convert video time to the neural clock with `t_neural = t_video - t_offset_s`.

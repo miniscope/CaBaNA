@@ -10,8 +10,8 @@ from pydantic import Field
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
-from ._ratemap import contiguous_folds, valid_states
+from .._statesums import masked_counts, shifted_sums_multi, state_sums
+from ._ratemap import split_half_masks, valid_states
 
 
 def _rate_maps(
@@ -98,9 +98,9 @@ class PopulationVectorOverlap(Metric):
     def _maps(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> tuple[np.ndarray, np.ndarray]:
-        m = states.masked(np.asarray(mask, dtype=bool))
-        sums = np.asarray(activity, dtype=np.float64) @ m
-        rm, valid = _rate_maps(sums, m.sum(axis=0), fs, self.min_occupancy_s)
+        mask = np.asarray(mask, dtype=bool)
+        sums = state_sums(np.asarray(activity, dtype=np.float64), states, mask)
+        rm, valid = _rate_maps(sums, masked_counts(states, mask), fs, self.min_occupancy_s)
         if self.normalize_cells and valid.any():
             mx = np.nanmax(rm, axis=1, keepdims=True)
             rm = np.where(mx > 0, rm / np.where(mx > 0, mx, 1.0), rm)
@@ -186,33 +186,38 @@ class PopulationVectorStability(Metric):
     )
 
     def _halves(self, states: StateSpace, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        mask = np.asarray(mask, dtype=bool)
-        idx = np.flatnonzero(mask)
-        block = contiguous_folds(idx.size, self.n_blocks)
-        half_a = np.zeros(mask.size, dtype=bool)
-        half_b = np.zeros(mask.size, dtype=bool)
-        half_a[idx[block % 2 == 0]] = True
-        half_b[idx[block % 2 == 1]] = True
-        return states.masked(half_a), states.masked(half_b)
+        """Boolean masks of the two interleaved halves of the masked frames."""
+        return split_half_masks(np.asarray(mask, dtype=bool), self.n_blocks)
 
     def _stability(
-        self, sums: np.ndarray, m_a: np.ndarray, m_b: np.ndarray, fs: float
+        self,
+        sums_a: np.ndarray,
+        sums_b: np.ndarray,
+        occ_a: np.ndarray,
+        occ_b: np.ndarray,
+        fs: float,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        n_states = m_a.shape[1]
-        rm_a, va = _rate_maps(sums[..., :n_states], m_a.sum(axis=0), fs, self.min_occupancy_s)
-        rm_b, vb = _rate_maps(sums[..., n_states:], m_b.sum(axis=0), fs, self.min_occupancy_s)
+        rm_a, va = _rate_maps(sums_a, occ_a, fs, self.min_occupancy_s)
+        rm_b, vb = _rate_maps(sums_b, occ_b, fs, self.min_occupancy_s)
         valid = va & vb
         r = _pearson_axis(rm_a, rm_b, axis=-2)
-        if sums.shape[-2] < 2:
+        if sums_a.shape[-2] < 2:
             r = np.full_like(r, np.nan)
         return np.where(valid, r, np.nan), rm_a, rm_b, valid
+
+    def _run(self, x, states, mask, fs, shifts):
+        half_a, half_b = self._halves(states, mask)
+        sh = np.zeros(1, dtype=np.int64) if shifts is None else shifts
+        s_a, s_b = shifted_sums_multi(x, states, [half_a, half_b], sh)
+        if shifts is None:
+            s_a, s_b = s_a[0], s_b[0]
+        occ_a, occ_b = masked_counts(states, half_a), masked_counts(states, half_b)
+        return self._stability(s_a, s_b, occ_a, occ_b, fs)
 
     def compute(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> np.ndarray:
-        m_a, m_b = self._halves(states, mask)
-        sums = np.asarray(activity, dtype=np.float64) @ np.hstack([m_a, m_b])
-        return self._stability(sums, m_a, m_b, fs)[0]
+        return self._run(np.asarray(activity, dtype=np.float64), states, mask, fs, None)[0]
 
     def compute_shifted(
         self,
@@ -222,16 +227,14 @@ class PopulationVectorStability(Metric):
         fs: float,
         shifts: np.ndarray,
     ) -> np.ndarray | None:
-        m_a, m_b = self._halves(states, mask)
-        sums = shifted_sums(activity, np.hstack([m_a, m_b]), shifts)
-        return self._stability(sums, m_a, m_b, fs)[0]
+        return self._run(np.asarray(activity, dtype=np.float64), states, mask, fs, shifts)[0]
 
     def extras(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> dict[str, np.ndarray]:
-        m_a, m_b = self._halves(states, mask)
-        sums = np.asarray(activity, dtype=np.float64) @ np.hstack([m_a, m_b])
-        _, rm_a, rm_b, valid = self._stability(sums, m_a, m_b, fs)
+        _, rm_a, rm_b, valid = self._run(
+            np.asarray(activity, dtype=np.float64), states, mask, fs, None
+        )
         return {"rate_map_a": rm_a, "rate_map_b": rm_b, "valid_states": valid}
 
 

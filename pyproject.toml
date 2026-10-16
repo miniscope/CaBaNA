@@ -22,6 +22,9 @@ dependencies = [
 
 [project.optional-dependencies]
 notebook = ["jupyter", "ipywidgets"]
+minian = ["xarray", "zarr"]
+caiman = ["h5py"]
+loaders = ["xarray", "zarr", "h5py", "tables", "pyarrow"]
 dev = ["pytest", "ruff", "nbformat", "nbclient", "ipykernel"]
 
 [tool.hatch.build.targets.wheel]

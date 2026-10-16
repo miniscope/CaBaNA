@@ -14,7 +14,7 @@ from matplotlib.patches import Circle
 from ._plots import _fmt_p
 from ._posthoc import ClusterResult, OverlapResult
 
-__all__ = ["plot_clusters", "plot_overlap", "plot_overlap_matrix"]
+__all__ = ["plot_classification", "plot_clusters", "plot_overlap", "plot_overlap_matrix"]
 
 
 def _stars(p: float) -> str:
@@ -178,4 +178,39 @@ def plot_clusters(
         ax_s.axvline(cr.k, color="0.6", ls="--")
         ax_s.set_xlabel("k")
         ax_s.set_ylabel(cr.selection)
+    return fig
+
+
+def plot_classification(classification: Any, ax: Any = None) -> Figure:
+    """Horizontal bars of cell counts per class, annotated with fractions.
+
+    Parameters
+    ----------
+    classification : ClassificationResult
+        Output of :func:`cabana.classify`; an ``"unclassified"`` bar appears when
+        it was run with ``exclusive=True``.
+    ax : matplotlib Axes, optional
+        Draw on it; otherwise a new figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Look for: classes with very few cells (low power) and, when not exclusive,
+        bars that sum to more than the cell count (overlapping classes).
+    """
+    counts = classification.counts()
+    fr = classification.fractions()
+    names = list(counts)
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5, 0.45 * len(names) + 1.2))
+    fig = ax.figure
+    y = np.arange(len(names))
+    colors = ["0.6" if k == "unclassified" else "C0" for k in names]
+    ax.barh(y, [counts[k] for k in names], color=colors)
+    for yi, k in zip(y, names, strict=True):
+        ax.text(counts[k], yi, f" {counts[k]} ({fr[k]:.0%})", va="center")
+    ax.set_yticks(y, names)
+    ax.invert_yaxis()
+    ax.set_xlabel(f"cells (of {classification.n_cells})")
+    ax.set_xlim(0, max(max(counts.values()), 1) * 1.25)
     return fig

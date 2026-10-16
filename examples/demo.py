@@ -16,9 +16,14 @@ behaviors, each against a label-shuffle null.
     python examples/demo.py            # full run (1000 shuffles; roughly 5 minutes)
     python examples/demo.py --quick    # about 40 s
 
+The fifth increment adds multiple-comparison correction (the cell x state analyses use
+``correction="max_stat"``; the recovery table reports the false-positive rate of untuned cells
+raw and adjusted), cell classification with the criteria layer (figure 27), and run control
+(the main pipeline reports progress through a ``RunContext`` callback).
+
 Outputs in --out: results.csv, results.zip and session.zip (reload with
 `cabana.ResultSet.load` / `cabana.Session.load`), nulls_compared.csv, levels_sweep.csv, provenance
-files and figures 01 to 26 (20 to 26 are the amplitude / decoding figures).
+files and figures 01 to 27 (20 to 26 are the amplitude / decoding figures, 27 the classification).
 """
 
 from __future__ import annotations
@@ -39,18 +44,40 @@ import cabana  # noqa: E402
 from cabana import (  # noqa: E402
     AnalysisSpec,
     CellMatch,
+    Criteria,
     Pipeline,
+    ProgressEvent,
+    RunContext,
     ShuffleConfig,
+    classify,
     cohort_table,
     cross_session_map_correlation,
+    describe,
     fraction_significant_by_animal,
     overlap_vs_chance,
+    place_cell_criteria,
     remapping_summary,
+    responsive_cell_criteria,
     response_clusters,
     response_features,
-    significant_cells,
     simulate_session,
 )
+
+
+def progress_printer(label: str, step: float = 0.1):
+    """A ``RunContext.on_progress`` callback that prints one line each time ``step`` is crossed."""
+    nxt = [step]
+
+    def on_progress(ev: ProgressEvent) -> None:
+        if ev.fraction + 1e-9 >= nxt[0] or ev.stage == "done":
+            print(
+                f"  [{label}] {ev.fraction:4.0%}  {ev.stage}: {ev.name}  ({ev.elapsed_s:.1f} s)",
+                flush=True,
+            )
+            while nxt[0] <= ev.fraction + 1e-9:
+                nxt[0] += step
+
+    return on_progress
 
 
 def describe_ground_truth(session) -> str:
@@ -71,6 +98,9 @@ def describe_ground_truth(session) -> str:
 
 def build_pipeline(n_shuffles: int) -> Pipeline:
     shuf = ShuffleConfig(n_shuffles=n_shuffles, min_shift_s=20.0, seed=0)
+    # cell x state analyses: "significant in any state" is corrected across a cell's states
+    # (single-step max-statistic from the null draws; costs almost nothing)
+    shuf_c = shuf.model_copy(update={"correction": "max_stat"})
     return Pipeline(
         transforms=[
             {"name": "resample_signal", "source": "position"},
@@ -127,7 +157,7 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
                 masks=["speed"],
             ),
             # No speed mask: huddling is stationary. The scored span is the space's own support.
-            AnalysisSpec(metric={"name": "auroc"}, states="social", shuffle=shuf),
+            AnalysisSpec(metric={"name": "auroc"}, states="social", shuffle=shuf_c),
             AnalysisSpec(
                 metric={"name": "population_vector_overlap"},
                 states="social",
@@ -135,14 +165,14 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
             ),
             # 'still' is a syllable we want to keep, so no speed mask (support = labelled span).
             AnalysisSpec(metric={"name": "information_content"}, states="syllables", shuffle=shuf),
-            AnalysisSpec(metric={"name": "auroc"}, states="syllables", shuffle=shuf),
-            AnalysisSpec(metric={"name": "mutual_information"}, states="syllables", shuffle=shuf),
+            AnalysisSpec(metric={"name": "auroc"}, states="syllables", shuffle=shuf_c),
+            AnalysisSpec(metric={"name": "mutual_information"}, states="syllables", shuffle=shuf_c),
             # --- second increment: more analyses on the SAME states and masks ---
             # mean activity in each behavior minus out-of-behavior (0 = no preference)
             AnalysisSpec(
                 metric={"name": "mean_per_state", "statistic": "difference"},
                 states="social",
-                shuffle=shuf,
+                shuffle=shuf_c,
             ),
             # peri-event time histogram around bout onsets (bouts >= 1.5 s, >= 1 s apart)
             AnalysisSpec(
@@ -156,7 +186,7 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
                     "min_gap_s": 1.0,
                 },
                 states="social",
-                shuffle=shuf,
+                shuffle=shuf_c,
             ),
             # a continuous target instead of a state space: speed (+/- 2 s cross-correlation)
             AnalysisSpec(
@@ -437,7 +467,13 @@ def nulls_compared(session, n_shuffles: int) -> pd.DataFrame:
 
 
 def recovery_table(session, results, alpha: float = 0.05) -> pd.DataFrame:
-    """Per analysis (metric and target): detection in relevant cells, false positives in untuned cells."""
+    """Per analysis: detection in relevant cells, false positives in untuned cells.
+
+    ``frac_sig_untuned (FPR)`` uses the raw p-values and ``fpr_adj`` the adjusted ones
+    (``significant_adj``, which equals the raw decision when no correction was run); both are
+    "significant in any state" for cell x state results.  ``sign_match`` classifies the own-state
+    cells with ``responsive_cell_criteria`` and asks how many got the planted sign.
+    """
     gt = session.meta["ground_truth"]
     social = gt["social_cells"]
     pops = {
@@ -447,12 +483,28 @@ def recovery_table(session, results, alpha: float = 0.05) -> pd.DataFrame:
         "speed": ("place (speed-gated)", list(gt["place_cells"])),
     }
     untuned = list(gt["untuned_cells"])
+
+    def any_state(sig):
+        return sig if sig.ndim == 1 else sig.any(axis=1)
+
+    def sign_match(metric, target, planted):
+        """Fraction of classified own-state cells whose excited/inhibited class is the planted one."""
+        cls = classify(
+            results, responsive_cell_criteria(results, target, metric=metric, use_p=True)
+        )
+        exc = np.array([cls.labels[f"{state}_excited"][cell] for cell, state, _ in planted])
+        inh = np.array([cls.labels[f"{state}_inhibited"][cell] for cell, state, _ in planted])
+        want_exc = np.array([sign == "excited" for _, _, sign in planted])
+        got = exc | inh
+        return float(np.where(want_exc, exc, inh)[got].mean()) if got.any() else np.nan
+
     rows = []
     for r in results:
         if r.level != "cell" or r.shuffle is None:
             continue
         sig = np.asarray(r.shuffle.p_value) < alpha
-        any_sig = sig if sig.ndim == 1 else sig.any(axis=1)
+        sig_adj = np.asarray(r.shuffle.significant_adj, bool)
+        any_sig, any_adj = any_state(sig), any_state(sig_adj)
         pop, cells = pops[r.target]
         row = {
             "analysis": r.name,
@@ -460,28 +512,26 @@ def recovery_table(session, results, alpha: float = 0.05) -> pd.DataFrame:
             "n_relevant": len(cells),
             "frac_sig_relevant": float(any_sig[cells].mean()),
             "frac_sig_untuned (FPR)": float(any_sig[untuned].mean()),
+            "frac_adj_relevant": float(any_adj[cells].mean()),
+            "fpr_adj": float(any_adj[untuned].mean()),
             "frac_sig_own_state": np.nan,
             "sign_match": np.nan,
         }
         if r.metric in ("auroc", "mean_per_state", "peth") and r.target == "social":
             own = [r.state_names.index(d["behavior"]) for d in social]
             ci = np.array([d["cell"] for d in social])
-            own_sig = sig[ci, own]
-            auc = np.asarray(r.values)[ci, own]
-            excited = np.array([d["sign"] == "excited" for d in social])
-            ref = 0.5 if r.metric == "auroc" else 0.0  # chance level of the statistic
-            with np.errstate(invalid="ignore"):
-                match = np.where(excited, auc > ref, auc < ref)
-            row["frac_sig_own_state"] = float(own_sig.mean())
-            row["sign_match"] = float(match[own_sig].mean()) if own_sig.any() else np.nan
+            row["frac_sig_own_state"] = float(sig[ci, own].mean())
+            row["sign_match"] = sign_match(
+                r.metric, "social", [(d["cell"], d["behavior"], d["sign"]) for d in social]
+            )
         elif r.metric == "auroc" and r.target == "syllables":
             sy = gt["syllable_cells"]
             ci = np.array([d["cell"] for d in sy])
             own = [r.state_names.index(d["syllable"]) for d in sy]
             row["frac_sig_own_state"] = float(sig[ci, own].mean())
-            auc = np.asarray(r.values)[ci, own]
-            own_sig = sig[ci, own]
-            row["sign_match"] = float((auc[own_sig] > 0.5).mean()) if own_sig.any() else np.nan
+            row["sign_match"] = sign_match(
+                "auroc", "syllables", [(d["cell"], d["syllable"], "excited") for d in sy]
+            )
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -546,15 +596,26 @@ def main(argv=None) -> int:
     pd.set_option("display.width", 200)
     pd.set_option("display.max_columns", 20)
 
-    print(f"CaBaNA {cabana.__version__}")
+    caps = describe()
+    print(
+        f"CaBaNA {caps['version']}: {len(caps['plugins']['metric'])} registered metrics, "
+        f"{len(caps['plugins']['null'])} nulls (cabana.describe())"
+    )
     t0 = time.perf_counter()
     session = simulate_session(**sim_kw)
     print(describe_ground_truth(session), "\n")
 
     pipe = build_pipeline(n_shuffles)
     t1 = time.perf_counter()
-    session, results = pipe.run(session, progress=True)
-    print(f"\nPipeline runtime: {time.perf_counter() - t1:.1f} s ({n_shuffles} shuffles)\n")
+    # run control: a progress callback (one line per 10%) and the stage lines through `log`;
+    # `should_cancel` / `on_error="record"` are the other RunContext hooks (see docs/DESIGN.md)
+    ctx = RunContext(on_progress=progress_printer("main"), log=lambda m: print(m, flush=True))
+    session, results = pipe.run(session, context=ctx)
+    print(
+        f"\nPipeline runtime: {time.perf_counter() - t1:.1f} s ({n_shuffles} shuffles); "
+        f"status {results.status}, {len(results.completed)} analyses completed, "
+        f"{len(results.errors)} errors, {len(results.warnings)} warnings\n"
+    )
 
     # two mutual_information analyses share metric and target; the second was named explicitly
     mi_bin = results["mutual_information_binary[position]"]
@@ -635,13 +696,41 @@ def main(argv=None) -> int:
     print(nulls_df.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
     nulls_df.to_csv(out / "nulls_compared.csv", index=False)
 
-    # --- post hoc: overlap and clusters ---
-    ic_sig = significant_cells(ic_pos)
-    soc_sig = significant_cells(au_soc)
-    ov = overlap_vs_chance(ic_sig, soc_sig)
+    # --- post hoc: classify cells with the criteria layer, then overlap and clusters ---
+    # place cell = information AND split-half stability significant; excited / inhibited per social
+    # state = auroc above the 97.5th / below the 2.5th percentile of the circular-shift null
+    resp = responsive_cell_criteria(results, "social")
+    cls = classify(
+        results,
+        {
+            "place_cell": place_cell_criteria("position"),
+            "social_excited": Criteria(
+                name="social_excited", any_of=[c for k, c in resp.items() if k.endswith("_excited")]
+            ),
+            "social_inhibited": Criteria(
+                name="social_inhibited",
+                any_of=[c for k, c in resp.items() if k.endswith("_inhibited")],
+            ),
+        },
+    )
     print(
-        "\nOverlap of place cells (information_content significant) and social-responsive "
-        "cells (auroc significant in any state):"
+        "\nClassification (place_cell_criteria; responsive_cell_criteria at the 97.5th percentile): "
+        + ", ".join(f"{k} {v} ({cls.fractions()[k]:.0%})" for k, v in cls.counts().items())
+    )
+    # the percentile rule is uncorrected; the same classes from the max_stat-adjusted p-values
+    cls_p = classify(results, responsive_cell_criteria(results, "social", use_p=True))
+    unt_idx = np.array(gt["untuned_cells"])
+    n_unt_pct = int(np.any([v[unt_idx] for v in cls.labels.values()][1:], axis=0).sum())
+    n_unt_adj = int(np.any([v[unt_idx] for v in cls_p.labels.values()], axis=0).sum())
+    print(
+        f"Untuned cells called social-responsive (of {len(unt_idx)}): {n_unt_pct} by the "
+        f"97.5th-percentile rule, {n_unt_adj} by significant adjusted p (use_p=True)"
+    )
+    social_any = cls.labels["social_excited"] | cls.labels["social_inhibited"]
+    ov = overlap_vs_chance(cls.labels["place_cell"], social_any)
+    print(
+        "\nOverlap of place cells (information and stability significant) and social-responsive "
+        "cells (auroc beyond the null percentile in any state):"
     )
     print(ov)
     feats, fnames, kept = response_features(
@@ -660,12 +749,18 @@ def main(argv=None) -> int:
         pd.Series(clusters.labels, name="cluster"),
         pd.Series(pop_label[kept], name="planted population"),
     )
+    by_class = pd.crosstab(
+        pd.Series(cls.label_per_cell(), name="classified as"),
+        pd.Series(pop_label, name="planted population"),
+    )
     sizes = np.bincount(clusters.labels)
     print(
         f"\nResponse clusters: k={clusters.k} chosen by silhouette "
         f"({ {k_: round(v, 2) for k_, v in clusters.scores.items()} }); sizes {sizes.tolist()}"
     )
     print(comp.to_string())
+    print("\nClassification versus planted population (cells; 'multiple' = several classes):")
+    print(by_class.to_string())
 
     # --- cohort smoke test ---
     print("\nCohort smoke test (2 extra 300 s sessions, seeds 1 and 2):")
@@ -910,7 +1005,10 @@ def main(argv=None) -> int:
     fig.colorbar(im, ax=ax, label="fraction of true-behavior frames")
     save_fig(fig, out / "26_decoder_social_confusion.png")
 
-    print("\nGround-truth recovery (fraction significant, alpha=0.05):")
+    print("\nFigure (classification):")
+    save_fig(cabana.plots.plot_classification(cls), out / "27_classification.png")
+
+    print("\nGround-truth recovery (fraction significant, raw p-values, alpha=0.05):")
     print(summary.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
     print("\nGLM unique contributions (population pipeline, Poisson, held-out blocks):")
     print(glm_table(session, glm).to_string(index=False, float_format=lambda v: f"{v:.2f}"))
@@ -925,11 +1023,12 @@ def main(argv=None) -> int:
             }
         ).to_string(index=False, float_format=lambda v: f"{v:.3f}")
     )
-    print("\nRecovery by analysis (relevant vs untuned = false-positive rate):")
     print(
-        recovery_table(session, list(results)).to_string(
-            index=False, float_format=lambda v: f"{v:.2f}"
-        )
+        "\nRecovery by analysis (relevant vs untuned = false-positive rate; raw p-values and, "
+        "in the *_adj columns, the max_stat-adjusted ones for the cell x state analyses):"
+    )
+    print(
+        recovery_table(session, results).to_string(index=False, float_format=lambda v: f"{v:.2f}")
     )
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0

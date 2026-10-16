@@ -190,3 +190,32 @@ def test_cohort_table_missing_animal():
     with pytest.raises(KeyError):
         cohort_table({"a": rs}, {})
     assert list(cohort_table({"a": rs}, {"a": "m"})["animal"]) == ["m", "m"]
+
+
+def _adj_table():
+    t = hand_table()
+    t["null"] = "circular_shift"
+    t["correction"] = "max_stat"
+    t["analysis"] = "m[t]"
+    t["significant_adj"] = False
+    t.loc[(t["animal"] == "m1") & (t["cell"] == "c0"), "significant_adj"] = True
+    return t
+
+
+def test_cohort_adjusted_argument():
+    t = _adj_table()
+    d = fraction_significant_by_animal(t, analysis="m[t]").set_index(["animal", "state"])
+    assert d.loc[("m1", "x"), "fraction_significant"] == 0.25  # adjusted by default
+    raw = fraction_significant_by_animal(t, analysis="m[t]", adjusted=False)
+    assert raw.set_index(["animal", "state"]).loc[("m1", "x"), "fraction_significant"] == 0.5
+    t["correction"] = "none"
+    d = fraction_significant_by_animal(t, analysis="m[t]").set_index(["animal", "state"])
+    assert d.loc[("m1", "x"), "fraction_significant"] == 0.5
+    forced = fraction_significant_by_animal(t, analysis="m[t]", adjusted=True)
+    assert forced.set_index(["animal", "state"]).loc[("m1", "x"), "fraction_significant"] == 0.25
+    s = per_animal_summary(_adj_table(), analysis="m[t]").set_index("animal")
+    assert s.loc["m1", "fraction_significant"] == 0.25
+    s = per_animal_summary(_adj_table(), analysis="m[t]", adjusted=False).set_index("animal")
+    assert s.loc["m1", "fraction_significant"] == 0.5
+    with pytest.raises(ValueError):
+        per_animal_summary(hand_table(), "m", "t", adjusted=True)

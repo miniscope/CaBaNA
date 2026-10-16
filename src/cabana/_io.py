@@ -18,7 +18,7 @@ from ._models import (
     Session,
     StateSpace,
 )
-from ._results import MetricResult, ResultSet, ShuffleResult
+from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 
 _FORMAT = 1
 
@@ -137,7 +137,7 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
             sh = r.shuffle
             for field in ("observed", "p_value", "null_lo", "null_hi", "significant"):
                 arrays[f"sh_{field}"] = np.asarray(getattr(sh, field))
-            for field in ("shifts", "null_median", "null_mean"):
+            for field in ("shifts", "null_median", "null_mean", "p_adj", "significant_adj"):
                 v = getattr(sh, field)
                 if v is not None:
                     arrays[f"sh_{field}"] = np.asarray(v)
@@ -148,6 +148,9 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
                 "tail": sh.tail,
                 "n_shuffles": sh.n_shuffles,
                 "null_name": sh.null_name,
+                "correction": sh.correction,
+                "correction_scope": sh.correction_scope,
+                "correction_note": sh.correction_note,
             }
         fname = f"results/{i:03d}.npz"
         files[fname] = _npz_bytes(arrays)
@@ -168,7 +171,15 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
             }
         )
     files["manifest.json"] = _dump(
-        {"format": _FORMAT, "kind": "cabana.ResultSet", "results": entries}
+        {
+            "format": _FORMAT,
+            "kind": "cabana.ResultSet",
+            "results": entries,
+            "status": rs.status,
+            "completed": list(rs.completed),
+            "errors": [e.model_dump() for e in rs.errors],
+            "warnings": [w.model_dump() for w in rs.warnings],
+        }
     )
     _write_files(path, files)
 
@@ -214,6 +225,11 @@ def load_results(path: str | Path) -> ResultSet:
                 significant=a["sh_significant"],
                 null_median=a.get("sh_null_median"),
                 null_mean=a.get("sh_null_mean"),
+                p_adj=a.get("sh_p_adj"),
+                significant_adj=a.get("sh_significant_adj"),
+                correction=m.get("correction", "none"),
+                correction_scope=m.get("correction_scope", "states"),
+                correction_note=m.get("correction_note", ""),
                 alpha=m["alpha"],
                 tail=m["tail"],
                 n_shuffles=m["n_shuffles"],
@@ -235,6 +251,10 @@ def load_results(path: str | Path) -> ResultSet:
                 state_names=e["state_names"],
             )
         )
+    rs.status = man.get("status", "ok")
+    rs.completed = list(man.get("completed", rs.names()))
+    rs.errors = [RunError(**e) for e in man.get("errors", [])]
+    rs.warnings = [RunWarning(**w) for w in man.get("warnings", [])]
     return rs
 
 

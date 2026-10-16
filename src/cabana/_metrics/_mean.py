@@ -10,7 +10,7 @@ from pydantic import Field
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
+from .._statesums import masked_counts, shifted_sums_multi, state_sums
 
 
 @register("metric")
@@ -81,15 +81,19 @@ class MeanPerState(Metric):
         return np.where(ok, out, np.nan)
 
     def _counts(self, states: StateSpace, mask: np.ndarray) -> np.ndarray:
-        return (states.onehot & mask[:, None]).sum(axis=0).astype(np.float64)
+        return masked_counts(states, mask)
 
     def compute(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> np.ndarray:
         mask = np.asarray(mask, dtype=bool)
-        x = np.asarray(activity, dtype=np.float64)[:, mask]
-        m = states.onehot[mask].astype(np.float64)
-        return self._finish(x @ m, x.sum(axis=1, keepdims=True), m.sum(axis=0), int(mask.sum()))
+        x = np.asarray(activity, dtype=np.float64)
+        return self._finish(
+            state_sums(x, states, mask),
+            x[:, mask].sum(axis=1, keepdims=True),
+            masked_counts(states, mask),
+            int(mask.sum()),
+        )
 
     def compute_shifted(
         self,
@@ -105,11 +109,14 @@ class MeanPerState(Metric):
         with the shift, so the mask itself is appended as an extra column.
         """
         mask = np.asarray(mask, dtype=bool)
-        cols = np.concatenate([states.masked(mask), mask[:, None].astype(np.float64)], axis=1)
-        sums = shifted_sums(activity, cols, shifts)
-        return self._finish(
-            sums[..., :-1], sums[..., -1:], self._counts(states, mask), int(mask.sum())
+        sums, sum_mask = shifted_sums_multi(
+            np.asarray(activity, dtype=np.float64),
+            states,
+            [mask],
+            shifts,
+            extra_columns=mask[:, None].astype(np.float64),
         )
+        return self._finish(sums, sum_mask, self._counts(states, mask), int(mask.sum()))
 
     def extras(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float

@@ -10,8 +10,13 @@ from pydantic import Field
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
-from ._discretize import activity_levels, joint_counts, level_edges, level_indicator
+from .._statesums import frames_in_states, masked_counts, shifted_sums_for
+from ._discretize import (
+    activity_levels,
+    joint_counts_for,
+    level_edges,
+    level_indicator,
+)
 from ._ratemap import valid_states
 
 _LN2 = float(np.log(2.0))
@@ -153,45 +158,43 @@ class MutualInformation(Metric):
         return 2 if self.binning == "binary" else self.n_levels
 
     def _prepare(self, activity, states, mask, fs):
-        """Common setup: masked indicators, valid states, edges, levels, per-cell scale."""
+        """Common setup: masked occupancy, valid states, edges, levels, per-cell scale."""
         self.check_target(states)
         a = np.asarray(activity, dtype=np.float64)
         if not np.isfinite(a).all():
             raise ValueError("metric 'mutual_information': needs finite activity (found NaN/inf)")
         mask = np.asarray(mask, dtype=bool)
-        m = states.masked(mask)
-        occ = m.sum(axis=0)
+        occ = masked_counts(states, mask)
         valid = valid_states(occ, fs, self.min_occupancy_s)
         edges = level_edges(a, mask, self._n_eff, self.binning)
         levels = activity_levels(a, edges)
-        used = m[:, valid].any(axis=1) if valid.any() else np.zeros(a.shape[1], bool)
+        used = frames_in_states(states, mask, valid)
         pos = a[:, used] > 0
         silent = ~pos.any(axis=1)
         scale = np.ones(a.shape[0])
         if self.units == "bits_per_event":
             with np.errstate(invalid="ignore", divide="ignore"):
                 scale = 1.0 / pos.mean(axis=1) if pos.shape[1] else np.full(a.shape[0], np.nan)
-        return m, occ, valid, edges, levels, silent, scale
+        return mask, occ, valid, edges, levels, silent, scale
 
     def _finish(self, mi, silent, scale):
         mi = np.where(silent, np.nan, mi * scale)
         return np.where(np.isfinite(scale), mi, np.nan)
 
     def compute(self, activity, states, mask, fs):
-        m, occ, valid, _, levels, silent, scale = self._prepare(activity, states, mask, fs)
+        mask, occ, valid, _, levels, silent, scale = self._prepare(activity, states, mask, fs)
         if not valid.any():
             return np.full(levels.shape[0], np.nan)
-        counts = joint_counts(levels, m[:, valid], self._n_eff)
+        counts = joint_counts_for(levels, states, mask, self._n_eff, keep=valid)
         mi = mutual_information_from_counts(counts, self.bias_correction)
         return self._finish(mi, silent, scale)
 
     def compute_shifted(self, activity, states, mask, fs, shifts):
-        m, occ, valid, _, levels, silent, scale = self._prepare(activity, states, mask, fs)
+        mask, occ, valid, _, levels, silent, scale = self._prepare(activity, states, mask, fs)
         shifts = np.asarray(shifts, dtype=np.int64)
         n_cells = levels.shape[0]
         if not valid.any():
             return np.full((shifts.size, n_cells), np.nan)
-        cols = m[:, valid]
         occ_v = occ[valid].astype(np.float64)
         total = occ_v.sum()
         acc = np.zeros((shifts.size, n_cells))
@@ -199,7 +202,9 @@ class MutualInformation(Metric):
         k_level = np.zeros((shifts.size, n_cells))
         with np.errstate(divide="ignore", invalid="ignore"):
             for k in range(self._n_eff):
-                n_k = shifted_sums(level_indicator(levels, k), cols, shifts)  # (S, C, V)
+                n_k = shifted_sums_for(
+                    level_indicator(levels, k), states, mask, shifts, keep=valid
+                )  # (S, C, V)
                 n_l = n_k.sum(axis=-1, keepdims=True)
                 pos = n_k > 0
                 k_joint += pos.sum(axis=-1)
@@ -217,8 +222,8 @@ class MutualInformation(Metric):
         return self._finish(mi, silent[None], scale[None])
 
     def extras(self, activity, states, mask, fs):
-        m, occ, valid, edges, levels, _, _ = self._prepare(activity, states, mask, fs)
-        joint = joint_counts(levels, m, self._n_eff)
+        mask, occ, valid, edges, levels, _, _ = self._prepare(activity, states, mask, fs)
+        joint = joint_counts_for(levels, states, mask, self._n_eff)
         joint[:, ~valid, :] = 0.0
         tot = joint.sum(axis=-1, keepdims=True)
         with np.errstate(divide="ignore", invalid="ignore"):

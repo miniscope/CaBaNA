@@ -45,4 +45,13 @@ def test_demo_quick(tmp_path):
     assert len(reloaded) >= 12
     assert "mutual_information_binary[position]" in reloaded.names()
     assert (tmp_path / "pipeline.yaml").exists() or (tmp_path / "pipeline.json").exists()
-    assert len(list(tmp_path.glob("*.png"))) >= 21
+    assert len(list(tmp_path.glob("*.png"))) >= 22
+    # fifth increment: correction, criteria and run control
+    assert {"p_adj", "significant_adj"} <= set(df.columns)
+    assert "fpr_adj" in proc.stdout
+    assert "[analyze]" in proc.stdout
+    assert "registered metrics" in proc.stdout
+    assert "Classification" in proc.stdout
+    assert (tmp_path / "27_classification.png").exists()
+    auroc = df[df["analysis"] == "auroc[social]"]
+    assert (auroc["p_adj"] >= auroc["p_value"] - 1e-12).all()

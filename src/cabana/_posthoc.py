@@ -39,8 +39,17 @@ def significant_cells(
     state: str | int | None = None,
     sign: Literal["any", "positive", "negative"] = "any",
     alpha: float | None = None,
+    adjusted: bool | None = None,
 ) -> np.ndarray:
     """Boolean ``(n_cells,)`` mask of significant cells of a cell-level result.
+
+    .. warning::
+       With ``state=None`` the per-state results are OR-ed ("significant in
+       any state").  Without a multiple-comparison correction this inflates the
+       per-cell false-positive rate: on pure noise with 4-6 states we measured
+       27-30% of cells at alpha = 0.05.  Run the test with
+       ``ShuffleConfig(correction="max_stat")`` (or ``"bh"``) so the adjusted
+       p-values are used.
 
     Parameters
     ----------
@@ -54,8 +63,12 @@ def significant_cells(
         finite draws; above 0.5 for
         ``auroc``); ``"negative"``: below it; ``"any"``: no sign filter.
     alpha : float, optional
-        ``None`` uses the stored ``shuffle.significant``; otherwise
-        significance is recomputed as ``p_value < alpha``.
+        ``None`` uses the stored ``significant`` / ``significant_adj``;
+        otherwise significance is recomputed as ``p < alpha``.
+    adjusted : bool, optional
+        ``None`` uses the adjusted p-values when the result's ``correction``
+        is not ``"none"`` and the raw ones otherwise; ``True`` forces
+        ``p_adj``; ``False`` forces the raw ``p_value``.
 
     Returns
     -------
@@ -69,7 +82,17 @@ def significant_cells(
     if sh is None:
         raise ValueError(f"result {result.metric!r} has no shuffle; cannot determine significance")
     vals = np.asarray(result.values, float)
-    sig = np.asarray(sh.significant, bool) if alpha is None else np.asarray(sh.p_value) < alpha
+    use_adj = (sh.correction != "none") if adjusted is None else adjusted
+    if use_adj and sh.p_adj is None:
+        if adjusted:
+            raise ValueError("this result has no adjusted p-values")
+        use_adj = False
+    p = np.asarray(sh.p_adj if use_adj else sh.p_value, float)
+    if alpha is None:
+        stored = sh.significant_adj if use_adj else sh.significant
+        sig = np.asarray(stored, bool)
+    else:
+        sig = np.isfinite(p) & (p < alpha)
     if sign != "any":
         if result.metric == "auroc":
             ref: Any = 0.5

@@ -69,29 +69,124 @@ A NaN is "could not be tested", not "not significant"; count it separately.
 Only finite surrogates enter the p-value, so a metric undefined on some shifts
 is compared against the draws where it was defined.
 
-## Multiple comparisons
+## Correcting across states and cells
 
-The library applies no correction. A cell-by-state table with 200 cells and 400
-states has 80,000 tests. Two reasonable options:
+A cell-by-state table has many tests, and asking "is this cell significant in
+*any* state?" multiplies the false-positive rate. On pure noise (auroc, 200
+shuffles, alpha 0.05) the fraction of untuned cells that are "significant in any
+state" was:
 
-1. Report the fraction of cells that pass against the false-positive rate
-   measured on a null population (cells with no planted or expected tuning,
-   or surrogate sessions). This is what the demo's ground-truth plot does.
-2. Control the false discovery rate across cells with Benjamini–Hochberg:
+| correction | 6 syllables | 4 social states |
+| --- | --- | --- |
+| none (raw) | 0.29 | 0.17 |
+| `max_stat` | 0.08 | 0.02 |
+| `bh` | 0.0 | 0.02 |
+
+Planted cells were still detected (fraction at least 0.8) under every
+correction. Correction reduces the inflation; it does not always remove it. In
+the demo's full run (80 untuned cells, 1000 shuffles, `max_stat` across states)
+the any-state false-positive rate went from 0.21 to 0.11 for `auroc[social]`,
+0.17 to 0.06 for `auroc[syllables]`, 0.21 to 0.07 for `mean_per_state[social]`
+and 0.10 to 0.04 for `peth[social]`; the dedicated noise-session measurement
+above came out at 0.02 to 0.08. Rules based on null percentiles (for example
+`responsive_cell_criteria` with the default `use_p=False`) are not adjusted:
+in the demo they flagged 17 untuned cells against 9 with the adjusted p-value
+rule. The library does not correct by default; ask for it in
+`ShuffleConfig`:
 
 ```python
-import numpy as np
-from scipy.stats import false_discovery_control
-
-p = results.get("auroc", "social").shuffle.p_value  # (n_cells,) or (n_cells, n_states)
-ok = np.isfinite(p)
-q = np.full(p.shape, np.nan)
-q[ok] = false_discovery_control(p[ok], method="bh")
-significant_fdr = q < 0.05
+shuf = ShuffleConfig(n_shuffles=1000, correction="max_stat")  # correction_scope="states"
 ```
 
-(`statsmodels.stats.multitest.multipletests` does the same.) Note that a
-permutation p-value is discrete, so many cells tie at the floor.
+`correction` is one of `none` (default), `bh`, `bonferroni` or `max_stat`;
+`correction_scope` says which tests form one family:
+
+| scope | family | meaning |
+| --- | --- | --- |
+| `states` (default) | the states of one cell | "is this cell tuned to anything" |
+| `cells` | the cells of one state | "which cells respond to this state" |
+| `all` | every test of the result | one family for the whole table |
+
+| method | controls | what it does |
+| --- | --- | --- |
+| `bh` | false discovery rate | Benjamini-Hochberg on the p-values of each family |
+| `bonferroni` | family-wise error | `min(1, p * m)`, `m` = finite p-values in the family; the most conservative |
+| `max_stat` | family-wise error | single-step max-statistic from the null draws themselves; `states` scope only |
+
+`max_stat` standardises every state's observed value and null draws by that
+cell-and-state's null mean and standard deviation (sign-flipped for a lower tail,
+absolute value for a two-sided one), takes the most extreme standardised value
+across the states of each surrogate, and counts how often that extreme reaches the
+observed one. Because it uses the correlation between states in the null it is
+less conservative than Bonferroni, and it costs only a maximum over an array the
+test already has (about 0.05 s per 1000 shuffles). Asking for `max_stat` with
+`correction_scope="cells"` or `"all"` raises a `ValueError` at construction; use `bh` or
+`bonferroni` to correct across cells or all tests. The adjusted value is never smaller than the raw one.
+
+Choosing:
+
+- **`max_stat` across states** when the question is per cell ("does this cell
+  respond to any behavior"). It controls the family-wise error across the
+  states of a cell at no extra computation. A result with a single state or no
+  state axis gets no adjustment, and `correction_note` says so.
+- **`bh` across cells** (`correction_scope="cells"`) for discovery, when you
+  accept a controlled fraction of false positives among the cells you call
+  responsive.
+- **`bonferroni`** when a single false positive is costly and you accept the lost
+  power; it ignores the correlation between tests.
+
+What you get back. `ShuffleResult` keeps the raw `p_value` and `significant`
+and adds `p_adj`, `significant_adj` (`p_adj < alpha`, False where NaN),
+`correction`, `correction_scope` and `correction_note` (non-empty when the
+correction was a no-op). With `correction="none"` the adjusted values equal the
+raw ones. `ResultSet.to_dataframe()` has `p_adj` and `significant_adj` columns
+next to `p_value` and `significant`.
+
+```python
+r = results["auroc[syllables]"]
+r.shuffle.correction, r.shuffle.correction_scope, r.shuffle.correction_note
+r.shuffle.p_adj          # same shape as r.values
+df = results.to_dataframe()
+df[["cell", "state", "p_value", "p_adj", "significant", "significant_adj"]].head()
+
+cabana.significant_cells(r)                   # uses significant_adj when a correction was run
+cabana.significant_cells(r, adjusted=False)   # force the raw p-values
+cabana.significant_cells(r, adjusted=True)    # force p_adj; ValueError if the result has none
+```
+
+`significant_cells(..., adjusted=None)` (the default) uses the adjusted p-values
+exactly when the result was run with a correction. The criteria layer
+(`Clause(adjusted=...)`) follows the same rule. `adjusted=True` on a result
+without `p_adj` raises.
+
+To adjust p-values you already have, or to try another scope after the fact, call
+`adjust_p_values(p, method, axis)`. `method` is `none`, `bh` or `bonferroni`
+(`max_stat` needs the null draws, so it is only available through
+`ShuffleConfig`); `axis` is the axis along which each family lies (`None` means one
+family for the whole array); NaN stays NaN and is not counted:
+
+```python
+from cabana import adjust_p_values
+
+p = results["auroc[social]"].shuffle.p_value        # (n_cells, n_states)
+q_across_states = adjust_p_values(p, "bh", axis=1)  # one family per cell
+q_across_cells = adjust_p_values(p, "bh", axis=0)   # one family per state
+```
+
+(`scipy.stats.false_discovery_control` and
+`statsmodels.stats.multitest.multipletests` do the same for BH.) Two cautions.
+A permutation p-value is discrete, so many cells tie at the floor
+`1 / (n_shuffles + 1)`; Bonferroni with `m` tests needs
+`n_shuffles + 1 > m / alpha` to be able to reject anything. And the cohort
+functions (`fraction_significant_by_animal`, `per_animal_summary`) take
+`adjusted=`: `None` (default) uses `significant_adj` when the analysis was run with
+a correction (the table's `correction` column is not "none"), `True` forces the
+adjusted column and `False` the raw one. `plot_ground_truth_recovery` follows the
+same rule.
+
+You can always compare against the false-positive rate on a null population
+(cells with no planted or expected tuning, or surrogate sessions), which is what
+the demo's recovery table reports as `fpr` (raw) and `fpr_adj` (adjusted).
 
 ## Per-animal versus per-cell inference
 

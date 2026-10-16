@@ -2,12 +2,27 @@
 
 This guide takes you from arrays you already have (calcium traces, a DeepLabCut
 position file, a BORIS export, a distance trace, maybe syllable labels) to
-results with p-values. There are no file loaders yet, so you read your files
-with pandas or h5py and hand CaBaNA plain arrays. Every code block below runs
-in order as one script, on simulated stand-ins for your files.
+results with p-values. If your files come from Minian, CaImAn, DeepLabCut, BORIS,
+Keypoint-MoSeq or CaMAP, see [Loading common formats](#loading-common-formats);
+otherwise you read your files with pandas or h5py and hand CaBaNA plain arrays.
+Every code block below runs in order as one script, on simulated stand-ins for
+your files.
 
 If a word is unfamiliar, see [`GLOSSARY.md`](GLOSSARY.md); for how to read the
 p-values, see [`STATISTICS.md`](STATISTICS.md).
+
+## Loading common formats
+
+`cabana.loaders` has readers for Minian, CaImAn and `.camap` activity and for
+BORIS, DeepLabCut and Keypoint-MoSeq behavior (`load_minian`, `load_caiman`,
+`load_camap`, `load_boris`, `load_dlc`, `load_moseq`). Each returns the object
+used below: a `Session` for activity, a `BoutTable`, `ContinuousSignal` or
+`LabelSeries` for behavior, which you put in `session.behavior`. Behavior files
+count time from the start of the video, so the loaders take `t_offset_s`, the
+imaging start in video time, and compute `t_neural = t_video - t_offset_s`.
+[`LOADERS.md`](LOADERS.md) lists what each reads, the optional dependencies and
+the `pip` extras, the clock convention with a worked example, and the caveats.
+The rest of this guide builds the same objects by hand.
 
 ## 1. The clock convention
 
@@ -182,7 +197,8 @@ masks you list.
 ```python
 from cabana import AnalysisSpec, Pipeline, ShuffleConfig
 
-circ = ShuffleConfig(n_shuffles=100, min_shift_s=20.0)  # circular shift (default null)
+# circular shift (default null); max_stat corrects across a cell's states (see below)
+circ = ShuffleConfig(n_shuffles=100, min_shift_s=20.0, correction="max_stat")
 bouts_null = ShuffleConfig(n_shuffles=100, null={"name": "bout_shuffle"})
 
 pipe = Pipeline(
@@ -194,6 +210,8 @@ pipe = Pipeline(
                      shuffle=bouts_null),
         AnalysisSpec(metric={"name": "information_content", "smooth_sigma_bins": 1.0},
                      states="position", shuffle=circ, masks=["speed"]),
+        AnalysisSpec(metric={"name": "split_half_stability"}, states="position",
+                     shuffle=circ, masks=["speed"]),
         AnalysisSpec(metric={"name": "peth", "pre_s": 4, "post_s": 4, "baseline_s": (-4, -1),
                              "response_s": (0, 1.5)}, states="social", shuffle=circ),
         AnalysisSpec(metric={"name": "decode_states"}, states="social_ex",
@@ -204,6 +222,18 @@ pipe = Pipeline(
 session, results = pipe.run(session)
 print(results.names())
 ```
+
+**Multiple comparisons.** A cell that is "significant in any of its states" has
+more chances to be a false positive the more states there are (on noise, 17-29%
+of cells at alpha 0.05 with 4-6 states). `correction="max_stat"` in the
+`ShuffleConfig` above fills `p_adj` and `significant_adj` next to the raw
+`p_value` and `significant`, correcting across the states of each cell from the
+null draws themselves, at almost no cost; `"bh"` and `"bonferroni"` with
+`correction_scope="cells"` correct across cells instead. A result with no state
+axis (such as the 1-D `information_content`) is left unchanged and
+`correction_note` says so. `significant_cells` and the classification below use
+the adjusted values by default whenever a correction was run. Details and
+numbers in [`STATISTICS.md`](STATISTICS.md).
 
 Each analysis has a **name**. If you give none it is `metric[target]`, with
 `#<null>` and then `#2`, `#3` appended when that collides: a second, unnamed
@@ -253,10 +283,57 @@ print(sniff.sum(), attack.sum(), ov.n_both, ov.p_value)
 ```
 
 The table has one row per cell and state with `value`, `p_value`,
-`significant`, and the columns `analysis`, `null` and `n_shuffles` so results
+`significant`, `p_adj`, `significant_adj`, and the columns `analysis`, `null` and `n_shuffles` so results
 from different nulls stay separable.
 
-## 9. Saving and loading
+## 9. Classifying cells
+
+A rule such as "place cell" or "excited by sniffing" is a `Criteria`: a few
+`Clause`s, each one test on one analysis, combined with `all_of`, `any_of` and
+`none_of`. `classify` evaluates them on the `ResultSet` and returns one boolean
+label per cell and class.
+
+```python
+from cabana import Clause, Criteria, classify, place_cell_criteria, responsive_cell_criteria
+
+place = place_cell_criteria("position")  # information AND split-half stability significant
+# excited / inhibited per state of auroc[social]; `get` is ambiguous here (two auroc analyses on
+# social), so enumerate the states from that one result
+excited = responsive_cell_criteria(cabana.ResultSet(results=[results["auroc[social]"]]), "social")
+# or by hand: significant, positive, in any state, on the adjusted p-values
+any_social = Criteria(
+    name="social_responsive",
+    all_of=[Clause(analysis="auroc[social]", state="any", test="significant",
+                   sign="positive", adjusted=True)],
+)
+cls = classify(results, {"place_cell": place, **excited, "social_responsive": any_social})
+print(cls.counts())
+print(cls.table().head(3))
+print(cabana.overlap_vs_chance(cls.labels["place_cell"], cls.labels["social_responsive"]).p_value)
+print(Criteria.from_yaml(place.to_yaml()) == place)  # rules round-trip through YAML
+cabana.plots.plot_classification(cls)
+```
+
+How the tests are defined:
+
+- A cell x state result needs `state="<name>"` (or an index) or `state="any"`
+  (OR over states); a 1-D result such as `information_content` takes none.
+- `test="significant"` uses the permutation p (adjusted when the result has a
+  correction, unless you set `adjusted=False`; `adjusted=True` on a result
+  without `p_adj` raises); `test="value"` compares the observed value with a
+  `threshold`; `test="percentile"` asks whether the observed value is beyond
+  that percentile of the null draws, which needs `keep_null="full"`.
+- `sign` is relative to `reference`, which defaults to the cell's null median.
+  `responsive_cell_criteria` encodes the usual auROC rule: excited above the 97.5th
+  null percentile, inhibited below the 2.5th (`use_p=True` uses p-values instead).
+- `classify(..., exclusive=True)` gives each cell the first matching class and
+  adds `unclassified`. `cls.fractions()` and `cls.label_per_cell()` summarise;
+  `classification_table` and `fraction_classified_by_animal` pool several
+  sessions per animal. The boolean labels go straight into `overlap_vs_chance`
+  and `overlap_matrix`.
+- `place_cell_criteria` does not include field-size criteria.
+
+## 10. Saving and loading
 
 ```python
 pipe.to_yaml(out / "pipeline.yaml")                  # the recipe, as text
@@ -270,10 +347,10 @@ print(len(pipe2.analyses), len(results2), results2.names() == results.names())
 ```
 
 `save` accepts a `.zip` or a directory name. The null distribution is stored
-as float32. A pipeline that uses a custom metric (section 11) can be loaded
+as float32. A pipeline that uses a custom metric (section 12) can be loaded
 only after that class is registered in the loading process.
 
-## 10. Several sessions and animals
+## 11. Several sessions and animals
 
 Run the same pipeline on every session, then pool on the animal. The unit of
 inference is the animal, not the cell.
@@ -303,7 +380,10 @@ print(cabana.per_animal_summary(table, analysis="information_content[position]")
 
 `fraction_significant_by_animal`, `per_animal_summary` and
 `compare_states_across_animals` select an analysis with `analysis=` (its name)
-or with `metric=` and `target=`.
+or with `metric=` and `target=`. `fraction_significant_by_animal` and
+`per_animal_summary` also take `adjusted=`: by default they use the
+multiplicity-adjusted decision (`significant_adj`) when the analysis was run
+with a correction, `adjusted=False` forces the raw one.
 
 > **Caveat: repeated cells.** These functions pool every cell of every session
 > of an animal. If the same neuron is recorded on several days (A_d1 and A_d2
@@ -331,7 +411,7 @@ print(cs.median_observed, np.median(cs.null_median), cs.p_population)
 A `SessionSet` bundles sessions, the animal mapping and matches if you want a
 single object to pass around.
 
-## 11. A custom metric
+## 12. A custom metric
 
 A metric is a pydantic class registered by name. Implement `compute` and return
 `(n_cells,)` or `(n_cells, n_states)`. Override `check_target` if the metric

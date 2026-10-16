@@ -34,8 +34,11 @@ plugin points. The middle is shared.
 
 1. **Import.** Loaders build a `Session`: activity, timestamps, `fs`,
    `activity_kind`, and raw behavior inputs on their own clocks
-   (`ContinuousSignal`, `BoutTable`, `LabelSeries`). Ephys enters as spike
-   times binned to a chosen `fs` with `activity_kind="spike_counts"`.
+   (`ContinuousSignal`, `BoutTable`, `LabelSeries`). `cabana.loaders` reads
+   Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files
+   (see [`LOADERS.md`](LOADERS.md)); everything else is built from arrays.
+   Ephys enters as spike times binned to a chosen `fs` with
+   `activity_kind="spike_counts"`.
 2. **Transform.** `Transform` plugins resample behavior onto the neural clock
    and build `StateSpace`s (bin position into a grid, turn bouts into boolean
    vectors, step-resample syllables). They also add per-frame `signals`
@@ -51,12 +54,15 @@ plugin points. The middle is shared.
 5. **Results.** `MetricResult` / `ResultSet` with `to_dataframe()` for a tidy
    cell × state × metric table. Every analysis has a name and carries a
    provenance dict; `ResultSet.save` / `load` persist them (`_io.py`, see
-   "Names, support, provenance and persistence").
+   "Names, support, provenance and persistence"). Post-hoc functions work on
+   the results: `significant_cells`, overlaps, clustering and, since the fifth
+   increment, the **criteria layer** (`_criteria.py`): `Criteria` / `Clause`
+   rules evaluated by `classify` into per-cell class labels.
 6. **Plots.** Functions that look at `StateSpace.kind` and `topology` to
    decide how to draw. They live in `_plots.py`, `_plots_events.py`,
    `_plots_posthoc.py`, `_plots_cohort.py` and `_plots_information.py` behind
-   the `cabana.plots` facade (19 functions: `plot_behavior_overview`,
-   `plot_clusters`, `plot_cohort_fractions`, `plot_cross_session`,
+   the `cabana.plots` facade (20 functions: `plot_behavior_overview`,
+   `plot_classification`, `plot_clusters`, `plot_cohort_fractions`, `plot_cross_session`,
    `plot_decoded_trajectory`, `plot_event_raster`, `plot_ground_truth_recovery`,
    `plot_hierarchical_bootstrap`, `plot_information_comparison`,
    `plot_joint_histogram`, `plot_level_sweep`, `plot_metric_scatter`,
@@ -138,6 +144,17 @@ Metric output shapes: `(n_cells,)` or `(n_cells, n_states)` for
   maps, split-half maps and rank sums are all of this form, so every core
   metric implements `compute_shifted` with it. Equivalence with explicit
   rolling is tested.
+- Exclusive state spaces take a leaner path. `cabana._statesums.shifted_sums_for`
+  (and `shifted_sums_multi`, `state_sums`, `masked_counts`) dispatch on
+  `StateSpace.exclusive`: above `DENSE_MAX_STATES = 256` states they bucket the
+  per-cell series by the integer labels from `StateSpace.labels(mask)` with one
+  `np.bincount` per cell and shift; at or below it they keep the dense matmul,
+  which is faster for small state counts. Both paths return the same values.
+  See "Fifth increment".
+- `shuffle_test` can also correct for multiple comparisons
+  (`ShuffleConfig.correction`, `correction_scope`; see `STATISTICS.md`) and takes
+  `on_batch` and `should_cancel` callbacks polled once per batch of surrogates
+  (`RunCancelled` is raised when the latter returns True).
 
 ## Module specs for the first demo
 
@@ -295,7 +312,8 @@ line length 100, flat `tests/`. `fs` is always Hz; arrays are
 *Everything below except place-field detection (field size and centroid) has
 since been built; see the later increments.*
 
-Loaders for real formats (Minian, CaImAn, DLC, BORIS, `.camap`), temporal
+Loaders for real formats (Minian, CaImAn, DLC, BORIS, `.camap`; built in the
+fifth increment), temporal
 re-binning that changes `n_time`, PETHs, decoders, place-field detection,
 multi-session/cohort statistics. All have an obvious home in the structure
 above and are listed so reviewers know they were deferred, not forgotten.
@@ -516,3 +534,88 @@ values. `bayesian_decoder` gained `sigma="per_state"|"pooled"` (see above);
 `BayesianDecoder.seed` and `BoutShuffle.max_tries` were removed (the seed lives
 in `ShuffleConfig`). Plot functions that take
 a session and a result accept either order.
+
+## Fifth increment: correction, a fast label path, criteria, loaders and run control
+
+Five additions, each with its own tests (`test_correction.py`, `test_statesums.py`,
+`test_criteria.py`, `test_loaders.py`, `test_run_control.py`).
+
+**Multiple-comparison correction (`_shuffle.py`, `_results.py`, `_posthoc.py`).**
+Asking whether a cell is significant in any of several states inflates the
+false-positive rate: on noise (auroc, 200 shuffles, alpha 0.05) 29% of cells with
+6 syllables and 17% with 4 social states. `ShuffleConfig.correction` takes
+`none` (default), `bh`, `bonferroni` or `max_stat`, and `correction_scope` takes
+`states` (default), `cells` or `all`. `ShuffleResult` keeps the raw `p_value` and
+`significant` and adds `p_adj`, `significant_adj`, `correction`,
+`correction_scope` and `correction_note`; `to_dataframe` has `p_adj` and
+`significant_adj` columns. `max_stat` is a single-step max-statistic computed from
+the null draws already in memory (states scope only, about 0.05 s per 1000
+shuffles). With it the "any state" rate fell to 8% (syllables) and 2% (social);
+`bh` gave 0% and 2%; planted cells were still detected at 0.8 or better.
+`adjust_p_values(p, method, axis)` is exported for p-values you already have, and
+`significant_cells(..., adjusted=None|True|False)` picks adjusted or raw (None:
+adjusted when a correction was run). `STATISTICS.md` has the guidance.
+
+**Integer-label fast path (`_statesums.py`).** The dense one-hot matmul costs
+`O(n_cells * n_time * n_states)` per shift in time and memory, which stops being
+usable on fine grids. For *exclusive* spaces with more than 256 states
+(`DENSE_MAX_STATES`; the crossover measured near 400 states at 200 cells x 24000
+frames) the dispatchers bucket by integer labels (`StateSpace.labels(mask)`,
+`-1` = none) with one `bincount` per cell and shift. Benchmarks, 200 cells x 24000
+frames, 100 shifts: 1600 states dense 5.0 s and 873 MB, labels 0.94 s and 257 MB;
+6400 states dense about 28 s and 2.6 GB, labels 0.9 s and 1.0 GB. Memory of
+`information_content` on 6400 states, 50 cells, 20000 frames, 10 shifts fell from
+2.08 GB to 131 MB. Switched: `information_content`, `split_half_stability`,
+`pv_stability`, `mean_per_state`, `mutual_information` (both paths), and the
+unshifted empirical counts of `population_vector_overlap` and `bayesian_decoder`.
+Still dense: `auroc`, the decoders' training one-hot, `pca`, `peth`, and every
+non-exclusive space. Tests force the label path with `DENSE_MAX_STATES = 0` and
+check equality with the dense one.
+
+**Criteria layer (`_criteria.py`).** A `Clause` is one test on one analysis
+(`significant`, `value` or `percentile`, with a sign relative to the null median
+or a reference); a `Criteria` is an AND of `all_of`, at least one `any_of` and none
+of `none_of`, nested freely, and round-trips through dict and YAML. `classify(rs,
+criteria, exclusive=False)` returns a `ClassificationResult` (`labels`, `counts()`,
+`fractions()`, `table()`, `label_per_cell()`) whose boolean labels feed
+`overlap_vs_chance` and `overlap_matrix`. Factories: `place_cell_criteria`
+(information content AND split-half stability significant) and
+`responsive_cell_criteria(rs, target, percentile=97.5 | use_p=True)` (excited and
+inhibited per state). `classification_table` and `fraction_classified_by_animal`
+carry it across sessions; `plots.plot_classification` draws the counts. Semantics:
+a cell x state result needs `state=<name>` or `state="any"`; `adjusted=True` on a
+result without `p_adj` raises; the percentile test needs the full null
+(`keep_null="full"`); the sign reference defaults to the per-cell null median (0.5 for
+auroc, else 0, only when no null summary is stored). Detail in `BRING_YOUR_OWN_DATA.md`.
+
+**Loaders (`_loaders/`, `cabana.loaders`).** `load_minian`, `load_caiman`,
+`load_camap` (neural) and `load_boris`, `load_dlc` (+ `dlc_centroid`),
+`load_moseq` (behavior), with helpers `video_time_to_neural`, `infer_fs` and
+`validate_time`. Optional dependencies are imported lazily and named by extras
+(`minian`, `caiman`, `loaders`). One clock convention: times measured from the
+video start become neural-clock times with `t_neural = t_video - t_offset_s`. The
+`.camap` loader follows CaMAP's `save_bundle` layout and was tested only on
+synthetic bundles. See [`LOADERS.md`](LOADERS.md).
+
+**Run control (`_pipeline.py`).** `RunContext(on_progress, should_cancel,
+on_error="raise"|"record", capture_warnings, log)` goes to `Pipeline.run(session,
+progress=False, *, context=None)`; `on_progress` receives `ProgressEvent`s (stage,
+name, index, total, overall `fraction`, shuffles done/total, elapsed time) at every
+stage, analysis end and shuffle batch. Cancellation is polled between stages,
+analyses and after every shuffle batch and returns the partial `ResultSet` instead
+of raising: `ResultSet.status` is `ok`, `cancelled` or `partial` (errors recorded
+with `on_error="record"`), with `completed` (names), `errors` (`RunError`) and
+`warnings` (`RunWarning`). `Pipeline.iter_run` yields the transformed session and
+then each analysis as it finishes; `run_set(pipeline, sessions, context=, animal=)`
+runs a `SessionSet` or dict and `RunSetResult.table()` is the cohort table.
+
+**CaLab readiness.** CaBaNA is meant to become an app inside CaLab. What a front
+end needs is now in the library: `describe()` returns a JSON-serialisable listing
+of the registered plugins (metrics with `level`, `input`, `default_tail`,
+`requires_topology`; transforms, preprocess steps and nulls) with their pydantic
+schemas, and the schemas of `ShuffleConfig`, `AnalysisSpec` and `Pipeline`, plus
+`version`, so a form can be generated from it. A run reports progress and can be
+cancelled through `RunContext`, a failing analysis need not kill the run, partial
+results come back, a saved `ResultSet` and a pipeline YAML reproduce a run, and
+loaders follow CaLab's formats (the Minian and CaImAn ones are ported from its
+loaders).

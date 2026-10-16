@@ -27,7 +27,9 @@ from typing import Literal
 
 import numpy as np
 
+from .._models import StateSpace
 from .._shuffle import shifted_sums
+from .._statesums import shifted_sums_for
 
 Binning = Literal["quantile", "log", "linear", "binary"]
 
@@ -135,4 +137,34 @@ def joint_counts(
     return out[0] if shifts is None else out
 
 
-__all__ = ["Binning", "activity_levels", "joint_counts", "level_edges", "level_indicator"]
+def joint_counts_for(
+    levels: np.ndarray,
+    states: StateSpace,
+    mask: np.ndarray,
+    n_levels: int,
+    *,
+    keep: np.ndarray | None = None,
+) -> np.ndarray:
+    """Unshifted ``(n_cells, n_states_kept, n_levels)`` joint counts for a ``StateSpace``.
+
+    Same values as ``joint_counts(levels, states.masked(mask)[:, keep], n_levels)``
+    but exclusive spaces use integer labels instead of a dense float matrix.
+    """
+    sh = np.zeros(1, dtype=np.int64)
+    return np.stack(
+        [
+            shifted_sums_for(level_indicator(levels, k), states, mask, sh, keep=keep)[0]
+            for k in range(n_levels)
+        ],
+        axis=-1,
+    )
+
+
+__all__ = [
+    "Binning",
+    "activity_levels",
+    "joint_counts",
+    "joint_counts_for",
+    "level_edges",
+    "level_indicator",
+]

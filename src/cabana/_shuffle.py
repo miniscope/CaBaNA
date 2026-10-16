@@ -31,14 +31,20 @@ loop over ``compute``.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from scipy.stats import false_discovery_control, rankdata
 
 from ._nulls import CircularShift, draw_shifts
 from ._registry import Metric, Null, Target, build
 from ._results import ShuffleResult, Tail
+
+
+class RunCancelled(Exception):  # noqa: N818
+    """Raised (by ``should_cancel`` returning True) to stop a shuffle test or pipeline run."""
 
 
 class ShuffleConfig(BaseModel):
@@ -109,6 +115,33 @@ class ShuffleConfig(BaseModel):
         "full",
         description="'full' keeps ShuffleResult.null draws; 'none' drops them (null=None).",
     )
+    correction: Literal["none", "bh", "bonferroni", "max_stat"] = Field(
+        "none",
+        description=(
+            "Multiple-comparison correction filling p_adj/significant_adj: 'bh' (FDR), "
+            "'bonferroni' (FWER), 'max_stat' (Westfall-Young single-step min-p across states, "
+            "exact under the permutation null; states scope only)."
+        ),
+    )
+    correction_scope: Literal["states", "cells", "all"] = Field(
+        "states",
+        description=(
+            "Family of tests corrected together: across states within a cell, across cells "
+            "within a state, or all tests of the result. For 'bh'/'bonferroni' on a result "
+            "without a state axis, 'states' falls back to correcting across cells "
+            "(noted in correction_note); 'max_stat' is then a no-op."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_correction(self) -> ShuffleConfig:
+        if self.correction == "max_stat" and self.correction_scope != "states":
+            raise ValueError(
+                "correction='max_stat' is only defined for correction_scope='states' "
+                f"(got {self.correction_scope!r}); use 'bh' or 'bonferroni' to correct across "
+                "cells or all tests"
+            )
+        return self
 
     @field_validator("null", mode="before")
     @classmethod
@@ -190,6 +223,149 @@ def _p_values(observed: np.ndarray, null: np.ndarray, tail: Tail) -> np.ndarray:
     return p
 
 
+Correction = Literal["none", "bh", "bonferroni", "max_stat"]
+CorrectionScope = Literal["states", "cells", "all"]
+
+
+def _adjust_1d(p: np.ndarray, method: str) -> np.ndarray:
+    out = np.full(p.shape, np.nan)
+    fin = np.isfinite(p)
+    m = int(fin.sum())
+    if m == 0:
+        return out
+    if method == "bh":
+        out[fin] = false_discovery_control(p[fin], method="bh")
+    else:
+        out[fin] = np.minimum(1.0, p[fin] * m)
+    return out
+
+
+def adjust_p_values(
+    p: np.ndarray, method: Literal["none", "bh", "bonferroni"], axis: int | None = None
+) -> np.ndarray:
+    """Multiple-comparison adjusted p-values; NaN entries stay NaN and are not counted.
+
+    Parameters
+    ----------
+    p : array
+        Raw p-values.
+    method : {"none", "bh", "bonferroni"}
+        ``"bh"``: Benjamini-Hochberg (``scipy.stats.false_discovery_control``);
+        ``"bonferroni"``: ``min(1, p * m)`` with ``m`` the number of finite
+        p-values in the family.  (``"max_stat"`` needs the null draws and is
+        only available through ``ShuffleConfig.correction``.)
+    axis : int, optional
+        Axis along which each family lies (one family per remaining index);
+        ``None`` treats the whole array as one family.
+    """
+    p = np.asarray(p, dtype=np.float64)
+    if method == "none":
+        return p.copy()
+    if method not in ("bh", "bonferroni"):
+        raise ValueError(f"unknown method {method!r}; use 'none', 'bh' or 'bonferroni'")
+    if axis is None:
+        return _adjust_1d(p.ravel(), method).reshape(p.shape)
+    moved = np.moveaxis(p, axis, -1)
+    flat = moved.reshape(-1, moved.shape[-1])
+    out = np.stack([_adjust_1d(row, method) for row in flat]) if len(flat) else flat.copy()
+    return np.moveaxis(out.reshape(moved.shape), -1, axis)
+
+
+def _tail_p(ge: np.ndarray, le: np.ndarray, n_valid: np.ndarray, tail: Tail) -> np.ndarray:
+    """Unsmoothed tail proportion from counts of draws >= / <= a value."""
+    with np.errstate(invalid="ignore", divide="ignore"):
+        if tail == "upper":
+            p = ge / n_valid
+        elif tail == "lower":
+            p = le / n_valid
+        else:
+            p = 2 * np.minimum(ge, le) / n_valid
+    return np.minimum(p, 1.0)
+
+
+def _max_stat_p(
+    observed: np.ndarray, null: np.ndarray, tail: Tail, p_raw: np.ndarray
+) -> np.ndarray:
+    """Westfall-Young single-step min-p across the state axis (axis 1 of the result).
+
+    Exact under the permutation null.  Each null draw is converted to a
+    within-null p-value (same tail rule as :func:`_p_values`, ties counted, NaN
+    draws ignored); the family statistic of a shuffle is the minimum of these
+    over states.  The observed p of ``(cell, state)`` counts itself as one more
+    draw (``(ge + 1) / (n_valid + 1)``, i.e. the raw p) and the adjusted p is
+    ``(#{shuffles: family min <= observed p} + 1) / (n_valid + 1)``, floored at
+    the raw p.  Cells are processed in chunks to bound memory.
+    """
+    n_shuf, n_cells = null.shape[0], null.shape[1]
+    p_adj = np.full(p_raw.shape, np.nan)
+    per_cell = max(1, int(np.prod(null.shape[2:])))
+    chunk = max(1, int(2e7 // (n_shuf * per_cell)))
+    for lo in range(0, n_cells, chunk):
+        sl = slice(lo, min(n_cells, lo + chunk))
+        x = null[:, sl]
+        obs = observed[sl]
+        finite = np.isfinite(x)
+        n_valid = finite.sum(axis=0)  # (cells, states, ...)
+        xf = np.where(finite, x, np.nan)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            lt = rankdata(xf, method="min", axis=0, nan_policy="omit") - 1  # #{null < null_i}
+            le_rank = rankdata(xf, method="max", axis=0, nan_policy="omit")  # #{null <= null_i}
+            p_null = _tail_p(n_valid[None] - lt, le_rank, n_valid[None], tail)
+            minp = np.nanmin(p_null, axis=2)  # (shuffles, cells, ...)
+        del p_null, lt, le_rank
+        fam_valid = np.isfinite(minp)
+        n_fam = fam_valid.sum(axis=0)  # (cells, ...)
+        minp = np.where(fam_valid, minp, np.inf)
+        ge = (np.where(finite, x, -np.inf) >= obs[None]).sum(axis=0)
+        le = (np.where(finite, x, np.inf) <= obs[None]).sum(axis=0)
+        p_obs = _tail_p(ge + 1, le + 1, n_valid + 1, tail)  # (cells, states, ...)
+        cnt = (minp[:, :, None] <= p_obs[None]).sum(axis=0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            adj = (cnt + 1) / (n_fam[:, None] + 1)
+        p_adj[sl] = np.clip(adj, 0, 1)
+    p_adj = np.where(np.isfinite(observed) & np.isfinite(p_raw), p_adj, np.nan)
+    return np.where(np.isfinite(p_adj), np.maximum(p_adj, p_raw), np.nan)
+
+
+def _correct(
+    p: np.ndarray,
+    observed: np.ndarray,
+    null: np.ndarray,
+    tail: Tail,
+    correction: str,
+    scope: str,
+) -> tuple[np.ndarray, str | None]:
+    """Return ``(p_adj, note)``; note explains a no-op or a scope fallback.
+
+    ``"max_stat"`` is the Westfall-Young single-step min-p across states (exact under the
+    permutation null).
+    """
+    if correction == "none":
+        return p.copy(), None
+    if correction == "max_stat":
+        if scope != "states":
+            raise ValueError(
+                "correction='max_stat' is only defined for correction_scope='states' "
+                f"(got {scope!r}); use 'bh' or 'bonferroni' to correct across cells or all tests"
+            )
+        if p.ndim < 2:
+            return p.copy(), "no state axis: max_stat correction is a no-op"
+        if p.shape[1] == 1:
+            return p.copy(), "single state: max_stat correction is a no-op"
+        return _max_stat_p(observed, null, tail, p), None
+    if scope == "all":
+        return adjust_p_values(p, correction), None
+    if scope == "states":
+        if p.ndim < 2:
+            return (
+                adjust_p_values(p, correction, axis=0),
+                f"no state axis: {correction!r} applied across cells",
+            )
+        return adjust_p_values(p, correction, axis=1), None
+    return adjust_p_values(p, correction, axis=0), None
+
+
 def _null_bounds(null: np.ndarray, alpha: float, tail: Tail) -> tuple[np.ndarray, np.ndarray]:
     if tail == "two":
         q_lo, q_hi = 100 * alpha / 2, 100 * (1 - alpha / 2)
@@ -207,6 +383,8 @@ def shuffle_test(
     mask: np.ndarray,
     config: ShuffleConfig,
     fs: float,
+    on_batch: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> ShuffleResult:
     """Observed metric plus its null distribution under ``config.null``.
 
@@ -222,6 +400,12 @@ def shuffle_test(
     config : ShuffleConfig
     fs : float
         Sampling rate, to convert seconds to frames.
+    on_batch : callable (done, total), optional
+        Called after each batch of ``config.batch_size`` surrogates (and after
+        the last, possibly smaller, one) with the number of surrogates done.
+    should_cancel : callable () -> bool, optional
+        Polled at the same points as ``on_batch``; when it returns True,
+        :class:`RunCancelled` is raised.
 
     Returns
     -------
@@ -257,9 +441,21 @@ def shuffle_test(
     null = np.empty((config.n_shuffles, *observed.shape), dtype=np.float64)
     shifts: np.ndarray | None = None
 
+    total = config.n_shuffles
+
+    def tick(done: int) -> None:
+        if on_batch is not None:
+            on_batch(done, total)
+
+    def check_cancel() -> None:
+        # checked BEFORE computing a batch, so a finished shuffle is never discarded
+        if should_cancel is not None and should_cancel():
+            raise RunCancelled("cancelled during shuffle test")
+
     if isinstance(null_plugin, CircularShift):
         shifts = null_plugin.draw(activity.shape[1], fs, config.n_shuffles, rng)
         for start in range(0, config.n_shuffles, config.batch_size):
+            check_cancel()
             batch = shifts[start : start + config.batch_size]
             fast = metric.compute_shifted(activity, target, mask, fs, batch)
             if fast is not None:
@@ -269,12 +465,18 @@ def shuffle_test(
                     null[start + i] = metric.compute(
                         np.roll(activity, int(k), axis=1), target, mask, fs
                     )
+            tick(start + batch.size)
     else:
         surrogates = null_plugin.surrogates(activity, target, mask, fs, config.n_shuffles, rng)
         for i, (act_s, target_s) in enumerate(surrogates):
+            if i % config.batch_size == 0:
+                check_cancel()
             null[i] = metric.compute(act_s, target_s, mask, fs)
+            if (i + 1) % config.batch_size == 0 or i + 1 == total:
+                tick(i + 1)
 
     p = _p_values(observed, null, tail)
+    p_adj, note = _correct(p, observed, null, tail, config.correction, config.correction_scope)
     lo, hi = _null_bounds(null, config.alpha, tail)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -290,6 +492,11 @@ def shuffle_test(
         null_lo=lo,
         null_hi=hi,
         significant=np.where(np.isfinite(p), p < config.alpha, False),
+        p_adj=p_adj,
+        significant_adj=np.where(np.isfinite(p_adj), p_adj < config.alpha, False),
+        correction=config.correction,
+        correction_scope=config.correction_scope,
+        correction_note=note or "",
         alpha=config.alpha,
         tail=tail,
         n_shuffles=config.n_shuffles,
@@ -297,4 +504,12 @@ def shuffle_test(
     )
 
 
-__all__ = ["ShuffleConfig", "Tail", "draw_shifts", "shifted_sums", "shuffle_test"]
+__all__ = [
+    "RunCancelled",
+    "ShuffleConfig",
+    "Tail",
+    "adjust_p_values",
+    "draw_shifts",
+    "shifted_sums",
+    "shuffle_test",
+]

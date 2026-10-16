@@ -42,6 +42,10 @@ class ShuffleResult(BaseModel):
         must cross to be called significant.
     significant : S bool
         ``p_value < alpha``; False where ``p_value`` is NaN.
+    p_adj, significant_adj : S float, S bool, optional
+        Adjusted p-values and ``p_adj < alpha`` under ``correction`` over
+        ``correction_scope``; equal to the raw values when ``correction`` is
+        ``"none"`` (``None`` only for results saved before this was added).
     alpha : float
         Significance level used.
     tail : {"upper", "lower", "two"}
@@ -71,6 +75,20 @@ class ShuffleResult(BaseModel):
         ..., description="Upper null percentile (1-alpha or 1-alpha/2), shape S."
     )
     significant: np.ndarray = Field(..., description="p_value < alpha (False where NaN), shape S.")
+    p_adj: np.ndarray | None = Field(
+        None,
+        description="Multiplicity-adjusted p-value, shape S (equals p_value when correction='none').",
+    )
+    significant_adj: np.ndarray | None = Field(
+        None, description="p_adj < alpha (False where NaN), shape S."
+    )
+    correction: str = Field(
+        "none", description="Correction applied: none, bh, bonferroni, max_stat."
+    )
+    correction_scope: str = Field(
+        "states", description="Family of the correction: states, cells or all."
+    )
+    correction_note: str = Field("", description="Non-empty when the correction was a no-op.")
     alpha: float = Field(..., description="Significance level.")
     tail: Tail = Field(..., description="Tail defining 'extreme': upper, lower or two.")
     n_shuffles: int = Field(..., description="Number of surrogates drawn.")
@@ -183,6 +201,7 @@ class MetricResult(BaseModel):
             "analysis": self.name,
             "null": None if sh is None else sh.null_name,
             "n_shuffles": 0 if sh is None else sh.n_shuffles,
+            "correction": "none" if sh is None else sh.correction,
         }
 
     def state_index(self, state: int | str) -> int:
@@ -214,7 +233,8 @@ class MetricResult(BaseModel):
         """Tidy table with one row per (cell[, state]).
 
         Columns, in order: ``metric, target, cell, state, value, p_value,
-        null_lo, null_hi, significant, analysis, null, n_shuffles``.  ``analysis``
+        null_lo, null_hi, significant, p_adj, significant_adj, analysis, null,
+        n_shuffles``.  ``analysis``
         is the unique analysis name, ``null`` the null's name (None without a
         shuffle), ``n_shuffles`` 0 without a shuffle.  Without a shuffle
         ``p_value``, ``null_lo`` and ``null_hi`` are NaN and ``significant`` is
@@ -238,9 +258,12 @@ class MetricResult(BaseModel):
             "null_lo",
             "null_hi",
             "significant",
+            "p_adj",
+            "significant_adj",
             "analysis",
             "null",
             "n_shuffles",
+            "correction",
         ]
         return df[lead]
 
@@ -261,6 +284,14 @@ class MetricResult(BaseModel):
         lo = col(None if sh is None else sh.null_lo, np.nan)
         hi = col(None if sh is None else sh.null_hi, np.nan)
         sig = col(None if sh is None else sh.significant, False)
+        padj = col(None if sh is None or sh.p_adj is None else sh.p_adj, np.nan)
+        if sh is not None and sh.p_adj is None:
+            padj = p
+        sigadj = col(
+            None if sh is None or sh.significant_adj is None else sh.significant_adj, False
+        )
+        if sh is not None and sh.significant_adj is None:
+            sigadj = sig
 
         if self.values.ndim == 1:
             return pd.DataFrame(
@@ -273,6 +304,8 @@ class MetricResult(BaseModel):
                     "null_lo": lo,
                     "null_hi": hi,
                     "significant": sig.astype(bool),
+                    "p_adj": padj,
+                    "significant_adj": sigadj.astype(bool),
                 }
             )
 
@@ -291,6 +324,8 @@ class MetricResult(BaseModel):
                 "null_lo": lo.ravel(),
                 "null_hi": hi.ravel(),
                 "significant": sig.ravel().astype(bool),
+                "p_adj": padj.ravel(),
+                "significant_adj": sigadj.ravel().astype(bool),
             }
         )
 
@@ -311,6 +346,12 @@ class MetricResult(BaseModel):
                     "null_lo": nan if sh is None else sh.null_lo,
                     "null_hi": nan if sh is None else sh.null_hi,
                     "significant": np.zeros(n, bool) if sh is None else sh.significant.astype(bool),
+                    "p_adj": nan if sh is None else (sh.p_value if sh.p_adj is None else sh.p_adj),
+                    "significant_adj": np.zeros(n, bool)
+                    if sh is None
+                    else (
+                        sh.significant if sh.significant_adj is None else sh.significant_adj
+                    ).astype(bool),
                 }
             )
         return pd.DataFrame(
@@ -324,9 +365,31 @@ class MetricResult(BaseModel):
                     "null_lo": np.nan,
                     "null_hi": np.nan,
                     "significant": False,
+                    "p_adj": np.nan,
+                    "significant_adj": False,
                 }
             ]
         )
+
+
+class RunError(BaseModel):
+    """An analysis that failed during a run with ``on_error="record"``."""
+
+    analysis: str
+    metric: str
+    target: str
+    error_type: str
+    message: str
+    traceback: str = ""
+
+
+class RunWarning(BaseModel):
+    """A warning raised while an analysis ran (``capture_warnings=True``)."""
+
+    analysis: str
+    category: str
+    message: str
+    count: int = 1  # times this (category, message) was raised during the analysis
 
 
 class ResultSet(BaseModel):
@@ -339,6 +402,16 @@ class ResultSet(BaseModel):
     ----------
     results : list[MetricResult]
         The results; add with :meth:`add`.
+    status : {"ok", "cancelled", "partial"}, default "ok"
+        ``"cancelled"`` if the run was stopped by ``should_cancel`` (the results
+        are those completed so far), ``"partial"`` if errors were recorded
+        (``on_error="record"``), else ``"ok"``.
+    errors : list[RunError]
+        Analyses that failed and were skipped.
+    warnings : list[RunWarning]
+        Warnings captured per analysis (``RunContext.capture_warnings``).
+    completed : list[str]
+        Names of the analyses that finished, in order.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -346,6 +419,16 @@ class ResultSet(BaseModel):
     results: list[MetricResult] = Field(
         default_factory=list, description="MetricResult objects in analysis order."
     )
+
+    status: Literal["ok", "cancelled", "partial"] = "ok"
+    errors: list[RunError] = Field(default_factory=list)
+    warnings: list[RunWarning] = Field(default_factory=list)
+    completed: list[str] = Field(default_factory=list)
+
+    @property
+    def cancelled(self) -> bool:
+        """True if the run was cancelled before all analyses finished."""
+        return self.status == "cancelled"
 
     def add(self, r: MetricResult) -> None:
         """Append a result."""
@@ -482,7 +565,8 @@ class ResultSet(BaseModel):
         pandas.DataFrame
             Concatenation of each result's :meth:`MetricResult.to_dataframe`
             (columns ``metric, target, cell, state, value, p_value, null_lo,
-            null_hi, significant, analysis, null, n_shuffles``); an empty frame
+            null_hi, significant, p_adj, significant_adj, analysis, null, n_shuffles,
+            correction``); an empty frame
             with those columns if nothing qualifies.
         """
         frames = [r.to_dataframe() for r in self.results if r.level == "cell" or r.values.ndim == 1]
@@ -501,6 +585,9 @@ class ResultSet(BaseModel):
                     "analysis",
                     "null",
                     "n_shuffles",
+                    "p_adj",
+                    "significant_adj",
+                    "correction",
                 ]
             )
         return pd.concat(frames, ignore_index=True)

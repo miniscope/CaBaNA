@@ -10,8 +10,8 @@ from pydantic import Field
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
-from ._ratemap import rate_maps_from_sums, split_half_columns
+from .._statesums import masked_counts, shifted_sums_multi
+from ._ratemap import rate_maps_from_sums, split_half_masks
 
 
 def _pearson_valid(a: np.ndarray, b: np.ndarray, both: np.ndarray) -> np.ndarray:
@@ -83,37 +83,41 @@ class SplitHalfStability(Metric):
         super().check_target(target)
         self.require_topology_for_smoothing(target)
 
-    def _maps(self, sums, occ_a, occ_b, states, fs):
-        n = occ_a.shape[0]
+    def _maps(self, sums_a, sums_b, occ_a, occ_b, states, fs):
         ra, va = rate_maps_from_sums(
-            sums[..., :n], occ_a, fs, self.min_occupancy_s, states.topology, self.smooth_sigma_bins
+            sums_a, occ_a, fs, self.min_occupancy_s, states.topology, self.smooth_sigma_bins
         )
         rb, vb = rate_maps_from_sums(
-            sums[..., n:], occ_b, fs, self.min_occupancy_s, states.topology, self.smooth_sigma_bins
+            sums_b, occ_b, fs, self.min_occupancy_s, states.topology, self.smooth_sigma_bins
         )
         return ra, rb, va & vb
 
     def _setup(self, states, mask):
         self.check_target(states)
-        m_a, m_b, _, _ = split_half_columns(states, np.asarray(mask, dtype=bool), self.n_blocks)
-        return m_a, m_b, m_a.sum(axis=0), m_b.sum(axis=0)
+        half_a, half_b = split_half_masks(np.asarray(mask, dtype=bool), self.n_blocks)
+        return half_a, half_b, masked_counts(states, half_a), masked_counts(states, half_b)
+
+    def _unshifted(self, activity, states, mask):
+        half_a, half_b, occ_a, occ_b = self._setup(states, mask)
+        s_a, s_b = shifted_sums_multi(
+            np.asarray(activity, dtype=np.float64), states, [half_a, half_b], np.zeros(1, np.int64)
+        )
+        return s_a[0], s_b[0], occ_a, occ_b
 
     def compute(self, activity, states, mask, fs):
-        m_a, m_b, occ_a, occ_b = self._setup(states, mask)
-        x = np.asarray(activity, dtype=np.float64)
-        sums = np.concatenate([x @ m_a, x @ m_b], axis=-1)
-        ra, rb, both = self._maps(sums, occ_a, occ_b, states, fs)
+        s_a, s_b, occ_a, occ_b = self._unshifted(activity, states, mask)
+        ra, rb, both = self._maps(s_a, s_b, occ_a, occ_b, states, fs)
         return _pearson_valid(ra, rb, both)
 
     def compute_shifted(self, activity, states, mask, fs, shifts):
-        m_a, m_b, occ_a, occ_b = self._setup(states, mask)
-        sums = shifted_sums(activity, np.hstack([m_a, m_b]), shifts)
-        ra, rb, both = self._maps(sums, occ_a, occ_b, states, fs)
+        half_a, half_b, occ_a, occ_b = self._setup(states, mask)
+        s_a, s_b = shifted_sums_multi(
+            np.asarray(activity, dtype=np.float64), states, [half_a, half_b], shifts
+        )
+        ra, rb, both = self._maps(s_a, s_b, occ_a, occ_b, states, fs)
         return _pearson_valid(ra, rb, both)
 
     def extras(self, activity, states, mask, fs):
-        m_a, m_b, occ_a, occ_b = self._setup(states, mask)
-        x = np.asarray(activity, dtype=np.float64)
-        sums = np.concatenate([x @ m_a, x @ m_b], axis=-1)
-        ra, rb, both = self._maps(sums, occ_a, occ_b, states, fs)
+        s_a, s_b, occ_a, occ_b = self._unshifted(activity, states, mask)
+        ra, rb, both = self._maps(s_a, s_b, occ_a, occ_b, states, fs)
         return {"rate_map_a": ra, "rate_map_b": rb, "valid_states": both}
