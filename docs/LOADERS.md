@@ -99,6 +99,8 @@ samples below `likelihood_min` become NaN in both channels; `px_per_mm` converts
 to mm. `dlc_centroid(signal, ["nose", "tail"])` returns the mean position as
 channels `x` and `y`, which is what `speed` and `bin_grid` look for by default.
 
+H5 files need `trusted_hdf=True`: `pandas.read_hdf` unpickles object columns, so a file from an untrusted source could execute code when read. Only pass it for files you produced yourself; the CSV export is always safe.
+
 **Keypoint-MoSeq** (`load_moseq(path, *, fs_video, t_offset_s=0.0, key=None,
 names=None)`). A CSV with `syllable` and `frame_index` (or `frame`) columns, or
 a `results.h5` with one `<recording>/syllable` dataset per recording; `key`

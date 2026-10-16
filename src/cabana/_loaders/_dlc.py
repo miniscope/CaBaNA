@@ -9,8 +9,15 @@ from .._models import ContinuousSignal
 from ._common import check_path, require, time_axis
 
 
-def _read(p) -> pd.DataFrame:
+def _read(p, trusted_hdf: bool) -> pd.DataFrame:
     if str(p).lower().endswith((".h5", ".hdf5", ".hdf")):
+        if not trusted_hdf:
+            raise ValueError(
+                "DeepLabCut H5 files are read with pandas.read_hdf, which unpickles object "
+                "columns and can execute code embedded in a malicious file. Pass "
+                "trusted_hdf=True only for files you produced yourself, or export the DLC "
+                "CSV instead."
+            )
         require("tables", "loaders", "DeepLabCut H5 files")
         return pd.read_hdf(p)
     first = pd.read_csv(p, header=None, nrows=3, usecols=[0])[0].astype(str).tolist()
@@ -29,8 +36,12 @@ def load_dlc(
     likelihood_min: float = 0.6,
     units: str = "px",
     px_per_mm: float | None = None,
+    trusted_hdf: bool = False,
 ) -> ContinuousSignal:
     """Load a DeepLabCut single-animal CSV (3-row header) or H5 as a ``ContinuousSignal``.
+
+    H5 files require ``trusted_hdf=True``: ``pandas.read_hdf`` unpickles object columns, so an
+    untrusted file could execute code.  CSV is always safe.
 
     Channels are ``f"{bodypart}_x"`` and ``f"{bodypart}_y"``.  Samples whose ``likelihood`` is
     below ``likelihood_min`` become NaN in both channels (all samples are kept if the file has no
@@ -62,7 +73,7 @@ def load_dlc(
         If the time base is missing or inconsistent.
     """
     p = check_path(path, "DeepLabCut file")
-    df = _read(p)
+    df = _read(p, trusted_hdf)
     if df.columns.nlevels != 3:
         raise ValueError(
             f"expected scorer/bodyparts/coords column levels, got {df.columns.nlevels}"

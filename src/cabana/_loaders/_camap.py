@@ -99,7 +99,7 @@ def load_camap(path) -> Session:
         npz = p / "deconv.npz"
         if not npz.exists():
             raise FileNotFoundError(f"{p} has neither a readable canonical.parquet nor deconv.npz")
-        z = np.load(npz)
+        z = np.load(npz, allow_pickle=False)
         S = []
         while f"S_{len(S)}" in z.files:
             S.append(z[f"S_{len(S)}"])

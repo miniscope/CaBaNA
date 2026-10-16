@@ -123,7 +123,9 @@ def test_dlc_h5(tmp_path):
     _dlc_csv(f)
     df = pd.read_csv(f, header=[0, 1, 2], index_col=0)
     df.to_hdf(tmp_path / "dlc.h5", key="df")
-    sig = loaders.load_dlc(tmp_path / "dlc.h5", t=np.arange(100) / 20.0)
+    with pytest.raises(ValueError, match="trusted_hdf"):
+        loaders.load_dlc(tmp_path / "dlc.h5", t=np.arange(100) / 20.0)
+    sig = loaders.load_dlc(tmp_path / "dlc.h5", t=np.arange(100) / 20.0, trusted_hdf=True)
     assert sig.values.shape == (100, 4)
 
 
