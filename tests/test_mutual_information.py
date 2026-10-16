@@ -3,7 +3,6 @@ import time
 import numpy as np
 import pytest
 
-from cabana import SimulationConfig, simulate_session
 from cabana._metrics._discretize import activity_levels, level_edges
 from cabana._metrics._mutual_information import (
     MutualInformation,
@@ -230,17 +229,9 @@ def test_extras_shapes():
     assert ex2["joint"].shape == (4, 6, 2)
 
 
-@pytest.fixture(scope="module")
-def spatial():
-    sess = simulate_session(SimulationConfig(duration_s=600, n_cells=60, seed=0))
-    pipe = Pipeline(
-        transforms=[
-            {"name": "resample_signal", "source": "position"},
-            {"name": "speed"},
-            {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 50.0, "output": "position"},
-        ]
-    )
-    return pipe.run(sess)[0]
+@pytest.fixture
+def spatial(sim_session):
+    return sim_session
 
 
 def test_planted_place_cells_detected(spatial):
@@ -291,6 +282,7 @@ def test_pipeline_and_yaml(spatial):
                     "bias_correction": "miller_madow",
                 },
                 states="position",
+                masks=["position_covered"],
                 shuffle=ShuffleConfig(n_shuffles=20, seed=0),
             )
         ]

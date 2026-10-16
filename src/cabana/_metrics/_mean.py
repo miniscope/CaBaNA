@@ -9,6 +9,7 @@ from pydantic import Field
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
 
 
@@ -25,16 +26,48 @@ class MeanPerState(Metric):
 
     Frames are autocorrelated, so a frame-wise t-test is anti-conservative;
     pair this metric with the ``circular_shift`` null instead.
+
+    Parameters
+    ----------
+    statistic : {"mean", "difference"}, default "mean"
+        Mean activity in the state, or in-state minus out-of-state mean.
+    min_frames : int, default 20
+        Minimum masked frames in the state (and, for ``"difference"``, out of
+        it); otherwise NaN.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells, n_states)`` in the units of the
+        activity.
+
+    Notes
+    -----
+    **Tail.**  Default ``"two"``: both higher and lower activity than chance are
+    meaningful (excitation and inhibition).  With ``statistic="mean"`` on
+    non-negative activity you may prefer ``tail="upper"`` explicitly.
+
+    **State space.**  Any (exclusive or overlapping, with or without topology).
+    Frames outside the mask are ignored, not treated as out of state.
+
+    Extras: ``n_in_state`` ``(n_states,)`` int, masked frames in each state.
     """
 
     name: ClassVar[str] = "mean_per_state"
     level: ClassVar[Literal["cell", "population"]] = "cell"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "two"
+    default_tail: ClassVar[Tail] = "two"
 
-    statistic: Literal["mean", "difference"] = "mean"
-    min_frames: int = Field(20, ge=1)
+    statistic: Literal["mean", "difference"] = Field(
+        "mean",
+        description="'mean' in-state activity or 'difference' (in-state minus out-of-state).",
+    )
+    min_frames: int = Field(
+        20, ge=1, description="Minimum masked frames in (and for 'difference', out of) a state."
+    )
 
-    def _finish(self, sum_in: np.ndarray, sum_mask: np.ndarray, n_in: np.ndarray, n_mask: int) -> np.ndarray:
+    def _finish(
+        self, sum_in: np.ndarray, sum_mask: np.ndarray, n_in: np.ndarray, n_mask: int
+    ) -> np.ndarray:
         """``sum_in`` (..., n_cells, n_states); ``sum_mask`` (..., n_cells, 1)."""
         n_out = n_mask - n_in
         with np.errstate(invalid="ignore", divide="ignore"):

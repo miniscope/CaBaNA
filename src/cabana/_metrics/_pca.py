@@ -33,6 +33,7 @@ from pydantic import Field
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 
 
 def _frames_matrix(
@@ -145,16 +146,46 @@ class PCAPopulation(Metric):
     PCA is unsupervised and fitted on all masked frames, so the labels only
     enter through the state means; see the module docstring for null choice
     (``label_shuffle`` or ``circular_shift``).
+
+    Parameters
+    ----------
+    n_components : int, default 10
+        Maximum number of principal components kept (fewer if the rank is lower).
+    zscore : bool, default True
+        Standardise each cell over the masked frames before PCA.
+    distance : {"euclidean", "mahalanobis"}, default "euclidean"
+        Metric between state-mean scores; ``"mahalanobis"`` uses the pooled
+        within-state covariance of the scores (a frame in several states counts
+        once per state).
+    min_frames : int, default 20
+        States with fewer masked frames are NaN (rows and columns).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states, n_states)``, symmetric, diagonal 0.
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: distinct state means are far apart, so large
+    distances are the finding.
+
+    **State space.**  Any; overlapping states are allowed and a frame counts
+    toward every state it belongs to.  Frames in no state still take part in the
+    PCA fit but in no state mean.
     """
 
     name: ClassVar[str] = "pca_population"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    n_components: int = Field(10, ge=1)
-    zscore: bool = True
-    distance: Literal["euclidean", "mahalanobis"] = "euclidean"
-    min_frames: int = Field(20, ge=1)
+    n_components: int = Field(10, ge=1, description="Maximum number of principal components kept.")
+    zscore: bool = Field(True, description="Z-score each cell over the masked frames before PCA.")
+    distance: Literal["euclidean", "mahalanobis"] = Field(
+        "euclidean",
+        description="Distance between state-mean scores (pooled within-state cov. for mahalanobis).",
+    )
+    min_frames: int = Field(20, ge=1, description="States with fewer masked frames are NaN.")
 
     def _fit(self, activity: np.ndarray, states: StateSpace, mask: np.ndarray):
         mask = np.asarray(mask, dtype=bool)
@@ -177,7 +208,12 @@ class PCAPopulation(Metric):
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> dict[str, np.ndarray]:
         _, _, loadings, var, means, n = self._fit(activity, states, mask)
-        return {"variance_explained": var, "loadings": loadings, "state_means": means, "n_frames": n}
+        return {
+            "variance_explained": var,
+            "loadings": loadings,
+            "state_means": means,
+            "n_frames": n,
+        }
 
 
 @register("metric")
@@ -189,15 +225,44 @@ class PopulationDistance(Metric):
     ``zscore``.  Values ``(n_states, n_states)``, diagonal 0, NaN for states
     with fewer than ``min_frames`` frames.  Null: ``label_shuffle`` or
     ``circular_shift`` (see :mod:`cabana._metrics._pca`).
+
+    Parameters
+    ----------
+    zscore : bool, default True
+        Standardise each cell over the masked frames first.
+    distance : {"euclidean", "correlation"}, default "euclidean"
+        ``"euclidean"``: norm of the difference of mean vectors.
+        ``"correlation"``: ``1 - r`` across cells (range 0 to 2); NaN when a mean
+        vector is constant.
+    min_frames : int, default 20
+        States with fewer masked frames are NaN (rows and columns).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states, n_states)``, symmetric, diagonal 0.
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: large distances between state means are the finding.
+
+    **State space.**  Any; overlapping states are allowed (a frame counts toward
+    every state it belongs to).
+
+    Extras: ``state_means`` ``(n_states, n_cells)`` mean population vector per
+    state (NaN rows for states below ``min_frames``; in z-scored units when
+    ``zscore``), ``n_frames`` ``(n_states,)`` masked frames per state.
     """
 
     name: ClassVar[str] = "population_distance"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    zscore: bool = True
-    distance: Literal["euclidean", "correlation"] = "euclidean"
-    min_frames: int = Field(20, ge=1)
+    zscore: bool = Field(True, description="Z-score each cell over the masked frames first.")
+    distance: Literal["euclidean", "correlation"] = Field(
+        "euclidean", description="Euclidean distance, or 1 - Pearson r across cells."
+    )
+    min_frames: int = Field(20, ge=1, description="States with fewer masked frames are NaN.")
 
     def _means(self, activity: np.ndarray, states: StateSpace, mask: np.ndarray):
         x, idx = _frames_matrix(activity, mask, self.zscore)

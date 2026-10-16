@@ -3,7 +3,6 @@ import time
 import numpy as np
 import pytest
 
-import cabana
 from cabana import build
 from cabana._metrics._decode import DecodeStates, contiguous_folds
 from cabana._models import StateSpace
@@ -13,8 +12,13 @@ from cabana._shuffle import ShuffleConfig, shuffle_test
 def states_from(lab, n_states, exclusive=True):
     oh = np.zeros((len(lab), n_states), bool)
     oh[np.arange(len(lab)), lab] = True
-    return StateSpace(name="s", onehot=oh, state_names=[f"s{i}" for i in range(n_states)],
-                      kind="categorical", exclusive=exclusive)
+    return StateSpace(
+        name="s",
+        onehot=oh,
+        state_names=[f"s{i}" for i in range(n_states)],
+        kind="categorical",
+        exclusive=exclusive,
+    )
 
 
 def blocky_labels(n, n_states, block=25):
@@ -76,16 +80,15 @@ def test_registry():
     assert isinstance(build("metric", {"name": "decode_states", "n_folds": 3}), DecodeStates)
 
 
-def test_end_to_end_label_shuffle():
-    s = cabana.simulate_session(duration_s=600, n_cells=60)
-    s = build("transform", {"name": "resample_signal", "source": "position"}).apply(s)
-    s = build("transform", {"name": "bouts_to_states", "source": "social"}).apply(s)
-    s = s.rebin(0.5)
+def test_end_to_end_label_shuffle(sim_session):
+    s = sim_session.rebin(0.5)
     st, mask = s.states["social"], s.masks["social_scored"]
     m = DecodeStates(min_frames_per_class=10)
     cfg = ShuffleConfig(n_shuffles=30, null={"name": "label_shuffle", "block_s": 5.0}, seed=0)
     t0 = time.time()
     res = shuffle_test(m, s.activity, st, mask, cfg, s.fs)
-    print(f"decode_states: 30 shuffles {time.time() - t0:.2f}s; obs={res.observed} hi={res.null_hi}")
+    print(
+        f"decode_states: 30 shuffles {time.time() - t0:.2f}s; obs={res.observed} hi={res.null_hi}"
+    )
     n_exceed = int(np.sum(res.observed > res.null_hi))
     assert n_exceed >= 2, (res.observed, res.null_hi)

@@ -21,8 +21,12 @@ NAMES = [f"s{i}" for i in range(30)]
 
 def res(maps, names=NAMES):
     return MetricResult(
-        metric="information_content", target="position", level="cell",
-        values=np.zeros(maps.shape[0]), extras={"rate_map": maps}, state_names=list(names),
+        metric="information_content",
+        target="position",
+        level="cell",
+        values=np.zeros(maps.shape[0]),
+        extras={"rate_map": maps},
+        state_names=list(names),
     )
 
 
@@ -45,7 +49,8 @@ def test_cellmatch_validation():
 def test_sessionset():
     s = simulate_session(duration_s=20, n_cells=5, seed=0)
     ss = SessionSet(
-        sessions={"a": s, "b": s}, animal={"a": "m1", "b": "m2"},
+        sessions={"a": s, "b": s},
+        animal={"a": "m1", "b": "m2"},
         matches=[CellMatch(session_a="a", session_b="b", pairs=[[0, 1], [1, 2]])],
     )
     assert ss.animals == ["m1", "m2"] and ss.sessions_of("m1") == ["a"]
@@ -55,11 +60,17 @@ def test_sessionset():
     with pytest.raises(ValueError, match="animal"):
         SessionSet(sessions={"a": s}, animal={})
     with pytest.raises(ValueError, match="unknown session"):
-        SessionSet(sessions={"a": s}, animal={"a": "m"},
-                   matches=[CellMatch(session_a="a", session_b="z", pairs=[[0, 0]])])
+        SessionSet(
+            sessions={"a": s},
+            animal={"a": "m"},
+            matches=[CellMatch(session_a="a", session_b="z", pairs=[[0, 0]])],
+        )
     with pytest.raises(ValueError, match="outside"):
-        SessionSet(sessions={"a": s}, animal={"a": "m"},
-                   matches=[CellMatch(session_a="a", session_b="a", pairs=[[0, 9]])])
+        SessionSet(
+            sessions={"a": s},
+            animal={"a": "m"},
+            matches=[CellMatch(session_a="a", session_b="a", pairs=[[0, 9]])],
+        )
 
 
 def test_identical_maps_vs_random(tmp_path):
@@ -104,12 +115,12 @@ def test_pearson_near_constant_is_nan():
 
 
 def test_pv_p_ignores_nan_null_draws():
-    from cabana._cross_session import _upper_p
+    from cabana._shuffle import _p_values
 
     null = np.array([[0.5], [np.nan], [0.1], [np.nan]])
-    p = _upper_p(np.array([0.4]), null)
+    p = _p_values(np.array([0.4]), null, "upper")
     assert p[0] == pytest.approx((1 + 1) / (1 + 2))
-    assert np.isnan(_upper_p(np.array([0.4]), np.full((3, 1), np.nan))[0])
+    assert np.isnan(_p_values(np.array([0.4]), np.full((3, 1), np.nan), "upper")[0])
 
 
 def test_null_reproducible_and_nan_handling():
@@ -136,7 +147,9 @@ def test_mismatched_inputs_raise():
     with pytest.raises(ValueError, match="state_names"):
         cross_session_map_correlation(res(A), res(A, names=NAMES[::-1]), match, n_shuffles=5)
     with pytest.raises(KeyError):
-        cross_session_map_correlation(res(A), res(A), match, maps=("nope", "rate_map"), n_shuffles=5)
+        cross_session_map_correlation(
+            res(A), res(A), match, maps=("nope", "rate_map"), n_shuffles=5
+        )
 
 
 def test_topology_mismatch_raises():
@@ -144,8 +157,14 @@ def test_topology_mismatch_raises():
 
     def space(width):
         topo = GridTopology(shape=(3,), edges=[np.linspace(0, width, 4)], axis_names=["x"])
-        return StateSpace(name="p", onehot=np.eye(3, dtype=bool)[np.arange(6) % 3],
-                          state_names=["0", "1", "2"], kind="grid", exclusive=True, topology=topo)
+        return StateSpace(
+            name="p",
+            onehot=np.eye(3, dtype=bool)[np.arange(6) % 3],
+            state_names=["0", "1", "2"],
+            kind="grid",
+            exclusive=True,
+            topology=topo,
+        )
 
     A = np.random.default_rng(0).random((4, 3))
     r = res(A, names=["0", "1", "2"])
@@ -160,8 +179,9 @@ def test_pv_correlation_hand_example():
     B = A.copy()
     B[:, 2] = B[::-1, 2]  # state 2 population vector scrambled
     match = CellMatch(session_a="a", session_b="b", pairs=np.c_[np.arange(5), np.arange(5)])
-    cs = cross_session_pv_correlation(res(A, ["a", "b", "c"]), res(B, ["a", "b", "c"]), match,
-                                      n_shuffles=100)
+    cs = cross_session_pv_correlation(
+        res(A, ["a", "b", "c"]), res(B, ["a", "b", "c"]), match, n_shuffles=100
+    )
     assert np.allclose(cs.observed[:2], 1.0)
     pv2 = np.corrcoef(A[:, 2], B[:, 2])[0, 1]
     assert cs.observed[2] == pytest.approx(pv2)
@@ -176,8 +196,13 @@ def _run(seed):
             {"name": "speed"},
             {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 50.0, "output": "position"},
         ],
-        analyses=[AnalysisSpec(metric={"name": "information_content"}, states="position",
-                               shuffle=ShuffleConfig(n_shuffles=20, seed=0))],
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "information_content"},
+                states="position",
+                shuffle=ShuffleConfig(n_shuffles=20, seed=0),
+            )
+        ],
     )
     _, rs = pipe.run(simulate_session(duration_s=300, n_cells=40, seed=seed))
     return rs.get("information_content", "position")

@@ -9,8 +9,11 @@ from cabana._registry import build
 def _states(onehot, exclusive=False):
     onehot = np.asarray(onehot, dtype=bool)
     return StateSpace(
-        name="s", onehot=onehot, state_names=[f"s{i}" for i in range(onehot.shape[1])],
-        kind="bouts", exclusive=exclusive,
+        name="s",
+        onehot=onehot,
+        state_names=[f"s{i}" for i in range(onehot.shape[1])],
+        kind="bouts",
+        exclusive=exclusive,
     )
 
 

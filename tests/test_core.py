@@ -86,7 +86,9 @@ def test_statespace_exclusive_check_and_labels(rng: np.random.Generator) -> None
     assert np.array_equal(st.onehot[np.arange(T), lab], np.ones(T, bool))
     oh = np.ones((T, 2), bool)
     with pytest.raises(ValidationError):
-        StateSpace(name="bad", onehot=oh, state_names=["a", "b"], kind="categorical", exclusive=True)
+        StateSpace(
+            name="bad", onehot=oh, state_names=["a", "b"], kind="categorical", exclusive=True
+        )
     non_ex = StateSpace(name="ok", onehot=oh, state_names=["a", "b"], kind="bouts", exclusive=False)
     with pytest.raises(ValueError):
         non_ex.labels()
@@ -129,7 +131,9 @@ def test_behavior_inputs_validate() -> None:
     assert sig.values.shape == (5, 2)
     with pytest.raises(ValidationError):
         ContinuousSignal(t=np.arange(5.0), values=np.zeros((5, 2)), channel_names=["x"])
-    bt = BoutTable(labels=["a", "b", "a"], start_s=np.array([0.0, 1, 2]), stop_s=np.array([1.0, 2, 3]))
+    bt = BoutTable(
+        labels=["a", "b", "a"], start_s=np.array([0.0, 1, 2]), stop_s=np.array([1.0, 2, 3])
+    )
     assert bt.behavior_names == ["a", "b"]
     with pytest.raises(ValidationError):
         BoutTable(labels=["a"], start_s=np.array([2.0]), stop_s=np.array([1.0]))
@@ -276,7 +280,12 @@ def test_shuffle_detects_planted_tuning() -> None:
 def test_metric_result_dataframe_shapes() -> None:
     vals = np.arange(6, dtype=float).reshape(2, 3)
     r = MetricResult(
-        metric="m", target="s", level="cell", values=vals, cell_ids=["a", "b"], state_names=list("xyz")
+        metric="m",
+        target="s",
+        level="cell",
+        values=vals,
+        cell_ids=["a", "b"],
+        state_names=list("xyz"),
     )
     df = r.to_dataframe()
     assert len(df) == 6 and list(df.columns[:5]) == ["metric", "target", "cell", "state", "value"]
@@ -306,7 +315,12 @@ def test_metric_result_dataframe_shapes() -> None:
     )
     rs.add(
         MetricResult(
-            metric="pv", target="s", level="population", values=sh.observed, shuffle=sh, state_names=["a", "b"]
+            metric="pv",
+            target="s",
+            level="population",
+            values=sh.observed,
+            shuffle=sh,
+            state_names=["a", "b"],
         )
     )
     df = rs.to_dataframe()

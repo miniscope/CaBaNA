@@ -52,7 +52,9 @@ def test_non_exclusive_works():
     from cabana._models import StateSpace
 
     st = StateSpace(name="b", onehot=oh, state_names=list("abc"), kind="bouts", exclusive=False)
-    r = SplitHalfStability(min_occupancy_s=0.1).compute(rng.random((2, 400)), st, np.ones(400, bool), 10.0)
+    r = SplitHalfStability(min_occupancy_s=0.1).compute(
+        rng.random((2, 400)), st, np.ones(400, bool), 10.0
+    )
     assert r.shape == (2,)
 
 
@@ -72,7 +74,9 @@ def test_shifted_matches_roll(sigma, n_blocks):
 def test_smoothing_requires_topology():
     st = make_states(np.arange(100) % 4, 4)
     with pytest.raises(ValueError):
-        SplitHalfStability(smooth_sigma_bins=1.0).compute(np.ones((1, 100)), st, np.ones(100, bool), 1.0)
+        SplitHalfStability(smooth_sigma_bins=1.0).compute(
+            np.ones((1, 100)), st, np.ones(100, bool), 1.0
+        )
 
 
 def test_planted_shuffle():
@@ -84,8 +88,12 @@ def test_planted_shuffle():
     act = np.stack([rng.poisson(rate0), rng.poisson(np.full(n_time, 0.5 / fs))]).astype(float)
     t0 = time.perf_counter()
     res = shuffle_test(
-        SplitHalfStability(), act, st, np.ones(n_time, bool),
-        ShuffleConfig(n_shuffles=200, min_shift_s=1.0), fs,
+        SplitHalfStability(),
+        act,
+        st,
+        np.ones(n_time, bool),
+        ShuffleConfig(n_shuffles=200, min_shift_s=1.0),
+        fs,
     )
     print(f"planted stability shuffle: {time.perf_counter() - t0:.2f}s")
     assert res.p_value[0] < 0.01

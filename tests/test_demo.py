@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from cabana import ResultSet
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,5 +40,9 @@ def test_demo_quick(tmp_path):
     assert "Cross-session map correlation" in proc.stdout
     assert "Overlap of place cells" in proc.stdout
     assert (tmp_path / "ground_truth.json").exists()
+    assert (tmp_path / "session.zip").exists()
+    reloaded = ResultSet.load(tmp_path / "results.zip")
+    assert len(reloaded) >= 12
+    assert "mutual_information_binary[position]" in reloaded.names()
     assert (tmp_path / "pipeline.yaml").exists() or (tmp_path / "pipeline.json").exists()
     assert len(list(tmp_path.glob("*.png"))) >= 21

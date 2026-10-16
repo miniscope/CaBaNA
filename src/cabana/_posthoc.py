@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.stats import fisher_exact
 
 from ._results import MetricResult, ResultSet
@@ -34,14 +34,6 @@ __all__ = [
 # --------------------------------------------------------------------------- #
 
 
-def _state_index(result: MetricResult, state: str | int) -> int:
-    if isinstance(state, str):
-        if result.state_names is None or state not in result.state_names:
-            raise KeyError(f"state {state!r} not in state_names of {result.metric!r}")
-        return result.state_names.index(state)
-    return int(state)
-
-
 def significant_cells(
     result: MetricResult,
     state: str | int | None = None,
@@ -52,16 +44,24 @@ def significant_cells(
 
     Parameters
     ----------
-    state
+    result : MetricResult
+        Cell-level result that has a ``shuffle`` (otherwise ``ValueError``).
+    state : str or int, optional
         For 2-D results, the state (name or column index) to use; ``None``
         means significant in *any* state.  Ignored for 1-D results.
-    sign
+    sign : {"any", "positive", "negative"}, default "any"
         ``"positive"``: observed above the null median (``np.nanmedian`` over
         finite draws; above 0.5 for
         ``auroc``); ``"negative"``: below it; ``"any"``: no sign filter.
-    alpha
+    alpha : float, optional
         ``None`` uses the stored ``shuffle.significant``; otherwise
         significance is recomputed as ``p_value < alpha``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean array of shape ``(n_cells,)``; NaN p-values count as not
+        significant.
     """
     if result.level != "cell":
         raise ValueError("significant_cells needs a cell-level result")
@@ -71,14 +71,21 @@ def significant_cells(
     vals = np.asarray(result.values, float)
     sig = np.asarray(sh.significant, bool) if alpha is None else np.asarray(sh.p_value) < alpha
     if sign != "any":
-        ref = 0.5 if result.metric == "auroc" else np.nanmedian(np.asarray(sh.null, float), axis=0)
+        if result.metric == "auroc":
+            ref: Any = 0.5
+        elif sh.null_median is not None:
+            ref = np.asarray(sh.null_median, float)
+        elif sh.null is not None:
+            ref = np.nanmedian(np.asarray(sh.null, float), axis=0)
+        else:
+            raise ValueError("sign filter needs the null median, which this result does not store")
         direction = vals > ref if sign == "positive" else vals < ref
         sig = sig & direction
     if vals.ndim == 1:
         return np.asarray(sig, bool)
     if state is None:
         return sig.any(axis=1)
-    return np.asarray(sig[:, _state_index(result, state)], bool)
+    return np.asarray(sig[:, result.state_index(state)], bool)
 
 
 # --------------------------------------------------------------------------- #
@@ -92,28 +99,69 @@ class OverlapResult(BaseModel):
     ``p_value`` is the two-sided Fisher exact test on the 2x2 table, which is
     the hypergeometric test of ``n_both`` given ``N``, ``n_a``, ``n_b``.
     ``jaccard_chance = expected / (n_a + n_b - expected)``.
+
+    Attributes
+    ----------
+    n_a, n_b : int
+        Sizes of the two sets (within the universe).
+    n_both : int
+        Cells in both sets.
+    N : int
+        Universe size (all cells, or the cells where ``universe`` is True).
+    expected : float
+        ``n_a * n_b / N``, the overlap expected under independence.
+    odds_ratio : float
+        Fisher's conditional odds ratio of the 2x2 table; ``> 1`` means more
+        overlap than chance, ``0`` or ``inf`` when a cell of the table is empty.
+    p_value : float
+        Two-sided Fisher exact p-value.
+    jaccard : float
+        ``n_both / (n_a + n_b - n_both)`` (NaN if both sets are empty).
+    jaccard_chance : float
+        Jaccard index expected under independence.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    n_a: int
-    n_b: int
-    n_both: int
-    N: int
-    expected: float
-    odds_ratio: float
-    p_value: float
-    jaccard: float
-    jaccard_chance: float
+    n_a: int = Field(..., description="Size of set a.")
+    n_b: int = Field(..., description="Size of set b.")
+    n_both: int = Field(..., description="Cells in both sets.")
+    N: int = Field(..., description="Universe size.")
+    expected: float = Field(..., description="Expected overlap under independence, n_a*n_b/N.")
+    odds_ratio: float = Field(..., description="Fisher odds ratio; > 1 means overlap above chance.")
+    p_value: float = Field(..., description="Two-sided Fisher exact p-value.")
+    jaccard: float = Field(..., description="Observed Jaccard index of the two sets.")
+    jaccard_chance: float = Field(..., description="Jaccard index expected under independence.")
 
     def to_dict(self) -> dict[str, Any]:
+        """All fields as a plain dict."""
         return self.model_dump()
 
 
 def overlap_vs_chance(
     a: np.ndarray, b: np.ndarray, *, universe: np.ndarray | None = None
 ) -> OverlapResult:
-    """Test whether two boolean cell sets overlap more (or less) than chance."""
+    """Test whether two boolean cell sets overlap more (or less) than chance.
+
+    Parameters
+    ----------
+    a, b : (n_cells,) bool
+        Membership of each cell in the two sets (e.g. from :func:`significant_cells`).
+    universe : (n_cells,) bool, optional
+        Cells eligible for either set (e.g. cells that could be tested); the test
+        is restricted to them.  ``None`` uses all cells.
+
+    Returns
+    -------
+    OverlapResult
+        Counts, expected overlap, odds ratio, two-sided Fisher p-value and
+        Jaccard indices.
+
+    Raises
+    ------
+    ValueError
+        If ``a``, ``b`` and ``universe`` are not 1-D boolean arrays of one length.
+    """
     a = np.asarray(a, bool)
     b = np.asarray(b, bool)
     if a.shape != b.shape or a.ndim != 1:
@@ -155,6 +203,20 @@ def overlap_matrix(
     ``(MetricResult, state)`` pairs, in which case sets come from
     :func:`significant_cells` and are named ``"<metric>:<target>[:<state>]"``.
     Each unordered pair appears once with ``set_a`` before ``set_b``.
+
+    Parameters
+    ----------
+    results : dict[str, ndarray] or sequence of (MetricResult, state)
+        Named boolean cell sets, or results with the state (name, index or
+        ``None`` for any) used to build each set.
+    universe : (n_cells,) bool, optional
+        Cells eligible for any set; passed to :func:`overlap_vs_chance`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``set_a, set_b, n_a, n_b, n_both, expected, odds_ratio, p_value``,
+        one row per unordered pair (empty with fewer than two sets).
     """
     if isinstance(results, dict):
         sets = {k: np.asarray(v, bool) for k, v in results.items()}
@@ -184,7 +246,8 @@ def overlap_matrix(
                 }
             )
     return pd.DataFrame(
-        rows, columns=["set_a", "set_b", "n_a", "n_b", "n_both", "expected", "odds_ratio", "p_value"]
+        rows,
+        columns=["set_a", "set_b", "n_a", "n_b", "n_both", "expected", "odds_ratio", "p_value"],
     )
 
 
@@ -204,13 +267,15 @@ def response_features(
 
     Parameters
     ----------
-    which
+    resultset_or_results : ResultSet or sequence of MetricResult
+        Source of the results; population-level results are ignored.
+    which : list of (str, str), optional
         ``(metric, target)`` pairs to include, in order; ``None`` uses every
-        cell-level result.
-    use
+        cell-level result.  Each pair must match exactly one result.
+    use : {"values", "peth"}, default "values"
         ``"values"`` takes ``result.values`` (one column per state for 2-D);
         ``"peth"`` takes ``result.extras["peth"]`` flattened per cell.
-    standardize
+    standardize : bool, default True
         z-score each column (over kept cells; zero-variance columns become 0).
 
     Returns
@@ -237,7 +302,9 @@ def response_features(
         for metric, target in which:
             hits = [r for r in results if r.metric == metric and r.target == target]
             if len(hits) != 1:
-                raise KeyError(f"expected one cell-level result for ({metric!r}, {target!r}), got {len(hits)}")
+                raise KeyError(
+                    f"expected one cell-level result for ({metric!r}, {target!r}), got {len(hits)}"
+                )
             picked.append(hits[0])
         results = picked
     if not results:
@@ -299,22 +366,43 @@ class ClusterResult(BaseModel):
     better; bic: lower is better).  ``sizes`` is the number of cells per
     cluster; a (possible, for gmm) empty cluster has size 0 and a NaN row in
     ``cluster_means``.
+
+    Attributes
+    ----------
+    labels : (n_cells,) int
+        Cluster index (0 to ``k - 1``) of each cell.
+    k : int
+        Number of clusters chosen.
+    scores : dict[int, float]
+        Selection score for every k tried (silhouette, or GMM BIC).
+    cluster_means : (k, n_features) float
+        Mean feature vector per cluster (NaN row for an empty cluster).
+    sizes : (k,) int | None
+        Cells per cluster.
+    method : {"kmeans", "gmm", "hierarchical"}, default "kmeans"
+        Clustering algorithm used.
+    selection : {"silhouette", "bic"}, default "silhouette"
+        Criterion used to choose k.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    labels: np.ndarray
-    k: int
-    scores: dict[int, float]
-    cluster_means: np.ndarray
-    sizes: np.ndarray | None = None
-    method: str = "kmeans"
-    selection: str = "silhouette"
+    labels: np.ndarray = Field(..., description="Cluster index of each cell, (n_cells,).")
+    k: int = Field(..., description="Number of clusters.")
+    scores: dict[int, float] = Field(..., description="Selection score per k tried.")
+    cluster_means: np.ndarray = Field(
+        ..., description="Mean feature vector per cluster, (k, n_features)."
+    )
+    sizes: np.ndarray | None = Field(None, description="Cells per cluster, (k,).")
+    method: str = Field("kmeans", description="Clustering algorithm: kmeans, gmm or hierarchical.")
+    selection: str = Field("silhouette", description="Criterion for choosing k: silhouette or bic.")
 
     def to_dataframe(self) -> pd.DataFrame:
         """One row per cluster: ``cluster, n_cells`` plus mean per feature (``f0..``)."""
         k = self.cluster_means.shape[0]
-        df = pd.DataFrame(self.cluster_means, columns=[f"f{j}" for j in range(self.cluster_means.shape[1])])
+        df = pd.DataFrame(
+            self.cluster_means, columns=[f"f{j}" for j in range(self.cluster_means.shape[1])]
+        )
         df.insert(0, "n_cells", [int((self.labels == c).sum()) for c in range(k)])
         df.insert(0, "cluster", np.arange(k))
         return df
@@ -346,6 +434,32 @@ def response_clusters(
     With ``k=None`` every k in ``k_range`` (inclusive) is tried and chosen by
     ``selection`` (silhouette maximised, or GMM BIC minimised).  With a fixed
     ``k`` the silhouette (or BIC) of that k alone is reported.
+
+    Parameters
+    ----------
+    features : (n_cells, n_features) float
+        Feature matrix without NaN, e.g. from :func:`response_features`.
+    k : int, optional
+        Fixed number of clusters; ``None`` selects k within ``k_range``.
+    k_range : (int, int), default (2, 8)
+        Inclusive range of k tried when ``k`` is ``None`` (upper end capped at
+        ``n_cells - 1``).
+    method : {"kmeans", "gmm", "hierarchical"}, default "kmeans"
+        K-means, Gaussian mixture, or Ward agglomerative clustering.
+    selection : {"silhouette", "bic"}, default "silhouette"
+        Higher silhouette, or lower BIC (``method="gmm"`` only), wins.
+    seed : int, default 0
+        Random state of the clustering.
+
+    Returns
+    -------
+    ClusterResult
+
+    Raises
+    ------
+    ValueError
+        If ``features`` is not 2-D or contains NaN, ``selection="bic"`` is used
+        without ``method="gmm"``, or no k can be tried.
     """
     from sklearn.metrics import silhouette_score
     from sklearn.mixture import GaussianMixture
@@ -367,9 +481,13 @@ def response_clusters(
         lab = _fit(X, kk, method, seed)
         fits[kk] = lab
         if selection == "bic":
-            scores[kk] = float(GaussianMixture(n_components=kk, random_state=seed, n_init=3).fit(X).bic(X))
+            scores[kk] = float(
+                GaussianMixture(n_components=kk, random_state=seed, n_init=3).fit(X).bic(X)
+            )
         else:
-            scores[kk] = float(silhouette_score(X, lab)) if len(np.unique(lab)) > 1 else float("nan")
+            scores[kk] = (
+                float(silhouette_score(X, lab)) if len(np.unique(lab)) > 1 else float("nan")
+            )
     if k is not None:
         best = k
     elif selection == "bic":
@@ -379,8 +497,17 @@ def response_clusters(
     labels = fits[best]
     sizes = np.array([(labels == c).sum() for c in range(best)], dtype=int)
     means = np.stack(
-        [X[labels == c].mean(axis=0) if sizes[c] else np.full(X.shape[1], np.nan) for c in range(best)]
+        [
+            X[labels == c].mean(axis=0) if sizes[c] else np.full(X.shape[1], np.nan)
+            for c in range(best)
+        ]
     )
     return ClusterResult(
-        labels=labels, k=int(best), scores=scores, cluster_means=means, sizes=sizes, method=method, selection=selection
+        labels=labels,
+        k=int(best),
+        scores=scores,
+        cluster_means=means,
+        sizes=sizes,
+        method=method,
+        selection=selection,
     )

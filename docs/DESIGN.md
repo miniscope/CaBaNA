@@ -44,20 +44,32 @@ plugin points. The middle is shared.
    range) or modify activity (temporal smoothing, z-score, binarize).
 4. **Analyze.** `Metric` plugins compute a statistic from `(activity, states,
    mask, fs)`. Optionally wrapped in `shuffle_test` for a null distribution.
-   Each analysis chooses which masks apply: a speed threshold belongs on
-   spatial metrics but not on social bouts (huddling is stationary), and a
-   "still" syllable must not be filtered out by the speed mask.
+   Each analysis runs on its target's `support` (below) AND the masks it lists:
+   a speed threshold belongs on spatial metrics but not on social bouts
+   (huddling is stationary), and a "still" syllable must not be filtered out
+   by the speed mask.
 5. **Results.** `MetricResult` / `ResultSet` with `to_dataframe()` for a tidy
-   cell × state × metric table.
-6. **Plots.** Functions in `_plots.py` that look at `StateSpace.kind` and
-   `topology` to decide how to draw.
+   cell × state × metric table. Every analysis has a name and carries a
+   provenance dict; `ResultSet.save` / `load` persist them (`_io.py`, see
+   "Names, support, provenance and persistence").
+6. **Plots.** Functions that look at `StateSpace.kind` and `topology` to
+   decide how to draw. They live in `_plots.py`, `_plots_events.py`,
+   `_plots_posthoc.py`, `_plots_cohort.py` and `_plots_information.py` behind
+   the `cabana.plots` facade (19 functions: `plot_behavior_overview`,
+   `plot_clusters`, `plot_cohort_fractions`, `plot_cross_session`,
+   `plot_decoded_trajectory`, `plot_event_raster`, `plot_ground_truth_recovery`,
+   `plot_hierarchical_bootstrap`, `plot_information_comparison`,
+   `plot_joint_histogram`, `plot_level_sweep`, `plot_metric_scatter`,
+   `plot_overlap`, `plot_overlap_matrix`, `plot_peth`, `plot_population_matrix`,
+   `plot_rate_maps`, `plot_shuffle_distribution`, `plot_tuning_heatmap`).
 
 ## Core objects (`src/cabana/_models.py`)
 
 Read the module; docstrings are the spec. Key points:
 
 - `Session` is immutable by convention. Stages return
-  `session.model_copy(update=...)`; use `with_state`, `with_signal`,
+  `session.replace(...)` (a copy that re-runs validation, unlike
+  `model_copy`); use `with_state`, `with_signal`,
   `with_mask`, `with_activity` helpers.
 - `StateSpace.exclusive` is True for bins/syllables (one state per frame) and
   False for bouts (overlap allowed). `labels()` only works when exclusive.
@@ -68,6 +80,10 @@ Read the module; docstrings are the spec. Key points:
   every metric multiplies activity against.
 - Frames with no active state (unoccupied, unscored) have an all-False row and
   contribute nothing. Unscored ≠ "rest".
+- `StateSpace.support` is an optional `(n_time,)` bool saying where the space
+  is *defined* (see "Names, support, provenance and persistence"). Inside the
+  support an all-False row means "defined, in none of the states"; outside it
+  means "unknown".
 
 ## Plugin contract (`src/cabana/_registry.py`)
 
@@ -87,6 +103,12 @@ class InformationContent(Metric):
 
 `build("metric", {"name": "information_content", "min_occupancy_s": 0.1})`
 reconstructs any plugin from a dict, so pipelines serialise to YAML/JSON.
+
+A metric that restricts which targets it accepts overrides
+`check_target(target)` (and calls `super().check_target`, then helpers such as
+`require_exclusive` or `require_topology_for_smoothing`). The pipeline and
+`shuffle_test` both call it. The earlier `Metric.check_states` hook was removed
+in favour of this one.
 
 Each metric has a class-level `default_tail` ("upper", "lower" or "two"). The
 shuffle engine calls `Metric.resolve_tail(target)` when `ShuffleConfig.tail` is
@@ -118,6 +140,9 @@ Metric output shapes: `(n_cells,)` or `(n_cells, n_states)` for
   rolling is tested.
 
 ## Module specs for the first demo
+
+*This section is the initial spec, kept for history; the docstrings in
+`src/cabana/` are current.*
 
 Everything below is on the neural clock unless stated. All functions take and
 return the core objects above. NumPy-style docstrings, `from __future__ import
@@ -165,11 +190,11 @@ Registered `Transform`s (each has an `output: str` naming what it writes):
 
 | name | params | writes |
 | --- | --- | --- |
-| `resample_signal` | `source` (behavior key of a `ContinuousSignal`), `channels: list[str] \| None` | `signals[channel]` by `np.interp` onto `session.t`, NaN outside the source range; `masks[f"{source}_covered"]` |
+| `resample_signal` | `source` (behavior key of a `ContinuousSignal`), `channels: list[str] \| None` | `signals[channel]` by `np.interp` onto `session.t`, NaN outside the source range; `masks[f"{source}_covered"]`. Error messages elsewhere that miss a signal tell you to run this first |
 | `speed` | `signals=["x","y"]`, `window_s=0.25`, `output="speed"` | `signals["speed"]` in units/s via centered difference over the window |
-| `bin_grid` | `signals=["x","y"]`, `bin_size: float \| None`, `n_bins: int \| list[int] \| None`, `extent: list[tuple[float,float]] \| None` (default from data range), `output="position"` | `StateSpace(kind="grid", exclusive=True, topology=GridTopology)`; NaN frames get no state; `state_names` like `"x03_y07"` |
-| `bouts_to_states` | `source`, `behaviors: list[str] \| None`, `exclusive=False`, `add_rest=False`, `rest_name="rest"`, `output="social"` | `StateSpace(kind="bouts")`; frame active when `start_s <= t < stop_s`; if `exclusive`, overlaps resolve by order in `behaviors`; `rest` = scored & no behavior; `masks[f"{output}_scored"]` from the scored span |
-| `labels_to_states` | `source`, `output="syllables"` | step (previous-sample) resample of `LabelSeries` onto `session.t`; `StateSpace(kind="categorical", exclusive=True)`; `-1` → no state; `masks[f"{output}_covered"]` |
+| `bin_grid` | `signals=["x","y"]`, `bin_size: float \| None`, `n_bins: int \| list[int] \| None`, `extent: list[tuple[float,float]] \| None` (default from data range), `output="position"` | `StateSpace(kind="grid", exclusive=True, topology=GridTopology)`; NaN frames and frames outside `extent` get no state; `support` = tracked and in-extent, also written as `masks[f"{output}_valid"]`; `state_names` like `"x03_y07"` |
+| `bouts_to_states` | `source`, `behaviors: list[str] \| None`, `exclusive=False`, `add_rest=False`, `rest_name="rest"`, `output="social"` | `StateSpace(kind="bouts")`; frame active when `start_s <= t < stop_s`; if `exclusive`, overlaps resolve by order in `behaviors`; `rest` = scored & no behavior; `support` = the scored span, also written as `masks[f"{output}_scored"]` |
+| `labels_to_states` | `source`, `output="syllables"` | step (previous-sample) resample of `LabelSeries` onto `session.t`; `StateSpace(kind="categorical", exclusive=True)`; `-1` → no state; `support` = the covered span, also `masks[f"{output}_covered"]` |
 
 ### `_preprocess.py` — masks and signal conditioning
 
@@ -178,7 +203,7 @@ Registered `Transform`s (each has an `output: str` naming what it writes):
 | `speed_threshold` | `signal="speed"`, `min_speed`, `max_speed=None`, `output="speed"` | `masks[output] = (speed >= min) & (speed <= max)`; NaN → False |
 | `time_range` | `start_s`, `stop_s`, `output="time_range"` | mask on `session.t` |
 | `smooth_activity` | `sigma_s` | Gaussian along time, per cell |
-| `zscore_activity` | — | per-cell z-score within `valid_mask()`; keeps `activity_kind` |
+| `zscore_activity` | — | per-cell z-score within `valid_mask()`; sets `activity_kind="zscored"` |
 | `binarize_activity` | `threshold=0.0` | `activity > threshold` as float |
 
 ### `_pipeline.py` — declarative chaining
@@ -188,7 +213,8 @@ class AnalysisSpec(BaseModel):
     metric: dict | Metric          # built via build("metric", ...)
     states: str                    # StateSpace name
     shuffle: ShuffleConfig | None  # None = observed only
-    masks: list[str] | None        # which session.masks to AND; None = all, [] = none
+    name: str | None               # analysis name in the ResultSet; None derives metric[target]
+    masks: list[str] | None        # extra session.masks to AND with target.support; None = [] = support only
 
 class Pipeline(BaseModel):
     transforms: list[dict | Transform] = []
@@ -200,7 +226,9 @@ class Pipeline(BaseModel):
 ```
 
 `run` applies transforms then preprocess, then for each analysis takes
-`mask = session.valid_mask(spec.masks)`, runs `shuffle_test` or `metric.compute`, calls
+`mask = target.support & session.valid_mask(spec.masks)` (support is skipped for
+signal targets, and `masks=None` or `[]` both mean support only), runs
+`shuffle_test` or `metric.compute`, calls
 `metric.extras`, and appends a `MetricResult` carrying `cell_ids`,
 `state_names`, `params=metric.to_dict()`.
 
@@ -262,7 +290,10 @@ with a flat public API in `cabana/__init__.py`, pydantic v2 configs with
 line length 100, flat `tests/`. `fs` is always Hz; arrays are
 `(n_cells, n_time)`.
 
-## Non-goals for the first demo
+## Non-goals for the first demo (historical)
+
+*Everything below except place-field detection (field size and centroid) has
+since been built; see the later increments.*
 
 Loaders for real formats (Minian, CaImAn, DLC, BORIS, `.camap`), temporal
 re-binning that changes `n_time`, PETHs, decoders, place-field detection,
@@ -289,8 +320,11 @@ modules. Contract changes:
   together (activity summed or averaged by kind, masks and states by
   occupancy fraction). `rebin_time` is the preprocess step. Population
   analyses run on re-binned sessions.
-- **Activity kinds.** `Metric.accepts_kinds` lets a metric refuse a trace
-  type it is not defined for (Skaggs information on z-scored dF/F).
+- **Activity kinds** (`deconvolved`, `dff`, `spike_counts`, `raw`, `zscored`; `zscore_activity` sets the last). `Metric.accepts_kinds` is meant to let a metric refuse a
+  trace type it is not defined for, but it is currently unused: every metric
+  leaves it `None`. The one real guard is in `information_content`, which
+  rejects negative-valued activity (z-scored or dF/F traces) with an error
+  instead of checking the declared kind.
 
 New metrics: `mean_per_state`, `peth` (with a paired pre/post Wilcoxon in
 extras), `signal_correlation` (with lagged cross-correlation),
@@ -377,7 +411,9 @@ binary rules computed per cell on masked, unshifted frames and then reused for
 every surrogate, so the shuffle changes only the alignment of activity and
 state, never the binning. Joint counts cost one indicator matmul per level
 through `shifted_sums`, so `compute_shifted` accumulates one level at a time
-(about 1.1 s per 100 shifts on the default simulated session).
+(measured at about 9.5 s per 100 shifts with `compute_shifted` on the default
+simulated session, 400-state grid of 20 mm bins, default `n_levels`, one run on
+a laptop; treat it as an order of magnitude).
 
 **`mutual_information`.** Plug-in I(level; state) in bits per cell. Extras:
 `joint`, `conditional`, `edges`, `occupancy_s`, `valid`. The optional
@@ -408,11 +444,19 @@ and accuracy is 0.06 against 0.42 for pooled sigma and 0.50 for Poisson. Spatial
 bins have similar occupancy, which is why the per-state form works in the paper.
 The empirical likelihood shows the data-sufficiency problem made concrete: with
 the same smoothing and a pseudocount of 0.1 it reaches 100 mm with two levels
-(silent / active) but only 118 mm with five, because the few positive frames
+(silent / active) but only about 120 mm with five, because the few positive frames
 per bin are split across four levels; with a pseudocount of 1 the five-level
-version sits at chance (255 mm), since the pseudocount swamps the smoothed
+version sits at chance (about 260 mm), since the pseudocount swamps the smoothed
 counts. Both trail Poisson, which scores a 0.25 s window of activity rather
 than one frame's level.
+
+**Window length on an open field.** Naive Bayes over 400 bins with about 47
+moving frames per bin occasionally decodes sparsely visited corner bins: with a
+0.25 s window about 10% of frames land more than 250 mm from the true position.
+A 1 s window gives a median error of 28 mm and about 4% of frames that far off,
+and the Poisson likelihood shows the same pattern. The demo therefore uses a
+1 s window on the open field; Shuman's 0.25 s suited a 1-D track, where each
+bin is visited far more often.
 
 **Costs, and when amplitude pays.** Joint bins multiply (n_states by
 n_levels), so finite-sample bias and variance both rise and many cells will have
@@ -423,3 +467,52 @@ against `n_levels` in {2, 3, 5, 8} and session length in {300, 600, 1200} s on
 the simulator's planted place cells), and, on real data, whether I(levels)
 exceeds I(binary) by more than the null spread for the cells of interest. If it
 does not, binary activity and the Skaggs form are the better-powered choice.
+
+## Fourth increment: names, support, provenance and persistence
+
+**Analysis names.** `AnalysisSpec.name` identifies an analysis in the
+`ResultSet`. When it is `None` the pipeline derives `metric[target]`
+(`auroc[social]`); if that collides with another analysis in the pipeline it
+appends `#<null>` (`auroc[social]#bout_shuffle`) and, if still ambiguous, `#2`,
+`#3`. `MetricResult.name` stores it. `ResultSet.names()`, `results["auroc[social]"]`
+and `ResultSet.get(metric=None, target=None, *, name=None, null=None)` look
+results up; an ambiguous `get` raises `KeyError` listing the names.
+`to_dataframe()` has `analysis`, `null` and `n_shuffles` columns, and the cohort
+functions (`fraction_significant_by_animal`, `per_animal_summary`,
+`compare_states_across_animals`) take `analysis=`, so two nulls on the same
+metric and target never mix.
+
+**Support versus masks.** A `StateSpace` has an optional `support`: the frames
+where the space is defined. `bin_grid` sets it to tracked, in-extent frames,
+`bouts_to_states` to the scored span, `labels_to_states` to the labelled span.
+`Pipeline.run` evaluates each analysis on `target.support AND listed masks`.
+Support is a property of the target, so it cannot be forgotten and the same
+space gets the same frames in every analysis; masks are the extra criteria of
+one analysis (speed). An earlier version ANDed every mask when `masks=None`;
+that, and its warning, are gone. `masks=None` and `[]` both mean "support only".
+Targets that are signals have no support. `Session.rebin` carries support along
+(a bin counts when at least `min_fraction` of its frames are in it).
+
+**Provenance.** `MetricResult.provenance` records `cabana_version`, `seed`,
+`null`, `n_shuffles`, `alpha`, `tail`, `masks` (as listed), `support_used`,
+`n_frames_used`, `fs`, `activity_kind`, `n_cells`, `target_kind`,
+`target_params` and `timestamp`. Transform parameters are appended to
+`session.meta["transforms"]`, so a saved session says how its states were built.
+
+**Persistence (`_io.py`).** `ResultSet.save(path)` / `ResultSet.load(path)` and
+`Session.save` / `Session.load` write a directory or a `.zip` holding
+`manifest.json` (parameters, names, provenance, string fields) plus `.npz` files
+(arrays). Nulls are stored as float32; `ShuffleConfig.keep_null="none"` skips
+storing and holding the full null matrix (`ShuffleResult.null` is then `None`,
+while `null_lo`, `null_hi`, `null_median` and `null_mean` remain), which matters
+for decoders and 400-state grids over thousands of shuffles. `Pipeline.to_yaml(path)`
+writes when given a path and `from_yaml` takes text, a `Path` or a path string.
+Pickling is not the supported format. Custom plugins must be registered in the
+process that loads a pipeline or results that use them.
+
+**Checks added.** `Session` warns when `fs` disagrees with the spacing of `t` by
+more than 5% and when `deconvolved` or `spike_counts` activity has negative
+values. `bayesian_decoder` gained `sigma="per_state"|"pooled"` (see above);
+`BayesianDecoder.seed` and `BoutShuffle.max_tries` were removed (the seed lives
+in `ShuffleConfig`). Plot functions that take
+a session and a result accept either order.

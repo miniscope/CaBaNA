@@ -7,14 +7,36 @@ from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from scipy import stats
 
 from ._results import ResultSet
 
 
 def cohort_table(results_by_session: dict[str, ResultSet], animal: dict[str, str]) -> pd.DataFrame:
-    """Long table of every session's ``ResultSet.to_dataframe()`` plus ``session`` and ``animal``."""
+    """Long table of every session's ``ResultSet.to_dataframe()`` plus ``session`` and ``animal``.
+
+    Parameters
+    ----------
+    results_by_session : dict[str, ResultSet]
+        Results of one pipeline run per session id.
+    animal : dict[str, str]
+        Animal id of each session id; every session in ``results_by_session``
+        needs an entry.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The concatenated ``ResultSet.to_dataframe()`` columns followed by
+        ``session`` and ``animal``.
+
+    Raises
+    ------
+    KeyError
+        If a session has no animal.
+    ValueError
+        If ``results_by_session`` is empty.
+    """
     frames = []
     for sid, rs in results_by_session.items():
         if sid not in animal:
@@ -28,10 +50,38 @@ def cohort_table(results_by_session: dict[str, ResultSet], animal: dict[str, str
     return pd.concat(frames, ignore_index=True)
 
 
-def _select(table: pd.DataFrame, metric: str, target: str) -> pd.DataFrame:
+def _select(
+    table: pd.DataFrame,
+    metric: str | None = None,
+    target: str | None = None,
+    analysis: str | None = None,
+) -> pd.DataFrame:
+    """Rows of one analysis: by ``analysis`` name, or by ``metric`` and ``target``.
+
+    Raises ``ValueError`` (rather than silently pooling) when ``metric``/``target``
+    matches more than one analysis name, e.g. the same metric run under two nulls.
+    """
+    if analysis is not None:
+        if "analysis" not in table.columns:
+            raise KeyError("table has no 'analysis' column; select with metric= and target=")
+        sub = table[table["analysis"] == analysis]
+        if sub.empty:
+            raise KeyError(
+                f"no rows for analysis={analysis!r}; available: {sorted(table['analysis'].unique())}"
+            )
+        return sub
+    if metric is None or target is None:
+        raise ValueError("pass analysis=..., or both metric= and target=")
     sub = table[(table["metric"] == metric) & (table["target"] == target)]
     if sub.empty:
         raise KeyError(f"no rows for metric={metric!r}, target={target!r}")
+    if "analysis" in sub.columns:
+        names = sorted(sub["analysis"].dropna().unique())
+        if len(names) > 1:
+            raise ValueError(
+                f"metric={metric!r}, target={target!r} matches {len(names)} analyses {names}; "
+                "pass analysis=..."
+            )
     return sub
 
 
@@ -43,20 +93,54 @@ def _units(df: pd.DataFrame) -> pd.Series:
 
 
 def fraction_significant_by_animal(
-    table: pd.DataFrame, *, metric: str, target: str, by_state: bool = True
+    table: pd.DataFrame,
+    *,
+    metric: str | None = None,
+    target: str | None = None,
+    analysis: str | None = None,
+    by_state: bool = True,
 ) -> pd.DataFrame:
     """Per animal (sessions and cells pooled) fraction of cells significant.
 
     With ``by_state`` the result has one row per (animal, state); otherwise one
     row per animal where ``state == "all"`` and the fraction is over all
-    cell-state rows.  Columns: ``animal, state, n_cells, n_significant,
+    cell-state rows.  Select the analysis with ``analysis=`` (its name) or with
+    ``metric=`` and ``target=``; the latter raises if it matches several analyses.
+    Columns: ``animal, state, n_cells, n_significant,
     fraction_significant`` and, when ``null_lo/null_hi`` are present,
     ``fraction_positive`` (value above ``null_hi``) and ``fraction_negative``
     (value below ``null_lo``).  Rows whose ``p_value`` is NaN (the test was
     undefined for that cell) are excluded from the denominator of every
     fraction and counted in ``n_undefined``; ``n_cells`` counts all cells.
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Output of :func:`cohort_table` (needs ``animal``, ``session``, ``cell``,
+        ``state``, ``value``, ``significant``; optionally ``p_value``,
+        ``null_lo``, ``null_hi``, ``analysis``).
+    metric, target : str, optional
+        Select the analysis by metric and target name.
+    analysis : str, optional
+        Select the analysis by its unique name (preferred).
+    by_state : bool, default True
+        One row per (animal, state), or one per animal with ``state == "all"``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``analysis, animal, state, n_cells, n_undefined, n_significant,
+        fraction_significant`` (+ ``fraction_positive``, ``fraction_negative``).
+
+    Raises
+    ------
+    ValueError
+        If neither ``analysis`` nor both ``metric`` and ``target`` are given, or
+        ``metric``/``target`` match several analyses.
+    KeyError
+        If nothing matches.
     """
-    sub = _select(table, metric, target).copy()
+    sub = _select(table, metric, target, analysis).copy()
     sub["_unit"] = _units(sub)
     if by_state and sub["state"].notna().any():
         sub["_state"] = sub["state"].astype(object)
@@ -67,6 +151,9 @@ def fraction_significant_by_animal(
         sub["_pos"] = sub["significant"].astype(bool) & (sub["value"] > sub["null_hi"])
         sub["_neg"] = sub["significant"].astype(bool) & (sub["value"] < sub["null_lo"])
     rows = []
+    analysis_name = (
+        str(sub["analysis"].iloc[0]) if "analysis" in sub.columns and len(sub) else analysis
+    )
     for (an, st), g in sub.groupby(["animal", "_state"], sort=True):
         n = g["_unit"].nunique()
         if "p_value" in g.columns:
@@ -75,12 +162,15 @@ def fraction_significant_by_animal(
             undefined = np.zeros(len(g), bool)
         gv = g[~undefined]
         row: dict[str, Any] = {
+            "analysis": analysis_name,
             "animal": an,
             "state": st,
             "n_cells": int(n),
             "n_undefined": int(undefined.sum()),
             "n_significant": int(gv["significant"].astype(bool).sum()),
-            "fraction_significant": float(gv["significant"].astype(bool).mean()) if len(gv) else float("nan"),
+            "fraction_significant": float(gv["significant"].astype(bool).mean())
+            if len(gv)
+            else float("nan"),
         }
         if has_bounds:
             row["fraction_positive"] = float(gv["_pos"].mean()) if len(gv) else float("nan")
@@ -94,6 +184,8 @@ def compare_states_across_animals(
     state: str,
     control_state: str,
     test: Literal["wilcoxon", "ttest"] = "wilcoxon",
+    *,
+    analysis: str | None = None,
 ) -> dict[str, Any]:
     """Paired test across animals of ``fraction(state) - fraction(control_state)``.
 
@@ -104,7 +196,43 @@ def compare_states_across_animals(
     differences are zero ``p_value`` is 1.0.  The Wilcoxon test uses
     ``zero_method="wilcox"`` and the exact null distribution when
     ``n_nonzero <= 25`` and the absolute differences have no ties.
+
+    Parameters
+    ----------
+    fractions : pandas.DataFrame
+        Output of :func:`fraction_significant_by_animal` with ``by_state=True``.
+    state, control_state : str
+        States whose per-animal ``fraction_significant`` are compared
+        (``state - control_state``).  Animals missing either are dropped.
+    test : {"wilcoxon", "ttest"}, default "wilcoxon"
+        Signed-rank test, or one-sample t-test of the differences against 0.
+    analysis : str, optional
+        Needed when ``fractions`` mixes several analyses.
+
+    Returns
+    -------
+    dict
+        Keys ``n_animals, mean_difference, statistic, p_value, p_floor, test,
+        n_nonzero``.  ``statistic`` / ``p_value`` are NaN with fewer than two
+        animals.
+
+    Raises
+    ------
+    KeyError
+        If a state is not in ``fractions``.
+    ValueError
+        If analyses are mixed without ``analysis``, or ``test`` is unknown.
     """
+    if "analysis" in fractions.columns:
+        if analysis is not None:
+            fractions = fractions[fractions["analysis"] == analysis]
+        elif fractions["analysis"].nunique() > 1:
+            raise ValueError(
+                f"fractions mixes analyses {sorted(fractions['analysis'].dropna().unique())}; "
+                "pass analysis=..."
+            )
+    elif analysis is not None:
+        raise KeyError("fractions has no 'analysis' column")
     wide = fractions.pivot(index="animal", columns="state", values="fraction_significant")
     for s in (state, control_state):
         if s not in wide.columns:
@@ -149,19 +277,45 @@ def compare_states_across_animals(
 
 
 class BootstrapResult(BaseModel):
-    """Hierarchical (animal -> cell) bootstrap and the naive pooled-cell bootstrap."""
+    """Hierarchical (animal -> cell) bootstrap and the naive pooled-cell bootstrap.
+
+    Attributes
+    ----------
+    estimate : float
+        The statistic on the original table.
+    distribution : (n_boot,) float
+        Statistic on each hierarchical resample (animals, then cells within them).
+    mean : float
+        Nan-mean of ``distribution``.
+    ci : (float, float)
+        2.5th and 97.5th percentiles of ``distribution`` (95 % interval).
+    naive_distribution : (n_boot,) float
+        Statistic on resamples of pooled (session, cell) units, ignoring animals.
+    naive_mean : float
+        Nan-mean of ``naive_distribution``.
+    naive_ci : (float, float)
+        95 % percentile interval of ``naive_distribution``; too narrow when animals differ.
+    n_boot : int
+        Number of resamples.
+    n_animals : int
+        Number of animals in the table.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    estimate: float
-    distribution: np.ndarray
-    mean: float
-    ci: tuple[float, float]
-    naive_distribution: np.ndarray
-    naive_mean: float
-    naive_ci: tuple[float, float]
-    n_boot: int
-    n_animals: int
+    estimate: float = Field(..., description="Statistic on the original table.")
+    distribution: np.ndarray = Field(..., description="Hierarchical bootstrap draws (n_boot,).")
+    mean: float = Field(..., description="Nan-mean of the hierarchical draws.")
+    ci: tuple[float, float] = Field(..., description="95% percentile interval (2.5, 97.5).")
+    naive_distribution: np.ndarray = Field(
+        ..., description="Pooled-cell bootstrap draws ignoring animals (n_boot,)."
+    )
+    naive_mean: float = Field(..., description="Nan-mean of the naive draws.")
+    naive_ci: tuple[float, float] = Field(
+        ..., description="95% percentile interval of the naive draws."
+    )
+    n_boot: int = Field(..., description="Number of resamples.")
+    n_animals: int = Field(..., description="Number of animals resampled.")
 
 
 def hierarchical_bootstrap(
@@ -179,6 +333,30 @@ def hierarchical_bootstrap(
     ``level=("animal",)`` skips the within-animal cell resampling.  The result
     also carries the naive bootstrap that resamples pooled cells ignoring
     animals; its CI is too narrow when animals differ (CaSA).
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Long table from :func:`cohort_table` (needs ``animal``, ``session``,
+        ``cell``).
+    statistic : callable
+        ``statistic(df) -> float`` evaluated on each resampled table.
+    n_boot : int, default 2000
+        Number of resamples.
+    seed : int, default 0
+        RNG seed.
+    level : tuple of str, default ("animal", "cell")
+        ``("animal", "cell")`` or ``("animal",)``.
+
+    Returns
+    -------
+    BootstrapResult
+        Estimate, bootstrap distributions, means and 95 % percentile CIs.
+
+    Raises
+    ------
+    ValueError
+        If ``level`` is not one of the two allowed tuples.
     """
     if not set(level) <= {"animal", "cell"} or "animal" not in level:
         raise ValueError("level must be ('animal', 'cell') or ('animal',)")
@@ -226,9 +404,31 @@ def hierarchical_bootstrap(
     )
 
 
-def per_animal_summary(table: pd.DataFrame, metric: str, target: str) -> pd.DataFrame:
-    """Per animal: median value, fraction significant, number of cells."""
-    sub = _select(table, metric, target).copy()
+def per_animal_summary(
+    table: pd.DataFrame,
+    metric: str | None = None,
+    target: str | None = None,
+    *,
+    analysis: str | None = None,
+) -> pd.DataFrame:
+    """Per animal: median value, fraction significant, number of cells.
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        Output of :func:`cohort_table`.
+    metric, target : str, optional
+        Select the analysis by metric and target.
+    analysis : str, optional
+        Select the analysis by its unique name.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per animal: ``animal, median_value, fraction_significant,
+        n_cells``.  Values and significance are pooled over states and cells.
+    """
+    sub = _select(table, metric, target, analysis).copy()
     sub["_unit"] = _units(sub)
     g = sub.groupby("animal", sort=True)
     return pd.DataFrame(

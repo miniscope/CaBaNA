@@ -20,13 +20,19 @@ from ._registry import Transform, register
 
 def _get_behavior(session: Session, key: str, cls: type):
     if key not in session.behavior:
-        raise KeyError(
-            f"session.behavior has no {key!r}; available: {sorted(session.behavior)}"
-        )
+        raise KeyError(f"session.behavior has no {key!r}; available: {sorted(session.behavior)}")
     obj = session.behavior[key]
     if not isinstance(obj, cls):
         raise TypeError(f"session.behavior[{key!r}] is a {type(obj).__name__}, need {cls.__name__}")
     return obj
+
+
+def _missing_signal_msg(name: str, session: Session) -> str:
+    return (
+        f"signal {name!r} missing; available: {sorted(session.signals)}. If it lives in "
+        "session.behavior, run resample_signal(source=...) first to put behavior signals "
+        "on the neural clock"
+    )
 
 
 @register("transform")
@@ -90,7 +96,7 @@ class Speed(Transform):
     def apply(self, session: Session) -> Session:
         for s in self.signals:
             if s not in session.signals:
-                raise KeyError(f"signal {s!r} missing; available: {sorted(session.signals)}")
+                raise KeyError(_missing_signal_msg(s, session))
         n = session.n_time
         if n < 2:
             raise ValueError("need at least 2 frames to compute speed")
@@ -147,7 +153,7 @@ class BinGrid(Transform):
     def apply(self, session: Session) -> Session:
         for s in self.signals:
             if s not in session.signals:
-                raise KeyError(f"signal {s!r} missing; available: {sorted(session.signals)}")
+                raise KeyError(_missing_signal_msg(s, session))
         data = np.stack([np.asarray(session.signals[s], float) for s in self.signals], axis=1)
         nd = len(self.signals)
         edges: list[np.ndarray] = []
@@ -186,7 +192,10 @@ class BinGrid(Transform):
         flat = np.ravel_multi_index(tuple(idx[ok].T), shape)  # C order
         onehot[np.flatnonzero(ok), flat] = True
         names = [
-            "_".join(f"{ax}{i:02d}" for ax, i in zip(self.signals, np.unravel_index(s, shape), strict=True))
+            "_".join(
+                f"{ax}{i:02d}"
+                for ax, i in zip(self.signals, np.unravel_index(s, shape), strict=True)
+            )
             for s in range(n_states)
         ]
         topo = GridTopology(shape=shape, edges=edges, axis_names=list(self.signals))
@@ -197,13 +206,17 @@ class BinGrid(Transform):
             kind="grid",
             exclusive=True,
             topology=topo,
+            support=ok.copy(),
         )
-        return session.with_state(space)
+        return session.with_state(space).with_mask(f"{self.output}_valid", ok)
 
 
 @register("transform")
 class BoutsToStates(Transform):
     """Turn a ``BoutTable`` into a boolean state space (one column per behavior).
+
+    The state space's ``support`` is the scored span (``BoutTable.scored_start_s`` to
+    ``scored_stop_s``); the same frames are written to the ``{output}_scored`` mask.
 
     Bouts can be filtered before the state space is built, which is what
     event-aligned analyses want (clean, isolated onsets): ``min_duration_s``
@@ -231,7 +244,9 @@ class BoutsToStates(Transform):
     output: str = Field("social", description="Name of the StateSpace written.")
     min_duration_s: float = Field(0.0, ge=0, description="Drop bouts shorter than this (s).")
     min_gap_s: float = Field(
-        0.0, ge=0, description="Drop bouts starting < this long after the previous bout of the same behavior ended (s)."
+        0.0,
+        ge=0,
+        description="Drop bouts starting < this long after the previous bout of the same behavior ended (s).",
     )
 
     def _keep(self, table: BoutTable) -> np.ndarray:
@@ -287,6 +302,7 @@ class BoutsToStates(Transform):
             state_names=names,
             kind="bouts",
             exclusive=self.exclusive,
+            support=scored,
         )
         return session.with_state(space).with_mask(f"{self.output}_scored", scored)
 
@@ -316,6 +332,7 @@ class LabelsToStates(Transform):
             state_names=list(ls.label_names),
             kind="categorical",
             exclusive=True,
+            support=np.asarray(covered, bool),
         )
         return session.with_state(space).with_mask(f"{self.output}_covered", covered)
 

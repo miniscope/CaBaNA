@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 
 from ._metrics._events import PETH
 from ._models import Session
+from ._util import order_session_first
 from ._results import MetricResult
 
 __all__ = ["plot_event_raster", "plot_peth"]
@@ -19,15 +20,6 @@ __all__ = ["plot_event_raster", "plot_peth"]
 def _peth_from_params(result: MetricResult) -> PETH:
     params = {k: v for k, v in result.params.items() if k != "name"}
     return PETH(**params)
-
-
-def _state_index(result: MetricResult, state: int | str) -> int:
-    if isinstance(state, str):
-        names = result.state_names or []
-        if state not in names:
-            raise KeyError(f"state {state!r} not in {names}")
-        return names.index(state)
-    return int(state)
 
 
 def _shade(ax: Any, peth: PETH) -> None:
@@ -51,7 +43,37 @@ def plot_peth(
     dot at the right edge of the heatmap; the lower panel shows the mean trace
     over all shown cells (grey) and over significant cells (orange, if any).
     Shaded bands: baseline (grey) and response (orange) windows.
+    ``result`` and ``session`` may be given in either order.  Look for: a clear
+    band of cells that rise (red) or fall (blue) after the dashed onset line, and
+    whether the significant cells (stars) are the ones with the strongest response.
+
+    Parameters
+    ----------
+    result : MetricResult
+        ``peth`` result with ``extras`` ``peth``, ``time_s`` and ``n_events``; the
+        windows are rebuilt from ``result.params``.
+    session : Session
+        Source of fallback cell ids.
+    cells : sequence of int, optional
+        Cell indices to show; ``None`` shows all.
+    states : sequence of int or str, optional
+        States to show (index or name); ``None`` shows all.
+    ncols : int, default 4
+        Maximum state panels per row.
+    sort_by : {"response", "peak"}, default "response"
+        Order cells by response (descending) or by time of peak activity.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One heatmap-plus-trace panel per state (a note when there are too few events).
+
+    Raises
+    ------
+    ValueError
+        If ``sort_by`` is invalid or the result is not a PETH result.
     """
+    session, result = order_session_first(session, result)
     if sort_by not in ("response", "peak"):
         raise ValueError("sort_by must be 'response' or 'peak'")
     for k in ("peth", "time_s", "n_events"):
@@ -63,9 +85,7 @@ def plot_peth(
     n_cells, n_states, _ = arr.shape
     cell_idx = np.arange(n_cells) if cells is None else np.asarray(list(cells), dtype=int)
     names = result.state_names or [str(i) for i in range(n_states)]
-    state_idx = (
-        list(range(n_states)) if states is None else [_state_index(result, s) for s in states]
-    )
+    state_idx = list(range(n_states)) if states is None else [result.state_index(s) for s in states]
     sig = None if result.shuffle is None else np.asarray(result.shuffle.significant, bool)
     ids = result.cell_ids or session.cell_ids
 
@@ -87,25 +107,38 @@ def plot_peth(
         if sort_by == "response":
             order = np.argsort(-resp, kind="stable")
         else:
-            order = np.argsort(np.nanargmax(np.nan_to_num(data, nan=-np.inf), axis=1), kind="stable")
+            order = np.argsort(
+                np.nanargmax(np.nan_to_num(data, nan=-np.inf), axis=1), kind="stable"
+            )
         data = data[order]
         lim = np.nanmax(np.abs(data)) or 1.0
         dt = np.median(np.diff(t)) if t.size > 1 else 1.0
         ax.imshow(
-            data, aspect="auto", cmap="RdBu_r", vmin=-lim, vmax=lim, interpolation="nearest",
+            data,
+            aspect="auto",
+            cmap="RdBu_r",
+            vmin=-lim,
+            vmax=lim,
+            interpolation="nearest",
             extent=(t[0] - dt / 2, t[-1] + dt / 2, len(order) - 0.5, -0.5),
         )
         ax.axvline(0.0, color="k", lw=0.8, ls="--")
         ax.set_ylabel("cell" if k % ncols == 0 else "")
         if len(order) <= 40:
             ax.set_yticks(range(len(order)))
-            ax.set_yticklabels([str(ids[cell_idx[o]]) if ids else str(cell_idx[o]) for o in order], fontsize=6)
+            ax.set_yticklabels(
+                [str(ids[cell_idx[o]]) if ids else str(cell_idx[o]) for o in order], fontsize=6
+            )
         plt.setp(ax.get_xticklabels(), visible=False)
         s_sig = None if sig is None else sig[cell_idx, s][order]
         if s_sig is not None and s_sig.any():
             ax.scatter(
-                np.full(int(s_sig.sum()), t[-1] + dt), np.flatnonzero(s_sig),
-                marker="*", s=14, color="k", clip_on=False,
+                np.full(int(s_sig.sum()), t[-1] + dt),
+                np.flatnonzero(s_sig),
+                marker="*",
+                s=14,
+                color="k",
+                clip_on=False,
             )
         _shade(ax_m, peth)
         ax_m.plot(t, np.nanmean(data, axis=0), color="0.3", lw=1.2, label="all")
@@ -130,10 +163,31 @@ def plot_event_raster(
     Events are recomputed from ``session.activity`` and the state space named by
     ``result.target`` using the PETH parameters stored in ``result.params``.
     ``mask`` defaults to ``session.valid_mask()``; pass the mask used for the
-    analysis if it differed.
+    analysis if it differed.  ``session`` and ``result`` may be given in either
+    order.  Look for: whether the response is present on most single events
+    (vertical stripe after the dashed onset line) or driven by a few.
+
+    Parameters
+    ----------
+    session : Session
+        Provides activity, state space (``session.states[result.target]``) and sampling rate.
+    result : MetricResult
+        ``peth`` result whose ``params`` define windows and event filters.
+    cell : int
+        Row index of the cell.
+    state : int or str
+        State (index or name) whose onsets are used.
+    mask : (n_time,) bool, optional
+        Mask applied to event onsets; defaults to ``session.valid_mask()``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Events-by-time image above the mean +/- SEM trace.
     """
+    session, result = order_session_first(session, result)
     peth = _peth_from_params(result)
-    s = _state_index(result, state)
+    s = result.state_index(state)
     states = session.states[result.target]
     m = session.valid_mask() if mask is None else np.asarray(mask, bool)
     ons = peth.valid_onsets(states, m, session.fs)[s]
@@ -150,7 +204,10 @@ def plot_event_raster(
         return fig
     win = peth.event_windows(session.activity[[cell]], ons, session.fs)[0]
     ax.imshow(
-        win, aspect="auto", cmap="viridis", interpolation="nearest",
+        win,
+        aspect="auto",
+        cmap="viridis",
+        interpolation="nearest",
         extent=(t[0], t[-1] + 1 / session.fs, ons.size + 0.5, 0.5),
     )
     ax.axvline(0.0, color="w", lw=0.8, ls="--")

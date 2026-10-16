@@ -20,9 +20,16 @@ def _shuffle(rng, shape, n=50, tail="upper"):
     null = rng.random((n, *shape))
     p = rng.random(shape)
     return ShuffleResult(
-        observed=obs, null=null, shifts=np.arange(n), p_value=p,
-        null_lo=np.full(shape, 0.05), null_hi=np.full(shape, 0.95),
-        significant=p < 0.05, alpha=0.05, tail=tail, n_shuffles=n,
+        observed=obs,
+        null=null,
+        shifts=np.arange(n),
+        p_value=p,
+        null_lo=np.full(shape, 0.05),
+        null_hi=np.full(shape, 0.95),
+        significant=p < 0.05,
+        alpha=0.05,
+        tail=tail,
+        n_shuffles=n,
     )
 
 
@@ -34,17 +41,33 @@ def setup():
     grid_oh = np.eye(16, dtype=bool)[grid_idx]
     edges = [np.linspace(0, 40, 5), np.linspace(0, 40, 5)]
     topo = GridTopology(shape=(4, 4), edges=edges, axis_names=["x", "y"])
-    grid = StateSpace(name="grid", onehot=grid_oh, state_names=[f"b{i}" for i in range(16)],
-                      kind="grid", exclusive=True, topology=topo)
+    grid = StateSpace(
+        name="grid",
+        onehot=grid_oh,
+        state_names=[f"b{i}" for i in range(16)],
+        kind="grid",
+        exclusive=True,
+        topology=topo,
+    )
     bouts_oh = np.zeros((T, 3), bool)
     bouts_oh[20:60, 0] = True
     bouts_oh[50:90, 1] = True
     bouts_oh[200:260, 2] = True
-    bouts = StateSpace(name="social", onehot=bouts_oh, state_names=["sniff", "chase", "groom"],
-                       kind="bouts", exclusive=False)
+    bouts = StateSpace(
+        name="social",
+        onehot=bouts_oh,
+        state_names=["sniff", "chase", "groom"],
+        kind="bouts",
+        exclusive=False,
+    )
     lab = np.repeat(np.arange(5), 60)
-    cat = StateSpace(name="syll", onehot=np.eye(5, dtype=bool)[lab],
-                     state_names=[f"s{i}" for i in range(5)], kind="categorical", exclusive=True)
+    cat = StateSpace(
+        name="syll",
+        onehot=np.eye(5, dtype=bool)[lab],
+        state_names=[f"s{i}" for i in range(5)],
+        kind="categorical",
+        exclusive=True,
+    )
     gt = {
         "place_cells": [0, 1, 2],
         "social_cells": [{"cell": 3, "behavior": "sniff", "sign": 1}],
@@ -52,25 +75,47 @@ def setup():
         "untuned_cells": list(range(5, NC)),
     }
     sess = Session(
-        activity=rng.random((NC, T)), t=t, fs=FS,
+        activity=rng.random((NC, T)),
+        t=t,
+        fs=FS,
         signals={"x": 20 + 10 * np.cos(t), "y": 20 + 10 * np.sin(t), "speed": rng.random(T) * 10},
         states={"grid": grid, "social": bouts, "syll": cat},
-        masks={"speed": rng.random(T) > 0.3}, meta={"ground_truth": gt},
+        masks={"speed": rng.random(T) > 0.3},
+        meta={"ground_truth": gt},
     )
     ic = MetricResult(
-        metric="information_content", target="grid", level="cell", values=rng.random(NC),
+        metric="information_content",
+        target="grid",
+        level="cell",
+        values=rng.random(NC),
         extras={"rate_map": np.where(rng.random((NC, 16)) < 0.2, np.nan, rng.random((NC, 16)))},
-        shuffle=_shuffle(rng, (NC,)), state_names=grid.state_names,
+        shuffle=_shuffle(rng, (NC,)),
+        state_names=grid.state_names,
     )
     ic.values = ic.shuffle.observed
-    stab = MetricResult(metric="split_half_stability", target="grid", level="cell",
-                        values=rng.random(NC), shuffle=_shuffle(rng, (NC,)))
+    stab = MetricResult(
+        metric="split_half_stability",
+        target="grid",
+        level="cell",
+        values=rng.random(NC),
+        shuffle=_shuffle(rng, (NC,)),
+    )
     au_sh = _shuffle(rng, (NC, 3), tail="two")
-    au = MetricResult(metric="auroc", target="social", level="cell", values=au_sh.observed,
-                      shuffle=au_sh, state_names=bouts.state_names)
-    pop = MetricResult(metric="population_vector_overlap", target="grid", level="population",
-                       values=np.where(np.eye(16) > 0, np.nan, rng.random((16, 16))),
-                       state_names=grid.state_names)
+    au = MetricResult(
+        metric="auroc",
+        target="social",
+        level="cell",
+        values=au_sh.observed,
+        shuffle=au_sh,
+        state_names=bouts.state_names,
+    )
+    pop = MetricResult(
+        metric="population_vector_overlap",
+        target="grid",
+        level="population",
+        values=np.where(np.eye(16) > 0, np.nan, rng.random((16, 16))),
+        state_names=grid.state_names,
+    )
     return sess, ic, stab, au, pop
 
 
@@ -103,9 +148,14 @@ def test_rate_maps(setup, tmp_path):
     _check(P.plot_rate_maps(sess, bar, [0, 1]), tmp_path, "rate_bars")
     # 1D topology path
     topo = GridTopology(shape=(16,), edges=[np.arange(17.0)], axis_names=["x"])
-    s1 = StateSpace(name="lin", onehot=np.eye(16, dtype=bool)[np.arange(T) % 16],
-                    state_names=[str(i) for i in range(16)], kind="grid", exclusive=True,
-                    topology=topo)
+    s1 = StateSpace(
+        name="lin",
+        onehot=np.eye(16, dtype=bool)[np.arange(T) % 16],
+        state_names=[str(i) for i in range(16)],
+        kind="grid",
+        exclusive=True,
+        topology=topo,
+    )
     line = ic.model_copy(update={"target": "lin"})
     _check(P.plot_rate_maps(sess.with_state(s1), line, [0, 1]), tmp_path, "rate_line")
     with pytest.raises(ValueError, match="rate_map"):
@@ -122,7 +172,7 @@ def test_shuffle_distribution(setup, tmp_path):
     plt.close(fig)
     with pytest.raises(ValueError):
         P.plot_shuffle_distribution(ic.model_copy(update={"shuffle": None}), 0)
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         P.plot_shuffle_distribution(au, 0, state="nope")
 
 
@@ -130,8 +180,11 @@ def test_tuning_heatmap(setup, tmp_path):
     _, ic, _, au, _ = setup
     for i, sort_by in enumerate([None, "peak", "groom"]):
         _check(P.plot_tuning_heatmap(au, sort_by=sort_by), tmp_path, f"heat{i}")
-    _check(P.plot_tuning_heatmap(au.model_copy(update={"metric": "other", "shuffle": None})),
-           tmp_path, "heat_plain")
+    _check(
+        P.plot_tuning_heatmap(au.model_copy(update={"metric": "other", "shuffle": None})),
+        tmp_path,
+        "heat_plain",
+    )
     with pytest.raises(ValueError):
         P.plot_tuning_heatmap(ic)
 

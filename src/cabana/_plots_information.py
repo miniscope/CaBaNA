@@ -14,6 +14,7 @@ from scipy.stats import spearmanr
 
 from ._models import Session, StateSpace
 from ._plots import _cell_label, _fmt_p, _get_ax, _significant
+from ._util import order_session_first
 from ._results import MetricResult
 
 __all__ = [
@@ -110,6 +111,12 @@ def plot_joint_histogram(
         quantity that mutual information averages (``MI = sum p(s, l) *
         log2 lift``): red means a level is over-represented in that state,
         blue under-represented.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Look for: a cell whose level distribution changes with state (a column
+        that differs from its neighbours) even where mean activity is flat.
     """
     arr, cbar_label, kw = _normalized(result, normalize)
     edges = np.asarray(result.extras["edges"], float)
@@ -233,7 +240,13 @@ def _bias_corrected(result: MetricResult) -> np.ndarray:
     if v.ndim != 1:
         raise ValueError("plot_information_comparison needs 1D cell-level results")
     if result.shuffle is not None:
-        v = v - np.nanmean(np.asarray(result.shuffle.null, float), axis=0)
+        sh = result.shuffle
+        if sh.null_mean is not None:
+            v = v - np.asarray(sh.null_mean, float)
+        elif sh.null is not None:
+            v = v - np.nanmean(np.asarray(sh.null, float), axis=0)
+        else:
+            raise ValueError("result has no stored null draws or null_mean to bias-correct with")
     return v
 
 
@@ -250,7 +263,34 @@ def plot_information_comparison(
     Points are coloured by which result is significant (``shuffle.significant``).
     ``identity=True`` draws y = x (only meaningful when both share units).
     ``highlight`` lists cells (e.g. planted place cells) drawn with a black edge.
-    The title gives the Spearman correlation across cells (NaNs omitted).
+    The title gives the Spearman correlation across cells (NaNs omitted).  A result
+    without a shuffle is plotted uncorrected.  Look for: cells far from zero on
+    one axis only (information that one metric sees and the other misses), and
+    whether highlighted planted cells sit in the upper-right.
+
+    Parameters
+    ----------
+    result_a, result_b : MetricResult
+        1-D cell-level results with the same number of cells (x and y axes); each
+        is plotted as ``values - shuffle.null_mean``.
+    labels : (str, str), default ("a", "b")
+        Axis labels for the two results.
+    highlight : sequence of int, optional
+        Cell indices drawn with a black edge.
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+    identity : bool, default False
+        Draw the y = x line (meaningful only when both share units).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If a result is not 1-D, the shapes differ, or a shuffle stores neither
+        ``null_mean`` nor null draws.
     """
     x, y = _bias_corrected(result_a), _bias_corrected(result_b)
     if x.shape != y.shape:
@@ -297,7 +337,26 @@ def plot_level_sweep(df: pd.DataFrame, ax: Any = None) -> Figure:
     ``df`` needs ``n_levels``, ``duration_s``, ``detection``, ``fpr`` and
     optionally ``metric``.  One line per recording duration (colour) and, if
     several metrics are present, per metric (line style).  The dashed line on
-    the FPR panel is alpha = 0.05.  ``ax`` may be a pair of axes.
+    the FPR panel is alpha = 0.05.  ``ax`` may be a pair of axes.  Look for: the
+    number of levels where detection plateaus while the false-positive rate stays
+    near alpha.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Sweep table with columns ``n_levels``, ``duration_s``, ``detection`` and
+        ``fpr`` (fractions), optionally ``metric``.
+    ax : matplotlib Axes or pair of Axes, optional
+        Two axes (detection, false-positive rate); a new figure is made if omitted.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If required columns are missing or ``ax`` is not a pair of axes.
     """
     missing = {"n_levels", "duration_s", "detection", "fpr"} - set(df.columns)
     if missing:
@@ -368,8 +427,35 @@ def plot_decoded_trajectory(
     The last panel is the cumulative distribution of the per-frame error with
     the median and the chance level (always guessing the most occupied bin).
     ``t_range`` is in seconds; the default is the first 60 s of decoded frames.
-    ``ax`` is not supported (the figure has several panels).
+    ``ax`` is not supported (the figure has several panels).  ``result`` and
+    ``session`` may be given in either order.  Look for: the decoded trace
+    following the grey truth, and the median error well left of the chance line.
+
+    Parameters
+    ----------
+    result : MetricResult
+        ``bayesian_decoder`` result with ``extras`` ``decoded``, ``error``,
+        ``error_overall`` and ``chance_error``.
+    session : Session
+        Supplies the time axis and, when present, the true coordinate signals.
+    states : StateSpace
+        The 1-D or 2-D grid state space the decoder was run on.
+    t_range : (float, float), optional
+        Time window in seconds; default is 60 s from the first decoded frame.
+    ax : None
+        Must be ``None``; passing an axes raises ``ValueError``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One panel per grid axis plus a cumulative error distribution.
+
+    Raises
+    ------
+    ValueError
+        If the space has no 1-D / 2-D grid, extras are missing, or no frame was decoded.
     """
+    session, result = order_session_first(session, result)
     if ax is not None:
         raise ValueError("plot_decoded_trajectory builds its own panels; ax is not supported")
     topo = states.topology
@@ -391,9 +477,7 @@ def plot_decoded_trajectory(
     win = (t >= t_range[0]) & (t <= t_range[1])
     centers = topo.centers()
     n_axes = topo.ndim
-    fig, axes = plt.subplots(
-        1, n_axes + 1, figsize=(4.6 * n_axes + 3.4, 3.4), layout="constrained"
-    )
+    fig, axes = plt.subplots(1, n_axes + 1, figsize=(4.6 * n_axes + 3.4, 3.4), layout="constrained")
     axes = np.atleast_1d(axes)
     grid_idx = np.unravel_index(np.where(ok, decoded, 0), topo.shape)
     # the state each frame truly occupies, for the fallback when no signal exists

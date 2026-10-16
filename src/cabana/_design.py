@@ -67,11 +67,34 @@ def raised_cosine_basis(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Raised-cosine basis on integer-frame lags covering ``[-pre_s, post_s]``.
 
-    Returns ``(basis (n_lags, n_basis), lags_s (n_lags,))``.  Centers are
-    linearly spaced from ``-pre_s`` to ``post_s``; each bump has half-width
-    equal to the center spacing, so the bumps tile the window (edge bumps are
-    truncated at the window ends).  With ``n_basis == 1`` a single bump spans
-    the whole window.
+    Centers are linearly spaced from ``-pre_s`` to ``post_s``; each bump has
+    half-width equal to the center spacing, so the bumps tile the window (edge
+    bumps are truncated at the window ends).  With ``n_basis == 1`` a single bump
+    spans the whole window.
+
+    Parameters
+    ----------
+    n_basis : int
+        Number of bumps (>= 1).
+    pre_s : float
+        Seconds before the event covered by the window (>= 0).
+    post_s : float
+        Seconds after the event covered by the window (>= 0; ``pre_s + post_s > 0``).
+    fs : float
+        Sampling rate in Hz, which sets the integer-frame lags.
+
+    Returns
+    -------
+    basis : (n_lags, n_basis) float
+        Bump values in [0, 1], one column per bump.
+    lags_s : (n_lags,) float
+        Lag of each row in seconds, ``-round(pre_s*fs)/fs`` to ``round(post_s*fs)/fs``;
+        negative lags precede the event.
+
+    Raises
+    ------
+    ValueError
+        If ``n_basis < 1`` or the window is empty or has negative extent.
     """
     if n_basis < 1:
         raise ValueError("n_basis must be >= 1")
@@ -103,7 +126,26 @@ def _convolve_lags(x: np.ndarray, basis: np.ndarray, n_pre: int) -> np.ndarray:
 
 
 def design_columns(session: Session, output: str = "design") -> list[str]:
-    """Column names of ``session.signals[output]`` as recorded by ``design_matrix``."""
+    """Column names of ``session.signals[output]`` as recorded by ``design_matrix``.
+
+    Parameters
+    ----------
+    session : Session
+        Session after a ``design_matrix`` transform / preprocess step.
+    output : str, default "design"
+        Name of the design signal (the step's ``output``).
+
+    Returns
+    -------
+    list[str]
+        One name per column, e.g. ``"social:sniff"``, ``"social:sniff@0"`` (with a
+        basis) or a signal name; the order used by ``glm_encoding``.
+
+    Raises
+    ------
+    KeyError
+        If no design columns were recorded for ``output``.
+    """
     try:
         return list(session.meta["design_columns"][output])
     except KeyError as e:
@@ -215,12 +257,25 @@ class DesignMatrixStep(PreprocessStep):
 
     name: ClassVar[str] = "design_matrix"
 
-    states: list[str] = Field(default_factory=list)
-    signals: list[str] = Field(default_factory=list)
-    basis: dict[str, Any] | None = None
-    drop_rest: bool = False
-    reference: Literal["auto", "none"] = "auto"
-    output: str = "design"
+    states: list[str] = Field(
+        default_factory=list, description="State-space names; one column per state."
+    )
+    signals: list[str] = Field(
+        default_factory=list,
+        description="Per-frame signals; standardized, NaN -> 0 after standardizing.",
+    )
+    basis: dict[str, Any] | None = Field(
+        None,
+        description="{'n_basis': int, 'pre_s': float, 'post_s': float}: raised-cosine "
+        "expansion of each state column.",
+    )
+    drop_rest: bool = Field(False, description="Drop states named 'rest'.")
+    reference: Literal["auto", "none"] = Field(
+        "auto",
+        description="'auto': drop one reference state (rest, else last) of each exclusive "
+        "state space to avoid collinearity with the intercept; 'none': keep all.",
+    )
+    output: str = Field("design", description="Name of the signal written.")
 
     def apply(self, session: Session) -> Session:
         return DesignMatrix(**self.model_dump()).apply(session)

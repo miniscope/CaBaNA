@@ -21,7 +21,13 @@ def rand_data(seed=0, n_cells=5, n=600):
 
 def test_hand_correlations():
     y = np.arange(100, dtype=float)
-    act = np.stack([2 * y + 1, -y, np.tile([1.0, -1.0], 50) * 0 + np.r_[np.ones(50), -np.ones(50)][::1] * 0 + 5])
+    act = np.stack(
+        [
+            2 * y + 1,
+            -y,
+            np.tile([1.0, -1.0], 50) * 0 + np.r_[np.ones(50), -np.ones(50)][::1] * 0 + 5,
+        ]
+    )
     # third row is constant -> NaN; build a truly uncorrelated row instead
     act[2] = np.tile([1.0, 2.0, 2.0, 1.0], 25)  # symmetric about the signal's midpoint pattern
     r = SignalCorrelation(min_frames=10).compute(act, y, np.ones(100, bool), 10.0)
@@ -33,7 +39,9 @@ def test_hand_correlations():
     r0 = SignalCorrelation(min_frames=10).compute((y2**2)[None], y2, np.ones(101, bool), 10.0)
     assert r0[0] == pytest.approx(0.0, abs=1e-12)
     # constant activity -> NaN; (n, 1) signal accepted; too few frames -> NaN
-    c = SignalCorrelation(min_frames=10).compute(np.ones((1, 100)), y[:, None], np.ones(100, bool), 1.0)
+    c = SignalCorrelation(min_frames=10).compute(
+        np.ones((1, 100)), y[:, None], np.ones(100, bool), 1.0
+    )
     assert np.isnan(c[0])
     few = np.zeros(100, bool)
     few[:5] = True
@@ -109,7 +117,9 @@ def test_tuning_staircase_hand_example():
     mean = rates.mean()
     si = (p * rates / mean * np.log2(rates / mean)).sum()
     assert m.compute(act, y, np.ones(200, bool), fs)[0] == pytest.approx(si)
-    d = SignalTuning(n_bins=4, extent=(0.0, 4.0), statistic="depth").compute(act, y, np.ones(200, bool), fs)
+    d = SignalTuning(n_bins=4, extent=(0.0, 4.0), statistic="depth").compute(
+        act, y, np.ones(200, bool), fs
+    )
     assert d[0] == pytest.approx(3 / 5)
 
 
@@ -127,7 +137,11 @@ def test_tuning_shifted_equals_loop(statistic, sigma):
 
 def test_check_target_rejects_statespace():
     st = cabana.StateSpace(
-        name="s", onehot=np.eye(4, dtype=bool), state_names=list("abcd"), kind="categorical", exclusive=True
+        name="s",
+        onehot=np.eye(4, dtype=bool),
+        state_names=list("abcd"),
+        kind="categorical",
+        exclusive=True,
     )
     with pytest.raises(ValueError, match="continuous signal"):
         SignalCorrelation().check_target(st)

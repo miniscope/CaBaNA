@@ -21,25 +21,20 @@ from cabana._results import MetricResult  # noqa: E402
 
 
 @pytest.fixture(scope="module")
-def mi_run():
-    sess = simulate_session(SimulationConfig(duration_s=300, n_cells=20, seed=0))
-    prep = Pipeline(
-        transforms=[
-            {"name": "resample_signal", "source": "position"},
-            {"name": "speed"},
-            {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 100.0, "output": "position"},
-        ]
-    ).run(sess)[0]
+def mi_run(small_session):
+    prep = small_session
     ana = Pipeline(
         analyses=[
             AnalysisSpec(
                 metric={"name": "mutual_information", "n_levels": 3},
                 states="position",
+                masks=["position_covered"],
                 shuffle=ShuffleConfig(n_shuffles=10, seed=0),
             ),
             AnalysisSpec(
                 metric={"name": "information_content"},
                 states="position",
+                masks=["position_covered"],
                 shuffle=ShuffleConfig(n_shuffles=10, seed=0),
             ),
         ]

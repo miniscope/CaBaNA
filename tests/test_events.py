@@ -22,8 +22,11 @@ FS = 10.0
 def _states(onehot):
     onehot = np.asarray(onehot, dtype=bool)
     return StateSpace(
-        name="s", onehot=onehot, state_names=[f"s{i}" for i in range(onehot.shape[1])],
-        kind="bouts", exclusive=False,
+        name="s",
+        onehot=onehot,
+        state_names=[f"s{i}" for i in range(onehot.shape[1])],
+        kind="bouts",
+        exclusive=False,
     )
 
 
@@ -42,10 +45,10 @@ SMALL = dict(pre_s=2.0, post_s=3.0, baseline_s=(-2.0, 0.0), response_s=(0.0, 2.0
 
 def test_bouts_and_onsets_filtering():
     oh = np.zeros((100, 2), bool)
-    oh[0:5, 0] = True       # onset at frame 0, 5 frames
-    oh[10:12, 0] = True     # 2 frames, gap 5 frames from previous end
-    oh[30:50, 0] = True     # 20 frames, gap 18
-    oh[52:60, 0] = True     # 8 frames, gap 2
+    oh[0:5, 0] = True  # onset at frame 0, 5 frames
+    oh[10:12, 0] = True  # 2 frames, gap 5 frames from previous end
+    oh[30:50, 0] = True  # 20 frames, gap 18
+    oh[52:60, 0] = True  # 8 frames, gap 2
     oh[20:30, 1] = True
     st = _states(oh)
     b = bouts(st)
@@ -198,12 +201,22 @@ def test_bouts_to_states_min_duration_and_gap():
         return BoutsToStates(source="bouts", **kw).apply(s).states["social"].onehot
 
     full = active()
-    assert (full[:, 0] == ((t >= 1) & (t < 1.25) | (t >= 3) & (t < 4) | (t >= 10) & (t < 10.35) | (t >= 10.45) & (t < 12))).all()
+    assert (
+        full[:, 0]
+        == (
+            (t >= 1) & (t < 1.25)
+            | (t >= 3) & (t < 4)
+            | (t >= 10) & (t < 10.35)
+            | (t >= 10.45) & (t < 12)
+        )
+    ).all()
     dur = active(min_duration_s=0.5)  # drops a[0] (0.2 s) and a[2] (0.3 s)
     np.testing.assert_array_equal(dur[:, 0], (t >= 3) & (t < 4) | (t >= 10.45) & (t < 12))
     assert not dur[:, 1].any()  # b's only bout is 0.15 s
     gap = active(min_gap_s=1.0)  # a[1] gap 1.8 ok, a[2] gap 6, a[3] gap 0.1 dropped
-    np.testing.assert_array_equal(gap[:, 0], (t >= 1) & (t < 1.25) | (t >= 3) & (t < 4) | (t >= 10) & (t < 10.35))
+    np.testing.assert_array_equal(
+        gap[:, 0], (t >= 1) & (t < 1.25) | (t >= 3) & (t < 4) | (t >= 10) & (t < 10.35)
+    )
     both = active(min_gap_s=1.0, min_duration_s=0.3)  # a[0] too short
     np.testing.assert_array_equal(both[:, 0], (t >= 3) & (t < 4) | (t >= 10) & (t < 10.35))
     with pytest.raises(ValueError):
@@ -227,20 +240,34 @@ def planted():
 def planted_result(planted):
     s = planted
     metric = PETH(
-        pre_s=4.0, post_s=4.0, baseline_s=(-4.0, -1.0), response_s=(0.0, 1.5),
-        min_duration_s=1.5, min_gap_s=1.0,
+        pre_s=4.0,
+        post_s=4.0,
+        baseline_s=(-4.0, -1.0),
+        response_s=(0.0, 1.5),
+        min_duration_s=1.5,
+        min_gap_s=1.0,
     )
     mask = s.masks["social_scored"]
     t0 = time.perf_counter()
     sh = shuffle_test(
-        metric, s.activity, s.states["social"], mask,
-        ShuffleConfig(n_shuffles=200, seed=0), s.fs,
+        metric,
+        s.activity,
+        s.states["social"],
+        mask,
+        ShuffleConfig(n_shuffles=200, seed=0),
+        s.fs,
     )
     elapsed = time.perf_counter() - t0
     extras = metric.extras(s.activity, s.states["social"], mask, s.fs)
     res = MetricResult(
-        metric="peth", target="social", level="cell", values=sh.observed, shuffle=sh,
-        params=metric.to_dict(), extras=extras, cell_ids=s.cell_ids,
+        metric="peth",
+        target="social",
+        level="cell",
+        values=sh.observed,
+        shuffle=sh,
+        params=metric.to_dict(),
+        extras=extras,
+        cell_ids=s.cell_ids,
         state_names=s.states["social"].state_names,
     )
     return res, elapsed
@@ -252,7 +279,11 @@ def test_planted_social_peth_detection(planted, planted_result):
     gt = planted.meta["ground_truth"]
     names = res.state_names
     sh = res.shuffle
-    excited = [(g["cell"], names.index(g["behavior"])) for g in gt["social_cells"] if g["sign"] == "excited"]
+    excited = [
+        (g["cell"], names.index(g["behavior"]))
+        for g in gt["social_cells"]
+        if g["sign"] == "excited"
+    ]
     hits = [
         res.values[c, s] > 0 and sh.p_value[c, s] < 0.05 and res.extras["p_prepost"][c, s] < 0.05
         for c, s in excited

@@ -103,3 +103,5 @@
 103. Souza BC, Pavao R, Belchior H, Tort ABL. On information metrics for spatial coding. Neuroscience. 2018;375:62-73. doi:10.1016/j.neuroscience.2018.01.066
 104. Miller G. Note on the bias of information estimates. In: Quastler H, ed. Information Theory in Psychology: Problems and Methods. Glencoe, IL: Free Press; 1955:95-100.
 105. Treves A, Panzeri S. The upward bias in measures of information derived from limited data samples. Neural Computation. 1995;7:399-407. doi:10.1162/neco.1995.7.2.399
+106. Skaggs WE, McNaughton BL, Gothard KM, Markus EJ. An information-theoretic approach to deciphering the hippocampal code. Advances in Neural Information Processing Systems 5 (NIPS 1992). 1993:1030-1037.
+107. Sheintuch L, Rubin A, Brande-Eilat N, Geva N, Sadeh N, Pinchasof O, et al.. Tracking the same neurons across multiple days in Ca2+ imaging data. Cell Reports. 2017;21:1102-1115. doi:10.1016/j.celrep.2017.10.013

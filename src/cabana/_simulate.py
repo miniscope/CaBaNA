@@ -40,7 +40,16 @@ _PAD_S = 2.0
 
 
 class SimulationConfig(BaseModel):
-    """Parameters of a synthetic session.  See the module docstring."""
+    """Parameters of a synthetic session.  See the module docstring.
+
+    Cell populations are disjoint: ``frac_place``, ``frac_social`` and
+    ``frac_syllable`` (rounded to whole cells) are carved out of ``n_cells`` and
+    every remaining cell is untuned, so their sum must be <= 1.  With
+    ``include_syllables=False`` no syllable cells are made (their share becomes
+    untuned).  Times are in seconds, lengths in millimetres, rates in Hz, and
+    ``social_behaviors`` / ``social_mean_durations_s`` must have equal length.
+    Each field's ``description`` gives its meaning and unit.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -74,7 +83,9 @@ class SimulationConfig(BaseModel):
     social_gap_mean_s: float = Field(
         20.0, gt=0, description="Mean extra wait after the 2 s refractory gap (s)."
     )
-    social_refractory_s: float = Field(2.0, ge=0, description="Min gap between same-behavior bouts.")
+    social_refractory_s: float = Field(
+        2.0, ge=0, description="Min gap between same-behavior bouts."
+    )
     pause_fraction: float = Field(0.15, ge=0, lt=1, description="Approx. fraction of time paused.")
 
     @model_validator(mode="after")
@@ -199,8 +210,24 @@ def simulate_session(config: SimulationConfig | None = None, **overrides: Any) -
     Returns
     -------
     Session
-        With ``behavior["position"]``, ``behavior["social"]``, optionally
-        ``behavior["syllables"]``, and ground truth in ``meta["ground_truth"]``.
+        ``activity`` ``(n_cells, round(duration_s * fs))`` on the neural clock
+        ``t = arange(n_time) / fs`` (seconds, starting at 0), ``activity_kind``
+        ``config.kind`` and ``cell_ids`` ``"cell_000"``...  Behavior is on its own
+        clock that spans ``[-2 s, duration_s + 2 s]``: ``behavior["position"]``
+        (``ContinuousSignal``, channels ``["x", "y"]``, mm),
+        ``behavior["social"]`` (``BoutTable`` scored over ``[30 s, duration_s - 30 s]``)
+        and, if ``include_syllables``, ``behavior["syllables"]`` (``LabelSeries``
+        with names ``SYLLABLE_NAMES``).  ``meta["simulation"]`` is the config and
+        ``meta["ground_truth"]`` the answer key: ``place_cells`` (cell indices),
+        ``field_centers_mm`` and ``field_sigma_mm`` (per place cell, in that
+        order), ``social_cells`` (dicts with ``cell``, ``behavior``, ``sign``),
+        ``syllable_cells`` (dicts with ``cell``, ``syllable``), ``untuned_cells``
+        and ``speed_gate_mm_s``.  The same ``seed`` reproduces the session exactly.
+
+    Raises
+    ------
+    pydantic.ValidationError
+        If the config or an override is invalid.
     """
     cfg = config or SimulationConfig()
     if overrides:

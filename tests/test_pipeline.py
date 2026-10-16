@@ -64,7 +64,9 @@ def test_run_no_shuffle():
     s, lab = make_session()
     pipe = Pipeline(
         preprocess=[{"name": "time_range", "start_s": 0.0, "stop_s": 15.0}],
-        analyses=[AnalysisSpec(metric={"name": "test_mean_per_state"}, states="cat")],
+        analyses=[
+            AnalysisSpec(metric={"name": "test_mean_per_state"}, states="cat", masks=["time_range"])
+        ],
     )
     out, rs = pipe.run(s)
     assert "time_range" in out.masks and not s.masks
@@ -87,7 +89,9 @@ def test_run_with_shuffle():
     cfg = ShuffleConfig(n_shuffles=50, min_shift_s=0.5, seed=3, tail="upper")
     pipe = Pipeline(
         analyses=[
-            AnalysisSpec(metric={"name": "test_mean_per_state", "scale": 2.0}, states="cat", shuffle=cfg)
+            AnalysisSpec(
+                metric={"name": "test_mean_per_state", "scale": 2.0}, states="cat", shuffle=cfg
+            )
         ]
     )
     _, rs = pipe.run(s, progress=False)
@@ -136,8 +140,13 @@ def test_end_to_end_transforms_to_results():
         t=t,
         fs=FS,
         behavior={
-            "bouts": BoutTable(labels=["x", "y"], start_s=np.array([1.0, 8.0]),
-                               stop_s=np.array([4.0, 12.0]), scored_start_s=0.0, scored_stop_s=18.0)
+            "bouts": BoutTable(
+                labels=["x", "y"],
+                start_s=np.array([1.0, 8.0]),
+                stop_s=np.array([4.0, 12.0]),
+                scored_start_s=0.0,
+                scored_stop_s=18.0,
+            )
         },
     )
     pipe = Pipeline(
@@ -153,18 +162,42 @@ def test_end_to_end_transforms_to_results():
 def test_dict_roundtrip_and_instances():
     d = {
         "transforms": [
-            {"name": "bin_grid", "signals": ["x", "y"], "bin_size": None, "n_bins": [3, 4],
-             "extent": [(0.0, 1.0), (0.0, 2.0)], "output": "position"},
+            {
+                "name": "bin_grid",
+                "signals": ["x", "y"],
+                "bin_size": None,
+                "n_bins": [3, 4],
+                "extent": [(0.0, 1.0), (0.0, 2.0)],
+                "output": "position",
+            },
             {"name": "speed", "signals": ["x", "y"], "window_s": 0.5, "output": "speed"},
         ],
         "preprocess": [
-            {"name": "speed_threshold", "signal": "speed", "min_speed": 2.0, "max_speed": None,
-             "output": "speed"},
+            {
+                "name": "speed_threshold",
+                "signal": "speed",
+                "min_speed": 2.0,
+                "max_speed": None,
+                "output": "speed",
+            },
         ],
         "analyses": [
-            {"metric": {"name": "test_mean_per_state", "scale": 3.0}, "states": "position", "signal": None,
-             "shuffle": ShuffleConfig(n_shuffles=10, min_shift_s=1.0).model_dump(), "masks": None},
-            {"metric": {"name": "test_pop_total"}, "states": "position", "signal": None, "shuffle": None, "masks": None},
+            {
+                "name": None,
+                "metric": {"name": "test_mean_per_state", "scale": 3.0},
+                "states": "position",
+                "signal": None,
+                "shuffle": ShuffleConfig(n_shuffles=10, min_shift_s=1.0).model_dump(),
+                "masks": None,
+            },
+            {
+                "name": None,
+                "metric": {"name": "test_pop_total"},
+                "states": "position",
+                "signal": None,
+                "shuffle": None,
+                "masks": None,
+            },
         ],
     }
     p = Pipeline.from_dict(d)
@@ -179,8 +212,13 @@ def test_yaml_roundtrip():
     pytest.importorskip("yaml")
     p = Pipeline(
         transforms=[{"name": "bin_grid", "n_bins": 3, "extent": [(0, 1), (0, 2)]}],
-        analyses=[AnalysisSpec(metric={"name": "test_mean_per_state"}, states="position",
-                               shuffle=ShuffleConfig(n_shuffles=5))],
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "test_mean_per_state"},
+                states="position",
+                shuffle=ShuffleConfig(n_shuffles=5),
+            )
+        ],
     )
     p2 = Pipeline.from_yaml(p.to_yaml())
     assert p2.to_dict() == p.to_dict()

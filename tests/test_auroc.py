@@ -73,7 +73,9 @@ def test_min_frames_nan_and_extras():
     st = _states(oh)
     res = m.compute(act, st, np.ones(100, bool), 10.0)
     assert np.isfinite(res[:, 0]).all() and np.isnan(res[:, 1]).all()
-    np.testing.assert_array_equal(m.extras(act, st, np.ones(100, bool), 10.0)["n_in_state"], [30, 5])
+    np.testing.assert_array_equal(
+        m.extras(act, st, np.ones(100, bool), 10.0)["n_in_state"], [30, 5]
+    )
 
 
 @pytest.mark.parametrize("full_mask", [False, True])
@@ -102,7 +104,9 @@ def _bouts(rng, n_time, n_bouts, dur):
 def test_planted_shuffle():
     rng = np.random.default_rng(7)
     fs, n_time = 20.0, 12000
-    oh = np.stack([_bouts(rng, n_time, 25, 60), _bouts(rng, n_time, 25, 60), _bouts(rng, n_time, 20, 40)], 1)
+    oh = np.stack(
+        [_bouts(rng, n_time, 25, 60), _bouts(rng, n_time, 25, 60), _bouts(rng, n_time, 20, 40)], 1
+    )
     base = 2.0 / fs
     gain = np.ones((3, n_time))
     gain[0, oh[:, 0]] = 4.0

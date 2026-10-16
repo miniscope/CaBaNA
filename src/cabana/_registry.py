@@ -30,6 +30,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict
 
 from ._models import Session, StateSpace
+from ._results import Tail
 
 PluginKind = Literal["transform", "preprocess", "metric", "null"]
 
@@ -121,6 +122,10 @@ class Metric(_Plugin):
     ``accepts_kinds`` lists the ``activity_kind`` values the metric is valid
     for; ``None`` means any.  Rate-based metrics (Skaggs information) need
     non-negative event-like activity, rank-based ones (AUROC) accept anything.
+    In the current code every metric has ``accepts_kinds = None`` (no kind is
+    rejected); metrics that need non-negative values (``information_content``,
+    ``signal_tuning`` with ``statistic="information"``) check the *values* and
+    raise ``ValueError`` on negative activity instead.
     """
 
     level: ClassVar[Literal["cell", "population"]] = "cell"
@@ -128,7 +133,7 @@ class Metric(_Plugin):
     requires_topology: ClassVar[bool] = False
     accepts_kinds: ClassVar[tuple[str, ...] | None] = None
     #: Which tail of the null is "interesting" by default when shuffling.
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
     @abstractmethod
     def compute(
@@ -161,7 +166,7 @@ class Metric(_Plugin):
         """
         return None
 
-    def resolve_tail(self, target: Target) -> Literal["upper", "lower", "two"]:
+    def resolve_tail(self, target: Target) -> Tail:
         """Tail to use when ``ShuffleConfig.tail`` is ``None``.
 
         Defaults to ``default_tail``; metrics whose statistic changes meaning
@@ -174,7 +179,9 @@ class Metric(_Plugin):
         """Raise ``ValueError`` if ``target`` is not what this metric consumes."""
         if self.input == "states":
             if not isinstance(target, StateSpace):
-                raise ValueError(f"metric {self.name!r} needs a StateSpace, got {type(target).__name__}")
+                raise ValueError(
+                    f"metric {self.name!r} needs a StateSpace, got {type(target).__name__}"
+                )
             if self.requires_topology and target.topology is None:
                 raise ValueError(
                     f"metric {self.name!r} needs a grid topology but state space "
@@ -183,9 +190,21 @@ class Metric(_Plugin):
         elif isinstance(target, StateSpace):
             raise ValueError(f"metric {self.name!r} needs a continuous signal, got a StateSpace")
 
-    # Backwards-compatible alias used by early metrics.
-    def check_states(self, states: StateSpace) -> None:
-        self.check_target(states)
+    def require_exclusive(self, target: Target) -> None:
+        """Raise ``ValueError`` unless ``target`` is an exclusive state space."""
+        if not target.exclusive:
+            raise ValueError(
+                f"metric {self.name!r}: requires an exclusive state space but {target.name!r} "
+                "is not exclusive; build it with bouts_to_states(exclusive=True)"
+            )
+
+    def require_topology_for_smoothing(self, target: Target) -> None:
+        """Raise ``ValueError`` if ``smooth_sigma_bins > 0`` but ``target`` has no grid topology."""
+        if getattr(self, "smooth_sigma_bins", 0) > 0 and target.topology is None:
+            raise ValueError(
+                f"metric {self.name!r}: smooth_sigma_bins > 0 requires a state space with a "
+                "GridTopology"
+            )
 
     def check_activity_kind(self, kind: str) -> None:
         if self.accepts_kinds is not None and kind not in self.accepts_kinds:
@@ -232,7 +251,26 @@ _BASES: dict[str, type[_Plugin]] = {
 
 
 def register(kind: PluginKind):
-    """Class decorator adding a plugin to the registry under ``cls.name``."""
+    """Class decorator adding a plugin to the registry under ``cls.name``.
+
+    Parameters
+    ----------
+    kind : {"transform", "preprocess", "metric", "null"}
+        Registry to add to; the class must subclass the matching base.
+
+    Returns
+    -------
+    callable
+        The decorator; it returns the class unchanged.
+
+    Raises
+    ------
+    TypeError
+        If the class does not subclass the base for ``kind`` or has no class-level
+        string ``name``.
+    ValueError
+        If another class is already registered under that name.
+    """
 
     def deco(cls: type[_Plugin]) -> type[_Plugin]:
         base = _BASES[kind]
@@ -250,7 +288,29 @@ def register(kind: PluginKind):
 
 
 def build(kind: PluginKind, spec: dict[str, Any] | _Plugin) -> Any:
-    """Instantiate a registered plugin from ``{"name": ..., **params}``."""
+    """Instantiate a registered plugin from ``{"name": ..., **params}``.
+
+    Parameters
+    ----------
+    kind : {"transform", "preprocess", "metric", "null"}
+        Which registry to look in.
+    spec : dict or plugin instance
+        ``{"name": registry_name, **fields}``; an existing plugin instance is
+        returned unchanged.
+
+    Returns
+    -------
+    Transform, PreprocessStep, Metric or Null
+        The validated plugin.
+
+    Raises
+    ------
+    KeyError
+        If ``spec`` has no ``"name"`` key or the name is not registered (the
+        message lists the registered names).
+    pydantic.ValidationError
+        If the parameters are invalid.
+    """
     if isinstance(spec, _Plugin):
         return spec
     spec = dict(spec)
@@ -261,14 +321,23 @@ def build(kind: PluginKind, spec: dict[str, Any] | _Plugin) -> Any:
     try:
         cls = _REGISTRY[kind][name]
     except KeyError as e:
-        raise KeyError(
-            f"unknown {kind} {name!r}; registered: {sorted(_REGISTRY[kind])}"
-        ) from e
+        raise KeyError(f"unknown {kind} {name!r}; registered: {sorted(_REGISTRY[kind])}") from e
     return cls(**spec)
 
 
 def available(kind: PluginKind) -> list[str]:
-    """Names registered for a plugin kind."""
+    """Names registered for a plugin kind.
+
+    Parameters
+    ----------
+    kind : {"transform", "preprocess", "metric", "null"}
+        Registry to list.
+
+    Returns
+    -------
+    list[str]
+        Sorted registry names, usable as ``{"name": ...}`` in ``build`` or YAML.
+    """
     return sorted(_REGISTRY[kind])
 
 

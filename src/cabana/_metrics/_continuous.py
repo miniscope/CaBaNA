@@ -10,6 +10,7 @@ from scipy.stats import rankdata
 
 from .._models import GridTopology
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
 from ._information import _si
 from ._ratemap import rate_maps_from_sums
@@ -65,15 +66,48 @@ class SignalCorrelation(Metric):
 
     Extras: ``xcorr`` (n_cells, n_lags), ``lags_s`` (n_lags,), ``best_lag_s``
     (n_cells,) when ``max_lag_s > 0``, and always ``n_frames`` (scalar array).
+    ``lags_s`` is in seconds; ``xcorr`` is NaN where fewer than ``min_frames``
+    paired frames exist, and ``best_lag_s`` is NaN for a cell with no finite
+    ``xcorr``.  With ``max_lag_s == 0`` only ``n_frames`` is written.
+
+    Parameters
+    ----------
+    method : {"pearson", "spearman"}, default "pearson"
+        Linear, or rank, correlation.
+    max_lag_s : float, default 0.0
+        Half-width (s) of the cross-correlation window, rounded to whole frames
+        and capped at ``n_time - 1``; ``0`` disables the cross-correlation extras.
+    min_frames : int, default 50
+        Minimum valid frames (masked and finite signal) for a correlation; fewer
+        gives NaN.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells,)``: the lag-0 correlation in [-1, 1].
+
+    Notes
+    -----
+    **Tail.**  ``"two"``: positive and negative correlations are both findings.
+
+    **State space.**  Not applicable: the target is a single 1-D signal from
+    ``session.signals`` (``input="signal"``); a multi-channel signal raises
+    ``ValueError``.
     """
 
     name: ClassVar[str] = "signal_correlation"
     input: ClassVar[Literal["states", "signal"]] = "signal"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "two"
+    default_tail: ClassVar[Tail] = "two"
 
-    method: Literal["pearson", "spearman"] = "pearson"
-    max_lag_s: float = Field(0.0, ge=0)
-    min_frames: int = Field(50, ge=2)
+    method: Literal["pearson", "spearman"] = Field(
+        "pearson", description="Pearson or Spearman (rank) correlation."
+    )
+    max_lag_s: float = Field(
+        0.0, ge=0, description="Cross-correlation half-window (s); 0 skips the lag extras."
+    )
+    min_frames: int = Field(
+        50, ge=2, description="Minimum valid (masked, finite-signal) frames; fewer gives NaN."
+    )
 
     # -- helpers ---------------------------------------------------------
     def _prep(self, activity, target, mask):
@@ -179,19 +213,55 @@ class SignalTuning(Metric):
     tuning curve (needs non-negative activity); ``"depth"`` is
     ``(max - min) / (max + min)`` of the curve over valid bins.
 
-    Extras: ``tuning_curve`` (n_cells, n_bins), ``bin_centers``, ``occupancy_s``,
-    ``valid_bins``.
+    Parameters
+    ----------
+    n_bins : int, default 20
+        Number of equal-width bins (>= 2).
+    extent : (float, float) | None, default None
+        ``(lo, hi)`` range of the signal to bin, in signal units; ``None`` uses the
+        1st to 99th percentile of the masked finite signal.  A degenerate extent
+        raises ``ValueError``.
+    min_occupancy_s : float, default 0.1
+        Bins with less masked occupancy (s) are invalid.
+    smooth_sigma_bins : float, default 0.0
+        Gaussian sigma in bins applied to sums and occupancy before dividing.
+    statistic : {"information", "depth"}, default "information"
+        See above.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells,)``; NaN when no bin is valid or the
+        cell is silent (``information``) or ``max + min <= 0`` (``depth``).
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: a larger statistic means sharper tuning.
+
+    **State space.**  Not applicable: the target is a single 1-D signal.
+
+    Extras: ``tuning_curve`` ``(n_cells, n_bins)`` rate per bin (activity units
+    per second; NaN for invalid bins), ``bin_centers`` ``(n_bins,)`` in signal
+    units, ``occupancy_s`` ``(n_bins,)`` seconds, ``valid_bins`` ``(n_bins,)`` bool.
     """
 
     name: ClassVar[str] = "signal_tuning"
     input: ClassVar[Literal["states", "signal"]] = "signal"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    n_bins: int = Field(20, ge=2)
-    extent: tuple[float, float] | None = None
-    min_occupancy_s: float = Field(0.1, ge=0)
-    smooth_sigma_bins: float = Field(0.0, ge=0)
-    statistic: Literal["information", "depth"] = "information"
+    n_bins: int = Field(20, ge=2, description="Number of equal-width signal bins.")
+    extent: tuple[float, float] | None = Field(
+        None, description="(lo, hi) of the binned range; None = 1st to 99th percentile."
+    )
+    min_occupancy_s: float = Field(
+        0.1, ge=0, description="Minimum masked occupancy (s) for a bin to be valid."
+    )
+    smooth_sigma_bins: float = Field(
+        0.0, ge=0, description="Gaussian smoothing of the tuning curve, in bins."
+    )
+    statistic: Literal["information", "depth"] = Field(
+        "information", description="Skaggs information (bits/event) or modulation depth."
+    )
 
     def _setup(self, activity, target, mask):
         self.check_target(target)
@@ -199,7 +269,7 @@ class SignalTuning(Metric):
         act = np.asarray(activity, dtype=np.float64)
         if self.statistic == "information" and np.nanmin(act) < 0:
             raise ValueError(
-                "signal_tuning with statistic='information' needs non-negative activity; "
+                "metric 'signal_tuning': statistic='information' needs non-negative activity; "
                 "use statistic='depth' or skip zscore_activity"
             )
         valid = np.asarray(mask, dtype=bool) & np.isfinite(y)
@@ -211,7 +281,7 @@ class SignalTuning(Metric):
             lo = hi = np.nan
         if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo):
             raise ValueError(
-                f"signal_tuning needs a non-degenerate extent, got ({lo}, {hi}); "
+                f"metric 'signal_tuning': needs a non-degenerate extent, got ({lo}, {hi}); "
                 "pass extent=(lo, hi) or check the signal/mask"
             )
         edges = np.linspace(lo, hi, self.n_bins + 1)
@@ -236,7 +306,9 @@ class SignalTuning(Metric):
         return np.where(mx + mn > 0, d, np.nan)
 
     def _maps(self, sums, occ, fs, topo):
-        return rate_maps_from_sums(sums, occ, fs, self.min_occupancy_s, topo, self.smooth_sigma_bins)
+        return rate_maps_from_sums(
+            sums, occ, fs, self.min_occupancy_s, topo, self.smooth_sigma_bins
+        )
 
     def compute(self, activity, target, mask, fs):
         act, onehot, _, topo = self._setup(activity, target, mask)

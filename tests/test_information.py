@@ -163,8 +163,12 @@ def test_false_positive_rate():
     st = make_states(labels, n_states)
     act = rng.poisson(0.5 / fs, (50, n_time)).astype(float)
     res = shuffle_test(
-        InformationContent(), act, st, np.ones(n_time, bool),
-        ShuffleConfig(n_shuffles=200, min_shift_s=1.0), fs,
+        InformationContent(),
+        act,
+        st,
+        np.ones(n_time, bool),
+        ShuffleConfig(n_shuffles=200, min_shift_s=1.0),
+        fs,
     )
     fpr = (res.p_value < 0.05).mean()
     assert 0.0 <= fpr <= 0.15

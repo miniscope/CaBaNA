@@ -12,13 +12,16 @@ from scipy.stats import rankdata
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
 
 _MAX_WORKERS = 8
 _MEM_BUDGET = 1_500_000_000  # bytes of per-shift scratch across worker threads
 
 
-def _auroc_from_rank_sums(r1: np.ndarray, n1: np.ndarray, n0: np.ndarray, min_frames: int) -> np.ndarray:
+def _auroc_from_rank_sums(
+    r1: np.ndarray, n1: np.ndarray, n0: np.ndarray, min_frames: int
+) -> np.ndarray:
     """``r1`` (..., n_cells, n_states); ``n1``/``n0`` (n_states,)."""
     ok = (n1 >= min_frames) & (n0 >= min_frames)
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -61,7 +64,10 @@ def _masked_shifted_rank_sums(
 
     # numpy releases the GIL in take / cumsum / matmul; each shift is independent.
     per_shift_bytes = 3 * 8 * n_cells * max(idx.size, width)
-    workers = max(1, min(_MAX_WORKERS, os.cpu_count() or 1, shifts.size, _MEM_BUDGET // max(per_shift_bytes, 1)))
+    workers = max(
+        1,
+        min(_MAX_WORKERS, os.cpu_count() or 1, shifts.size, _MEM_BUDGET // max(per_shift_bytes, 1)),
+    )
     if workers == 1:
         for i in range(shifts.size):
             one(i)
@@ -77,15 +83,41 @@ class AUROC(Metric):
 
     ``0.5`` is chance, ``> 0.5`` means higher activity in the state.  Works for
     exclusive and overlapping state spaces: "not in the state" is simply every
-    other masked frame.  Ties get average ranks.  States with fewer than
-    ``min_frames`` masked frames on either side yield NaN.
+    other masked frame (including frames in no state, as long as they are in the
+    mask).  Ties get average ranks.  Activity may be of any kind (rank-based).
+
+    Parameters
+    ----------
+    min_frames : int, default 20
+        A state needs at least this many masked frames both in and out of it;
+        otherwise its AUROC is NaN.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells, n_states)``; NaN for a cell whose
+        masked activity contains NaN, or for under-sampled states.
+
+    Notes
+    -----
+    **Tail.**  Default ``"two"``: a cell can be excited (AUROC > 0.5) or
+    suppressed (< 0.5) by a state, and both are findings.
+
+    **State space.**  Any (exclusive, overlapping, any topology); nothing is
+    required of the space.  Frames outside the mask are ignored, not treated as
+    "out of state".
+
+    Extras: ``n_in_state`` ``(n_states,)`` int, number of masked frames in each
+    state (the ``n1`` of the Mann-Whitney statistic).
     """
 
     name: ClassVar[str] = "auroc"
     level: ClassVar[Literal["cell", "population"]] = "cell"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "two"
+    default_tail: ClassVar[Tail] = "two"
 
-    min_frames: int = Field(20, ge=1)
+    min_frames: int = Field(
+        20, ge=1, description="Minimum masked frames in and out of a state; otherwise NaN."
+    )
 
     def _counts(self, states: StateSpace, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         m = states.onehot[mask].astype(np.float64)
@@ -130,7 +162,20 @@ class AUROC(Metric):
             r1 = shifted_sums(ranks, states.masked(mask), shifts)
         else:
             r1 = _masked_shifted_rank_sums(x, states.onehot[mask], mask, shifts)
-        return _auroc_from_rank_sums(r1, n1, n0, self.min_frames)
+        auc = _auroc_from_rank_sums(r1, n1, n0, self.min_frames)
+        # Non-finite activity: ``compute`` returns NaN for a cell whose masked values
+        # contain NaN/inf, so the null must too (the dense-rank fast path would rank
+        # NaN highest).  Only cells with any non-finite sample need the per-shift check.
+        bad = ~np.isfinite(x)
+        for c in np.flatnonzero(bad.any(axis=1)):
+            if mask.all():
+                auc[:, c, :] = np.nan
+                continue
+            idx = np.flatnonzero(mask)
+            for i, k in enumerate(shifts):
+                if bad[c, (idx - int(k)) % n_time].any():
+                    auc[i, c, :] = np.nan
+        return auc
 
     def extras(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float

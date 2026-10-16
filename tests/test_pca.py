@@ -14,8 +14,11 @@ def make_states(labels, n_states, exclusive=True):
     ok = labels >= 0
     oh[np.flatnonzero(ok), labels[ok]] = True
     return StateSpace(
-        name="s", onehot=oh, state_names=[f"s{i}" for i in range(n_states)],
-        kind="categorical", exclusive=exclusive,
+        name="s",
+        onehot=oh,
+        state_names=[f"s{i}" for i in range(n_states)],
+        kind="categorical",
+        exclusive=exclusive,
     )
 
 
@@ -43,7 +46,9 @@ def test_pca_recovers_rank_one_and_separation():
     assert ex["loadings"].shape == (12, 1) and ex["state_means"].shape == (3, 1)
 
     x2, lab2, _ = low_rank_data(noise=1e-2)
-    ve = PCAPopulation(zscore=False).extras(x2, make_states(lab2, 3), mask, 1.0)["variance_explained"]
+    ve = PCAPopulation(zscore=False).extras(x2, make_states(lab2, 3), mask, 1.0)[
+        "variance_explained"
+    ]
     assert ve[0] > 0.999 and ve.sum() <= 1 + 1e-12
 
 
@@ -53,8 +58,12 @@ def test_distance_properties_and_invalid_state():
     lab[:] = np.where(np.arange(lab.size) < 5, 3, lab)  # state 3 has 5 frames only
     st = make_states(lab, 4)
     mask = np.ones(lab.size, bool)
-    for m in (PCAPopulation(), PCAPopulation(distance="mahalanobis"), PopulationDistance(),
-              PopulationDistance(distance="correlation")):
+    for m in (
+        PCAPopulation(),
+        PCAPopulation(distance="mahalanobis"),
+        PopulationDistance(),
+        PopulationDistance(distance="correlation"),
+    ):
         d = m.compute(x, st, mask, 1.0)
         assert d.shape == (4, 4)
         assert np.isnan(d[3]).all() and np.isnan(d[:, 3]).all()
@@ -70,14 +79,18 @@ def test_mahalanobis_equals_euclidean_on_whitened():
     rng = np.random.default_rng(1)
     n, d = 500, 4
     lab = rng.integers(0, 3, n)
-    z = rng.normal(size=(n, d)) @ rng.normal(size=(d, d)) + 2.0 * np.eye(3)[lab] @ rng.normal(size=(3, d))
+    z = rng.normal(size=(n, d)) @ rng.normal(size=(d, d)) + 2.0 * np.eye(3)[lab] @ rng.normal(
+        size=(3, d)
+    )
     member = np.eye(3)[lab]
     means = (member.T @ z) / member.sum(0)[:, None]
     w = _pooled_within_cov(z, member, means)
     evals, evecs = np.linalg.eigh(w)
     xw = z @ (evecs / np.sqrt(evals)) @ evecs.T
     np.testing.assert_allclose(
-        _pooled_within_cov(xw, member, (member.T @ xw) / member.sum(0)[:, None]), np.eye(d), atol=1e-9
+        _pooled_within_cov(xw, member, (member.T @ xw) / member.sum(0)[:, None]),
+        np.eye(d),
+        atol=1e-9,
     )
     st = make_states(lab, 3)
     mask = np.ones(n, bool)
@@ -86,8 +99,9 @@ def test_mahalanobis_equals_euclidean_on_whitened():
     de = PCAPopulation(distance="euclidean", **kw).compute(xw.T, st, mask, 1.0)
     np.testing.assert_allclose(dm, de, atol=1e-9)
     means_w = (member.T @ xw) / member.sum(0)[:, None]
-    np.testing.assert_allclose(_pairwise(means_w, "mahalanobis", np.eye(d)),
-                               _pairwise(means_w, "euclidean"), atol=1e-12)
+    np.testing.assert_allclose(
+        _pairwise(means_w, "mahalanobis", np.eye(d)), _pairwise(means_w, "euclidean"), atol=1e-12
+    )
 
 
 def test_non_exclusive_and_mask():
@@ -117,8 +131,14 @@ def test_pca_planted_label_shuffle():
     mask = s.masks["social_scored"]
     m = PCAPopulation(n_components=5, min_frames=10)
     t0 = time.time()
-    res = shuffle_test(m, s.activity, st, mask,
-                       ShuffleConfig(n_shuffles=30, null={"name": "label_shuffle", "block_s": 5.0}, seed=0), s.fs)
+    res = shuffle_test(
+        m,
+        s.activity,
+        st,
+        mask,
+        ShuffleConfig(n_shuffles=30, null={"name": "label_shuffle", "block_s": 5.0}, seed=0),
+        s.fs,
+    )
     print(f"pca_population: 30 shuffles {time.time() - t0:.2f}s")
     obs = res.observed
     iu = np.triu_indices(st.n_states, 1)

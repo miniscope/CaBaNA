@@ -92,7 +92,7 @@ class ZscoreActivity(PreprocessStep):
         mu = a[:, m].mean(axis=1, keepdims=True)
         sd = a[:, m].std(axis=1, keepdims=True)
         sd = np.where(sd > 0, sd, 1.0)
-        return session.with_activity((a - mu) / sd)
+        return session.with_activity((a - mu) / sd, kind="zscored")
 
 
 @register("preprocess")
@@ -132,7 +132,10 @@ class RebinTime(PreprocessStep):
         "auto", description="'sum' for event-like activity, 'mean' for dF/F; 'auto' picks by kind."
     )
     min_fraction: float = Field(
-        0.5, ge=0, le=1, description="Fraction of frames that must be True/in-state for a bin to count."
+        0.5,
+        ge=0,
+        le=1,
+        description="Fraction of frames that must be True/in-state for a bin to count.",
     )
 
     def apply(self, session: Session) -> Session:

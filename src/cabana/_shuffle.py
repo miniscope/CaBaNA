@@ -36,12 +36,9 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from . import _nulls as _nulls  # noqa: F401  (registers the built-in nulls)
 from ._nulls import CircularShift, draw_shifts
 from ._registry import Metric, Null, Target, build
-from ._results import ShuffleResult
-
-Tail = Literal["upper", "lower", "two"]
+from ._results import ShuffleResult, Tail
 
 
 class ShuffleConfig(BaseModel):
@@ -49,35 +46,69 @@ class ShuffleConfig(BaseModel):
 
     Attributes
     ----------
-    n_shuffles : int
-        Number of surrogates.  1000 gives a p-value floor of ~0.001.
-    null : Null | dict | None
-        How to break the activity–behavior link.  ``None`` means
-        ``circular_shift`` with ``min_shift_s`` below.
-    min_shift_s : float
+    n_shuffles : int, default 1000
+        Number of surrogates (1 to 100000).  The smallest attainable one-sided
+        p-value is ``1 / (n_shuffles + 1)`` (about 0.001 for 1000); two-tailed
+        p-values have a floor of ``2 / (n_shuffles + 1)``.
+    null : Null | dict | None, default None
+        How to break the activity-behavior link (a ``Null`` or
+        ``{"name": ..., **params}``).  ``None`` means ``circular_shift`` with
+        ``min_shift_s`` below.
+    min_shift_s : float, default 20.0
         Convenience for the default null: smallest allowed |shift| in seconds.
         Ignored when ``null`` is given explicitly.
-    seed : int | None
-        RNG seed for reproducibility.
-    alpha : float
-        Significance level.
-    tail : {"upper", "lower", "two"} | None
+    seed : int | None, default 0
+        RNG seed for reproducibility; ``None`` draws fresh entropy.
+    alpha : float, default 0.05
+        Significance level, in (0, 1); ``significant`` means ``p_value < alpha``
+        and the null bounds are percentiles at ``alpha`` (or ``alpha / 2``).
+    tail : {"upper", "lower", "two"} | None, default None
         Which tail counts as "extreme".  ``None`` uses the metric's
-        ``resolve_tail(target)`` (upper for information content, two for AUROC).
-    batch_size : int
+        ``resolve_tail(target)``: ``upper`` for most metrics (e.g. information
+        content), ``two`` for AUROC / mean_per_state / signal_correlation / peth,
+        and ``lower`` for ``bayesian_decoder`` on a grid (where the statistic is a
+        decoding error, so smaller is better; categorical targets use ``upper``).
+    batch_size : int, default 100
         How many shifts to evaluate per call to ``compute_shifted`` (bounds
         memory for ``(batch, n_cells, n_states)`` intermediates).
+    keep_null : {"full", "none"}, default "full"
+        ``"full"`` keeps the ``(n_shuffles, ...)`` null draws in
+        ``ShuffleResult.null`` (needed by plots that draw the null).  ``"none"``
+        sets ``null=None`` once p-values, bounds, ``null_median`` and
+        ``null_mean`` are computed, saving memory and disk for large runs.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    n_shuffles: int = Field(1000, ge=1, le=100_000)
-    null: Null | None = None
-    min_shift_s: float = Field(20.0, ge=0)
-    seed: int | None = 0
-    alpha: float = Field(0.05, gt=0, lt=1)
-    tail: Tail | None = None
-    batch_size: int = Field(100, ge=1)
+    n_shuffles: int = Field(
+        1000,
+        ge=1,
+        le=100_000,
+        description="Number of surrogates; one-sided p-value floor is 1/(n_shuffles+1).",
+    )
+    null: Null | None = Field(
+        None, description="Null plugin or dict; None = circular_shift with min_shift_s."
+    )
+    min_shift_s: float = Field(
+        20.0, ge=0, description="Smallest |shift| (s) of the default circular_shift null."
+    )
+    seed: int | None = Field(0, description="RNG seed; None = non-reproducible.")
+    alpha: float = Field(0.05, gt=0, lt=1, description="Significance level (p < alpha).")
+    tail: Tail | None = Field(
+        None,
+        description=(
+            "'upper', 'lower' or 'two'; None = the metric's default (upper for most, two for "
+            "AUROC/mean/correlation/peth, lower for bayesian_decoder on a grid). p-value "
+            "floor is 1/(n_shuffles+1) (two-tailed: 2/(n_shuffles+1))."
+        ),
+    )
+    batch_size: int = Field(
+        100, ge=1, description="Shifts evaluated per compute_shifted call (bounds memory)."
+    )
+    keep_null: Literal["full", "none"] = Field(
+        "full",
+        description="'full' keeps ShuffleResult.null draws; 'none' drops them (null=None).",
+    )
 
     @field_validator("null", mode="before")
     @classmethod
@@ -191,6 +222,28 @@ def shuffle_test(
     config : ShuffleConfig
     fs : float
         Sampling rate, to convert seconds to frames.
+
+    Returns
+    -------
+    ShuffleResult
+        Observed values, null draws (``None`` if ``config.keep_null == "none"``),
+        p-values, null bounds, ``significant`` and test parameters; every
+        per-metric array has the metric's output shape.
+
+    Notes
+    -----
+    **NaN semantics.**  A cell/state whose observed value is NaN gets
+    ``p_value = NaN`` and ``significant = False``.  Non-finite null draws (a metric
+    undefined on some surrogates) are ignored: the p-value uses only the finite
+    draws, ``(count + 1) / (n_finite + 1)``, and is NaN if none are finite.  The
+    null median, mean and bounds are nan-aware likewise.
+
+    **Shift-then-mask.**  With ``circular_shift`` the activity is rolled over the
+    *whole* session first and ``mask`` is applied afterwards, unchanged (the mask
+    is not shifted), so gaps stay where they were.  Other nulls perturb the target
+    (see ``label_shuffle`` / ``bout_shuffle``) and recompute the metric with the
+    same mask.  Tail defaults to ``metric.resolve_tail(target)`` when
+    ``config.tail`` is ``None``.
     """
     metric.check_target(target)
     null_plugin = config.resolved_null()
@@ -213,7 +266,9 @@ def shuffle_test(
                 null[start : start + batch.size] = fast
             else:
                 for i, k in enumerate(batch):
-                    null[start + i] = metric.compute(np.roll(activity, int(k), axis=1), target, mask, fs)
+                    null[start + i] = metric.compute(
+                        np.roll(activity, int(k), axis=1), target, mask, fs
+                    )
     else:
         surrogates = null_plugin.surrogates(activity, target, mask, fs, config.n_shuffles, rng)
         for i, (act_s, target_s) in enumerate(surrogates):
@@ -221,9 +276,15 @@ def shuffle_test(
 
     p = _p_values(observed, null, tail)
     lo, hi = _null_bounds(null, config.alpha, tail)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        null_median = np.nanmedian(null, axis=0)
+        null_mean = np.nanmean(null, axis=0)
     return ShuffleResult(
         observed=observed,
-        null=null,
+        null=null if config.keep_null == "full" else None,
+        null_median=null_median,
+        null_mean=null_mean,
         shifts=shifts,
         p_value=p,
         null_lo=lo,

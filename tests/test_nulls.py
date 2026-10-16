@@ -88,9 +88,7 @@ def _bout_states() -> tuple[StateSpace, np.ndarray]:
         oh[a:b, 0] = True
     for a, b in [(90, 102), (250, 262)]:
         oh[a:b, 1] = True
-    st = StateSpace(
-        name="b", onehot=oh, state_names=["a", "b"], kind="bouts", exclusive=False
-    )
+    st = StateSpace(name="b", onehot=oh, state_names=["a", "b"], kind="bouts", exclusive=False)
     mask = np.zeros(n, bool)
     mask[50:350] = True
     return st, mask
@@ -104,7 +102,7 @@ def test_build_null_roundtrip() -> None:
     assert isinstance(n, LabelShuffle)
     assert n.to_dict() == {"name": "label_shuffle", "block_s": 2.0}
     assert build("null", n.to_dict()) == n
-    for spec in (CircularShift(min_shift_s=3.0), BoutShuffle(refractory_s=1.0, max_tries=7)):
+    for spec in (CircularShift(min_shift_s=3.0), BoutShuffle(refractory_s=1.0)):
         assert build("null", spec.to_dict()) == spec
 
 
@@ -113,7 +111,7 @@ def test_shuffle_config_builds_null_from_dict() -> None:
     assert isinstance(cfg.null, BoutShuffle)
     assert cfg.resolved_null() is cfg.null
     d = cfg.model_dump()
-    assert d["null"] == {"name": "bout_shuffle", "refractory_s": 0.5, "max_tries": 200}
+    assert d["null"] == {"name": "bout_shuffle", "refractory_s": 0.5}
     assert ShuffleConfig(**d).null == cfg.null
 
 
@@ -223,10 +221,13 @@ def test_label_shuffle_permutes_only_within_mask() -> None:
 def test_bout_shuffle_exclusive_stays_exclusive() -> None:
     n = 600
     oh = np.zeros((n, 3), bool)
-    for k, (a, b) in enumerate([(10, 30), (60, 80), (100, 115), (200, 230), (300, 310), (400, 420)]):
+    for k, (a, b) in enumerate(
+        [(10, 30), (60, 80), (100, 115), (200, 230), (300, 310), (400, 420)]
+    ):
         oh[a:b, k % 3] = True
-    st = StateSpace(name="e", onehot=oh, state_names=["a", "b", "c"], kind="categorical",
-                    exclusive=True)
+    st = StateSpace(
+        name="e", onehot=oh, state_names=["a", "b", "c"], kind="categorical", exclusive=True
+    )
     mask = np.ones(n, bool)
     for _, s in BoutShuffle(refractory_s=0.5).surrogates(
         np.zeros((1, n)), st, mask, FS, 20, np.random.default_rng(0)
@@ -273,8 +274,11 @@ def test_bout_shuffle_warns_when_too_dense() -> None:
     mask = np.zeros(n, bool)
     mask[0:70] = True  # two 40-frame bouts cannot fit in 70 frames without overlap
     with pytest.warns(UserWarning, match="too dense") as rec:
-        out = list(BoutShuffle(refractory_s=0.0).surrogates(
-            np.zeros((1, n)), st, mask, FS, 5, np.random.default_rng(0)))
+        out = list(
+            BoutShuffle(refractory_s=0.0).surrogates(
+                np.zeros((1, n)), st, mask, FS, 5, np.random.default_rng(0)
+            )
+        )
     assert len(out) == 5 and len([w for w in rec if "too dense" in str(w.message)]) == 1
 
 

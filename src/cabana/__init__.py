@@ -26,10 +26,12 @@ from ._cross_session import (
 from ._metrics import (
     AUROC,
     PETH,
+    BayesianDecoder,
     DecodeStates,
     GLMEncoding,
     InformationContent,
     MeanPerState,
+    MutualInformation,
     PCAPopulation,
     PopulationDistance,
     PopulationVectorOverlap,
@@ -38,6 +40,7 @@ from ._metrics import (
     SignalTuning,
     SplitHalfStability,
     event_onsets,
+    mutual_information_from_counts,
 )
 from ._models import (
     BoutTable,
@@ -72,7 +75,12 @@ from ._shuffle import ShuffleConfig, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
 from ._transform import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
 
-__version__ = "0.0.1"
+try:
+    from importlib.metadata import version as _version
+
+    __version__ = _version("cabana")
+except Exception:  # pragma: no cover - not installed
+    __version__ = "0.0.1"
 
 __all__ = [
     # data model
@@ -108,10 +116,12 @@ __all__ = [
     "ZscoreActivity",
     # metrics
     "AUROC",
+    "BayesianDecoder",
     "DecodeStates",
     "GLMEncoding",
     "InformationContent",
     "MeanPerState",
+    "MutualInformation",
     "PCAPopulation",
     "PETH",
     "PopulationDistance",
@@ -121,6 +131,7 @@ __all__ = [
     "SignalTuning",
     "SplitHalfStability",
     "event_onsets",
+    "mutual_information_from_counts",
     # results-level analyses
     "ClusterResult",
     "OverlapResult",

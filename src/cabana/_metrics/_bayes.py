@@ -29,20 +29,33 @@ products per fold so a call on 200 cells x 24000 frames x 400 states is cheap.
 from __future__ import annotations
 
 import warnings
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, NamedTuple
 
 import numpy as np
 from pydantic import Field
-from scipy.ndimage import gaussian_filter, uniform_filter1d
+from scipy.ndimage import uniform_filter1d
 from scipy.special import logsumexp
 
 from .._models import StateSpace
 from .._registry import Metric, register
-from ._decode import contiguous_folds
+from .._results import Tail
 from ._discretize import activity_levels, joint_counts, level_edges
-from ._ratemap import rate_maps_from_sums
+from ._ratemap import contiguous_folds, rate_maps_from_sums, smooth_over_grid
 
 _EPS = 1e-12
+
+
+class _BayesOut(NamedTuple):
+    """Result of one ``BayesianDecoder`` cross-validation run (per-frame arrays are ``(n_time,)``)."""
+
+    values: np.ndarray  # (n_states,) median error (grid) or accuracy (categorical)
+    confusion: np.ndarray
+    decoded: np.ndarray
+    error: np.ndarray
+    err_guess: np.ndarray
+    conf_post: np.ndarray
+    n_frames: np.ndarray
+    labels: np.ndarray
 
 
 @register("metric")
@@ -51,64 +64,123 @@ class BayesianDecoder(Metric):
 
     Frames used: masked frames with an active state, restricted to states with
     at least ``min_frames_per_class`` masked frames.  Folds are contiguous time
-    blocks over those frames.
+    blocks over those frames, so every used frame is decoded by a model that
+    never saw it.
 
-    ``compute`` returns ``(n_states,)``: with a grid topology the per-state
-    median decoding error (distance between decoded and true bin centres, in
-    the grid's physical units; smaller is better); otherwise the per-state
-    recall.  NaN for dropped states.
+    Parameters
+    ----------
+    likelihood : {"gaussian", "poisson", "empirical"}, default "gaussian"
+        Observation model.  ``"gaussian"`` is the Shuman et al. 2020 decoder
+        (see module docstring); ``"poisson"`` is independent Poisson (Zhang et
+        al. 1998); ``"empirical"`` scores discretised levels with
+        ``P(level | state)`` tables.
+    binarize : bool, default True
+        Binarize activity (``> 0`` becomes 1, NaN becomes 0) before training and
+        test windowing; ``False`` uses the (NaN-zeroed) amplitudes.  Ignored for
+        ``likelihood="empirical"``, which discretises the raw activity itself.
+    window_s : float, default 0.25
+        Total width (s) of the centred boxcar applied to the test activity.
+        ``0`` disables it; otherwise the width is rounded to an odd number of
+        frames and the mean runs over used frames only, never masked ones.
+        Ignored for ``"empirical"``, which scores each frame's discretised level
+        on its own (a windowed mean is not one of the levels).
+    smooth_sigma_bins : float, default 0.0
+        Gaussian sigma (grid bins) smoothing the training maps; needs a state
+        space with a ``GridTopology``.  For gaussian/poisson it smooths rate
+        maps; for empirical it smooths the joint (state, level) counts per level
+        and the occupancy prior (edge-normalised) before the pseudocount.
+    n_folds : int, default 4
+        Number of contiguous time blocks used as cross-validation folds (>= 2).
+    n_trial_blocks : int, default 10
+        Gaussian likelihood only: number of contiguous training blocks standing
+        in for "trials" when estimating per-(cell, state) mean and s.d.
+    sigma : {"per_state", "pooled"}, default "per_state"
+        Gaussian only.  ``"per_state"`` is Shuman 2020: each (cell, state) has
+        its own s.d. across training blocks, raised to the cell's mean s.d.; use
+        it when states have similar occupancy (e.g. spatial bins).  ``"pooled"``
+        shares one s.d. per cell, the block-count-weighted RMS of the per-state
+        block s.d.s (within-state variance, as in LDA); use it, or
+        ``likelihood="poisson"``, for unbalanced categorical states.  With
+        per-state sigma, rare states have few contributing blocks and noisy block
+        means, hence a large sigma and a flat Gaussian, so whenever a cell is
+        active the flattest (rarest) state wins and the decoder collapses onto a
+        few states.
+    prior : {"occupancy", "uniform"}, default "occupancy"
+        Prior over states: training-fold occupancy, or flat over states seen in
+        training.
+    min_frames_per_class : int, default 20
+        States with fewer masked frames are dropped (NaN, never decoded).
+    n_levels, binning, pseudocount
+        Empirical likelihood only: number of activity levels, how level edges
+        are chosen (``"quantile"``, ``"log"``, ``"linear"``, ``"binary"``) and
+        the Dirichlet pseudocount added to the (smoothed) counts.  Smoothed
+        counts sit on a per-bin scale (a few positive frames per bin and level on
+        sparse data), so ``pseudocount`` defaults to 0.1; a pseudocount of 1
+        swamps them and pushes the decoder toward the prior.
 
-    ``sigma`` (gaussian only) chooses the likelihood width.  ``"per_state"`` is
-    Shuman 2020: each (cell, state) has its own s.d. across training blocks,
-    raised to the cell's mean s.d.; use it when states have similar occupancy
-    (e.g. spatial bins).  ``"pooled"`` shares one s.d. per cell, the
-    block-count-weighted RMS of the per-state block s.d.s (within-state
-    variance, as in LDA); use it, or ``likelihood="poisson"``, for unbalanced
-    categorical states.  With per-state sigma, rare states have few
-    contributing blocks and noisy block means, hence a large sigma and a flat
-    Gaussian, so whenever a cell is active the flattest (rarest) state wins and
-    the decoder collapses onto a few states.
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states,)``.  With a grid topology: the
+        per-state median decoding error (distance between decoded and true bin
+        centres, in the grid's physical units; smaller is better).  Otherwise:
+        the per-state recall (higher is better).  NaN for dropped states.
 
-    ``window_s`` is the total width of the centred boxcar applied to the test
-    activity (``0`` disables it; otherwise the width is rounded to an odd number
-    of frames and the mean runs over used frames only, never masked ones); it
-    is ignored for ``likelihood="empirical"``,
-    which scores each frame's discretised level on its own (a windowed mean is
-    not one of the levels).  ``smooth_sigma_bins`` smooths the training maps
-    (grid only): rate maps for gaussian/poisson, and for empirical the joint
-    (state, level) counts per level and the occupancy prior, edge-normalised,
-    before the pseudocount is added.  ``n_levels``,
-    ``binning`` and ``pseudocount`` apply to the empirical likelihood only.
-    Smoothed counts sit on a per-bin scale (a few positive frames per bin and
-    level on sparse data), so the Dirichlet ``pseudocount`` defaults to 0.1; a
-    pseudocount of 1 swamps them and pushes the decoder toward the prior.
+    Notes
+    -----
+    **Tail.**  The class default is ``"lower"`` because the grid statistic is an
+    *error*; ``resolve_tail`` returns ``"lower"`` when the target has a
+    ``GridTopology`` and ``"upper"`` for categorical targets (recall).
 
-    Extras: ``confusion`` ``(n_states, n_states)`` counts ``[true, decoded]``
-    (NaN rows for dropped states), ``decoded`` ``(n_time,)`` state index or -1,
-    ``error`` ``(n_time,)`` per-frame error (NaN if not decoded / no
-    topology), ``error_overall`` ``(1,)`` median error, ``accuracy_overall``
-    ``(1,)``, ``chance_error`` ``(1,)`` median error of always guessing the
-    training-prior's most likely state, ``n_frames`` ``(n_states,)`` and
-    ``posterior_mean_confidence`` ``(1,)`` mean max posterior.
+    **State space.**  Requires an exclusive state space (``ValueError``
+    otherwise); ``smooth_sigma_bins > 0`` requires a topology.
+
+    The decoded state is the argmax of the log-likelihood plus log-prior;
+    ``label_shuffle`` is the natural null.
+
+    Extras (``extras``): ``confusion`` ``(n_states, n_states)`` counts
+    ``[true, decoded]`` (NaN rows/columns for dropped states); ``decoded``
+    ``(n_time,)`` decoded state index or -1; ``error`` ``(n_time,)`` per-frame
+    error (NaN if not decoded or no topology); ``error_overall`` ``(1,)`` median
+    error (NaN without topology); ``accuracy_overall`` ``(1,)`` fraction of
+    decoded frames correct; ``chance_error`` ``(1,)`` median error of always
+    guessing the training fold's most occupied state (NaN without topology);
+    ``n_frames`` ``(n_states,)`` masked frames per state (counted before dropping
+    rare states); and
+    ``posterior_mean_confidence`` ``(1,)`` mean maximum posterior probability.
     """
 
     name: ClassVar[str] = "bayesian_decoder"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "lower"
+    default_tail: ClassVar[Tail] = "lower"
 
-    likelihood: Literal["gaussian", "poisson", "empirical"] = "gaussian"
-    binarize: bool = True
+    likelihood: Literal["gaussian", "poisson", "empirical"] = Field(
+        "gaussian", description="Observation model: gaussian (Shuman 2020), poisson, or empirical."
+    )
+    binarize: bool = Field(
+        True, description="Binarize activity (> 0 -> 1) before decoding; ignored for empirical."
+    )
     window_s: float = Field(0.25, ge=0, description="Total width of the test-time boxcar (s).")
     smooth_sigma_bins: float = Field(0.0, ge=0, description="Gaussian map smoothing (grid only).")
-    n_folds: int = Field(4, ge=2)
+    n_folds: int = Field(4, ge=2, description="Number of contiguous time-block CV folds.")
     n_trial_blocks: int = Field(10, ge=1, description="Training blocks standing in for trials.")
-    sigma: Literal["per_state", "pooled"] = "per_state"
-    prior: Literal["occupancy", "uniform"] = "occupancy"
-    min_frames_per_class: int = Field(20, ge=1)
-    n_levels: int = Field(5, ge=2)
-    binning: Literal["quantile", "log", "linear", "binary"] = "quantile"
-    pseudocount: float = Field(0.1, gt=0)
-    seed: int = 0
+    sigma: Literal["per_state", "pooled"] = Field(
+        "per_state",
+        description="Gaussian only: per-(cell, state) s.d. or one pooled s.d. per cell.",
+    )
+    prior: Literal["occupancy", "uniform"] = Field(
+        "occupancy", description="State prior: training occupancy or uniform."
+    )
+    min_frames_per_class: int = Field(
+        20, ge=1, description="States with fewer masked frames are dropped (NaN)."
+    )
+    n_levels: int = Field(5, ge=2, description="Empirical only: number of activity levels.")
+    binning: Literal["quantile", "log", "linear", "binary"] = Field(
+        "quantile", description="Empirical only: how activity level edges are chosen."
+    )
+    pseudocount: float = Field(
+        0.1, gt=0, description="Empirical only: Dirichlet pseudocount added to level counts."
+    )
 
     def resolve_tail(self, target):
         return "lower" if getattr(target, "topology", None) is not None else "upper"
@@ -170,24 +242,13 @@ class BayesianDecoder(Metric):
     def _smooth_states(self, a, topology):
         """Edge-normalised Gaussian smoothing of ``(..., n_states)`` over the grid.
 
-        Mirrors ``rate_maps_from_sums``: values and the occupied-state indicator are
-        smoothed with ``mode="constant"`` and the former divided by the latter.  The
-        occupied indicator is ``a`` summed over leading axes > 0.  No-op without
-        smoothing.
+        Uses ``smooth_over_grid`` (as ``rate_maps_from_sums`` does) with the occupied
+        indicator, ``a`` summed over leading axes > 0.  No-op without smoothing.
         """
         if self.smooth_sigma_bins <= 0 or topology is None:
             return a
-        shape = tuple(topology.shape)
-        sig = (0.0,) * (a.ndim - 1) + (float(self.smooth_sigma_bins),) * len(shape)
-        sig_v = (float(self.smooth_sigma_bins),) * len(shape)
-        occupied = (a.reshape(-1, a.shape[-1]).sum(axis=0) > 0).astype(np.float64)
-        norm = gaussian_filter(occupied.reshape(shape), sigma=sig_v, mode="constant")
-        norm = norm.reshape(-1)
-        out = gaussian_filter(a.reshape(*a.shape[:-1], *shape), sigma=sig, mode="constant")
-        out = out.reshape(a.shape)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            out = np.where(norm > 0, out / norm, 0.0)
-        return out
+        occupied = a.reshape(-1, a.shape[-1]).sum(axis=0) > 0
+        return smooth_over_grid(a, occupied, topology, self.smooth_sigma_bins)
 
     def _fit_empirical(self, activity, states, train_full):
         """Level edges and ``log P(level | state)`` ``(cells, states, L)``, from training frames only."""
@@ -207,12 +268,14 @@ class BayesianDecoder(Metric):
         return ll
 
     # ------------------------------------------------------------------ #
-    def _run(self, activity, states: StateSpace, mask, fs):
-        if not states.exclusive:
-            raise ValueError("bayesian_decoder needs an exclusive StateSpace")
+    def check_target(self, target: StateSpace) -> None:
+        super().check_target(target)
+        self.require_exclusive(target)
+        self.require_topology_for_smoothing(target)
+
+    def _run(self, activity, states: StateSpace, mask, fs) -> _BayesOut:
+        self.check_target(states)
         topology = states.topology
-        if self.smooth_sigma_bins > 0 and topology is None:
-            raise ValueError("smooth_sigma_bins > 0 requires a state space with a GridTopology")
         mask = np.asarray(mask, dtype=bool)
         act = np.asarray(activity, dtype=np.float64)
         n_time, n_states = states.n_time, states.n_states
@@ -302,15 +365,15 @@ class BayesianDecoder(Metric):
             with np.errstate(invalid="ignore", divide="ignore"):
                 values[ids] = np.diag(c)[ids] / c[ids].sum(axis=1)
             values[ids] = np.where(c[ids].sum(axis=1) > 0, values[ids], np.nan)
-        return values, conf, decoded, error, err_guess, conf_post, n_frames, lab
+        return _BayesOut(values, conf, decoded, error, err_guess, conf_post, n_frames, lab)
 
     def compute(self, activity, states, mask, fs):
-        return self._run(activity, states, mask, fs)[0]
+        return self._run(activity, states, mask, fs).values
 
     def extras(self, activity, states, mask, fs):
-        values, conf, decoded, error, err_guess, conf_post, n_frames, lab = self._run(
-            activity, states, mask, fs
-        )
+        out = self._run(activity, states, mask, fs)
+        conf, decoded, error, err_guess = out.confusion, out.decoded, out.error, out.err_guess
+        conf_post, n_frames, lab = out.conf_post, out.n_frames, out.labels
         dec = decoded >= 0
         with np.errstate(all="ignore"):
             acc = float(np.mean(decoded[dec] == lab[dec])) if dec.any() else np.nan

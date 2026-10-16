@@ -24,10 +24,21 @@ def hand_table():
     for an, sigs in {"m1": [1, 1, 0, 0], "m2": [1, 0, 0, 0]}.items():
         for i, sg in enumerate(sigs):
             for st in ("x", "y"):
-                rows.append(dict(metric="m", target="t", cell=f"c{i}", state=st,
-                                 value=1.0 if sg else 0.0, p_value=0.01 if sg else 0.5,
-                                 null_lo=-0.5, null_hi=0.5, significant=bool(sg),
-                                 session=f"s_{an}", animal=an))
+                rows.append(
+                    dict(
+                        metric="m",
+                        target="t",
+                        cell=f"c{i}",
+                        state=st,
+                        value=1.0 if sg else 0.0,
+                        p_value=0.01 if sg else 0.5,
+                        null_lo=-0.5,
+                        null_hi=0.5,
+                        significant=bool(sg),
+                        session=f"s_{an}",
+                        animal=an,
+                    )
+                )
     return pd.DataFrame(rows)
 
 
@@ -97,7 +108,9 @@ def test_hierarchical_bootstrap_wider_than_pooled(tmp_path):
     means = [0.0, 1.0, 2.0, 3.0, 4.0]
     for k, mu in enumerate(means):
         for c in range(100):
-            rows.append(dict(animal=f"m{k}", session=f"s{k}", cell=f"c{c}", value=mu + rng.normal(0, 0.3)))
+            rows.append(
+                dict(animal=f"m{k}", session=f"s{k}", cell=f"c{c}", value=mu + rng.normal(0, 0.3))
+            )
     df = pd.DataFrame(rows)
     boot = hierarchical_bootstrap(df, lambda t: float(t["value"].mean()), n_boot=400, seed=1)
     assert boot.ci[0] < 2.0 < boot.ci[1]
@@ -105,7 +118,9 @@ def test_hierarchical_bootstrap_wider_than_pooled(tmp_path):
     again = hierarchical_bootstrap(df, lambda t: float(t["value"].mean()), n_boot=400, seed=1)
     assert np.array_equal(boot.distribution, again.distribution)
     plot_hierarchical_bootstrap(boot).savefig(tmp_path / "boot.png")
-    one = hierarchical_bootstrap(df, lambda t: float(t["value"].mean()), n_boot=50, level=("animal",))
+    one = hierarchical_bootstrap(
+        df, lambda t: float(t["value"].mean()), n_boot=50, level=("animal",)
+    )
     assert one.n_animals == 5
 
 
@@ -116,8 +131,13 @@ def _results(seed, n_shuffles=100):
             {"name": "speed"},
             {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 50.0, "output": "position"},
         ],
-        analyses=[AnalysisSpec(metric={"name": "information_content"}, states="position",
-                               shuffle=ShuffleConfig(n_shuffles=n_shuffles, seed=0))],
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "information_content"},
+                states="position",
+                shuffle=ShuffleConfig(n_shuffles=n_shuffles, seed=0),
+            )
+        ],
     )
     return pipe.run(simulate_session(duration_s=300, n_cells=40, seed=seed))[1]
 
@@ -128,8 +148,9 @@ def test_end_to_end(tmp_path):
     tab = cohort_table(rs, animal)
     assert {"session", "animal", "metric", "value", "significant"} <= set(tab.columns)
     assert set(tab["animal"]) == {"m1", "m2"}
-    f = fraction_significant_by_animal(tab, metric="information_content", target="position",
-                                       by_state=False)
+    f = fraction_significant_by_animal(
+        tab, metric="information_content", target="position", by_state=False
+    )
     assert len(f) == 2
     assert f.set_index("animal").loc["m1", "n_cells"] == 80
     assert (f["fraction_significant"] > 0).all()
@@ -137,18 +158,34 @@ def test_end_to_end(tmp_path):
 
 
 def test_plot_fractions_with_control(tmp_path):
-    rows = [dict(animal=f"m{i}", state=s, fraction_significant=v + 0.01 * i)
-            for i in range(4) for s, v in (("a", 0.4), ("b", 0.3), ("ctl", 0.05))]
+    rows = [
+        dict(animal=f"m{i}", state=s, fraction_significant=v + 0.01 * i)
+        for i in range(4)
+        for s, v in (("a", 0.4), ("b", 0.3), ("ctl", 0.05))
+    ]
     fig = plot_cohort_fractions(pd.DataFrame(rows), control_state="ctl")
     fig.savefig(tmp_path / "g.png")
 
 
 def test_cohort_table_missing_animal():
-    mr = MetricResult(metric="m", target="t", level="cell", values=np.zeros(2),
-                      shuffle=ShuffleResult(observed=np.zeros(2), null=np.zeros((3, 2)), shifts=None,
-                                            p_value=np.ones(2), null_lo=np.zeros(2),
-                                            null_hi=np.zeros(2), significant=np.zeros(2, bool),
-                                            alpha=0.05, tail="upper", n_shuffles=3))
+    mr = MetricResult(
+        metric="m",
+        target="t",
+        level="cell",
+        values=np.zeros(2),
+        shuffle=ShuffleResult(
+            observed=np.zeros(2),
+            null=np.zeros((3, 2)),
+            shifts=None,
+            p_value=np.ones(2),
+            null_lo=np.zeros(2),
+            null_hi=np.zeros(2),
+            significant=np.zeros(2, bool),
+            alpha=0.05,
+            tail="upper",
+            n_shuffles=3,
+        ),
+    )
     rs = ResultSet(results=[mr])
     with pytest.raises(KeyError):
         cohort_table({"a": rs}, {})

@@ -69,6 +69,15 @@ python3.12 -m venv .venv
 .venv/bin/python examples/demo.py
 ```
 
+In Colab or any environment without a checkout:
+
+```bash
+pip install "git+https://github.com/miniscope/CaBaNA.git@framework-demo"
+```
+
+The `@framework-demo` pin is needed only while the package lives on that
+branch; it goes away after the merge to `main`.
+
 ## Quick look
 
 ```python
@@ -89,29 +98,72 @@ pipe = Pipeline(
     ],
     preprocess=[{"name": "speed_threshold", "min_speed": 20.0}],
     analyses=[
-        # masks are chosen per analysis: speed filter for space, scored window for social
+        # each analysis already runs on its target's support (tracked frames for the grid,
+        # the scored span for bouts, the labelled span for syllables); `masks` adds to that,
+        # here a speed filter for space only. Analyses get names like "auroc[social]".
         AnalysisSpec(metric={"name": "information_content", "smooth_sigma_bins": 1.0},
                      states="position", shuffle=shuf, masks=["speed"]),
         AnalysisSpec(metric={"name": "information_content"},
-                     states="syllables", shuffle=shuf, masks=[]),
-        AnalysisSpec(metric={"name": "auroc"}, states="social",
-                     shuffle=shuf, masks=["social_scored"]),
+                     states="syllables", shuffle=shuf),
+        AnalysisSpec(metric={"name": "auroc"}, states="social", shuffle=shuf),
         # same states, other questions; the null is one line (circular_shift by default)
         AnalysisSpec(metric={"name": "peth", "pre_s": 4, "post_s": 4, "baseline_s": (-4, -1),
                              "response_s": (0, 1.5)}, states="social",
-                     shuffle=ShuffleConfig(n_shuffles=1000, null={"name": "bout_shuffle"}),
-                     masks=["social_scored"]),
+                     shuffle=ShuffleConfig(n_shuffles=1000, null={"name": "bout_shuffle"})),
         # a continuous target instead of a state space
-        AnalysisSpec(metric={"name": "signal_correlation"}, signal="speed", shuffle=shuf, masks=[]),
+        AnalysisSpec(metric={"name": "signal_correlation"}, signal="speed", shuffle=shuf),
     ],
 )
 session, results = pipe.run(session)
-results.to_dataframe()  # cell × state × metric, with p-values
+results["auroc[social]"]  # pick a result by its analysis name (see results.names())
+results.to_dataframe()    # cell × state × metric, with p-values and an `analysis` column
+results.save("results.zip")  # later: cabana.ResultSet.load("results.zip")
 ```
 
+Give an analysis your own name with `AnalysisSpec(name="...", ...)`; otherwise it is
+`metric[target]`, with `#<null>` or `#2` added when two analyses would collide.
+
 For the full end-to-end run on simulated data with planted ground truth, try
-`python examples/demo.py --quick` (about 10 s; writes figures, tables and the
-pipeline YAML to `examples/output/`; the full run takes a couple of minutes) or open `notebooks/cabana_demo.ipynb`.
+`python examples/demo.py --quick` (about 20–40 s; writes figures, tables and the
+pipeline YAML to `examples/output/`; the full run takes a few minutes) or open `notebooks/cabana_demo.ipynb`.
+
+## Bring your own data
+
+There are no file loaders yet, so you build a `Session` from arrays you read
+yourself:
+
+```python
+session = cabana.Session(
+    activity=activity, t=t, fs=15.0, activity_kind="deconvolved", cell_ids=ids,
+    behavior={
+        "social": cabana.BoutTable(labels=labels, start_s=start_s, stop_s=stop_s,
+                                   scored_start_s=60.0, scored_stop_s=540.0),
+        "position": cabana.ContinuousSignal(t=t_xy, values=xy, channel_names=["x", "y"],
+                                            units="mm"),
+    },
+)
+```
+
+`t` is in seconds on the neural clock (any origin); behavior inputs use the same
+time base and may start before imaging. [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md)
+walks through BORIS bouts, DeepLabCut position, labels, grids with an explicit
+`extent`, masks and support, which metrics need exclusive state spaces, saving and
+loading, several sessions and animals, and writing a custom metric. Every code
+block in it runs.
+
+## Documentation
+
+- [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results.
+
+- [`docs/DESIGN.md`](docs/DESIGN.md): architecture, module specs, design history.
+- [`docs/ANALYSIS_COVERAGE.md`](docs/ANALYSIS_COVERAGE.md): survey of analyses in the literature and what is implemented.
+- [`docs/STATISTICS.md`](docs/STATISTICS.md): choosing a null, reading p-values, multiple comparisons, per-animal inference.
+- [`docs/GLOSSARY.md`](docs/GLOSSARY.md): the vocabulary used in the code and docs.
+- [`docs/REFERENCES.md`](docs/REFERENCES.md): numbered references cited throughout.
+
+## Citing
+
+See [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository" reads it).
 
 ## License
 

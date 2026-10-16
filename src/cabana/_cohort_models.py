@@ -14,11 +14,13 @@ class CellMatch(BaseModel):
     Attributes
     ----------
     session_a, session_b : str
-        Session ids.
+        Session ids (keys of ``SessionSet.sessions``).
     pairs : (n_pairs, 2) int
-        ``pairs[k] = (cell index in a, cell index in b)``.
+        ``pairs[k] = (cell index in a, cell index in b)``: zero-based row
+        indices into each session's ``activity``.  Each cell appears at most once
+        per column.
     confidence : (n_pairs,) float | None
-        Match confidence (e.g. registration probability).
+        Match confidence (e.g. registration probability); ``None`` if unknown.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -84,7 +86,19 @@ class CellMatch(BaseModel):
 
 
 class SessionSet(BaseModel):
-    """A cohort: sessions, which animal each belongs to, and cell registrations."""
+    """A cohort: sessions, which animal each belongs to, and cell registrations.
+
+    Attributes
+    ----------
+    sessions : dict[str, Session]
+        Sessions by id.
+    animal : dict[str, str]
+        Animal id of every session id (must cover exactly the same ids).
+    matches : list[CellMatch], default []
+        Cell registrations between pairs of sessions of the same animal; cell
+        indices must be inside the sessions.  Use :meth:`match` to look one up
+        in either direction.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

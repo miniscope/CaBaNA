@@ -10,7 +10,9 @@ from scipy.stats import wilcoxon
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
+from .._util import runs
 
 
 def bouts(states: StateSpace) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -18,16 +20,21 @@ def bouts(states: StateSpace) -> list[tuple[np.ndarray, np.ndarray]]:
 
     ``onsets[i]`` is the first frame of bout ``i`` (a rising edge, including
     frame 0 if the state is active there); ``lengths[i]`` its duration in frames.
+
+    Parameters
+    ----------
+    states : StateSpace
+        Any state space; each column of ``onehot`` is scanned independently, so
+        overlapping states are fine.
+
+    Returns
+    -------
+    list[tuple[numpy.ndarray, numpy.ndarray]]
+        One ``(onsets, lengths)`` pair per state (int64 arrays of equal length,
+        empty if the state is never active).
     """
     oh = np.asarray(states.onehot, dtype=bool)
-    out = []
-    pad = np.zeros((1, oh.shape[1]), dtype=np.int8)
-    d = np.diff(np.concatenate([pad, oh.astype(np.int8), pad], axis=0), axis=0)
-    for s in range(oh.shape[1]):
-        on = np.flatnonzero(d[:, s] == 1)
-        off = np.flatnonzero(d[:, s] == -1)
-        out.append((on.astype(np.int64), (off - on).astype(np.int64)))
-    return out
+    return [runs(oh[:, s]) for s in range(oh.shape[1])]
 
 
 def event_onsets(
@@ -43,6 +50,25 @@ def event_onsets(
     ``>= min_gap_s`` after the end of the previous bout of the same state
     (kept or not; the first bout has no predecessor), and if its onset frame
     is inside ``mask``.
+
+    Parameters
+    ----------
+    states : StateSpace
+        State space whose bouts (runs of True) are scanned, one state at a time.
+    mask : (n_time,) bool
+        Frames allowed; only the onset frame is tested against it.
+    fs : float
+        Sampling rate in Hz, to convert frames to seconds.
+    min_duration_s : float, default 0.0
+        Minimum bout duration in seconds (inclusive).
+    min_gap_s : float, default 0.0
+        Minimum silence in seconds between the end of the previous bout of the
+        same state and this onset (inclusive); ``0`` disables the check.
+
+    Returns
+    -------
+    list[numpy.ndarray]
+        One int array of onset frame indices per state, in time order.
     """
     mask = np.asarray(mask, dtype=bool)
     result = []
@@ -95,21 +121,79 @@ class PETH(Metric):
     non-zero response-baseline difference: the exact two-sided floor
     ``2 / 2**n`` stays above 0.05 for n < 6 and the normal approximation is
     unreliable on sparse deconvolved data.
+
+    Parameters
+    ----------
+    pre_s, post_s : float, default 5.0 and 5.0
+        Seconds of the window before and after each onset (``pre_s >= 0``,
+        ``post_s > 0``); window frames are ``[onset - pre, onset + post)``.
+    baseline_s : (float, float), default (-5.0, -2.0)
+        Baseline interval in seconds relative to onset (half-open); must lie
+        within ``[-pre_s, post_s]``.
+    response_s : (float, float), default (0.0, 2.0)
+        Response interval in seconds relative to onset (half-open); must lie
+        within ``[-pre_s, post_s]``.
+    bin_s : float | None, default None
+        Bin width in seconds used to average the ``peth`` / ``peth_sem`` extras
+        along time; ``None`` keeps one bin per frame.  Does not affect the tested
+        statistic.
+    min_duration_s : float, default 0.0
+        Drop bouts shorter than this (seconds) before taking onsets.
+    min_gap_s : float, default 0.0
+        Drop onsets closer than this (seconds) to the end of the previous bout of
+        the same state, so events are well separated.  The defaults (no duration
+        or gap filter) are *not* what the demo uses: its ``1.5 s`` / ``1 s``
+        values are chosen explicitly for the simulated bouts.
+    min_events : int, default 3
+        States with fewer valid events are NaN.
+    baseline_subtract : bool, default True
+        Subtract each event's baseline mean from its window in the ``peth``
+        extras (the tested statistic is always response minus baseline).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells, n_states)`` in activity units: mean
+        over events of response-window mean minus baseline-window mean.
+
+    Notes
+    -----
+    **Tail.**  ``"two"``: activity can rise or fall after the event.
+
+    **State space.**  Any state space with discrete bouts (typically ``"bouts"``
+    or a categorical/syllable space); each run of True in a state's column is one
+    event, whether or not the space is exclusive.  Not meaningful for fine grids.
+
+    Extras shapes: ``peth`` and ``peth_sem`` ``(n_cells, n_states, n_bins)`` with
+    ``n_bins = (pre + post) // bin_frames`` (NaN for states below ``min_events``;
+    ``peth_sem`` is also NaN for a single event), ``time_s`` ``(n_bins,)`` bin
+    centres in seconds relative to onset, ``n_events`` ``(n_states,)`` valid
+    events (window inside the session), ``p_prepost`` ``(n_cells, n_states)``.
     """
 
     name: ClassVar[str] = "peth"
     level: ClassVar[Literal["cell", "population"]] = "cell"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "two"
+    default_tail: ClassVar[Tail] = "two"
 
-    pre_s: float = Field(5.0, ge=0)
-    post_s: float = Field(5.0, gt=0)
-    baseline_s: tuple[float, float] = (-5.0, -2.0)
-    response_s: tuple[float, float] = (0.0, 2.0)
-    bin_s: float | None = Field(None, gt=0)
-    min_duration_s: float = Field(0.0, ge=0)
-    min_gap_s: float = Field(0.0, ge=0)
-    min_events: int = Field(3, ge=1)
-    baseline_subtract: bool = True
+    pre_s: float = Field(5.0, ge=0, description="Seconds before onset in each window.")
+    post_s: float = Field(5.0, gt=0, description="Seconds after onset in each window.")
+    baseline_s: tuple[float, float] = Field(
+        (-5.0, -2.0), description="Baseline interval (s, relative to onset); inside the window."
+    )
+    response_s: tuple[float, float] = Field(
+        (0.0, 2.0), description="Response interval (s, relative to onset); inside the window."
+    )
+    bin_s: float | None = Field(
+        None, gt=0, description="Bin width (s) for the peth extras; None = one bin per frame."
+    )
+    min_duration_s: float = Field(0.0, ge=0, description="Minimum bout duration (s) to keep.")
+    min_gap_s: float = Field(
+        0.0, ge=0, description="Minimum gap (s) since the previous bout of the same state."
+    )
+    min_events: int = Field(3, ge=1, description="States with fewer valid events are NaN.")
+    baseline_subtract: bool = Field(
+        True, description="Subtract each event's baseline mean in the peth extras."
+    )
 
     # -- geometry ---------------------------------------------------------- #
 
@@ -121,9 +205,7 @@ class PETH(Metric):
                 raise ValueError("baseline_s and response_s must lie within [-pre_s, post_s]")
         return pre, post, base, resp
 
-    def valid_onsets(
-        self, states: StateSpace, mask: np.ndarray, fs: float
-    ) -> list[np.ndarray]:
+    def valid_onsets(self, states: StateSpace, mask: np.ndarray, fs: float) -> list[np.ndarray]:
         """Kept onsets per state whose full window lies inside the session."""
         pre, post, _, _ = self._geometry(fs)
         n = states.n_time
@@ -136,7 +218,9 @@ class PETH(Metric):
         idx = onsets[:, None] + np.arange(-pre, post)[None, :]
         return np.asarray(activity, dtype=np.float64)[:, idx]
 
-    def _weights(self, states: StateSpace, mask: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
+    def _weights(
+        self, states: StateSpace, mask: np.ndarray, fs: float
+    ) -> tuple[np.ndarray, np.ndarray]:
         pre, post, (b0, b1), (r0, r1) = self._geometry(fs)
         ons = self.valid_onsets(states, mask, fs)
         n_ev = np.array([o.size for o in ons], dtype=np.int64)

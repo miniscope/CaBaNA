@@ -139,7 +139,9 @@ def test_signal_metric_with_shuffle_and_2d_signal() -> None:
 
 
 def test_states_result_has_target_kind_states() -> None:
-    pipe = Pipeline(analyses=[AnalysisSpec(metric={"name": "_test_targets_state_mean"}, states="pos")])
+    pipe = Pipeline(
+        analyses=[AnalysisSpec(metric={"name": "_test_targets_state_mean"}, states="pos")]
+    )
     _, rs = pipe.run(_session())
     r = rs.get("_test_targets_state_mean")
     assert r.target == "pos" and r.target_kind == "states"
@@ -167,7 +169,9 @@ def test_spec_target_kind_must_match_metric_input() -> None:
 
 
 def test_target_property() -> None:
-    assert AnalysisSpec(metric={"name": "_test_targets_signal_corr"}, signal="speed").target == "speed"
+    assert (
+        AnalysisSpec(metric={"name": "_test_targets_signal_corr"}, signal="speed").target == "speed"
+    )
     assert AnalysisSpec(metric={"name": "_test_targets_state_mean"}, states="pos").target == "pos"
 
 
@@ -177,7 +181,9 @@ def test_unknown_targets_raise_keyerror_at_run() -> None:
     )
     with pytest.raises(KeyError, match="nope"):
         sig.run(_session())
-    st = Pipeline(analyses=[AnalysisSpec(metric={"name": "_test_targets_state_mean"}, states="nope")])
+    st = Pipeline(
+        analyses=[AnalysisSpec(metric={"name": "_test_targets_state_mean"}, states="nope")]
+    )
     with pytest.raises(KeyError, match="nope"):
         st.run(_session())
 
@@ -195,9 +201,7 @@ def test_check_target_kind_mismatch() -> None:
     states_metric.check_target(_states())  # fine
     signal_metric.check_target(np.zeros(N))  # fine
     signal_metric.check_target(np.zeros((N, 2)))  # fine
-    assert states_metric.check_states is not None
-    with pytest.raises(ValueError):
-        states_metric.check_states(np.zeros(N))  # type: ignore[arg-type]
+    assert not hasattr(states_metric, "check_states")  # removed alias
 
 
 def test_requires_topology_enforced() -> None:
@@ -231,7 +235,9 @@ def test_requires_topology_enforced_with_shuffle() -> None:
 
 
 def test_accepts_kinds_enforced_in_pipeline() -> None:
-    pipe = Pipeline(analyses=[AnalysisSpec(metric={"name": "_test_targets_deconv_only"}, states="pos")])
+    pipe = Pipeline(
+        analyses=[AnalysisSpec(metric={"name": "_test_targets_deconv_only"}, states="pos")]
+    )
     _, rs = pipe.run(_session(activity_kind="deconvolved"))
     assert len(rs) == 1
     with pytest.raises(ValueError, match="activity_kind='dff'"):
@@ -271,6 +277,77 @@ def test_spec_to_dict_includes_signal_and_roundtrips() -> None:
 
 def test_pipeline_yaml_roundtrip_with_signal() -> None:
     pytest.importorskip("yaml")
-    pipe = Pipeline(analyses=[AnalysisSpec(metric={"name": "_test_targets_signal_corr"}, signal="speed")])
+    pipe = Pipeline(
+        analyses=[AnalysisSpec(metric={"name": "_test_targets_signal_corr"}, signal="speed")]
+    )
     again = Pipeline.from_yaml(pipe.to_yaml())
     assert again.analyses[0].signal == "speed"
+
+
+# ------------------------------------------------ validation lives in check_target
+
+
+def _nonexclusive_states(n: int = 200) -> StateSpace:
+    oh = np.zeros((n, 2), bool)
+    oh[:, 0] = True
+    oh[:50, 1] = True
+    return StateSpace(name="ov", onehot=oh, state_names=["a", "b"], kind="bouts", exclusive=False)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"name": "information_content"},
+        {"name": "mutual_information"},
+        {"name": "bayesian_decoder"},
+        {"name": "decode_states", "mode": "multiclass"},
+    ],
+)
+def test_exclusivity_checked_in_check_target(spec) -> None:
+    from cabana import build
+
+    metric = build("metric", spec)
+    with pytest.raises(ValueError, match=f"metric {metric.name!r}: .*exclusive"):
+        metric.check_target(_nonexclusive_states())
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"name": "information_content", "smooth_sigma_bins": 1.0},
+        {"name": "split_half_stability", "smooth_sigma_bins": 1.0},
+        {"name": "bayesian_decoder", "smooth_sigma_bins": 1.0},
+    ],
+)
+def test_smoothing_needs_topology_in_check_target(spec) -> None:
+    from cabana import build
+
+    oh = np.eye(3, dtype=bool)[np.arange(60) % 3]
+    st = StateSpace(
+        name="c", onehot=oh, state_names=list("abc"), kind="categorical", exclusive=True
+    )
+    metric = build("metric", spec)
+    with pytest.raises(ValueError, match=f"metric {metric.name!r}: smooth_sigma_bins"):
+        metric.check_target(st)
+
+
+def test_pipeline_fails_early_with_metric_name() -> None:
+    n = 200
+    rng = np.random.default_rng(0)
+    s = Session(
+        activity=rng.random((3, n)),
+        t=np.arange(n) / FS,
+        fs=FS,
+        states={"ov": _nonexclusive_states(n)},
+    )
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "decode_states", "mode": "multiclass"},
+                states="ov",
+                shuffle=ShuffleConfig(n_shuffles=5),
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="metric 'decode_states': mode='multiclass'"):
+        pipe.run(s)

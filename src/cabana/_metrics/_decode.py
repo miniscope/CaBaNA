@@ -13,7 +13,7 @@ Pair with the ``label_shuffle`` null (block-permuted labels), which loops over
 from __future__ import annotations
 
 import warnings
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, NamedTuple
 
 import numpy as np
 from pydantic import Field
@@ -23,13 +23,18 @@ from sklearn.svm import LinearSVC
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
+from ._ratemap import contiguous_folds
 
 
-def contiguous_folds(n: int, n_folds: int) -> np.ndarray:
-    """Fold id (0..n_folds-1) for ``n`` time-ordered frames: equal-size contiguous blocks."""
-    if n_folds < 2:
-        raise ValueError("n_folds must be >= 2")
-    return (np.arange(n) * n_folds) // max(n, 1)
+class _DecodeOut(NamedTuple):
+    """Result of one ``DecodeStates`` cross-validation run."""
+
+    values: np.ndarray  # (n_states,) balanced accuracy per state
+    confusion: np.ndarray
+    overall: float
+    n_frames: np.ndarray
+    chance: np.ndarray
 
 
 @register("metric")
@@ -38,39 +43,88 @@ class DecodeStates(Metric):
 
     Frames used: masked frames with at least one active state.  Folds are
     contiguous time blocks over those frames (see module docstring); the
-    scaler (``zscore``) is fitted on the training fold only; class imbalance
-    is handled by ``balance`` (``class_weight`` or ``subsample`` of the
-    majority class in the training fold).
+    scaler (``zscore``) is fitted on the training fold only.
 
-    ``mode="one_vs_rest"``: for each state, a binary decoder of state vs the
-    other active frames; value is the balanced accuracy pooled over folds
-    (chance 0.5).  Works for non-exclusive spaces.  A state is NaN when it or
-    its complement has fewer than ``min_frames_per_class`` frames, or when some
-    training fold lacks one of the two classes (the decoder is then undefined).
+    Parameters
+    ----------
+    classifier : {"linear_svm", "logistic"}, default "linear_svm"
+        ``sklearn`` ``LinearSVC`` or ``LogisticRegression``.
+    n_folds : int, default 5
+        Number of contiguous time-block cross-validation folds (>= 2).
+    zscore : bool, default True
+        Standardise each cell using the training fold's mean and s.d.
+    balance : {"class_weight", "subsample"}, default "class_weight"
+        Class imbalance handling: ``class_weight="balanced"``, or subsample every
+        class in the training fold down to the smallest class (seeded by ``seed``).
+    min_frames_per_class : int, default 20
+        Minimum frames required of a class (and of its complement in
+        ``one_vs_rest``) for a state to be decoded.
+    C : float, default 1.0
+        Inverse regularisation strength passed to the classifier (> 0).
+    max_iter : int, default 2000
+        Iteration cap for the classifier; a fit that fails to converge raises
+        ``RuntimeError`` (raise ``max_iter`` or lower ``C``).
+    mode : {"one_vs_rest", "multiclass"}, default "one_vs_rest"
+        ``"one_vs_rest"``: for each state a binary decoder of state vs the other
+        active frames; the value is the balanced accuracy pooled over folds
+        (chance 0.5).  ``"multiclass"``: one multi-class decoder; the value per
+        state is its recall (diagonal of the row-normalised confusion matrix).
+    seed : int, default 0
+        Seed of the random generator used by ``balance="subsample"``.
 
-    ``mode="multiclass"`` (exclusive spaces only): one multi-class decoder; the
-    value per state is its recall (diagonal of the row-normalised confusion
-    matrix); the overall balanced accuracy is in ``accuracy_overall``.
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states,)``: balanced accuracy per state
+        (``one_vs_rest``) or recall per state (``multiclass``); higher is better.
+        A state is NaN when it or its complement has fewer than
+        ``min_frames_per_class`` frames, or when some training fold lacks one of
+        the two classes (the decoder is then undefined).  In ``multiclass`` mode,
+        states below ``min_frames_per_class`` are dropped and at least two valid
+        states are needed (or a training fold lacks a class), otherwise everything is NaN.
 
-    Extras: ``confusion`` ``(n_states, 2, 2)`` ``[true, predicted]`` with index
-    1 = in state (one_vs_rest) or ``(n_states, n_states)`` (multiclass),
-    ``accuracy_overall`` ``(1,)``, ``n_frames`` ``(n_states,)``, ``chance``
-    ``(n_states,)``.  Fits that fail to converge raise ``RuntimeError``.
+    Notes
+    -----
+    **Tail.**  ``"upper"``: accuracy above the label-shuffle null is the effect.
+    The default null to pair it with is ``label_shuffle`` (block-permuted labels).
+
+    **State space.**  ``one_vs_rest`` works for exclusive and overlapping spaces
+    (frames are used when at least one state is active).  ``multiclass`` requires
+    an exclusive space (``ValueError`` otherwise).
+
+    Extras (``extras``): ``confusion`` ``(n_states, 2, 2)`` ``[true, predicted]``
+    with index 1 = in state (``one_vs_rest``) or ``(n_states, n_states)``
+    ``[true, predicted]`` counts (``multiclass``; NaN outside valid states);
+    ``accuracy_overall`` ``(1,)`` mean balanced accuracy over decodable states
+    (``one_vs_rest``) or mean recall over valid states (``multiclass``);
+    ``n_frames`` ``(n_states,)`` used frames per state; ``chance`` ``(n_states,)``
+    chance level (0.5 for ``one_vs_rest``, ``1 / n_valid_states`` for
+    ``multiclass``, NaN for dropped states).
     """
 
     name: ClassVar[str] = "decode_states"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    classifier: Literal["linear_svm", "logistic"] = "linear_svm"
-    n_folds: int = Field(5, ge=2)
-    zscore: bool = True
-    balance: Literal["class_weight", "subsample"] = "class_weight"
-    min_frames_per_class: int = Field(20, ge=1)
-    C: float = Field(1.0, gt=0)
-    max_iter: int = Field(2000, ge=1)
-    mode: Literal["one_vs_rest", "multiclass"] = "one_vs_rest"
-    seed: int = 0
+    classifier: Literal["linear_svm", "logistic"] = Field(
+        "linear_svm", description="Linear SVM (LinearSVC) or logistic regression."
+    )
+    n_folds: int = Field(5, ge=2, description="Number of contiguous time-block CV folds.")
+    zscore: bool = Field(True, description="Standardise cells with training-fold mean/s.d.")
+    balance: Literal["class_weight", "subsample"] = Field(
+        "class_weight", description="Class balancing: balanced class weights or subsampling."
+    )
+    min_frames_per_class: int = Field(
+        20, ge=1, description="Minimum frames of a class (and its complement) to decode a state."
+    )
+    C: float = Field(1.0, gt=0, description="Inverse regularisation strength of the classifier.")
+    max_iter: int = Field(
+        2000, ge=1, description="Classifier iteration cap; non-convergence raises."
+    )
+    mode: Literal["one_vs_rest", "multiclass"] = Field(
+        "one_vs_rest", description="Binary per-state decoders, or one multi-class decoder."
+    )
+    seed: int = Field(0, description="RNG seed for balance='subsample'.")
 
     # ------------------------------------------------------------------ #
     def _fit_predict(
@@ -105,6 +159,14 @@ class DecodeStates(Metric):
                 ) from e
         return clf.predict(xte)
 
+    def check_target(self, target: StateSpace) -> None:
+        super().check_target(target)
+        if self.mode == "multiclass" and not target.exclusive:
+            raise ValueError(
+                f"metric {self.name!r}: mode='multiclass' needs an exclusive StateSpace; "
+                "use mode='one_vs_rest'"
+            )
+
     def _cv_predict(self, x: np.ndarray, y: np.ndarray) -> np.ndarray | None:
         """Out-of-fold predictions; ``None`` if any training fold lacks a class of ``y``."""
         folds = contiguous_folds(x.shape[0], self.n_folds)
@@ -119,10 +181,9 @@ class DecodeStates(Metric):
             pred[te] = self._fit_predict(x[tr], y[tr], x[te], rng)
         return pred
 
-    def _run(self, activity: np.ndarray, states: StateSpace, mask: np.ndarray):
+    def _run(self, activity: np.ndarray, states: StateSpace, mask: np.ndarray) -> _DecodeOut:
+        self.check_target(states)
         mask = np.asarray(mask, dtype=bool)
-        if self.mode == "multiclass" and not states.exclusive:
-            raise ValueError("mode='multiclass' needs an exclusive StateSpace; use 'one_vs_rest'")
         onehot = states.onehot
         n_states = states.n_states
         use = mask & onehot.any(axis=1)
@@ -148,7 +209,7 @@ class DecodeStates(Metric):
                 conf[s] = c
                 values[s] = np.mean(np.diag(c) / c.sum(axis=1))
             overall = np.nanmean(values) if np.isfinite(values).any() else np.nan
-            return values, conf, overall, n_frames, chance
+            return _DecodeOut(values, conf, overall, n_frames, chance)
 
         y_all = oh.argmax(axis=1)
         valid = n_frames >= mc
@@ -168,22 +229,22 @@ class DecodeStates(Metric):
                 values[ids] = np.diag(c)[ids] / c[ids].sum(axis=1)
                 overall = float(values[ids].mean())
                 chance[ids] = 1.0 / ids.size
-        return values, conf, overall, n_frames, chance
+        return _DecodeOut(values, conf, overall, n_frames, chance)
 
     def compute(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> np.ndarray:
-        return self._run(activity, states, mask)[0]
+        return self._run(activity, states, mask).values
 
     def extras(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
     ) -> dict[str, np.ndarray]:
-        _, conf, overall, n_frames, chance = self._run(activity, states, mask)
+        out = self._run(activity, states, mask)
         return {
-            "confusion": conf,
-            "accuracy_overall": np.array([overall]),
-            "n_frames": n_frames,
-            "chance": chance,
+            "confusion": out.confusion,
+            "accuracy_overall": np.array([out.overall]),
+            "n_frames": out.n_frames,
+            "chance": out.chance,
         }
 
 

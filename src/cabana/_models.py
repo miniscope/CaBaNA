@@ -18,13 +18,14 @@ produce ``StateSpace`` objects and per-frame ``signals``.
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ActivityKind = Literal["deconvolved", "dff", "spike_counts", "raw"]
+ActivityKind = Literal["deconvolved", "dff", "spike_counts", "raw", "zscored"]
 StateKind = Literal["grid", "categorical", "bouts"]
 
 
@@ -45,17 +46,25 @@ class ContinuousSignal(_ArrayModel):
     Examples: animal position ``(x, y)`` from DeepLabCut, head direction, speed
     from a wheel encoder.
 
-    Attributes
+    Parameters
     ----------
     t : (n_samples,) float
-        Sample times in seconds, monotonically increasing, same time base as
-        ``Session.t``.
+        Sample times in seconds, non-decreasing, on the same time base as
+        ``Session.t`` (the neural clock; any origin, but it must match).
     values : (n_samples, n_channels) float
-        Signal values.  ``NaN`` marks missing samples.
+        Signal values in the units given by ``units``.  ``NaN`` marks missing
+        samples (e.g. tracking dropouts).
     channel_names : list[str]
-        One name per column, e.g. ``["x", "y"]``.
-    units : str
-        Free-text units for the values, e.g. ``"mm"``.
+        One name per column of ``values``, e.g. ``["x", "y"]``.
+    units : str, default ""
+        Free-text units for the values, e.g. ``"mm"``.  Informational only:
+        nothing converts between units.
+
+    Raises
+    ------
+    ValueError
+        If the number of samples or channels disagrees with ``t`` /
+        ``channel_names``, or ``t`` decreases.
     """
 
     t: NDArray[Shape["* samples"], float]
@@ -86,14 +95,21 @@ class BoutTable(_ArrayModel):
     scored_stop_s]`` are treated as *unscored* (unknown), not as absence of
     behavior.
 
-    Attributes
+    Parameters
     ----------
     labels : list[str]
         Behavior name for each bout, length ``n_bouts``.
     start_s, stop_s : (n_bouts,) float
-        Bout boundaries in seconds on the ``Session.t`` time base.
-    scored_start_s, scored_stop_s : float | None
-        Span of time that was actually scored.  ``None`` means the full session.
+        Bout boundaries in seconds on the ``Session.t`` time base (the neural
+        clock); every ``stop_s >= start_s`` and all values must be finite.
+    scored_start_s, scored_stop_s : float | None, default None
+        Seconds (same time base) delimiting the span that was actually scored.
+        ``None`` means no restriction (the whole session counts as scored).
+
+    Raises
+    ------
+    ValueError
+        If lengths differ, times are non-finite, or a bout stops before it starts.
     """
 
     labels: list[str]
@@ -124,14 +140,22 @@ class LabelSeries(_ArrayModel):
 
     Examples: Keypoint-MoSeq syllables, a per-frame "zone" label.
 
-    Attributes
+    Parameters
     ----------
     t : (n_samples,) float
-        Sample times in seconds on the ``Session.t`` time base.
+        Sample times in seconds, non-decreasing, on the ``Session.t`` time base.
     labels : (n_samples,) int
-        Integer label per sample; ``-1`` means "no label / unknown".
+        Integer label per sample, indexing ``label_names``.  ``-1`` means
+        "no label / unknown": such samples are outside the labelled support.
     label_names : list[str]
-        Name of label ``i`` is ``label_names[i]``.
+        Name of label ``i`` is ``label_names[i]``; every non-negative entry of
+        ``labels`` must be a valid index.
+
+    Raises
+    ------
+    ValueError
+        If ``labels`` and ``t`` differ in length, a label has no name, or ``t``
+        decreases.
     """
 
     t: NDArray[Shape["* samples"], float]
@@ -165,14 +189,22 @@ class GridTopology(_ArrayModel):
     bins, place-field detection, rate-map plotting) know the layout.  State
     index ``s`` corresponds to grid coordinate ``np.unravel_index(s, shape)``.
 
-    Attributes
+    Parameters
     ----------
     shape : tuple[int, ...]
-        Number of bins along each axis.
+        Number of bins along each axis; ``prod(shape)`` equals the number of
+        states.  Flattening is C order (``np.unravel_index``).
     edges : list[(n_bins_axis + 1,) float]
-        Bin edges along each axis, in the units of the source signal.
+        Bin edges along each axis, in the units of the source signal (e.g. the
+        ``ContinuousSignal.units``).
     axis_names : list[str]
         Name of the source channel for each axis, e.g. ``["x", "y"]``.
+
+    Raises
+    ------
+    ValueError
+        If ``shape``, ``edges`` and ``axis_names`` differ in length, or an axis
+        with ``n`` bins does not have ``n + 1`` edges.
     """
 
     shape: tuple[int, ...]
@@ -212,8 +244,9 @@ class StateSpace(_ArrayModel):
         Identifier used to look the state space up in ``Session.states``.
     onehot : (n_time, n_states) bool
         ``onehot[t, s]`` is True when the animal is in state ``s`` at frame ``t``.
-        A frame may have no True entry (unoccupied / unscored).  If
-        ``exclusive`` is True each frame has at most one True entry.
+        A frame may have no True entry (unoccupied / unscored): an all-False row
+        means "no state", and is *not* counted as any state.  If ``exclusive`` is
+        True each frame has at most one True entry (validated).
     state_names : list[str]
         Human-readable name per state (bin label, syllable, behavior).
     kind : {"grid", "categorical", "bouts"}
@@ -223,6 +256,23 @@ class StateSpace(_ArrayModel):
         False when states may overlap (scored social behaviors).
     topology : GridTopology | None
         Grid layout for ``kind == "grid"``; ``None`` otherwise.
+    support : (n_time,) bool | None
+        Frames where the state space is *defined*: the scored span for bouts, the
+        labelled span for categorical labels, tracked in-extent frames for grids.
+        ``Pipeline.run`` ANDs it into every analysis mask on this target, so
+        unscored / untracked frames never count as "not in state".  ``None``
+        means defined everywhere.  An all-False ``onehot`` row inside ``support``
+        means "defined, but in none of the states"; outside ``support`` it means
+        "unknown".
+
+    Examples
+    --------
+    Three frames, two states; frame 2 is unscored (all-False row, outside
+    ``support``)::
+
+        StateSpace(name="social", state_names=["sniff", "chase"], kind="bouts",
+                   exclusive=False, onehot=np.array([[1, 0], [1, 1], [0, 0]], bool),
+                   support=np.array([True, True, False]))
     """
 
     name: str
@@ -231,9 +281,14 @@ class StateSpace(_ArrayModel):
     kind: StateKind
     exclusive: bool
     topology: GridTopology | None = None
+    support: NDArray[Shape["* time"], bool] | None = None
 
     @model_validator(mode="after")
     def _check(self) -> StateSpace:
+        if self.support is not None and self.support.shape[0] != self.onehot.shape[0]:
+            raise ValueError(
+                f"support has {self.support.shape[0]} frames but onehot has {self.onehot.shape[0]}"
+            )
         if self.onehot.shape[1] != len(self.state_names):
             raise ValueError(
                 f"onehot has {self.onehot.shape[1]} states but {len(self.state_names)} names"
@@ -288,6 +343,18 @@ class Session(_ArrayModel):
     never mutate a session in place; they return validated copies via ``replace`` /
     ``with_state`` / ``with_signal`` / ``with_mask`` / ``with_activity``.
 
+    **Time alignment.**  ``t`` is in seconds on the neural clock and may have any
+    origin; every behavior input (``ContinuousSignal.t``, ``BoutTable`` times,
+    ``LabelSeries.t``) must be expressed on that same time base.  ``fs`` should
+    match ``1 / median(diff(t))``; a ``UserWarning`` is issued when they differ by
+    more than 5 %.  A ``UserWarning`` is also issued when a ``deconvolved`` /
+    ``spike_counts`` session has negative activity.
+
+    **Units.**  ``activity`` carries whatever units the input signals had (a.u.
+    fluorescence, dF/F, event amplitude, spike counts per frame); the package
+    never rescales it except in explicit preprocess steps.  Seconds are used for
+    all times and Hz for ``fs``.
+
     Attributes
     ----------
     activity : (n_cells, n_time) float
@@ -296,15 +363,19 @@ class Session(_ArrayModel):
     t : (n_time,) float
         Frame times in seconds.  This is the canonical clock.
     fs : float
-        Nominal sampling rate in Hz.
-    activity_kind : {"deconvolved", "dff", "spike_counts", "raw"}
+        Nominal sampling rate in Hz (must be positive).
+    activity_kind : {"deconvolved", "dff", "spike_counts", "raw", "zscored"}
         What the numbers mean.  Metrics may branch on this (e.g. amplitude vs
-        binary weighting).
-    cell_ids : list[str]
-        One identifier per row of ``activity``.
+        binary weighting); ``rebin`` sums ``deconvolved`` / ``spike_counts`` and
+        averages the others.  ``"zscored"`` is set by the z-scoring preprocess
+        step (per cell, mean 0 and unit variance over the ``valid_mask()`` frames) and
+        can be negative.
+    cell_ids : list[str] | None
+        One identifier per row of ``activity``; ``None`` is replaced by
+        ``"0", "1", ...`` on construction.
     behavior : dict[str, BehaviorInput]
         Raw behavior inputs on their own clocks, keyed by name
-        (e.g. ``"position"``, ``"social_bouts"``, ``"syllables"``).
+        (e.g. ``"position"``, ``"social"``, ``"syllables"``).
     signals : dict[str, (n_time, ...) float]
         Continuous per-frame signals already on the neural clock, e.g.
         ``"x"``, ``"y"``, ``"speed"``.  First axis is always ``n_time``.
@@ -313,7 +384,13 @@ class Session(_ArrayModel):
     masks : dict[str, (n_time,) bool]
         Named frame masks (``"speed"``, ``"scored"``, ...).  See ``valid_mask``.
     meta : dict
-        Free-form provenance: animal, date, simulation ground truth, ...
+        Free-form provenance: animal, date, simulation ground truth, ...  Values
+        that are not JSON types are stored as strings by :meth:`save`.
+
+    See Also
+    --------
+    Session.save, Session.load : persist a session to a directory or ``.zip``.
+    Session.rebin : change the frame rate consistently across all per-frame objects.
     """
 
     activity: NDArray[Shape["* cells, * time"], float]
@@ -344,9 +421,30 @@ class Session(_ArrayModel):
                 raise ValueError(f"state space {k!r} has {s.n_time} frames, expected {n_time}")
             if s.name != k:
                 raise ValueError(f"state space stored under {k!r} has name {s.name!r}")
+            if s.support is not None and s.support.shape[0] != n_time:
+                raise ValueError(
+                    f"state space {k!r} support has {s.support.shape[0]} frames, expected {n_time}"
+                )
         for k, m in self.masks.items():
             if m.shape[0] != n_time:
                 raise ValueError(f"mask {k!r} has {m.shape[0]} frames, expected {n_time}")
+        if n_time >= 3:
+            dt = float(np.median(np.diff(self.t)))
+            if dt > 0 and abs(1.0 / dt - self.fs) > 0.05 * self.fs:
+                warnings.warn(
+                    f"fs={self.fs:g} Hz disagrees with 1/median(diff(t)) = {1.0 / dt:g} Hz "
+                    "(more than 5%); check that t is in seconds and fs is in Hz",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        if self.activity_kind in ("deconvolved", "spike_counts") and n_time:
+            if np.nanmin(self.activity, initial=0.0) < 0:
+                warnings.warn(
+                    f"activity_kind={self.activity_kind!r} but activity has negative values; "
+                    "did you mean activity_kind='dff' or 'raw'?",
+                    UserWarning,
+                    stacklevel=2,
+                )
         return self
 
     @property
@@ -383,19 +481,51 @@ class Session(_ArrayModel):
         1 s bins.  Everything on the neural clock is resampled together so
         the session stays consistent:
 
-        * ``activity``: summed per bin for event-like kinds (``deconvolved``,
-          ``spike_counts``), averaged for ``dff`` / ``raw`` (``"auto"``).
+        * ``activity``: with ``"auto"``, summed per bin for event-like kinds
+          (``deconvolved``, ``spike_counts``) and averaged for every other kind
+          (``dff``, ``raw``, ``zscored``).
         * ``t``: mean frame time per bin; ``fs`` becomes ``fs / k``.
         * ``signals``: nan-mean per bin.
-        * ``masks``: True when at least ``min_fraction`` of the frames are True.
+        * ``masks`` and ``StateSpace.support``: True when at least ``min_fraction``
+          of the frames are True.
         * ``states``: a state is active when it occupies at least
           ``min_fraction`` of the bin; for exclusive spaces only the dominant
           state can be active.  Topology is kept.
 
+        ``bin_s`` is rounded to a whole number of frames (a warning is issued
+        when it is not one); ``meta["rebin"]["bin_s"]`` records the actual width.
         Trailing frames that do not fill a whole bin are dropped.  Raw
         ``behavior`` inputs are untouched (they live on their own clocks).
+
+        Parameters
+        ----------
+        bin_s : float
+            Target bin width in seconds.
+        activity_method : {"sum", "mean", "auto"}, default "auto"
+            How activity is aggregated; ``"auto"`` follows the rule above.
+        min_fraction : float, default 0.5
+            Minimum fraction of a bin's frames that must be True for a mask,
+            support or state to be True in the new bin.
+
+        Returns
+        -------
+        Session
+            New session with ``n_time // k`` frames (``k = round(bin_s * fs)``);
+            ``self`` unchanged when ``k == 1``.
+
+        Raises
+        ------
+        ValueError
+            If ``bin_s`` is shorter than one frame or fewer than two bins remain.
         """
         k = int(round(bin_s * self.fs))
+        if abs(bin_s * self.fs - k) > 1e-6 and k >= 1:
+            warnings.warn(
+                f"bin_s={bin_s} is not a whole number of frames at fs={self.fs:g} Hz; using "
+                f"{k} frames = {k / self.fs:g} s",
+                UserWarning,
+                stacklevel=2,
+            )
         if k < 1:
             raise ValueError(f"bin_s={bin_s} is shorter than one frame at fs={self.fs}")
         if k == 1:
@@ -425,12 +555,19 @@ class Session(_ArrayModel):
             if st.exclusive:
                 oh = np.zeros_like(frac, dtype=bool)
                 best = frac.argmax(axis=1)
-                ok = frac[np.arange(n_new), best] >= min_fraction
+                top = frac[np.arange(n_new), best]
+                ok = (top >= min_fraction) & (top > 0)
                 oh[np.flatnonzero(ok), best[ok]] = True
             else:
-                oh = frac >= min_fraction
-            states[name] = st.model_copy(update={"onehot": oh})
-        meta = {**self.meta, "rebin": {"bin_s": bin_s, "frames_per_bin": k, "method": method}}
+                oh = (frac >= min_fraction) & (frac > 0)
+            support = (
+                None if st.support is None else blocks(st.support).mean(axis=1) >= min_fraction
+            )
+            states[name] = st.model_copy(update={"onehot": oh, "support": support})
+        meta = {
+            **self.meta,
+            "rebin": {"bin_s": k / self.fs, "frames_per_bin": k, "method": method},
+        }
         return Session(
             activity=activity,
             t=blocks(self.t).mean(axis=1),
@@ -443,6 +580,48 @@ class Session(_ArrayModel):
             masks=masks,
             meta=meta,
         )
+
+    def save(self, path: str | Path) -> None:
+        """Write to a directory or ``.zip`` (``manifest.json`` + ``arrays.npz``).
+
+        Meta values that are not JSON types are stored as strings; tuples come
+        back as lists; arrays in ``meta`` are kept as arrays.
+
+        Parameters
+        ----------
+        path : str or Path
+            A directory (created if needed) or a path ending in ``.zip``.
+            ``manifest.json`` holds scalars and names, ``arrays.npz`` holds
+            activity, ``t``, masks, signals, state ``onehot``/``support``/edges
+            and raw behavior arrays.
+        """
+        from ._io import save_session
+
+        save_session(self, path)
+
+    @classmethod
+    def load(cls, path: str | Path) -> Session:
+        """Read a session written by :meth:`save`.
+
+        Parameters
+        ----------
+        path : str or Path
+            Directory or ``.zip`` written by :meth:`save`.
+
+        Returns
+        -------
+        Session
+
+        Raises
+        ------
+        ValueError
+            If ``path`` does not hold a saved ``Session`` manifest.
+        FileNotFoundError
+            If ``path`` is neither a directory nor a zip file.
+        """
+        from ._io import load_session
+
+        return load_session(path)
 
     def replace(self, **update: Any) -> Session:
         """Copy with fields replaced, re-running validation (unlike ``model_copy``).

@@ -52,6 +52,7 @@ from pydantic import Field
 
 from .._design import raised_cosine_basis
 from .._registry import Metric, register
+from .._results import Tail
 
 _ETA_CLIP = 30.0
 
@@ -174,12 +175,75 @@ def _group_keys(names: list[str], mode: str) -> list[str]:
 
 @register("metric")
 class GLMEncoding(Metric):
-    """Cross-validated GLM; value = unique held-out deviance explained per regressor group."""
+    """Cross-validated GLM; value = unique held-out deviance explained per regressor group.
+
+    Every cell is regressed on a shared design matrix (a ``(n_time, n_regressors)``
+    signal written by the ``design_matrix`` transform) with ridge regularisation.
+    For each regressor *group* the value is the held-out deviance explained by
+    the full model minus that of the model refit without the group, averaged over
+    folds (see the module docstring for the objective, folds and grouping).
+
+    Parameters
+    ----------
+    family : {"poisson", "gaussian", "auto"}, default "auto"
+        Noise model.  ``"auto"`` picks Poisson (log link) when all masked finite
+        activity is >= 0, Gaussian otherwise.  The metric does not see
+        ``activity_kind``, so pass ``family`` explicitly for non-negative dF/F.
+    alpha : float, default 1.0
+        Ridge penalty on the non-intercept weights; columns are not rescaled, so
+        keep them on comparable scales.
+    n_folds : int, default 5
+        Number of contiguous (``np.array_split``) blocks of valid frames.
+    max_iter : int, default 50
+        Newton/IRLS iteration cap (Poisson only).
+    tol : float, default 1e-6
+        Relative objective change at which a cell stops iterating (Poisson only).
+    regressor_names : list[str] | None, default None
+        One name per design column; ``None`` gives ``x0, x1, ...``.  Overwritten
+        automatically from ``session.meta["design_columns"][target]`` by
+        :meth:`configure` when the target was built by ``design_matrix``.
+    groups : {"prefix", "column"}, default "prefix"
+        ``"prefix"`` groups columns whose names are equal after dropping a
+        trailing ``@k`` basis suffix; ``"column"`` makes each column a group.
+    basis : dict | None, default None
+        ``{"n_basis", "pre_s", "post_s"}`` of the temporal basis; set from
+        ``session.meta["design_basis"]`` by :meth:`configure`.  When present
+        (and ``groups="prefix"``) temporal kernels are added to the extras.
+    min_frames : int, default 100
+        Fewer valid frames (mask, finite design row and finite activity), or
+        fewer than ``n_folds``, gives NaN.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells, n_groups)``: unique held-out
+        deviance explained (fraction of null deviance; may be slightly negative).
+        Groups are in first-appearance order of ``group_names``.
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: only a positive unique contribution indicates
+    encoding of that regressor.
+
+    **Target.**  ``input="signal"``: the target is a design matrix from
+    ``session.signals``, not a ``StateSpace``; state-space exclusivity does not
+    apply (state columns are ordinary 0/1 regressors).
+
+    Extras: ``group_names`` ``(n_groups,)`` object array naming the value
+    columns; ``deviance_explained`` ``(n_cells,)`` held-out deviance explained
+    by the full model, mean over folds; ``weights`` ``(n_cells, n_columns + 1)``
+    full-model weights refit on all valid frames, column 0 the intercept (link
+    scale: identity for Gaussian, log for Poisson).  Frames-short sessions give
+    NaN arrays of the same shapes.  With ``basis`` and prefix groups also
+    ``kernels`` ``(n_cells, n_kernel_groups, n_lags)`` temporal kernels
+    reconstructed from the basis weights, ``kernel_lags_s`` ``(n_lags,)`` seconds
+    relative to the event, and ``kernel_group_names`` ``(n_kernel_groups,)``.
+    """
 
     name: ClassVar[str] = "glm_encoding"
     level: ClassVar = "cell"
     input: ClassVar = "signal"
-    default_tail: ClassVar = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
     family: Literal["poisson", "gaussian", "auto"] = Field(
         "auto", description="'auto': Poisson if masked activity is non-negative, else Gaussian."
@@ -212,9 +276,11 @@ class GLMEncoding(Metric):
         if x.ndim != 2 or x.shape[0] != activity.shape[1]:
             raise ValueError("glm_encoding needs a design signal of shape (n_time, n_regressors)")
         d = x.shape[1]
-        names = list(self.regressor_names) if self.regressor_names is not None else [
-            f"x{i}" for i in range(d)
-        ]
+        names = (
+            list(self.regressor_names)
+            if self.regressor_names is not None
+            else [f"x{i}" for i in range(d)]
+        )
         if len(names) != d:
             raise ValueError(f"{len(names)} regressor_names for {d} design columns")
         keys = _group_keys(names, self.groups)
@@ -232,6 +298,8 @@ class GLMEncoding(Metric):
     def _cv(self, x, y_all, idx, gcols, family, with_groups):
         """Per-fold held-out deviance explained: full ``(F, C)`` and drops ``(F, G, C)``."""
         n_cells = y_all.shape[0]
+        # np.array_split (extra frames go to the first folds), not contiguous_folds: kept for
+        # numerical continuity of GLM results.
         folds = np.array_split(np.arange(idx.size), self.n_folds)
         de_full = np.full((len(folds), n_cells), np.nan)
         de_drop = np.full((len(folds), len(gcols), n_cells), np.nan)
@@ -246,7 +314,9 @@ class GLMEncoding(Metric):
             d_null = np.where(d_null > 1e-12, d_null, np.nan)
 
             def held_out(cols, xtr=xtr, xte=xte, ytr=ytr, yte=yte, d_null=d_null):
-                w = _fit(_add_intercept(xtr[:, cols]), ytr, family, self.alpha, self.max_iter, self.tol)
+                w = _fit(
+                    _add_intercept(xtr[:, cols]), ytr, family, self.alpha, self.max_iter, self.tol
+                )
                 return 1.0 - _deviance(family, yte, _add_intercept(xte[:, cols]) @ w) / d_null
 
             all_cols = np.arange(d)
@@ -294,7 +364,9 @@ class GLMEncoding(Metric):
         de_full, _ = self._cv(x, y_all, idx, gcols, family, False)
         with np.errstate(all="ignore"):
             out["deviance_explained"] = np.nanmean(de_full, axis=0)
-        w = _fit(_add_intercept(x[idx]), y_all[:, idx].T, family, self.alpha, self.max_iter, self.tol)
+        w = _fit(
+            _add_intercept(x[idx]), y_all[:, idx].T, family, self.alpha, self.max_iter, self.tol
+        )
         out["weights"] = w.T
         if self.basis is not None and self.groups == "prefix":
             nb = int(self.basis["n_basis"])

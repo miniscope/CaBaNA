@@ -210,5 +210,7 @@ def test_registered_and_serialisable():
     assert isinstance(t, BinGrid)
     assert build("transform", t.to_dict()) == t
     assert isinstance(build("transform", {"name": "speed"}), Speed)
-    assert isinstance(build("transform", {"name": "labels_to_states", "source": "s"}), LabelsToStates)
+    assert isinstance(
+        build("transform", {"name": "labels_to_states", "source": "s"}), LabelsToStates
+    )
     assert isinstance(build("transform", {"name": "bouts_to_states", "source": "s"}), BoutsToStates)

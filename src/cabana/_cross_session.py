@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ._cohort_models import CellMatch
 from ._models import StateSpace
@@ -26,29 +26,99 @@ class CrossSessionResult(BaseModel):
     summarize the population; ``p_population`` is the upper-tail p of the median.
     With ``n_pairs`` matched cells the smallest attainable per-pair p is
     ``1 / n_pairs``.
+
+    Attributes
+    ----------
+    kind : {"map", "pv"}
+        Per matched cell (``"map"``) or per state (``"pv"``).
+    session_a, session_b : str | None
+        Session ids of the registration.
+    observed : (n_pairs,) or (n_states,) float
+        Pearson r per matched cell pair (``map``) or per state (``pv``); NaN when
+        undefined.
+    null : (n_pairs, n_pairs - 1) or (n_shuffles, n_states) float
+        Null correlations: all mismatched partners per pair (``map``) or random
+        re-pairings (``pv``).
+    p_value : same shape as ``observed``
+        Upper-tail permutation p-value (NaN-aware).
+    significant : same shape as ``observed``, bool
+        ``p_value < alpha``; False where NaN.
+    pairs : (n_pairs, 2) int
+        ``CellMatch.pairs`` used: cell indices in session a and b.
+    state_names : list[str] | None
+        State labels of the maps (per-state axis).
+    cell_ids_a, cell_ids_b : list[str] | None
+        Cell ids of the two sessions' results, indexed by ``pairs``.
+    alpha : float, default 0.05
+        Significance level.
+    n_shuffles : int
+        Random derangements used for the population summary (and the ``pv`` null).
+    median_observed : float
+        Nan-median of ``observed`` (NaN if none finite).
+    null_median : (n_shuffles,) float
+        Median correlation of each random derangement.
+    p_population : float
+        ``(count(null_median >= median_observed) + 1) / (n_finite + 1)``.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    kind: str
-    session_a: str | None = None
-    session_b: str | None = None
-    observed: np.ndarray
-    null: np.ndarray
-    p_value: np.ndarray
-    significant: np.ndarray
-    pairs: np.ndarray
-    state_names: list[str] | None = None
-    cell_ids_a: list[str] | None = None
-    cell_ids_b: list[str] | None = None
-    alpha: float = 0.05
-    n_shuffles: int
-    median_observed: float
-    null_median: np.ndarray
-    p_population: float
+    kind: str = Field(..., description="'map' (per matched cell) or 'pv' (per state).")
+    session_a: str | None = Field(None, description="Session id of the first session.")
+    session_b: str | None = Field(None, description="Session id of the second session.")
+    observed: np.ndarray = Field(..., description="Pearson r per pair (map) or per state (pv).")
+    null: np.ndarray = Field(..., description="Null correlations (see class docstring).")
+    p_value: np.ndarray = Field(..., description="Upper-tail p-value per entry of observed.")
+    significant: np.ndarray = Field(..., description="p_value < alpha per entry of observed.")
+    pairs: np.ndarray = Field(..., description="(n_pairs, 2) cell indices in sessions a and b.")
+    state_names: list[str] | None = Field(None, description="Labels of the state axis.")
+    cell_ids_a: list[str] | None = Field(None, description="Cell ids of session a's result.")
+    cell_ids_b: list[str] | None = Field(None, description="Cell ids of session b's result.")
+    alpha: float = Field(0.05, description="Significance level.")
+    n_shuffles: int = Field(..., description="Number of random derangements.")
+    median_observed: float = Field(..., description="Nan-median of observed.")
+    null_median: np.ndarray = Field(..., description="Per-derangement median r, (n_shuffles,).")
+    p_population: float = Field(..., description="Upper-tail p of median_observed vs null_median.")
+
+    def summary(self) -> dict[str, Any]:
+        """Small dict of kind, sessions, counts, median r and population p.
+
+        Returns
+        -------
+        dict
+            Keys ``kind, session_a, session_b, n_entries, n_shuffles,
+            median_observed, p_population, n_significant, alpha``.
+        """
+        n = int(self.observed.shape[0])
+        return {
+            "kind": self.kind,
+            "session_a": self.session_a,
+            "session_b": self.session_b,
+            "n_entries": n,
+            "n_shuffles": self.n_shuffles,
+            "median_observed": float(self.median_observed),
+            "p_population": float(self.p_population),
+            "n_significant": int(np.asarray(self.significant).sum()),
+            "alpha": self.alpha,
+        }
+
+    def __repr__(self) -> str:
+        d = self.summary()
+        return (
+            f"CrossSessionResult(kind={d['kind']!r}, {d['session_a']!r} -> {d['session_b']!r}, "
+            f"n={d['n_entries']}, median_r={d['median_observed']:.3g}, "
+            f"p_population={d['p_population']:.3g}, n_significant={d['n_significant']})"
+        )
 
     def to_dataframe(self) -> pd.DataFrame:
-        """One row per matched pair (kind ``map``) or per state (kind ``pv``)."""
+        """One row per matched pair (kind ``map``) or per state (kind ``pv``).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``cell_a, cell_b, r, p_value, significant`` (``map``) or
+            ``state, r, p_value, significant`` (``pv``).
+        """
         if self.kind == "map":
             ia, ib = self.pairs[:, 0], self.pairs[:, 1]
             ca = [self.cell_ids_a[i] for i in ia] if self.cell_ids_a else [str(i) for i in ia]
@@ -65,7 +135,12 @@ class CrossSessionResult(BaseModel):
         n = self.observed.shape[0]
         names = self.state_names if self.state_names is not None else [str(i) for i in range(n)]
         return pd.DataFrame(
-            {"state": names, "r": self.observed, "p_value": self.p_value, "significant": self.significant}
+            {
+                "state": names,
+                "r": self.observed,
+                "p_value": self.p_value,
+                "significant": self.significant,
+            }
         )
 
 
@@ -102,7 +177,9 @@ def _get_maps(
     states: tuple[StateSpace, StateSpace] | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     if res_a.metric != res_b.metric:
-        raise ValueError(f"results are from different metrics: {res_a.metric!r} vs {res_b.metric!r}")
+        raise ValueError(
+            f"results are from different metrics: {res_a.metric!r} vs {res_b.metric!r}"
+        )
     if res_a.state_names is not None and res_b.state_names is not None:
         if list(res_a.state_names) != list(res_b.state_names):
             raise ValueError(
@@ -157,11 +234,6 @@ def _pair_arrays(A: np.ndarray, B: np.ndarray, match: CellMatch) -> tuple[np.nda
     if p[:, 0].max() >= A.shape[0] or p[:, 1].max() >= B.shape[0]:
         raise ValueError("match refers to cell indices outside the results")
     return A[p[:, 0]], B[p[:, 1]]
-
-
-def _upper_p(observed: np.ndarray, null: np.ndarray) -> np.ndarray:
-    """Upper-tail p per column, counting only finite null draws (NaN-aware)."""
-    return _p_values(observed, null, "upper")
 
 
 def _finish(
@@ -235,6 +307,39 @@ def cross_session_map_correlation(
     median observed r to the median r over ``n_shuffles`` random derangements of
     the pairing (NaN-aware).  Pass ``states=(space_a, space_b)`` to additionally
     verify grid topology edges.
+
+    Parameters
+    ----------
+    res_a, res_b : MetricResult
+        Results of the same metric in the two sessions, each with the map in
+        ``extras`` (e.g. ``information_content`` ``rate_map``, ``(n_cells, n_states)``).
+    match : CellMatch
+        Registration from session a's cells to session b's cells.
+    maps : (str, str), default ("rate_map", "rate_map")
+        ``extras`` keys of the maps in ``res_a`` and ``res_b``.
+    n_shuffles : int, default 1000
+        Random derangements for the population-level null.
+    seed : int, default 0
+        RNG seed.
+    alpha : float, default 0.05
+        Significance level for ``significant``.
+    min_states : int, default 3
+        Minimum states finite in both maps for r to be defined.
+    states : (StateSpace, StateSpace), optional
+        State spaces of the two sessions, to check that names and grid edges match.
+
+    Returns
+    -------
+    CrossSessionResult
+        ``kind="map"``; ``observed`` has shape ``(n_pairs,)``.
+
+    Raises
+    ------
+    ValueError
+        If the results come from different metrics, state names / grids differ,
+        maps are not 2-D, or the match is empty or out of range.
+    KeyError
+        If a result lacks the requested ``extras`` key.
     """
     A, B = _get_maps(res_a, res_b, maps, states)
     Ap, Bp = _pair_arrays(A, B, match)
@@ -245,13 +350,17 @@ def cross_session_map_correlation(
     for i in range(n):
         others = np.delete(np.arange(n), i)
         if others.size:
-            null[i] = _pearson_rows(np.broadcast_to(Ap[i], (others.size, Ap.shape[1])), Bp[others], min_states)
+            null[i] = _pearson_rows(
+                np.broadcast_to(Ap[i], (others.size, Ap.shape[1])), Bp[others], min_states
+            )
     # p per pair: transpose so columns are pairs
-    p = _upper_p(observed, null.T)
+    p = _p_values(observed, null.T, "upper")
     pop = np.empty((n_shuffles, n))
     for k in range(n_shuffles):
         pop[k] = _pearson_rows(Ap, Bp[_derangement(rng, n)], min_states)
-    return _finish("map", observed, null, p, _nanmedian_rows(pop), match, res_a, res_b, alpha, n_shuffles)
+    return _finish(
+        "map", observed, null, p, _nanmedian_rows(pop), match, res_a, res_b, alpha, n_shuffles
+    )
 
 
 def cross_session_pv_correlation(
@@ -272,6 +381,37 @@ def cross_session_pv_correlation(
     count).  Documented floor: with ``n_pairs`` matched cells the smallest
     per-pair p of the map correlation is ``1 / n_pairs``; here the floor is
     ``1 / (n_shuffles + 1)`` but the vectors rest on only ``n_pairs`` cells.
+
+    Parameters
+    ----------
+    res_a, res_b : MetricResult
+        Results of the same metric in the two sessions, each with the map in
+        ``extras`` (``(n_cells, n_states)``).
+    match : CellMatch
+        Registration from session a's cells to session b's cells.
+    maps : (str, str), default ("rate_map", "rate_map")
+        ``extras`` keys of the maps in ``res_a`` and ``res_b``.
+    n_shuffles : int, default 1000
+        Random re-pairings for the null.
+    seed : int, default 0
+        RNG seed.
+    alpha : float, default 0.05
+        Significance level for ``significant``.
+    min_cells : int, default 3
+        Minimum matched cells finite in both vectors for r to be defined.
+    states : (StateSpace, StateSpace), optional
+        State spaces of the two sessions, to check that names and grid edges match.
+
+    Returns
+    -------
+    CrossSessionResult
+        ``kind="pv"``; ``observed`` has shape ``(n_states,)`` and ``null`` has
+        shape ``(n_shuffles, n_states)``.
+
+    Raises
+    ------
+    ValueError, KeyError
+        As :func:`cross_session_map_correlation`.
     """
     A, B = _get_maps(res_a, res_b, maps, states)
     Ap, Bp = _pair_arrays(A, B, match)
@@ -281,14 +421,30 @@ def cross_session_pv_correlation(
     null = np.empty((n_shuffles, Ap.shape[1]))
     for i in range(n_shuffles):
         null[i] = _pearson_rows(Ap.T, Bp[_derangement(rng, n)].T, min_cells)
-    p = _upper_p(observed, null)
+    p = _p_values(observed, null, "upper")
     with np.errstate(all="ignore"):
         null_med = _nanmedian_rows(null)
     return _finish("pv", observed, null, p, null_med, match, res_a, res_b, alpha, n_shuffles)
 
 
 def remapping_summary(cs: CrossSessionResult, alpha: float = 0.05) -> dict[str, Any]:
-    """Fraction of matched cells that are stable (p < alpha), median r, n_pairs, p_population."""
+    """Fraction of matched cells that are stable (p < alpha), median r, n_pairs, p_population.
+
+    Parameters
+    ----------
+    cs : CrossSessionResult
+        Result of :func:`cross_session_map_correlation` (or the ``pv`` variant,
+        in which case "cells" are states).
+    alpha : float, default 0.05
+        Threshold on ``cs.p_value`` (independent of ``cs.alpha``).
+
+    Returns
+    -------
+    dict
+        ``n_pairs`` (entries), ``n_valid`` (finite p-values), ``fraction_stable``
+        (share of valid entries with ``p < alpha``; NaN if none valid),
+        ``median_r`` and ``p_population``.
+    """
     valid = np.isfinite(cs.p_value)
     n_valid = int(valid.sum())
     frac = float((cs.p_value[valid] < alpha).mean()) if n_valid else float("nan")

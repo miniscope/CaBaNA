@@ -59,7 +59,12 @@ def test_pvo_unoccupied_state_nan():
     out = PopulationVectorOverlap().compute(act, _states(oh), np.ones(oh.shape[0], bool), fs)
     assert np.isnan(out[3]).all() and np.isnan(out[:, 3]).all()
     assert np.isfinite(out[:3, :3]).all()
-    assert PopulationVectorOverlap().compute_shifted(act, _states(oh), np.ones(400, bool), fs, np.array([1])) is None
+    assert (
+        PopulationVectorOverlap().compute_shifted(
+            act, _states(oh), np.ones(400, bool), fs, np.array([1])
+        )
+        is None
+    )
 
 
 def test_pv_stability_identical_halves():
@@ -101,6 +106,31 @@ def test_pv_stability_shifted_equals_looped(n_blocks):
     m = PopulationVectorStability(n_blocks=n_blocks)
     shifts = np.array([0, 3, 100, 599])
     fast = m.compute_shifted(act, _states(oh), mask, fs, shifts)
-    slow = np.stack([m.compute(np.roll(act, int(k), axis=1), _states(oh), mask, fs) for k in shifts])
+    slow = np.stack(
+        [m.compute(np.roll(act, int(k), axis=1), _states(oh), mask, fs) for k in shifts]
+    )
     assert fast.shape == (4, 4)
     np.testing.assert_allclose(fast, slow, atol=1e-12)
+
+
+def test_zero_min_occupancy_still_invalidates_unvisited_state():
+    # with min_occupancy_s=0 an unvisited state must be invalid (NaN), not a rate-0 state
+    act, oh, fs = _structured(unoccupied=True)
+    mask = np.ones(oh.shape[0], bool)
+    pvo = PopulationVectorOverlap(min_occupancy_s=0.0)
+    out = pvo.compute(act, _states(oh), mask, fs)
+    assert np.isnan(out[3]).all() and np.isnan(out[:, 3]).all()
+    assert np.isnan(pvo.extras(act, _states(oh), mask, fs)["rate_map"][:, 3]).all()
+    stab = PopulationVectorStability(min_occupancy_s=0.0)
+    r = stab.compute(act, _states(oh), mask, fs)
+    assert np.isnan(r[3]) and np.isfinite(r[:3]).all()
+    assert not stab.extras(act, _states(oh), mask, fs)["valid_states"][3]
+
+
+def test_valid_states_helper():
+    from cabana._metrics._ratemap import valid_states
+
+    v = valid_states(np.array([0, 1, 5]), fs=10.0, min_occupancy_s=0.0)
+    assert v.tolist() == [False, True, True]
+    v = valid_states(np.array([0, 1, 5]), fs=10.0, min_occupancy_s=0.3)
+    assert v.tolist() == [False, False, True]

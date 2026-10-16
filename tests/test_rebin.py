@@ -110,7 +110,8 @@ def test_rebin_drops_trailing_frames() -> None:
 def test_rebin_k1_returns_self() -> None:
     s = _session()
     assert s.rebin(0.1) is s
-    assert s.rebin(0.104) is s  # rounds to one frame
+    with pytest.warns(UserWarning, match="whole number of frames"):
+        assert s.rebin(0.104) is s  # rounds to one frame
 
 
 def test_rebin_errors() -> None:

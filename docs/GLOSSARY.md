@@ -1,0 +1,30 @@
+# Glossary
+
+- **Session**: one recording: activity, behavior, derived signals, states and masks on a shared clock. Immutable by convention; `Session.replace` returns a modified copy.
+- **activity**: the `(n_cells, n_time)` neural array (deconvolved calcium, dF/F, or binned spikes).
+- **activity_kind**: label recording what the activity values are (`deconvolved`, `dff`, `spike_counts`, `raw`, `zscored`; `zscore_activity` sets the last). Used for rebinning (summed or averaged) and recorded with results; metrics do not currently enforce it.
+- **neural clock / t**: the frame times of the activity. Everything per-frame (signals, masks, states) is resampled onto it, and `fs` (Hz) is its rate.
+- **behavior**: raw behavioral data in its own timebase (position, scored bouts, syllable labels) before transforms put it on the neural clock.
+- **signal**: a continuous per-frame variable (speed, x, y) on the neural clock; the target of signal metrics such as `signal_correlation`.
+- **state space**: a named set of behavioral states, with an `onehot` matrix, a `kind`, an `exclusive` flag and optionally a `topology`.
+- **onehot**: the `(n_time, n_states)` boolean matrix saying which state(s) the animal is in at each frame.
+- **exclusive**: True when at most one state is active per frame (bins, syllables); False when bouts may overlap.
+- **kind**: how a state space was made and is drawn: `grid` (binned continuous variable), `categorical` (labels), or `bouts` (scored intervals).
+- **topology**: for a grid, the shape and neighbor structure of the bins, used for smoothing and for drawing maps and computing distances.
+- **occupancy**: time spent in each state (frames or seconds) over the frames that count; the denominator of rate maps.
+- **support**: the frames where a state space is defined (a `(n_time,)` boolean on `StateSpace.support`): tracked and in-extent for a grid, the scored span for bouts, the labelled span for categorical labels. Applied automatically to every analysis on that space; an unscored frame is unknown, not "rest".
+- **mask**: `(n_time,)` boolean array of extra frames to include (speed above threshold). Chosen per analysis, on top of the target's support; `masks=None` or `[]` means support only.
+- **target**: what a metric is computed against: a state space (`states=`) or a signal (`signal=`); an `AnalysisSpec` takes exactly one.
+- **analysis name**: the unique key of one analysis in a `ResultSet`, `AnalysisSpec.name`; if not given it is `metric[target]`, with `#<null>` or `#2` added when names collide. Look results up with `results["auroc[social]"]` or `results.get(name=...)`; the tidy table's `analysis` column holds it.
+- **provenance**: the dict on each `MetricResult` recording how it was made (version, seed, null, number of shuffles, alpha, tail, masks, frames used, fs, activity kind, target parameters, timestamp).
+- **metric**: a registered plugin that turns activity and a target into values (information content, AUROC, decoder, ...).
+- **level**: whether a metric yields one value per cell (`cell`) or per population (`population`).
+- **null**: the plugin that defines how the activity-behavior link is broken: `circular_shift`, `label_shuffle` or `bout_shuffle`.
+- **surrogate**: one dataset produced by a null; the metric is recomputed on each to build the null distribution.
+- **shuffle**: the whole test (`ShuffleConfig`): `n_shuffles` surrogates, the null, `alpha`, `tail`, `seed`.
+- **tail**: which side of the null counts as extreme: `upper`, `lower` or `two`.
+- **p floor**: the smallest attainable p-value, `1 / (n_shuffles + 1)`.
+- **extras**: additional named arrays a metric returns with its values (rate maps, confusion matrix, null bounds).
+- **result set**: `ResultSet`, the collection of metric results from a pipeline run; `to_dataframe()` gives a tidy table.
+- **cohort**: a set of sessions grouped by animal, so statistics can use the animal as the unit.
+- **cell match**: a mapping of cell identities between two sessions (for example from CellReg [107]) used for cross-session comparisons.

@@ -11,13 +11,10 @@ import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 
+from ._plots import _fmt_p
 from ._posthoc import ClusterResult, OverlapResult
 
 __all__ = ["plot_clusters", "plot_overlap", "plot_overlap_matrix"]
-
-
-def _fmt_p(p: float) -> str:
-    return "p=nan" if not np.isfinite(p) else (f"p={p:.3g}" if p >= 0.001 else "p<0.001")
 
 
 def _stars(p: float) -> str:
@@ -29,7 +26,22 @@ def plot_overlap(
 ) -> Figure:
     """Observed vs expected overlap bars plus an approximate two-circle Venn.
 
-    With ``ax`` given only the bar panel is drawn on it.
+    With ``ax`` given only the bar panel is drawn on it.  Look for: observed
+    overlap well above the grey expected bar (odds ratio above 1) means the two cell
+    sets share more cells than independence predicts.
+
+    Parameters
+    ----------
+    overlap : OverlapResult
+        Result of ``overlap_vs_chance``.
+    labels : (str, str), default ("A", "B")
+        Names of the two sets, shown under the Venn circles.
+    ax : matplotlib Axes, optional
+        Draw only the bar panel here; otherwise a two-panel figure is made.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
     """
     if ax is None:
         fig, (ax_bar, ax_v) = plt.subplots(1, 2, figsize=(8, 3.6), layout="constrained")
@@ -38,8 +50,12 @@ def plot_overlap(
     ax_bar.bar(["expected", "observed"], [overlap.expected, overlap.n_both], color=["0.7", "C0"])
     top = max(overlap.expected, overlap.n_both, 1)
     ax_bar.text(
-        0.5, 0.97, f"OR={overlap.odds_ratio:.2f}, {_fmt_p(overlap.p_value)}",
-        transform=ax_bar.transAxes, ha="center", va="top",
+        0.5,
+        0.97,
+        f"OR={overlap.odds_ratio:.2f}, {_fmt_p(overlap.p_value)}",
+        transform=ax_bar.transAxes,
+        ha="center",
+        va="top",
     )
     ax_bar.set_ylim(0, top * 1.25)
     ax_bar.set_ylabel("cells in both sets")
@@ -53,7 +69,14 @@ def plot_overlap(
         ax_v.add_patch(Circle((x_b, 0), rb, color="C1", alpha=0.4))
         ax_v.text(x_a - ra * 0.5, 0, f"{overlap.n_a - overlap.n_both}", ha="center", va="center")
         ax_v.text(x_b + rb * 0.5, 0, f"{overlap.n_b - overlap.n_both}", ha="center", va="center")
-        ax_v.text((x_a + ra + x_b - rb) / 2, 0, f"{overlap.n_both}", ha="center", va="center", weight="bold")
+        ax_v.text(
+            (x_a + ra + x_b - rb) / 2,
+            0,
+            f"{overlap.n_both}",
+            ha="center",
+            va="center",
+            weight="bold",
+        )
         ax_v.text(x_a, -ra * 1.15, labels[0], ha="center", va="top")
         ax_v.text(x_b, -rb * 1.15, labels[1], ha="center", va="top")
         lim = max(abs(x_a) + ra, abs(x_b) + rb) * 1.2
@@ -65,7 +88,23 @@ def plot_overlap(
 
 
 def plot_overlap_matrix(df: pd.DataFrame, ax: Any = None) -> Figure:
-    """Heatmap of log2 odds ratio (annotated with OR) with significance stars."""
+    """Heatmap of log2 odds ratio (annotated with OR) with significance stars.
+
+    Look for: red cells (more overlap than chance) and blue (less); stars mark
+    ``p < 0.05``, ``0.01`` and ``0.001``.  The matrix is symmetric.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Output of ``overlap_matrix`` (needs ``set_a``, ``set_b``, ``odds_ratio``,
+        ``p_value``).
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(5.5, 4.5), layout="constrained")
     else:
@@ -100,7 +139,23 @@ def plot_clusters(
 ) -> Figure:
     """Heatmap of cluster means (rows labelled with sizes) and score-vs-k panel.
 
-    With ``ax`` given only the heatmap is drawn on it.
+    With ``ax`` given only the heatmap is drawn on it.  Look for: clusters with
+    distinct feature patterns (red / blue rows), and a clear optimum of the score
+    in the right panel.
+
+    Parameters
+    ----------
+    cluster_result : ClusterResult
+        Result of ``response_clusters``.
+    feature_names : sequence of str, optional
+        Column labels, e.g. the names returned by ``response_features``; used only
+        when their number matches the feature count.
+    ax : matplotlib Axes, optional
+        Draw only the heatmap here; otherwise a heatmap and score-vs-k figure is made.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
     """
     cr = cluster_result
     if ax is None:

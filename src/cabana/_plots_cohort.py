@@ -11,16 +11,30 @@ from matplotlib.figure import Figure
 
 from ._cohort import BootstrapResult, compare_states_across_animals
 from ._cross_session import CrossSessionResult
+from ._plots import _fmt_p
 
 __all__ = ["plot_cohort_fractions", "plot_cross_session", "plot_hierarchical_bootstrap"]
 
 
-def _fmt_p(p: float) -> str:
-    return "p=nan" if not np.isfinite(p) else (f"p={p:.3g}" if p >= 0.001 else "p<0.001")
-
-
 def plot_cross_session(cs: CrossSessionResult) -> Figure:
-    """Observed r (histogram) with the null-median distribution, and r per pair/state."""
+    """Observed r (histogram) with the null-median distribution, and r per pair/state.
+
+    Look for: the observed median r (red line) to the right of the grey null
+    distribution (title gives the population p-value), and the number of blue
+    (significant) points in the right panel.
+
+    Parameters
+    ----------
+    cs : CrossSessionResult
+        Result of ``cross_session_map_correlation`` (per matched cell) or
+        ``cross_session_pv_correlation`` (per state).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Two panels: histogram of ``observed`` vs ``null_median``; ``observed`` per
+        pair or state coloured by ``significant``.
+    """
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(9, 3.6), layout="constrained")
     obs = cs.observed[np.isfinite(cs.observed)]
     bins = np.linspace(-1, 1, 31)
@@ -49,7 +63,27 @@ def plot_cohort_fractions(
     states: Sequence[str] | None = None,
     control_state: str | None = None,
 ) -> Figure:
-    """Per-animal fractions connected across states, with mean +/- SEM bars."""
+    """Per-animal fractions connected across states, with mean +/- SEM bars.
+
+    Look for: consistent slopes across animals (grey lines) rather than a mean
+    driven by one animal; with ``control_state`` the paired test p-value and its
+    attainable floor are printed above each comparison.
+
+    Parameters
+    ----------
+    fractions : pandas.DataFrame
+        Output of ``fraction_significant_by_animal(..., by_state=True)`` for a single
+        analysis.
+    states : sequence of str, optional
+        States to show on the x axis, in order; ``None`` uses all.
+    control_state : str, optional
+        State every other state is compared with using
+        ``compare_states_across_animals``; appended to the axis if missing.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
     wide = fractions.pivot(index="animal", columns="state", values="fraction_significant")
     states = list(states) if states is not None else list(wide.columns)
     if control_state is not None and control_state not in states:
@@ -60,7 +94,11 @@ def plot_cohort_fractions(
     for _, row in wide.iterrows():
         ax.plot(x, row.to_numpy(), "-o", color="0.6", lw=1, ms=4, zorder=1)
     mean = wide.mean().to_numpy()
-    sem = wide.std(ddof=1).to_numpy() / np.sqrt(max(len(wide), 1)) if len(wide) > 1 else np.zeros(len(x))
+    sem = (
+        wide.std(ddof=1).to_numpy() / np.sqrt(max(len(wide), 1))
+        if len(wide) > 1
+        else np.zeros(len(x))
+    )
     ax.errorbar(x, mean, yerr=sem, fmt="s", color="C0", capsize=5, ms=8, lw=2, zorder=3)
     top = float(np.nanmax(wide.to_numpy())) if wide.size else 1.0
     if control_state is not None:
@@ -71,8 +109,14 @@ def plot_cohort_fractions(
             res = compare_states_across_animals(fractions, s, control_state)
             y = top * (1.05 + 0.08 * i)
             ax.plot([i, ci], [y, y], color="k", lw=1)
-            ax.text((i + ci) / 2, y, f"{_fmt_p(res['p_value'])} (floor {res['p_floor']:.3g})",
-                    ha="center", va="bottom", fontsize=8)
+            ax.text(
+                (i + ci) / 2,
+                y,
+                f"{_fmt_p(res['p_value'])} (floor {res['p_floor']:.3g})",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
         ax.set_ylim(0, top * (1.2 + 0.08 * len(states)))
     ax.set_xticks(x, states)
     ax.set_ylabel("fraction of cells significant")
@@ -81,7 +125,22 @@ def plot_cohort_fractions(
 
 
 def plot_hierarchical_bootstrap(boot: BootstrapResult) -> Figure:
-    """Hierarchical vs naive pooled-cell bootstrap confidence intervals."""
+    """Hierarchical vs naive pooled-cell bootstrap confidence intervals.
+
+    Look for: the naive interval (orange) being narrower than the hierarchical one
+    (blue), which shows how much animal-to-animal variability pooling cells hides.
+
+    Parameters
+    ----------
+    boot : BootstrapResult
+        Result of ``hierarchical_bootstrap``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        95 % percentile intervals with bootstrap means (dots) and the original
+        estimate (dashed line).
+    """
     fig, ax = plt.subplots(figsize=(5, 3), layout="constrained")
     for y, (ci, m, c) in enumerate(
         [(boot.ci, boot.mean, "C0"), (boot.naive_ci, boot.naive_mean, "C1")]

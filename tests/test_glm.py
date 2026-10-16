@@ -52,15 +52,22 @@ def test_exclusive_reference_dropped_and_recorded():
     n = 90
     lab = np.repeat([0, 1, 2], 30)
     oh = np.eye(3, dtype=bool)[lab]
-    st = StateSpace(name="b", onehot=oh, state_names=["a", "b", "c"], kind="categorical", exclusive=True)
+    st = StateSpace(
+        name="b", onehot=oh, state_names=["a", "b", "c"], kind="categorical", exclusive=True
+    )
     sess = Session(activity=np.zeros((1, n)), t=np.arange(n) / FS, fs=FS, states={"b": st})
     out = DesignMatrix(states=["b"]).apply(sess)
     assert design_columns(out) == ["b:a", "b:b"]
     assert out.meta["design_reference"]["design"] == {"b": "c"}
     assert design_columns(DesignMatrix(states=["b"], reference="none").apply(sess)) == [
-        "b:a", "b:b", "b:c"]
+        "b:a",
+        "b:b",
+        "b:c",
+    ]
     # 'rest' is preferred
-    st2 = StateSpace(name="b", onehot=oh, state_names=["a", "rest", "c"], kind="categorical", exclusive=True)
+    st2 = StateSpace(
+        name="b", onehot=oh, state_names=["a", "rest", "c"], kind="categorical", exclusive=True
+    )
     out2 = DesignMatrix(states=["b"]).apply(sess.replace(states={"b": st2}))
     assert design_columns(out2) == ["b:a", "b:c"]
     assert out2.meta["design_reference"]["design"] == {"b": "rest"}
@@ -68,7 +75,9 @@ def test_exclusive_reference_dropped_and_recorded():
     out3 = DesignMatrix(states=["b"], drop_rest=True).apply(sess.replace(states={"b": st2}))
     assert design_columns(out3) == ["b:a", "b:c"]
     # non-exclusive spaces keep all columns
-    stb = StateSpace(name="b", onehot=oh, state_names=["a", "b", "c"], kind="bouts", exclusive=False)
+    stb = StateSpace(
+        name="b", onehot=oh, state_names=["a", "b", "c"], kind="bouts", exclusive=False
+    )
     outb = DesignMatrix(states=["b"]).apply(sess.replace(states={"b": stb}))
     assert design_columns(outb) == ["b:a", "b:b", "b:c"]
     assert outb.meta["design_reference"]["design"] == {}
@@ -79,13 +88,16 @@ def test_glm_unique_contribution_exclusive_state_not_zero():
     n = 3000
     lab = np.repeat(rng.integers(0, 3, n // 50 + 1), 50)[:n]
     oh = np.eye(3, dtype=bool)[lab]
-    st = StateSpace(name="b", onehot=oh, state_names=["a", "b", "c"], kind="categorical", exclusive=True)
+    st = StateSpace(
+        name="b", onehot=oh, state_names=["a", "b", "c"], kind="categorical", exclusive=True
+    )
     sess = Session(activity=np.zeros((1, n)), t=np.arange(n) / FS, fs=FS, states={"b": st})
     Y = rng.poisson(np.exp(-1.0 + 1.5 * oh[:, 0]))[None].astype(float)
     for ref, expect_positive in (("auto", True), ("none", False)):
         out = DesignMatrix(states=["b"], reference=ref).apply(sess)
-        m = GLMEncoding(family="poisson", regressor_names=design_columns(out), min_frames=50,
-                        alpha=1e-3)
+        m = GLMEncoding(
+            family="poisson", regressor_names=design_columns(out), min_frames=50, alpha=1e-3
+        )
         v = m.compute(Y, out.signals["design"], np.ones(n, bool), FS)
         if expect_positive:
             assert v[0, 0] > 0.05  # state "a" has a clear unique contribution
@@ -103,9 +115,7 @@ def test_basis_shape_and_onset_convolution():
     oh[40, 0] = True
     st = StateSpace(name="s", onehot=oh, state_names=["a"], kind="bouts", exclusive=False)
     sess = Session(activity=np.zeros((1, n)), t=np.arange(n) / FS, fs=FS, states={"s": st})
-    out = DesignMatrix(
-        states=["s"], basis={"n_basis": 4, "pre_s": 0.5, "post_s": 1.5}
-    ).apply(sess)
+    out = DesignMatrix(states=["s"], basis={"n_basis": 4, "pre_s": 0.5, "post_s": 1.5}).apply(sess)
     assert design_columns(out) == [f"s:a@{k}" for k in range(4)]
     X = out.signals["design"]
     np.testing.assert_allclose(X[40 - 5 : 40 + 16], basis, atol=1e-12)
@@ -217,8 +227,9 @@ def test_basis_kernels_extras():
     true_k = np.array([0.0, 1.0, 0.5, 0.0]) @ b.T
     rate = np.exp(-1.5 + X @ np.array([0.0, 1.0, 0.5, 0.0]))
     Y = rng.poisson(rate)[None].astype(float)
-    m = GLMEncoding(family="poisson", regressor_names=design_columns(out), basis=basis,
-                    min_frames=50, alpha=0.1)
+    m = GLMEncoding(
+        family="poisson", regressor_names=design_columns(out), basis=basis, min_frames=50, alpha=0.1
+    )
     ex = m.extras(Y, X, np.ones(n, bool), FS)
     assert ex["kernels"].shape == (1, 1, b.shape[0])
     assert np.corrcoef(ex["kernels"][0, 0], true_k)[0, 1] > 0.8
@@ -327,7 +338,12 @@ def test_groups_column_with_basis_skips_kernels():
     basis = {"n_basis": 3, "pre_s": 0.0, "post_s": 1.0}
     out = DesignMatrix(states=["s"], basis=basis).apply(sess)
     Y = rng.poisson(1.0, size=(1, n)).astype(float)
-    m = GLMEncoding(family="poisson", groups="column", regressor_names=design_columns(out),
-                    basis=basis, min_frames=50)
+    m = GLMEncoding(
+        family="poisson",
+        groups="column",
+        regressor_names=design_columns(out),
+        basis=basis,
+        min_frames=50,
+    )
     ex = m.extras(Y, out.signals["design"], np.ones(n, bool), FS)
     assert "kernels" not in ex and "weights" in ex

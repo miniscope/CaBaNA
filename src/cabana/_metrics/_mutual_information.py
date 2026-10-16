@@ -9,8 +9,10 @@ from pydantic import Field
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
 from ._discretize import activity_levels, joint_counts, level_edges, level_indicator
+from ._ratemap import valid_states
 
 _LN2 = float(np.log(2.0))
 
@@ -77,17 +79,36 @@ class MutualInformation(Metric):
     ``units="bits_per_event"`` divides by the fraction of masked, valid-state
     frames with positive activity (NaN if zero).
 
-    Attributes
+    Parameters
     ----------
-    n_levels : int
+    n_levels : int, default 5
         Number of activity levels (>= 2); ignored for ``binning="binary"``.
-    binning : {"quantile", "log", "linear", "binary"}
-    units : {"bits", "bits_per_event"}
-    min_occupancy_s : float
-    bias_correction : {"none", "miller_madow"}
+    binning : {"quantile", "log", "linear", "binary"}, default "quantile"
+        How level edges are chosen from the observed masked activity;
+        ``"binary"`` gives two levels (zero / positive).
+    units : {"bits", "bits_per_event"}, default "bits"
+        ``"bits_per_event"`` divides by the fraction of masked, valid-state frames
+        with positive activity.
+    min_occupancy_s : float, default 0.05
+        States with less masked occupancy (s) are dropped.
+    bias_correction : {"none", "miller_madow"}, default "none"
+        Plug-in estimate, or with the Miller-Madow correction.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_cells,)`` in bits (or bits per event); NaN
+        for silent cells or when no state is valid.
 
     Notes
     -----
+    **Tail.**  ``"upper"``: mutual information is non-negative, so only values
+    above the shuffled null indicate coupling.
+
+    **State space.**  Requires an *exclusive* state space (``ValueError``
+    otherwise); no topology needed.  Activity must be finite (``ValueError`` on
+    NaN/inf) and may be of any kind, since levels are discretised from the data.
+
     Everything derived from the data (level edges, the silent-cell flag and the
     ``bits_per_event`` divisor) is fixed from the observed, unshifted, masked
     data and reused for every surrogate.  With a gappy mask
@@ -107,21 +128,25 @@ class MutualInformation(Metric):
     """
 
     name: ClassVar[str] = "mutual_information"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    n_levels: int = Field(5, ge=2)
-    binning: Literal["quantile", "log", "linear", "binary"] = "quantile"
-    units: Literal["bits", "bits_per_event"] = "bits"
-    min_occupancy_s: float = Field(0.05, ge=0)
-    bias_correction: Literal["none", "miller_madow"] = "none"
+    n_levels: int = Field(5, ge=2, description="Number of activity levels (ignored for 'binary').")
+    binning: Literal["quantile", "log", "linear", "binary"] = Field(
+        "quantile", description="How activity level edges are chosen."
+    )
+    units: Literal["bits", "bits_per_event"] = Field(
+        "bits", description="bits, or bits per event (divided by fraction of positive frames)."
+    )
+    min_occupancy_s: float = Field(
+        0.05, ge=0, description="Minimum masked occupancy (s) for a state to be used."
+    )
+    bias_correction: Literal["none", "miller_madow"] = Field(
+        "none", description="Plug-in estimate, or Miller-Madow bias correction."
+    )
 
-    def check_states(self, states: StateSpace) -> None:
-        super().check_states(states)
-        if not states.exclusive:
-            raise ValueError(
-                f"mutual_information requires an exclusive state space but {states.name!r} "
-                "is not exclusive; build it with bouts_to_states(exclusive=True)"
-            )
+    def check_target(self, target: StateSpace) -> None:
+        super().check_target(target)
+        self.require_exclusive(target)
 
     @property
     def _n_eff(self) -> int:
@@ -129,14 +154,14 @@ class MutualInformation(Metric):
 
     def _prepare(self, activity, states, mask, fs):
         """Common setup: masked indicators, valid states, edges, levels, per-cell scale."""
-        self.check_states(states)
+        self.check_target(states)
         a = np.asarray(activity, dtype=np.float64)
         if not np.isfinite(a).all():
-            raise ValueError("mutual_information needs finite activity (found NaN/inf)")
+            raise ValueError("metric 'mutual_information': needs finite activity (found NaN/inf)")
         mask = np.asarray(mask, dtype=bool)
         m = states.masked(mask)
         occ = m.sum(axis=0)
-        valid = occ >= max(self.min_occupancy_s * fs, 1e-12)
+        valid = valid_states(occ, fs, self.min_occupancy_s)
         edges = level_edges(a, mask, self._n_eff, self.binning)
         levels = activity_levels(a, edges)
         used = m[:, valid].any(axis=1) if valid.any() else np.zeros(a.shape[1], bool)

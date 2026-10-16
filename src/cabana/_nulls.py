@@ -18,16 +18,19 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 import numpy as np
 from pydantic import Field
 
 from ._models import StateSpace
 from ._registry import Metric, Null, Target, register
+from ._util import runs
 
 
-def draw_shifts(n_time: int, n_shuffles: int, min_shift: int, rng: np.random.Generator) -> np.ndarray:
+def draw_shifts(
+    n_time: int, n_shuffles: int, min_shift: int, rng: np.random.Generator
+) -> np.ndarray:
     """Draw ``n_shuffles`` distinct-where-possible frame offsets in ``[min_shift, n_time - min_shift]``."""
     if n_time < 4:
         raise ValueError("need at least 4 frames to shuffle")
@@ -39,7 +42,9 @@ def draw_shifts(n_time: int, n_shuffles: int, min_shift: int, rng: np.random.Gen
     warnings.warn(
         f"only {candidates.size} distinct circular shifts are available for n_shuffles="
         f"{n_shuffles}; shifts are drawn with replacement and the smallest attainable "
-        f"p-value is 1/({candidates.size}+1) = {1.0 / (candidates.size + 1):.4g}",
+        f"p-value is 1/({candidates.size}+1) = {1.0 / (candidates.size + 1):.4g}; "
+        "lower min_shift_s (ShuffleConfig.min_shift_s or CircularShift.min_shift_s) or use a longer "
+        "recording to get more distinct shifts",
         UserWarning,
         stacklevel=2,
     )
@@ -55,10 +60,12 @@ class CircularShift(Null):
     """
 
     name: ClassVar[str] = "circular_shift"
-    perturbs: ClassVar = "activity"
+    perturbs: ClassVar[Literal["activity", "target"]] = "activity"
 
     min_shift_s: float = Field(
-        20.0, ge=0, description="Smallest allowed |shift| in seconds (clamped below half the session)."
+        20.0,
+        ge=0,
+        description="Smallest allowed |shift| in seconds (clamped below half the session).",
     )
 
     def draw(self, n_time: int, fs: float, n: int, rng: np.random.Generator) -> np.ndarray:
@@ -91,7 +98,7 @@ class LabelShuffle(Null):
     """
 
     name: ClassVar[str] = "label_shuffle"
-    perturbs: ClassVar = "target"
+    perturbs: ClassVar[Literal["activity", "target"]] = "target"
 
     block_s: float = Field(1.0, gt=0, description="Block length in seconds.")
 
@@ -107,14 +114,6 @@ class LabelShuffle(Null):
                 yield activity, target.model_copy(update={"onehot": target.onehot[src]})
             else:
                 yield activity, np.asarray(target)[src]
-
-
-def _runs(col: np.ndarray) -> list[tuple[int, int]]:
-    """(start, length) of each run of True in a 1-D bool array."""
-    d = np.diff(np.concatenate([[0], col.astype(np.int8), [0]]))
-    starts = np.flatnonzero(d == 1)
-    ends = np.flatnonzero(d == -1)
-    return list(zip(starts.tolist(), (ends - starts).tolist(), strict=True))
 
 
 def _free_starts(free: np.ndarray, length: int) -> np.ndarray:
@@ -151,14 +150,14 @@ class BoutShuffle(Null):
     all states so the surrogate stays exclusive (``exclusive=True``; a forced
     overlap overwrites the earlier bout's frames).  For non-exclusive sources
     occupancy is tracked per state and the surrogate is non-exclusive.
-    ``max_tries`` is retained for backward compatibility and is ignored.
     """
 
     name: ClassVar[str] = "bout_shuffle"
-    perturbs: ClassVar = "target"
+    perturbs: ClassVar[Literal["activity", "target"]] = "target"
 
-    refractory_s: float = Field(2.0, ge=0, description="Minimum gap between re-placed bouts of one state.")
-    max_tries: int = Field(200, ge=1, description="Deprecated; ignored (placement is exact).")
+    refractory_s: float = Field(
+        2.0, ge=0, description="Minimum gap between re-placed bouts of one state."
+    )
 
     def check_target(self, metric: Metric, target: Target) -> None:
         if not isinstance(target, StateSpace):
@@ -184,7 +183,10 @@ class BoutShuffle(Null):
         valid = np.flatnonzero(mask_b)
         lo, hi = (int(valid[0]), int(valid[-1]) + 1) if valid.size else (0, n_time)
         gap = int(round(self.refractory_s * fs))
-        runs_per_state = [_runs(target.onehot[:, s]) for s in range(target.n_states)]
+        runs_per_state = [
+            list(zip(*(a.tolist() for a in runs(target.onehot[:, s])), strict=True))
+            for s in range(target.n_states)
+        ]
         shared = bool(target.exclusive)
         warned = False
         for _ in range(n):
@@ -192,9 +194,9 @@ class BoutShuffle(Null):
             occ_shared = np.zeros(n_time, dtype=bool)
             occ_state = [np.zeros(n_time, dtype=bool) for _ in runs_per_state]
             movable: list[tuple[int, int]] = []  # (state, length)
-            for s, runs in enumerate(runs_per_state):
+            for s, state_runs in enumerate(runs_per_state):
                 occ = occ_shared if shared else occ_state[s]
-                for start, length in runs:
+                for start, length in state_runs:
                     if 2 * int(mask_b[start : start + length].sum()) >= length:
                         movable.append((s, length))
                     else:  # mostly outside the mask: stays where it was
@@ -215,7 +217,7 @@ class BoutShuffle(Null):
                     "bout_shuffle: the state space is too dense to place every bout without "
                     "overlap inside the mask; some bouts were placed overlapping others",
                     UserWarning,
-                    stacklevel=2,
+                    stacklevel=3,  # generator -> shuffle_test -> caller
                 )
             yield activity, target.model_copy(update={"onehot": oh, "exclusive": shared})
 

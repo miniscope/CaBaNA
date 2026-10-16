@@ -9,7 +9,9 @@ from pydantic import Field
 
 from .._models import StateSpace
 from .._registry import Metric, register
+from .._results import Tail
 from .._shuffle import shifted_sums
+from ._ratemap import contiguous_folds, valid_states
 
 
 def _rate_maps(
@@ -21,7 +23,7 @@ def _rate_maps(
     Returns ``(rate_map, valid)`` with ``valid`` of shape ``(n_states,)``.
     """
     occ_s = np.asarray(occ_frames, dtype=np.float64) / fs
-    valid = occ_s >= min_occupancy_s
+    valid = valid_states(occ_frames, fs, min_occupancy_s)
     with np.errstate(invalid="ignore", divide="ignore"):
         rm = sums / np.where(occ_s > 0, occ_s, 1.0)
     return np.where(valid, rm, np.nan), valid
@@ -33,7 +35,9 @@ def _pearson_axis(a: np.ndarray, b: np.ndarray, axis: int = -2) -> np.ndarray:
     b = b - b.mean(axis=axis, keepdims=True)
     num = (a * b).sum(axis=axis)
     den = np.sqrt((a * a).sum(axis=axis) * (b * b).sum(axis=axis))
-    scale = max(float(np.nanmax(np.abs(a), initial=0.0)), float(np.nanmax(np.abs(b), initial=0.0)), 1e-300)
+    scale = max(
+        float(np.nanmax(np.abs(a), initial=0.0)), float(np.nanmax(np.abs(b), initial=0.0)), 1e-300
+    )
     with np.errstate(invalid="ignore", divide="ignore"):
         r = num / den
     # den is ~0 for constant vectors; treat anything at round-off level as zero variance
@@ -46,15 +50,50 @@ class PopulationVectorOverlap(Metric):
 
     Output ``(n_states, n_states)``; rows/columns of states with occupancy below
     ``min_occupancy_s`` are NaN.  No shuffle fast path.
+
+    Parameters
+    ----------
+    similarity : {"cosine", "pearson"}, default "cosine"
+        Cosine of the angle between state rate vectors, or Pearson r across cells
+        (vectors centred over cells).  NaN where a vector has zero norm (cosine)
+        or zero variance (Pearson).
+    min_occupancy_s : float, default 0.05
+        States with less masked occupancy (s) are invalid (NaN rows/columns).
+    normalize_cells : bool, default True
+        Divide each cell's rate map by its maximum over valid states first, so
+        every cell contributes comparably (cells whose maximum is 0 are left
+        unchanged).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states, n_states)``, symmetric.
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: high overlap (more similar than chance) is the
+    finding; pass ``tail="lower"`` to test for distinct population vectors.
+
+    **State space.**  Any (exclusive or overlapping).
+
+    Extras: ``rate_map`` ``(n_cells, n_states)`` rate per state in activity units
+    per second (after ``normalize_cells`` scaling when enabled; NaN for invalid
+    states).
     """
 
     name: ClassVar[str] = "population_vector_overlap"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    similarity: Literal["cosine", "pearson"] = "cosine"
-    min_occupancy_s: float = Field(0.05, ge=0)
-    normalize_cells: bool = True
+    similarity: Literal["cosine", "pearson"] = Field(
+        "cosine", description="Cosine similarity or Pearson r between state rate vectors."
+    )
+    min_occupancy_s: float = Field(
+        0.05, ge=0, description="Minimum masked occupancy (s) for a state to be valid."
+    )
+    normalize_cells: bool = Field(
+        True, description="Scale each cell's rate map by its maximum over valid states."
+    )
 
     def _maps(
         self, activity: np.ndarray, states: StateSpace, mask: np.ndarray, fs: float
@@ -109,21 +148,47 @@ class PopulationVectorStability(Metric):
     For each state the Pearson r across cells between the half-A and half-B
     rate vectors is returned, shape ``(n_states,)``; NaN if the state is
     under-occupied in either half or a vector has zero variance.
+
+    Parameters
+    ----------
+    n_blocks : int, default 2
+        Number of contiguous blocks the masked frames are cut into (>= 2).
+    min_occupancy_s : float, default 0.05
+        Minimum occupancy (s) of a state *within each half* for it to be valid.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``compute`` returns shape ``(n_states,)``: Pearson r across cells.  NaN
+        for every state when there are fewer than two cells.
+
+    Notes
+    -----
+    **Tail.**  ``"upper"``: a positive correlation means a stable population
+    vector.
+
+    **State space.**  Any (exclusive or overlapping).
+
+    Extras: ``rate_map_a`` and ``rate_map_b`` ``(n_cells, n_states)`` rate maps
+    of each half (activity units per second; NaN for states under-occupied in
+    that half) and ``valid_states`` ``(n_states,)`` bool, valid in both halves.
     """
 
     name: ClassVar[str] = "pv_stability"
     level: ClassVar[Literal["cell", "population"]] = "population"
-    default_tail: ClassVar[Literal["upper", "lower", "two"]] = "upper"
+    default_tail: ClassVar[Tail] = "upper"
 
-    n_blocks: int = Field(2, ge=2)
-    min_occupancy_s: float = Field(0.05, ge=0)
+    n_blocks: int = Field(
+        2, ge=2, description="Number of contiguous blocks; even blocks are half A, odd half B."
+    )
+    min_occupancy_s: float = Field(
+        0.05, ge=0, description="Minimum occupancy (s) per half for a state to be valid."
+    )
 
-    def _halves(
-        self, states: StateSpace, mask: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _halves(self, states: StateSpace, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         mask = np.asarray(mask, dtype=bool)
         idx = np.flatnonzero(mask)
-        block = (np.arange(idx.size) * self.n_blocks) // max(idx.size, 1)
+        block = contiguous_folds(idx.size, self.n_blocks)
         half_a = np.zeros(mask.size, dtype=bool)
         half_b = np.zeros(mask.size, dtype=bool)
         half_a[idx[block % 2 == 0]] = True

@@ -65,12 +65,23 @@ def _result(values, p, state_names=None, metric="auroc", null=None):
     if null is None:
         null = np.full((10, *values.shape), 0.5)
     sh = ShuffleResult(
-        observed=values, null=null, shifts=None, p_value=p,
-        null_lo=np.full(values.shape, 0.4), null_hi=np.full(values.shape, 0.6),
-        significant=p < 0.05, alpha=0.05, tail="two", n_shuffles=10,
+        observed=values,
+        null=null,
+        shifts=None,
+        p_value=p,
+        null_lo=np.full(values.shape, 0.4),
+        null_hi=np.full(values.shape, 0.6),
+        significant=p < 0.05,
+        alpha=0.05,
+        tail="two",
+        n_shuffles=10,
     )
     return MetricResult(
-        metric=metric, target="social", level="cell", values=values, shuffle=sh,
+        metric=metric,
+        target="social",
+        level="cell",
+        values=values,
+        shuffle=sh,
         state_names=state_names,
     )
 

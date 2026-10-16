@@ -20,6 +20,7 @@ from matplotlib.patches import Patch
 
 from ._models import Session, StateSpace
 from ._results import MetricResult, ResultSet
+from ._util import order_session_first, runs
 
 __all__ = [
     "plot_behavior_overview",
@@ -59,15 +60,6 @@ def _discrete_cmap(n: int) -> ListedColormap:
     return ListedColormap([base(i % base.N) for i in range(max(n, 1))])
 
 
-def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
-    """(start, length) of each True run in a 1D bool array."""
-    m = np.concatenate([[False], np.asarray(mask, bool), [False]])
-    d = np.diff(m.astype(np.int8))
-    starts = np.flatnonzero(d == 1)
-    stops = np.flatnonzero(d == -1)
-    return [(int(a), int(b - a)) for a, b in zip(starts, stops, strict=True)]
-
-
 def _significant(result: MetricResult, alpha: float | None = None) -> np.ndarray | None:
     sh = result.shuffle
     if sh is None:
@@ -93,7 +85,28 @@ def plot_behavior_overview(
     """Overview of behavior: trajectory, speed, ethograms and label strips.
 
     Panels that lack data are skipped.  If nothing can be drawn an empty
-    figure with a text note is returned.
+    figure with a text note is returned.  Look for: coverage of the arena by the
+    trajectory, whether speed gaps (grey bands) fall where the animal paused, and
+    whether scored behaviors are spread across the session.
+
+    Parameters
+    ----------
+    session : Session
+        Session whose ``signals``, ``masks`` and ``states`` are drawn.
+    position_signals : (str, str), default ("x", "y")
+        Names of the two per-frame position signals (trajectory panel, coloured
+        by time).
+    speed_signal : str, default "speed"
+        Per-frame speed signal drawn as a time trace.
+    speed_mask : str, default "speed"
+        Name of the mask whose excluded frames are shaded grey on the speed trace.
+    states : sequence of str, optional
+        State spaces to draw (``None`` = all): ``"bouts"`` spaces as ethograms,
+        exclusive ``"categorical"`` spaces as colour strips; other kinds are skipped.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
     """
     t = np.asarray(session.t)
     names = list(session.states) if states is None else list(states)
@@ -114,8 +127,13 @@ def plot_behavior_overview(
     if not panels:
         fig, ax = plt.subplots(figsize=(5, 2), layout="constrained")
         ax.axis("off")
-        ax.text(0.5, 0.5, "Nothing to plot: no position, speed or\nbouts/categorical states",
-                ha="center", va="center")
+        ax.text(
+            0.5,
+            0.5,
+            "Nothing to plot: no position, speed or\nbouts/categorical states",
+            ha="center",
+            va="center",
+        )
         return fig
 
     fig = plt.figure(figsize=(8, sum(p[2] for p in panels) + 0.5), layout="constrained")
@@ -136,7 +154,7 @@ def plot_behavior_overview(
         elif kind == "speed":
             ax.plot(t, np.asarray(session.signals[speed_signal], float), color="C0", lw=0.8)
             if speed_mask in session.masks:
-                for a, n in _runs(~session.masks[speed_mask]):
+                for a, n in zip(*runs(~session.masks[speed_mask]), strict=True):
                     ax.axvspan(t[a], t[min(a + n, len(t) - 1)], color="0.5", alpha=0.25, lw=0)
             ax.set_ylabel(speed_signal)
             ax.set_xlabel("time (s)")
@@ -146,7 +164,7 @@ def plot_behavior_overview(
             assert isinstance(s, StateSpace)
             dt = float(np.median(np.diff(t))) if len(t) > 1 else 1.0
             for j in range(s.n_states):
-                segs = [(t[a], n * dt) for a, n in _runs(s.onehot[:, j])]
+                segs = [(t[a], n * dt) for a, n in zip(*runs(s.onehot[:, j]), strict=True)]
                 ax.broken_barh(segs, (j - 0.4, 0.8), facecolors=f"C{j % 10}")
             ax.set_yticks(range(s.n_states), s.state_names)
             ax.set_ylim(s.n_states - 0.4, -0.6)
@@ -159,15 +177,25 @@ def plot_behavior_overview(
             lab = s.labels()
             img = np.ma.masked_less(lab, 0)[None, :]
             cmap = _discrete_cmap(s.n_states)
-            ax.imshow(img, aspect="auto", cmap=cmap, vmin=-0.5, vmax=s.n_states - 0.5,
-                      extent=(t[0], t[-1], 0, 1), interpolation="nearest")
+            ax.imshow(
+                img,
+                aspect="auto",
+                cmap=cmap,
+                vmin=-0.5,
+                vmax=s.n_states - 0.5,
+                extent=(t[0], t[-1], 0, 1),
+                interpolation="nearest",
+            )
             ax.set_yticks([])
             ax.set_xlabel("time (s)")
             ax.set_title(s.name, fontsize=10)
             used = np.unique(lab[lab >= 0])
             ax.legend(
                 handles=[Patch(color=cmap(int(u)), label=s.state_names[int(u)]) for u in used],
-                loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8, frameon=False,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1.0),
+                fontsize=8,
+                frameon=False,
             )
             time_axes.append(ax)
     return fig
@@ -185,7 +213,33 @@ def plot_rate_maps(
     ncols: int = 6,
     cmap: str = "viridis",
 ) -> Figure:
-    """Per-cell rate maps from ``result.extras["rate_map"]``."""
+    """Per-cell rate maps from ``result.extras["rate_map"]``.
+
+    ``session`` and ``result`` may be given in either order.  Look for: compact
+    single fields (2-D / 1-D grids) or a bar peak at one state (categorical);
+    titles give the metric value and, with a shuffle, its p-value.
+
+    Parameters
+    ----------
+    session : Session
+        Supplies the target state space (``session.states[result.target]``) for the
+        grid layout and state names.
+    result : MetricResult
+        Result whose ``extras["rate_map"]`` is ``(n_cells, n_states)`` (e.g.
+        ``information_content``); missing key raises ``ValueError``.
+    cells : sequence of int
+        Row indices of the cells to draw.
+    ncols : int, default 6
+        Maximum panels per row.
+    cmap : str, default "viridis"
+        Colormap for 2-D maps (NaN bins are transparent).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One panel per cell: image for a 2-D grid, line for 1-D, bars otherwise.
+    """
+    session, result = order_session_first(session, result)
     if "rate_map" not in result.extras:
         raise ValueError(
             f"result for metric {result.metric!r} has no 'rate_map' in extras; "
@@ -198,8 +252,9 @@ def plot_rate_maps(
     n = max(len(cells), 1)
     ncols = max(1, min(ncols, n))
     nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.4 * nrows),
-                             squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(2.6 * ncols, 2.4 * nrows), squeeze=False, layout="constrained"
+    )
     values = np.asarray(result.values)
     sh = result.shuffle
     for k, ax in enumerate(axes.ravel()):
@@ -217,8 +272,9 @@ def plot_rate_maps(
             img = np.ma.masked_invalid(rate[c].reshape(topo.shape).T)
             cm = plt.get_cmap(cmap).with_extremes(bad=(0, 0, 0, 0))
             xe, ye = topo.edges
-            ax.imshow(img, origin="lower", cmap=cm, aspect="auto",
-                      extent=(xe[0], xe[-1], ye[0], ye[-1]))
+            ax.imshow(
+                img, origin="lower", cmap=cm, aspect="auto", extent=(xe[0], xe[-1], ye[0], ye[-1])
+            )
             ax.set_xticks([])
             ax.set_yticks([])
         elif topo is not None and topo.ndim == 1:
@@ -226,8 +282,9 @@ def plot_rate_maps(
             ax.tick_params(labelsize=7)
         else:
             ax.bar(range(rate.shape[1]), np.nan_to_num(rate[c]), color="C0")
-            ax.set_xticks(range(rate.shape[1]), space.state_names,
-                          rotation=60, ha="right", fontsize=7)
+            ax.set_xticks(
+                range(rate.shape[1]), space.state_names, rotation=60, ha="right", fontsize=7
+            )
             ax.tick_params(axis="y", labelsize=7)
     return fig
 
@@ -244,10 +301,42 @@ def plot_shuffle_distribution(
     ax: Any = None,
     bins: int = 40,
 ) -> Figure:
-    """Histogram of the null for one cell (and state) with observed value."""
+    """Histogram of the null for one cell (and state) with observed value.
+
+    Look for: the observed value (red line) outside the dashed null bounds means
+    significant; the title gives the p-value and tail.
+
+    Parameters
+    ----------
+    result : MetricResult
+        Result with a shuffle that kept its null draws (``keep_null="full"``).
+    cell : int
+        Row index of the cell.
+    state : int or str, optional
+        State (index or name); required when the values are 2-D.
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+    bins : int, default 40
+        Histogram bins.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If the result has no shuffle, the null draws were dropped, or ``state`` is
+        missing for 2-D values.
+    """
     sh = result.shuffle
     if sh is None:
         raise ValueError("result has no shuffle; run the analysis with a ShuffleConfig")
+    if sh.null is None:
+        raise ValueError(
+            "result's null draws were dropped (ShuffleConfig.keep_null='none'); "
+            "rerun with keep_null='full' to plot the null histogram"
+        )
     fig, ax = _get_ax(ax)
     cell = int(cell)
     obs = np.asarray(sh.observed)
@@ -256,13 +345,7 @@ def plot_shuffle_distribution(
     if obs.ndim == 2:
         if state is None:
             raise ValueError("result values are 2D; pass `state` (index or name)")
-        if isinstance(state, str):
-            names = result.state_names or []
-            if state not in names:
-                raise ValueError(f"state {state!r} not in result.state_names {names}")
-            state_i = names.index(state)
-        else:
-            state_i = int(state)
+        state_i = result.state_index(state)
         idx = (cell, state_i)
         suffix = f", state={state if isinstance(state, str) else (result.state_names or [state_i])[state_i]}"
     null = np.asarray(sh.null)[(slice(None), *idx)]
@@ -292,7 +375,33 @@ def plot_tuning_heatmap(
     ax: Any = None,
     cmap: str | None = None,
 ) -> Figure:
-    """Cells x states heatmap of ``result.values`` with significance markers."""
+    """Cells x states heatmap of ``result.values`` with significance markers.
+
+    Look for: blocks of cells lit in one column (state-selective cells); white
+    dots mark cells significant under the stored shuffle.  AUROC is drawn on a
+    diverging map centred on 0.5.
+
+    Parameters
+    ----------
+    result : MetricResult
+        Result with 2-D values ``(n_cells, n_states)``.
+    sort_by : str, optional
+        ``"peak"`` orders cells by their preferred state then peak value; a state
+        name orders by that column, descending; ``None`` keeps the cell order.
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+    cmap : str, optional
+        Colormap; default ``"RdBu_r"`` for AUROC, else ``"viridis"``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If values are not 2-D or ``sort_by`` is not ``"peak"`` or a state name.
+    """
     vals = np.asarray(result.values, float)
     if vals.ndim != 2:
         raise ValueError(f"values must be 2D (n_cells, n_states), got shape {vals.shape}")
@@ -320,8 +429,9 @@ def plot_tuning_heatmap(
     sig = _significant(result)
     if sig is not None and sig.shape == vals.shape:
         ys, xs = np.nonzero(sig[order])
-        ax.scatter(xs, ys, s=8, marker="o", c="white", edgecolors="k", linewidths=0.4,
-                   label="significant")
+        ax.scatter(
+            xs, ys, s=8, marker="o", c="white", edgecolors="k", linewidths=0.4, label="significant"
+        )
     ax.set_xticks(range(n_states), names, rotation=45, ha="right")
     ax.set_xlabel("state")
     ax.set_ylabel("cell (sorted)" if sort_by else "cell")
@@ -342,7 +452,30 @@ def plot_metric_scatter(
     log_x: bool = False,
     log_y: bool = False,
 ) -> Figure:
-    """Scatter of two cell-level metrics colored by joint significance."""
+    """Scatter of two cell-level metrics colored by joint significance.
+
+    Look for: cells significant on only one metric (colored) versus both
+    (red), and whether the metrics are correlated.  Without shuffles all points
+    are grey.
+
+    Parameters
+    ----------
+    result_x, result_y : MetricResult
+        1-D cell-level results with the same number of cells (x and y axes).
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+    log_x, log_y : bool, default False
+        Log-scale the axis.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If either result is not 1-D or the shapes differ.
+    """
     x = np.asarray(result_x.values, float)
     y = np.asarray(result_y.values, float)
     if x.ndim != 1 or y.ndim != 1:
@@ -386,7 +519,31 @@ def plot_population_matrix(
     vmin: float | None = None,
     vmax: float | None = None,
 ) -> Figure:
-    """Square state x state matrix (e.g. population vector overlap)."""
+    """Square state x state matrix (e.g. population vector overlap).
+
+    Look for: block structure (groups of similar states) and a strong diagonal;
+    NaN entries (under-sampled states) are drawn light grey.
+
+    Parameters
+    ----------
+    result : MetricResult
+        Result whose ``values`` is a square 2-D matrix over states.
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+    cmap : str, default "viridis"
+        Colormap.
+    vmin, vmax : float, optional
+        Colour limits; ``None`` autoscales.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If ``values`` is not a square 2-D array.
+    """
     m = np.asarray(result.values, float)
     if m.ndim != 2 or m.shape[0] != m.shape[1]:
         raise ValueError(f"values must be a 2D square matrix, got shape {m.shape}")
@@ -394,8 +551,7 @@ def plot_population_matrix(
     names = result.state_names or [str(i) for i in range(n)]
     fig, ax = _get_ax(ax, (max(4.5, 0.4 * n + 2.5), max(4.0, 0.4 * n + 2.0)))
     cm = plt.get_cmap(cmap).with_extremes(bad="lightgray")
-    im = ax.imshow(np.ma.masked_invalid(m), cmap=cm, vmin=vmin, vmax=vmax,
-                   interpolation="nearest")
+    im = ax.imshow(np.ma.masked_invalid(m), cmap=cm, vmin=vmin, vmax=vmax, interpolation="nearest")
     ax.set_xticks(range(n), names, rotation=90, fontsize=8)
     ax.set_yticks(range(n), names, fontsize=8)
     ax.set_title(result.metric)
@@ -428,8 +584,27 @@ def plot_ground_truth_recovery(
 
     The ``untuned`` population gives the false-positive rate.  The summary
     table is attached as ``fig.cabana_summary`` (columns ``result``,
-    ``population``, ``n``, ``fraction_significant``).
+    ``population``, ``n``, ``fraction_significant``).  Look for: tall bars for
+    the planted populations, and ``untuned`` near the dashed alpha line.
+    ``session`` and ``resultset`` may be given in either order.
+
+    Parameters
+    ----------
+    session : Session
+        Simulated session with ``meta["ground_truth"]`` (from ``simulate_session``);
+        without it the figure is an empty note.
+    resultset : ResultSet or sequence of MetricResult
+        Cell-level results that have a shuffle; others are skipped.
+    alpha : float, default 0.05
+        A cell counts as detected when ``p_value < alpha`` in any state; also the
+        dashed reference line.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Grouped bars per result and planted population.
     """
+    session, resultset = order_session_first(session, resultset)
     gt = session.meta.get("ground_truth", {}) or {}
     pops = _planted_populations(gt)
     rows: list[dict[str, Any]] = []
@@ -439,36 +614,48 @@ def plot_ground_truth_recovery(
         sig = np.asarray(r.shuffle.p_value) < alpha
         if sig.ndim > 1:
             sig = sig.reshape(sig.shape[0], -1).any(axis=1)
-        label = f"{r.metric}\n[{r.target}]"
+        name = r.name or f"{r.metric}[{r.target}]"
+        label = name.replace("[", "\n[", 1)
         for pop, cells in pops.items():
             cells = [c for c in cells if 0 <= c < sig.shape[0]]
             if not cells:
                 continue
-            rows.append({
-                "result": f"{r.metric}[{r.target}]",
-                "_label": label,
-                "population": pop,
-                "n": len(cells),
-                "fraction_significant": float(sig[cells].mean()),
-            })
+            rows.append(
+                {
+                    "result": name,
+                    "_label": label,
+                    "population": pop,
+                    "n": len(cells),
+                    "fraction_significant": float(sig[cells].mean()),
+                }
+            )
     df = pd.DataFrame(rows, columns=["result", "_label", "population", "n", "fraction_significant"])
-    fig, ax = plt.subplots(figsize=(max(5.0, 1.6 * df["result"].nunique() + 2), 4.0),
-                           layout="constrained")
+    fig, ax = plt.subplots(
+        figsize=(max(5.0, 1.6 * df["result"].nunique() + 2), 4.0), layout="constrained"
+    )
     if df.empty:
         ax.axis("off")
-        ax.text(0.5, 0.5, "No ground truth or no shuffled cell-level results",
-                ha="center", va="center")
+        ax.text(
+            0.5, 0.5, "No ground truth or no shuffled cell-level results", ha="center", va="center"
+        )
     else:
         results = list(dict.fromkeys(df["result"]))
         labels = dict(zip(df["result"], df["_label"], strict=True))
-        order = [p for p in ("place", "social", "syllable", "untuned") if p in set(df["population"])]
+        order = [
+            p for p in ("place", "social", "syllable", "untuned") if p in set(df["population"])
+        ]
         width = 0.8 / len(order)
         for j, pop in enumerate(order):
             sub = df[df["population"] == pop].set_index("result")
             h = [sub["fraction_significant"].get(r, np.nan) for r in results]
             color = "0.6" if pop == "untuned" else f"C{j}"
-            ax.bar(np.arange(len(results)) + (j - (len(order) - 1) / 2) * width,
-                   np.nan_to_num(h), width, label=pop, color=color)
+            ax.bar(
+                np.arange(len(results)) + (j - (len(order) - 1) / 2) * width,
+                np.nan_to_num(h),
+                width,
+                label=pop,
+                color=color,
+            )
         ax.axhline(alpha, color="k", ls="--", lw=1)
         ax.set_xticks(range(len(results)), [labels[r] for r in results], fontsize=8)
         ax.set_ylim(0, 1.05)
@@ -476,8 +663,9 @@ def plot_ground_truth_recovery(
         handles, labs = ax.get_legend_handles_labels()
         handles.append(Line2D([], [], color="k", ls="--", lw=1))
         labs.append(f"alpha={alpha:g}")
-        ax.legend(handles, labs, fontsize=8, frameon=False, loc="upper left",
-                  bbox_to_anchor=(1.01, 1.0))
+        ax.legend(
+            handles, labs, fontsize=8, frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0)
+        )
         ax.set_title("Ground-truth recovery")
     fig.cabana_summary = df.drop(columns="_label").reset_index(drop=True)  # type: ignore[attr-defined]
     return fig
