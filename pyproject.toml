@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cabana"
+version = "0.0.1"
+description = "CaBaNA: Calcium Behavioral and Neural Analysis. A general pipeline for relating neural activity to behavioral states."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pydantic>=2.7",
+    "numpydantic>=1.6",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "scikit-learn>=1.4",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+notebook = ["jupyter", "ipywidgets"]
+dev = ["pytest", "ruff", "nbformat", "nbclient", "ipykernel"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cabana"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "UP", "B"]
+ignore = ["E501", "UP007", "F722"]  # F722: numpydantic Shape strings
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
