@@ -268,6 +268,10 @@ a substitute for tuning on real data.
 | `min_occupancy_s` | information, MI, population metrics, split-half | 0.05 s; 0.1 s in `signal_tuning` | arbitrary | M | fixed default, with the occupancy diagnostic shown |
 | speed `min_speed` | `_preprocess.SpeedThreshold` | required; demo 20 mm/s | none | H | user pick on the speed histogram |
 | speed `window_s` | `_transform.Speed` | 0.25 s | arbitrary | L | fixed default |
+| `max_gap_s` | `_transform_behavior.InterpolateGaps` | 0.5 s | convention | L-M | fixed default; report the filled fraction (`meta["interpolate_gaps"]`) |
+| smoothing `window_s` | `_transform_behavior.SmoothSignal` | 0.25 s (median) | convention | L-M | fixed default, matched to the speed window |
+| `merge_gap_s`, `min_duration_s` | `_transform.BoutsToStates` | 0 (off); lab convention 0.5 s / 0.5 s | convention | M | state in the methods |
+| `mode_filter_s`, `min_run_s` | `_transform.LabelsToStates` | 0 (off) | arbitrary | L-M | state in the methods |
 | `n_levels` / `binning` | `mutual_information`, Bayesian decoder (empirical) | 5, `quantile` | tuned | M-H | reported sweep |
 | `pseudocount` | Bayesian decoder (empirical) | 0.1 | tuned | H for the empirical decoder | cross-validated |
 | decoder `window_s` | `bayesian_decoder` | 0.25 s; demo 1.0 s | arbitrary | M | cross-validated |
@@ -278,6 +282,10 @@ a substitute for tuning on real data.
 | `min_frames` | `mean_per_state`/`auroc` 20, `pca_population` 20, `signal_tuning` 50, `glm_encoding` 100 | as listed | arbitrary | L | fixed default |
 | PETH `baseline_s` / `response_s` | `peth` | (-5, -2) s / (0, 2) s | arbitrary | H | pre-registered before looking at results |
 | temporal `sigma_s` | `_preprocess.SmoothActivity` | required | none | H | user pick, stated in the methods |
+| `baseline` percentile | `_preprocess_activity.ComputeDff` | 8 (rolling window 60 s) | convention (common dF/F baseline choice); not derived | M | check the baseline against the trace; report it in the methods |
+| event `k` | `_preprocess_activity.DetectEvents` | 3 | arbitrary (3 sigma; ~0.1% one-sided false positives on Gaussian noise, more on real traces) | H | pick on a few cells against known events; report a sweep of k |
+| event `noise` | `_preprocess_activity.DetectEvents` | `diff_mad` | standard estimator: 1.4826 x MAD of first differences / sqrt(2) (Friedrich et al. 2017; CaImAn) | M | fixed default; `psd` as a check |
+| event `min_duration_s` / `refractory_s` | `_preprocess_activity.DetectEvents` | 0 / 0 | none (off) | M | set from indicator kinetics (decay time) |
 | `n_shuffles` | `ShuffleConfig` | 1000 | convention | L (sets the p floor, see above) | fixed default |
 | `min_shift_s` | `ShuffleConfig`, `circular_shift` | 20 s | arbitrary | M | should exceed the autocorrelation time; automatic rule planned |
 | `block_s` | `label_shuffle` null | 1.0 s | arbitrary | M | automatic rule planned |

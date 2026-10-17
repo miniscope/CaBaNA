@@ -50,7 +50,7 @@ from pathlib import Path
 import numpy as np
 
 import cabana
-from cabana import BoutTable, ContinuousSignal, LabelSeries, Session
+from cabana import BoutTable, ContinuousSignal, LabelSeries, Session, SessionInfo
 
 out = Path("cabana_out")
 out.mkdir(exist_ok=True)
@@ -86,7 +86,8 @@ def load_session(seed, n_cells=120, prefix="mA"):
     syl[rng.random(syl_t.size) < 0.02] = -1
     return dict(act=act, t=t, labels=list(labels), starts=np.array(starts), stops=np.array(stops),
                 xy_t=xy_t, xy=xy, dist=dist, syl_t=syl_t, syl=syl,
-                cell_ids=[f"{prefix}_c{i:03d}" for i in range(n_cells)])
+                cell_ids=[f"{prefix}_c{i:03d}" for i in range(n_cells)],
+                snr=rng.gamma(4.0, 1.0, n_cells))
 ```
 
 ## 3. Assemble a `Session`
@@ -104,11 +105,15 @@ def make_session(d, animal="mA"):
         activity=d["act"],            # (n_cells, n_time)
         t=d["t"],                     # (n_time,) seconds, neural clock
         fs=FS,
-        activity_kind="deconvolved",  # or "dff", "spike_counts", "raw", "zscored"
+        activity_kind="deconvolved",  # or "dff", "spike_counts", "binary", "raw", "denoised", "zscored"
         cell_ids=d["cell_ids"],
         behavior={"social": bouts, "position": position, "partner_dist": distance,
                   "syllables": syllables},
-        meta={"animal": animal},
+        meta={},
+        info=SessionInfo(animal=animal, date="2026-03-14", condition="social", group="control"),
+        # optional per-cell columns (length n_cells; numeric, bool or string)
+        cell_meta={"snr": d["snr"], "accepted": d["snr"] > 3.0},
+        # footprints=d["footprints"],  # optional dense (n_cells, H, W); downsample large fields
     )
 
 
@@ -118,10 +123,22 @@ print(cabana.__version__, session.activity.shape)
 
 Notes on the inputs:
 
-- **`activity_kind`** tells CaBaNA how to re-bin (counts are summed, traces are
-  averaged) and is recorded with every result. A `Session` warns if
-  deconvolved or spike-count activity contains negative values, which usually
-  means you passed dF/F or z-scored traces under the wrong label.
+- **`info` and `cell_meta`**: `SessionInfo` holds animal, date (ISO), condition,
+  group, sex, genotype, rig and `session_id`; `SessionSet.from_sessions` reads
+  `animal` from it. `cell_meta` columns (`snr`, `r_values`, `cnn_preds`,
+  `accepted`, `pve`, `alpha`, `baseline`, `tau_*_s`, `centroid_x/y`, ...) travel
+  with the cells: `session.cell_table()` shows them and
+  `session.select_cells(mask_or_ids)` subsets cells, metadata and footprints
+  together. `select_frames(...)` does the same for time.
+
+- **`activity_kind`** tells CaBaNA how to re-bin and is recorded with every
+  result. Event-like kinds (`deconvolved`, `spike_counts`, `binary`) are
+  **summed** per bin, so a re-binned `binary` or event-onset series becomes an
+  event count; trace-like kinds (`raw`, `denoised`, `dff`, `zscored`) are
+  **averaged**. A `Session` warns if an event-like kind contains negative
+  values, which usually means you passed dF/F or z-scored traces under the
+  wrong label. Minian `C` and CaImAn `C` load as `denoised` (a smoothed
+  fluorescence trace, not spikes and not dF/F).
 - **`BoutTable`**: one row per bout. Behaviors may overlap. `scored_start_s` and
   `scored_stop_s` say where scoring covered the recording; frames outside are
   *unknown*, not "no behavior". Leave them `None` only if the whole session was
@@ -175,6 +192,62 @@ preprocess = [{"name": "speed_threshold", "min_speed": 20.0}]  # writes masks["s
   its onsets, so on the exclusive-with-rest space you would get a PETH for
   "rest" as if it were a behavior. Run `peth` on the non-exclusive space.
 
+### Behaviour recipes
+
+Cleaning tracking, then using it. Positions are named by a prefix: `nose` means
+the signals `nose_x`, `nose_y` (what `load_dlc` and `resample_signal` produce);
+`""` means plain `x`, `y` (what `dlc_centroid` produces).
+
+```python
+transforms = [
+    {"name": "resample_signal", "source": "dlc"},   # nose_x, nose_y, nose_likelihood, ...
+    # 1. fill dropouts up to 0.5 s (longer ones stay NaN and drop out of the support)
+    {"name": "interpolate_gaps", "signal": ["nose", "neck"], "max_gap_s": 0.5},
+    # 2. NaN-aware median over 0.25 s (robust to tracking jumps)
+    {"name": "smooth_signal", "signal": ["nose", "neck"], "method": "median", "window_s": 0.25},
+    # 3. then speed (use one centroid, or smooth x and y first)
+    {"name": "speed", "signals": ["neck_x", "neck_y"]},
+    # head direction: 0 = +x, counter-clockwise, (-pi, pi]
+    {"name": "head_direction", "front": "nose", "back": "neck", "units": "deg"},
+    # distance to a partner (prefix mouse2_neck) or to a fixed point (a cup)
+    {"name": "distance", "a": "neck", "b": "mouse2_neck", "output": "partner_dist"},
+    {"name": "distance", "a": "neck", "point": [120.0, 40.0], "output": "cup_dist"},
+]
+preprocess = [  # keep only confident, nearby frames
+    {"name": "mask_from_signal", "signal": "nose_likelihood", "min": 0.9, "output": "tracked"},
+    {"name": "mask_from_signal", "signal": "partner_dist", "max": 50.0, "output": "close"},
+]
+```
+
+Calibrate pixels first with `arena_transform` (`scale` as 1/px_per_mm, or four
+`corners_px` with matching `corners_mm` for a homography that also removes
+perspective). A three-chamber test becomes states with `zone_occupancy`:
+
+```python
+{"name": "arena_transform", "signals": ["neck"],
+ "corners_px": [[100, 80], [520, 95], [500, 410], [90, 400]],
+ "corners_mm": [[0, 0], [600, 0], [600, 200], [0, 200]]},
+{"name": "zone_occupancy", "signal": "neck", "output": "chamber",
+ "zones_rect": {"left": [0, 0, 200, 200], "middle": [200, 0, 400, 200],
+                "right": [400, 0, 600, 200]}},
+```
+
+Frames in no chamber are "defined but in no state"; frames with a lost
+position are outside the support. Zones may be polygons (`zones`) and may be
+read from `session.meta["arena"]["zones"]` with `zones_from_meta=True`.
+Miniscope V4 BNO orientation: `{"name": "head_direction", "quaternion": "imu",
+"offset_deg": calib}` (w, x, y, z order; the zero is arbitrary until you
+calibrate with `offset_deg`).
+
+Bout cleanup (lab convention: merge gaps shorter than 0.5 s, then drop epochs
+shorter than 0.5 s): `{"name": "bouts_to_states", "source": "social",
+"merge_gap_s": 0.5, "min_duration_s": 0.5}`; BORIS POINT events become
+windows with `point_event_window_s`. `min_gap_s` is the older rule that drops
+the later bout; prefer `merge_gap_s`. For syllables,
+`labels_to_states(mode_filter_s=0.2, min_run_s=0.1)` votes away single-frame
+flicker. `cabana.states_to_bouts(states, fs, merge_gap_s=..., min_duration_s=...)`
+turns any state space back into a `BoutTable` for export.
+
 ## 5. Masks and support
 
 Every analysis runs on a set of frames: the **support** of its target AND any
@@ -191,6 +264,77 @@ masks you list.
   mask on social analyses unless you mean it: huddling is stationary.
 - Signals have no support, so a `signal=` analysis uses only the masks you
   list. `resample_signal` writes `{source}_covered` for this purpose.
+
+### Activity conditioning
+
+Steps that change `activity` set the kind to what the output really is. All
+propagate NaN frames (never zero-fill). Typical dF/F pipeline:
+
+```python
+preprocess = [
+    {"name": "compute_dff", "baseline": "rolling_percentile", "percentile": 8, "window_s": 60},  # raw/denoised -> dff
+    {"name": "detrend", "method": "highpass", "cutoff_hz": 0.01},   # optional; refused on event kinds
+    {"name": "bandpass_activity", "high_hz": 5.0},                   # zero-phase Butterworth
+    {"name": "detect_events", "k": 3.0, "noise": "diff_mad",         # -> kind "binary"
+     "min_duration_s": 0.1, "refractory_s": 0.2, "output": "onsets"},
+]
+```
+
+- `compute_dff`: `(F - F0) / max(F0, eps)`; `F0` from `percentile` (one value
+  per cell), `mean`, or `rolling_percentile` / `rolling_min` over `window_s`
+  (also removes bleaching). Needs `raw` or `denoised` input (`force=True` to
+  override). The 8th percentile and 60 s window are conventions, not derived.
+- `detect_events`: threshold `= median + k * noise` per cell, where `noise` is
+  the MAD of first differences / sqrt(2) (`diff_mad`, default), `mad` or `psd`.
+  `output="binary"` marks frames in an event, `"onsets"` only the first frame
+  of each event (re-binning gives counts), `"amplitude"` keeps the trace value
+  inside events and labels it `deconvolved`. Per-cell noise and threshold are
+  recorded in `session.meta["detect_events"]`. Use `refractory_s` to stop noise
+  re-crossing during a transient's decay from counting as new events.
+- `clip_activity` (`min=0` default) removes negative values from deconvolved or
+  dF/F traces before metrics that need non-negative input; it biases noisy
+  dF/F upward, so prefer `detect_events` for dF/F.
+- `zscore_activity(by="cell"|"global", mask_names=[...], baseline_window_s=(t0, t1))`:
+  with `mask_names=None` the statistics use all masks present, so the result
+  depends on step order; name the masks explicitly. The previous kind is kept in
+  `meta["zscore_source_kind"]`.
+- `binarize_activity` (one absolute threshold, kind becomes `binary`) is
+  deprecated in favour of `detect_events`.
+
+### Building masks
+
+Four preprocess steps write named masks (each records its parameters in
+`session.meta["mask_info"]`); list the result in `masks=[...]`.
+
+```python
+preprocess = [
+    {"name": "speed_threshold", "min_speed": 20.0},                    # masks["speed"]
+    # Recipe 1: exclude a behaviour (frames outside the scored span stay False)
+    {"name": "mask_from_state", "states": "social", "include": ["sniff"],
+     "invert": True, "output": "no_sniff"},
+    # Recipe 2: require speed AND not grooming
+    {"name": "mask_from_state", "states": "social", "include": ["groom"],
+     "invert": True, "output": "not_grooming"},
+    {"name": "combine_masks", "expr": "speed & not_grooming", "output": "moving_ok"},
+    # Recipe 3: clean a jittery mask (fill gaps < 0.5 s, then drop runs < 1 s)
+    {"name": "clean_mask", "mask": "moving_ok", "min_false_s": 0.5, "min_true_s": 1.0},
+    # Any signal: close to the partner, or confident DLC tracking
+    {"name": "mask_from_signal", "signal": "partner_dist", "max": 50.0, "output": "close"},
+]
+```
+
+- `mask_from_state`: `include=None` means any state is active. With
+  `require_support=True` (default) the result is ANDed with the state space's
+  support, so unscored frames are False even when `invert=True`; set it False
+  to let inverted masks include them.
+- `combine_masks` expressions use mask names, `~` (not), `&`, `|` and
+  parentheses; `~` binds tightest, then `&`, then `|`. Unknown names raise.
+- `clean_mask` applies, in order: fill interior False gaps shorter than
+  `min_false_s`, drop True runs shorter than `min_true_s`, erode by `erode_s`,
+  dilate by `dilate_s` (durations round to whole frames). `output=None`
+  overwrites the input mask.
+- `mask_from_signal`: inclusive `min`/`max`, `nan_is` sets NaN frames
+  (default False), `channel` picks a column of a 2-D signal.
 
 ## 6. A pipeline with named analyses
 

@@ -152,7 +152,7 @@ analyses:
     binarize: true
     window_s: 0.25
     smooth_sigma_bins: 0.0
-    n_folds: 4
+    n_folds: 5
     n_trial_blocks: 10
     sigma: per_state
     prior: occupancy

@@ -15,7 +15,7 @@ import numpy as np
 from .._models import Session
 from ._common import check_path, infer_fs, require, validate_time
 
-_KINDS = {"S": "deconvolved", "C": "raw"}
+_KINDS = {"S": "deconvolved", "C": "denoised"}
 _TIME_COORDS = ("t", "time", "timestamp", "timestamps", "timestamp_s")
 
 
@@ -53,7 +53,7 @@ def load_minian(path, *, activity: str = "S", fs: float | None = None, t=None) -
         Minian store.
     activity : {"S", "C"}
         ``S`` deconvolved (``activity_kind="deconvolved"``) or ``C`` denoised fluorescence
-        (``"raw"``).
+        (``"denoised"``; use ``ComputeDff`` for dF/F).
     fs : float, optional
         Frame rate in Hz.  Used as ``arange(n_frames) / fs`` when ``t`` is not given and the
         dataset has no timestamp coordinate on ``frame`` (one of ``t``, ``time``, ``timestamp``,

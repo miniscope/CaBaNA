@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import ClassVar, Literal
 
 import numpy as np
@@ -80,31 +81,75 @@ class SmoothActivity(PreprocessStep):
 
 @register("preprocess")
 class ZscoreActivity(PreprocessStep):
-    """Z-score each cell using mean/std over ``valid_mask()`` frames (std 0 -> centered only)."""
+    """Z-score activity using mean/std over a set of frames (std 0 -> centered only).
+
+    ``by="cell"`` standardises each cell separately, ``"global"`` uses one mean and SD
+    pooled over all cells (keeps relative amplitudes).  Frames come from the masks named
+    in ``mask_names``; ``None`` means ``valid_mask()`` of *all masks present*, so the result
+    depends on which steps ran before this one.  Name the masks explicitly to avoid that.
+    ``baseline_window_s=(t0, t1)`` restricts the statistics to a baseline period
+    (session time, seconds) so values are z-scores against baseline rather than the whole
+    session.  NaN frames are ignored in the statistics and stay NaN.  Output kind is
+    ``zscored``; the previous kind is stored in ``meta["zscore_source_kind"]``.
+    """
 
     name: ClassVar[str] = "zscore_activity"
 
+    by: Literal["cell", "global"] = Field("cell", description="Per-cell or pooled statistics.")
+    mask_names: list[str] | None = Field(
+        None, description="Masks defining frames used for the statistics; None = all masks."
+    )
+    baseline_window_s: tuple[float, float] | None = Field(
+        None,
+        description="(start_s, stop_s) baseline period for the statistics; None = whole session.",
+    )
+
     def apply(self, session: Session) -> Session:
         a = np.asarray(session.activity, dtype=float)
-        m = session.valid_mask()
+        if self.mask_names is not None:
+            missing = [n for n in self.mask_names if n not in session.masks]
+            if missing:
+                raise KeyError(f"masks {missing} missing; available: {sorted(session.masks)}")
+        m = session.valid_mask(self.mask_names)
+        if self.baseline_window_s is not None:
+            t0, t1 = self.baseline_window_s
+            if t1 < t0:
+                raise ValueError("baseline_window_s must be (start, stop) with stop >= start")
+            m = m & (session.t >= t0) & (session.t <= t1)
         if not m.any():
-            raise ValueError("valid_mask() is empty; cannot z-score")
-        mu = a[:, m].mean(axis=1, keepdims=True)
-        sd = a[:, m].std(axis=1, keepdims=True)
+            raise ValueError("no frames selected for z-score statistics")
+        sel = a[:, m]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            if self.by == "cell":
+                mu = np.nanmean(sel, axis=1, keepdims=True)
+                sd = np.nanstd(sel, axis=1, keepdims=True)
+            else:
+                mu = np.nanmean(sel)
+                sd = np.nanstd(sel)
         sd = np.where(sd > 0, sd, 1.0)
-        return session.with_activity((a - mu) / sd, kind="zscored")
+        out = session.with_activity((a - mu) / sd, kind="zscored")
+        return out.replace(meta={**out.meta, "zscore_source_kind": session.activity_kind})
 
 
 @register("preprocess")
 class BinarizeActivity(PreprocessStep):
-    """Replace activity by ``activity > threshold`` as float (0.0 / 1.0)."""
+    """Replace activity by ``activity > threshold`` as float (0.0 / 1.0); kind becomes ``binary``.
+
+    Deprecated in favour of :class:`~cabana._preprocess_activity.DetectEvents`, which
+    sets the threshold per cell from the noise level and supports minimum duration and
+    refractory period.  A single absolute threshold for all cells is rarely right.
+    NaN frames stay NaN.
+    """
 
     name: ClassVar[str] = "binarize_activity"
 
     threshold: float = Field(0.0, description="Activity strictly above this becomes 1.")
 
     def apply(self, session: Session) -> Session:
-        return session.with_activity((np.asarray(session.activity) > self.threshold).astype(float))
+        a = np.asarray(session.activity, dtype=float)
+        out = np.where(np.isfinite(a), (a > self.threshold).astype(float), np.nan)
+        return session.with_activity(out, kind="binary")
 
 
 __all__ = [

@@ -103,8 +103,10 @@ def test_dlc_csv(tmp_path):
     f = tmp_path / "dlc.csv"
     arr = _dlc_csv(f)
     sig = loaders.load_dlc(f, fs_video=20.0, t_offset_s=1.0, px_per_mm=2.0)
-    assert sig.channel_names == ["nose_x", "nose_y", "tail_x", "tail_y"]
-    assert sig.units == "mm" and sig.values.shape == (100, 4)
+    assert sig.channel_names[:4] == ["nose_x", "nose_y", "tail_x", "tail_y"]
+    assert sig.channel_names[4:] == ["nose_likelihood", "tail_likelihood"]
+    assert sig.units == "mm" and sig.values.shape == (100, 6)
+    assert sig.values[10, 4] == pytest.approx(0.1)  # raw likelihood kept, not NaN-ed
     assert np.isnan(sig.values[10, :2]).all() and np.isfinite(sig.values[10, 2:]).all()
     np.testing.assert_allclose(sig.t[:2], [-1.0, -0.95])
     np.testing.assert_allclose(sig.values[0, 0], arr[0, 0] / 2.0)
@@ -114,7 +116,9 @@ def test_dlc_csv(tmp_path):
         loaders.load_dlc(f, fs_video=20.0, bodyparts=["paw"])
     cen = loaders.dlc_centroid(sig, ["nose", "tail"])
     assert cen.channel_names == ["x", "y"]
-    np.testing.assert_allclose(cen.values[10], sig.values[10, 2:])  # NaN nose ignored
+    nolik = loaders.load_dlc(f, fs_video=20.0, keep_likelihood=False, likelihood_min=None)
+    assert nolik.values.shape == (100, 4) and np.isfinite(nolik.values).all()
+    np.testing.assert_allclose(cen.values[10], sig.values[10, 2:4])  # NaN nose ignored
 
 
 def test_dlc_h5(tmp_path):
@@ -126,7 +130,7 @@ def test_dlc_h5(tmp_path):
     with pytest.raises(ValueError, match="trusted_hdf"):
         loaders.load_dlc(tmp_path / "dlc.h5", t=np.arange(100) / 20.0)
     sig = loaders.load_dlc(tmp_path / "dlc.h5", t=np.arange(100) / 20.0, trusted_hdf=True)
-    assert sig.values.shape == (100, 4)
+    assert sig.values.shape == (100, 6)
 
 
 def test_moseq_csv_and_h5(tmp_path):
@@ -164,7 +168,7 @@ def test_caiman(tmp_path):
     assert s.activity.shape == (2, 50) and s.cell_ids == ["1", "3"]
     assert s.activity_kind == "deconvolved"
     s = loaders.load_caiman(f, activity="C", fs=20.0, keep_idx_components=False)
-    assert s.n_cells == 5 and s.activity_kind == "raw"
+    assert s.n_cells == 5 and s.activity_kind == "denoised"
     with pytest.raises(KeyError, match="F_dff"):
         loaders.load_caiman(f, activity="F_dff", fs=20.0)
 
@@ -354,3 +358,46 @@ def test_import_cabana_does_not_need_optional_deps():
     )
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_dlc_multi_animal_csv(tmp_path):
+    n = 30
+    rng = np.random.default_rng(2)
+    cols, data = [], []
+    for ind in ("mouse1", "mouse2"):
+        for b in ("nose", "neck"):
+            for c in ("x", "y", "likelihood"):
+                cols.append(("scorer", ind, b, c))
+            data.append(rng.uniform(0, 100, (n, 2)))
+            data.append(np.full((n, 1), 0.95))
+    arr = np.concatenate(data, axis=1)
+    arr[4, 2] = 0.1  # mouse1 nose low likelihood (column order: x, y, lik per part)
+    df = pd.DataFrame(
+        arr,
+        columns=pd.MultiIndex.from_tuples(
+            cols, names=["scorer", "individuals", "bodyparts", "coords"]
+        ),
+    )
+    f = tmp_path / "multi.csv"
+    df.to_csv(f)
+    sig = loaders.load_dlc(f, fs_video=10.0)
+    assert sig.channel_names[:4] == [
+        "mouse1_nose_x",
+        "mouse1_nose_y",
+        "mouse1_neck_x",
+        "mouse1_neck_y",
+    ]
+    assert "mouse2_neck_likelihood" in sig.channel_names and sig.values.shape == (n, 12)
+    np.testing.assert_allclose(sig.values[0, 0], arr[0, 0])
+    assert np.isnan(sig.values[4, :2]).all() and np.isfinite(sig.values[4, 2:]).all()
+    only = loaders.load_dlc(f, fs_video=10.0, individuals=["mouse2"], bodyparts=["nose"])
+    assert only.channel_names == ["mouse2_nose_x", "mouse2_nose_y", "mouse2_nose_likelihood"]
+    np.testing.assert_allclose(only.values[:, 0], arr[:, 6])
+    with pytest.raises(KeyError, match="mouse3"):
+        loaders.load_dlc(f, fs_video=10.0, individuals=["mouse3"])
+    cen = loaders.dlc_centroid(sig, ["mouse1_nose", "mouse1_neck"])
+    assert cen.channel_names == ["x", "y"]
+    single = tmp_path / "single.csv"
+    _dlc_csv(single)
+    with pytest.raises(ValueError, match="single-animal"):
+        loaders.load_dlc(single, fs_video=20.0, individuals=["a"])

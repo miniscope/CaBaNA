@@ -6,6 +6,12 @@ in memory by the ``_MIGRATIONS`` chain (``(manifest, arrays) -> (manifest, array
 applied one version at a time).  Format 2 moved ``cell_ids`` out of the npz files into
 the manifest (as JSON lists of ``str``); format 1 stored them as ``<U`` arrays.
 
+**Additive session keys (still format 2).**  ``Session.cell_meta`` (numeric / bool
+columns as ``cell_meta/<key>`` arrays, string columns as lists in
+``manifest["cell_meta"]["strings"]``), ``Session.footprints`` (``footprints`` array)
+and ``Session.info`` (``manifest["info"]``) were added without a format bump: older
+files simply lack them and load with empty defaults.
+
 **Strict JSON.**  Manifests are written with ``allow_nan=False``.  Non-finite floats
 anywhere in the manifest are written as ``{"__float__": "nan" | "inf" | "-inf"}`` and
 restored on load, so every manifest parses with any JSON reader.
@@ -18,6 +24,8 @@ restored on load, so every manifest parses with any JSON reader.
 * integer arrays (``state_index``, ``shifts``, ...) are ``int32`` when every value
   fits; ``int64`` only when a value exceeds the ``int32`` range.  Integer types
   narrower than 32 bits are kept as they are;
+* ``Session.footprints`` are stored as ``float32`` to save space (a lossy cast for
+  float64 input); ``cell_meta`` numeric / bool columns keep their dtype;
 * never ``object`` dtype (``allow_pickle`` stays ``False`` on load).  Fixed-width
   unicode arrays are only tolerated inside user ``meta``.
 """
@@ -39,6 +47,7 @@ from ._models import (
     GridTopology,
     LabelSeries,
     Session,
+    SessionInfo,
     StateSpace,
 )
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
@@ -506,6 +515,15 @@ def save_session(s: Session, path: str | Path) -> None:
             arrays[f"behavior/{k}/labels"] = b.labels
             behavior[k] = {"type": "labels", "label_names": list(b.label_names)}
     meta_store: dict[str, np.ndarray] = {}
+    info = _jsonable(s.info.model_dump(), meta_store)
+    cm_strings: dict[str, list[str]] = {}
+    for k, v in s.cell_meta.items():
+        if v.dtype.kind == "U":
+            cm_strings[k] = [str(x) for x in v]
+        else:
+            arrays[f"cell_meta/{k}"] = np.asarray(v)
+    if s.footprints is not None:
+        arrays["footprints"] = np.asarray(s.footprints, dtype=np.float32)
     meta = _jsonable(s.meta, meta_store)
     for k, v in meta_store.items():
         arrays[k] = v
@@ -520,6 +538,9 @@ def save_session(s: Session, path: str | Path) -> None:
         "states": states,
         "behavior": behavior,
         "meta": meta,
+        "info": info,
+        "cell_meta": {"order": list(s.cell_meta), "strings": cm_strings},
+        "has_footprints": s.footprints is not None,
     }
     _write_files(path, {"manifest.json": _dump(manifest), "arrays.npz": _npz_bytes(arrays)})
 
@@ -595,6 +616,13 @@ def load_session(path: str | Path) -> Session:
                 labels=a[f"behavior/{k}/labels"],
                 label_names=m["label_names"],
             )
+    cmm = man.get("cell_meta") or {}
+    cm_strings = cmm.get("strings") or {}
+    cell_meta: dict[str, np.ndarray] = {}
+    for k in cmm.get("order", []):
+        cell_meta[k] = (
+            np.asarray(cm_strings[k], dtype=str) if k in cm_strings else a[f"cell_meta/{k}"]
+        )
     return Session(
         activity=a["activity"],
         t=a["t"],
@@ -606,6 +634,9 @@ def load_session(path: str | Path) -> Session:
         states=states,
         masks={k: a[f"mask/{k}"] for k in man.get("masks", [])},
         meta=_unjson(man.get("meta") or {}, a),
+        info=SessionInfo(**_unjson(man.get("info") or {}, a)),
+        cell_meta=cell_meta,
+        footprints=a.get("footprints"),
     )
 
 

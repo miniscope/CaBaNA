@@ -58,6 +58,7 @@ from ._models import (
     GridTopology,
     LabelSeries,
     Session,
+    SessionInfo,
     StateSpace,
 )
 from ._pipeline import (
@@ -95,6 +96,7 @@ from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResu
 from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
 from ._transform import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
+from ._transform_behavior import states_to_bouts
 
 try:
     from importlib.metadata import PackageNotFoundError, version as _version
@@ -104,6 +106,7 @@ except PackageNotFoundError:  # pragma: no cover - not installed
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "states_to_bouts",
     # cell classification
     "ClassificationResult",
     "Clause",
@@ -119,6 +122,7 @@ __all__ = [
     "GridTopology",
     "LabelSeries",
     "Session",
+    "SessionInfo",
     "StateSpace",
     # plugin system
     "Metric",

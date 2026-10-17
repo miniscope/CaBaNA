@@ -220,14 +220,23 @@ class BoutsToStates(Transform):
     The state space's ``support`` is the scored span (``BoutTable.scored_start_s`` to
     ``scored_stop_s``); the same frames are written to the ``{output}_scored`` mask.
 
-    Bouts can be filtered before the state space is built, which is what
-    event-aligned analyses want (clean, isolated onsets): ``min_duration_s``
-    drops bouts shorter than that, and ``min_gap_s`` drops bouts that start
-    less than that long after the previous bout *of the same behavior* ended
-    (measured against the unfiltered table, so a dropped short bout still
-    counts as "recent behavior").  Overlapping bouts of one behavior have a
-    negative gap and are dropped whenever ``min_gap_s > 0``.  Both default to
-    0, which keeps every bout.
+    Bouts are cleaned in this order before the state space is built:
+
+    1. ``point_event_window_s``: zero-length events (BORIS POINT rows) become the window
+       ``[t - w/2, t + w/2]`` centred on the event time; with ``None`` (default) they add no
+       frames, because frames are marked for ``start <= t < stop``.
+    2. ``merge_gap_s``: bouts of the *same behavior* separated by a gap shorter than this (or
+       overlapping) are joined into one bout.  The usual fix for annotators splitting one
+       behavior into several.
+    3. ``min_gap_s`` (kept for compatibility; prefer ``merge_gap_s``): a bout that starts less
+       than this long after the previous bout of the same behavior ended is *dropped* (the
+       earlier one is kept), which is what event-aligned analyses want (isolated onsets).
+       It is measured against the table after steps 1-2 and before step 4, so a short bout
+       that is itself dropped still counts as "recent behavior".  Overlapping bouts have a
+       negative gap and are dropped whenever ``min_gap_s > 0``.
+    4. ``min_duration_s``: bouts shorter than this are dropped (after merging).
+
+    All default to "off", which keeps every bout.
     """
 
     name: ClassVar[str] = "bouts_to_states"
@@ -244,26 +253,61 @@ class BoutsToStates(Transform):
     )
     rest_name: str = Field("rest", description="Name of the rest state.")
     output: str = Field("social", description="Name of the StateSpace written.")
-    min_duration_s: float = Field(0.0, ge=0, description="Drop bouts shorter than this (s).")
+    min_duration_s: float = Field(
+        0.0, ge=0, description="Drop bouts shorter than this (s), after merging."
+    )
     min_gap_s: float = Field(
         0.0,
         ge=0,
-        description="Drop bouts starting < this long after the previous bout of the same behavior ended (s).",
+        description=(
+            "Drop bouts starting < this long after the previous bout of the same behavior "
+            "ended (s). Prefer merge_gap_s."
+        ),
+    )
+    merge_gap_s: float = Field(
+        0.0,
+        ge=0,
+        description="Join same-behavior bouts separated by a gap shorter than this (s).",
+    )
+    point_event_window_s: float | None = Field(
+        None,
+        gt=0,
+        description="Turn zero-length events into [t - w/2, t + w/2]; None ignores them.",
     )
 
-    def _keep(self, table: BoutTable) -> np.ndarray:
-        starts = np.asarray(table.start_s, float)
-        stops = np.asarray(table.stop_s, float)
-        keep = (stops - starts) >= self.min_duration_s
+    def _prepare(self, table: BoutTable) -> tuple[np.ndarray, np.ndarray, list[str]]:
+        starts = np.asarray(table.start_s, float).copy()
+        stops = np.asarray(table.stop_s, float).copy()
+        labels = np.asarray(table.labels, dtype=object)
+        if self.point_event_window_s is not None:
+            pt = stops == starts
+            half = self.point_event_window_s / 2
+            starts[pt] -= half
+            stops[pt] += half
+        if self.merge_gap_s > 0 and starts.size:
+            ms, me, ml = [], [], []
+            for lab in dict.fromkeys(labels.tolist()):
+                idx = np.flatnonzero(labels == lab)
+                idx = idx[np.argsort(starts[idx], kind="stable")]
+                cs, ce = starts[idx[0]], stops[idx[0]]
+                for i in idx[1:]:
+                    if starts[i] - ce < self.merge_gap_s:
+                        ce = max(ce, stops[i])
+                    else:
+                        ms.append(cs), me.append(ce), ml.append(lab)
+                        cs, ce = starts[i], stops[i]
+                ms.append(cs), me.append(ce), ml.append(lab)
+            starts, stops, labels = np.array(ms), np.array(me), np.array(ml, dtype=object)
+        keep = np.ones(starts.shape, bool)
         if self.min_gap_s > 0:
-            labels = np.asarray(table.labels, dtype=object)
-            for lab in table.behavior_names:
+            for lab in dict.fromkeys(labels.tolist()):
                 idx = np.flatnonzero(labels == lab)
                 idx = idx[np.argsort(starts[idx], kind="stable")]
                 prev_end = np.maximum.accumulate(stops[idx])
                 gap = starts[idx][1:] - prev_end[:-1]
                 keep[idx[1:]] &= gap >= self.min_gap_s
-        return keep
+        keep &= (stops - starts) >= self.min_duration_s
+        return starts[keep], stops[keep], labels[keep].tolist()
 
     def apply(self, session: Session) -> Session:
         table = _get_behavior(session, self.source, BoutTable)
@@ -278,10 +322,7 @@ class BoutsToStates(Transform):
         n = session.n_time
         onehot = np.zeros((n, len(behaviors) + int(self.add_rest)), dtype=bool)
         col = {b: i for i, b in enumerate(behaviors)}
-        keep = self._keep(table)
-        starts = np.asarray(table.start_s, float)[keep]
-        stops = np.asarray(table.stop_s, float)[keep]
-        labels = [lab for lab, k in zip(table.labels, keep, strict=True) if k]
+        starts, stops, labels = self._prepare(table)
         i0 = np.searchsorted(t, starts, side="left")  # first frame with t >= start
         i1 = np.searchsorted(t, stops, side="left")  # first frame with t >= stop
         for lab, a, b in zip(labels, i0, i1, strict=True):
@@ -311,14 +352,89 @@ class BoutsToStates(Transform):
         )
 
 
+def _mode_filter(lab: np.ndarray, w: int) -> np.ndarray:
+    """Sliding-window majority vote over integer labels; ``-1`` is ignored and kept as ``-1``.
+
+    Ties go to the frame's own label when it is among the winners, else the smallest label.
+    """
+    n = lab.size
+    half = w // 2
+    idx = np.arange(n)
+    lo, hi = np.clip(idx - half, 0, n), np.clip(idx + half + 1, 0, n)
+    best_n = np.zeros(n, int)
+    best_l = np.full(n, -1)
+    own_n = np.zeros(n, int)
+    for k in np.unique(lab[lab >= 0]):
+        c = np.concatenate([[0], np.cumsum(lab == k)])
+        cnt = c[hi] - c[lo]
+        upd = cnt > best_n
+        best_n[upd], best_l[upd] = cnt[upd], k
+        own = lab == k
+        own_n[own] = cnt[own]
+    out = np.where(own_n >= best_n, lab, best_l)
+    return np.where(lab >= 0, out, -1)
+
+
+def _min_run(lab: np.ndarray, min_len: int) -> np.ndarray:
+    """Relabel runs shorter than ``min_len`` frames to the longer valid neighbouring run.
+
+    Runs of ``-1`` are never relabelled and never absorb a run; a short run with no valid
+    neighbour is left alone.  Shortest runs go first, so chains of blips collapse correctly.
+    """
+    if lab.size == 0 or min_len <= 1:
+        return lab
+    change = np.flatnonzero(np.diff(lab) != 0) + 1
+    starts = np.concatenate([[0], change])
+    lens = np.diff(np.concatenate([starts, [lab.size]]))
+    runs_ = [[int(lab[a]), int(n)] for a, n in zip(starts, lens, strict=True)]
+    while True:
+        cand = [
+            i
+            for i, (v, n) in enumerate(runs_)
+            if v >= 0
+            and n < min_len
+            and ((i > 0 and runs_[i - 1][0] >= 0) or (i + 1 < len(runs_) and runs_[i + 1][0] >= 0))
+        ]
+        if not cand:
+            break
+        i = min(cand, key=lambda j: runs_[j][1])
+        left = runs_[i - 1] if i > 0 and runs_[i - 1][0] >= 0 else None
+        right = runs_[i + 1] if i + 1 < len(runs_) and runs_[i + 1][0] >= 0 else None
+        tgt = left if right is None or (left is not None and left[1] >= right[1]) else right
+        tgt[1] += runs_[i][1]
+        del runs_[i]
+        # merge equal-valued neighbours created by the deletion
+        k = 0
+        while k + 1 < len(runs_):
+            if runs_[k][0] == runs_[k + 1][0]:
+                runs_[k][1] += runs_[k + 1][1]
+                del runs_[k + 1]
+            else:
+                k += 1
+    return np.repeat([v for v, _ in runs_], [n for _, n in runs_])
+
+
 @register("transform")
 class LabelsToStates(Transform):
-    """Step-resample a ``LabelSeries`` onto the neural clock as a categorical state space."""
+    """Step-resample a ``LabelSeries`` onto the neural clock as a categorical state space.
+
+    Optional cleanup of the per-frame integer labels (applied in this order, ``-1`` = no label
+    is ignored by both and never filled):
+
+    * ``mode_filter_s``: sliding-window majority vote over a window of
+      ``round(mode_filter_s * fs)`` frames (made odd); ties keep the frame's own label.
+    * ``min_run_s``: runs shorter than this are relabelled to the longer neighbouring labelled
+      run (shortest first).
+    """
 
     name: ClassVar[str] = "labels_to_states"
 
     source: str = Field(..., description="Key in session.behavior of a LabelSeries.")
     output: str = Field("syllables", description="Name of the StateSpace written.")
+    mode_filter_s: float = Field(0.0, ge=0, description="Majority-vote window, seconds (0 = off).")
+    min_run_s: float = Field(
+        0.0, ge=0, description="Relabel runs shorter than this to a neighbour (0 = off)."
+    )
 
     def apply(self, session: Session) -> Session:
         ls = _get_behavior(session, self.source, LabelSeries)
@@ -326,6 +442,12 @@ class LabelsToStates(Transform):
         pos = np.searchsorted(ls.t, t, side="right") - 1
         covered = (pos >= 0) & (t <= ls.t[-1]) if ls.t.size else np.zeros(t.shape, bool)
         lab = np.where(covered, ls.labels[np.clip(pos, 0, None)], -1) if ls.t.size else pos * 0 - 1
+        lab = np.asarray(lab, dtype=np.int64)
+        if self.mode_filter_s > 0:
+            w = max(1, round(self.mode_filter_s * session.fs))
+            lab = _mode_filter(lab, w if w % 2 else w + 1)
+        if self.min_run_s > 0:
+            lab = _min_run(lab, int(np.ceil(self.min_run_s * session.fs - 1e-9)))
         n_states = len(ls.label_names)
         onehot = np.zeros((session.n_time, n_states), dtype=bool)
         has = lab >= 0

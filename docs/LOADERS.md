@@ -12,7 +12,7 @@ extra to install. For what to do with the result, see
 | `load_caiman` | CaImAn results `.hdf5` | `Session` | `h5py` (`cabana[caiman]`) |
 | `load_camap` | CaMAP `.camap` bundle directory | `Session` | `pyarrow` for `canonical.parquet` (`cabana[loaders]`) |
 | `load_boris` | BORIS events export, `.csv` or `.tsv` | `BoutTable` | nothing extra |
-| `load_dlc` | DeepLabCut single-animal `.csv` or `.h5` | `ContinuousSignal` | `tables` for `.h5` (`cabana[loaders]`) |
+| `load_dlc` | DeepLabCut single- or multi-animal `.csv` or `.h5` | `ContinuousSignal` | `tables` for `.h5` (`cabana[loaders]`) |
 | `load_moseq` | Keypoint-MoSeq `.csv` or `results.h5` | `LabelSeries` | `h5py` for `.h5` (`cabana[loaders]`) |
 
 Helpers: `video_time_to_neural`, `infer_fs`, `validate_time`, `dlc_centroid`.
@@ -93,11 +93,23 @@ events (`Time`, `Behavior`, `Status` with START / STOP / POINT rows, START and S
 paired per subject and behavior). `subject=` and `behaviors=` filter.
 
 **DeepLabCut** (`load_dlc(path, *, fs_video=None, t=None, t_offset_s=0.0,
-bodyparts=None, likelihood_min=0.6, units="px", px_per_mm=None)`). Single-animal
-CSV (three header rows) or H5. Channels are `<bodypart>_x` and `<bodypart>_y`;
-samples below `likelihood_min` become NaN in both channels; `px_per_mm` converts
-to mm. `dlc_centroid(signal, ["nose", "tail"])` returns the mean position as
-channels `x` and `y`, which is what `speed` and `bin_grid` look for by default.
+bodyparts=None, likelihood_min=0.6, keep_likelihood=True, individuals=None,
+units="px", px_per_mm=None)`). Single-animal CSV (three header rows) or H5.
+Channels are `<bodypart>_x` and `<bodypart>_y`; samples below `likelihood_min`
+become NaN in both coordinate channels (`likelihood_min=None` keeps everything);
+`px_per_mm` converts to mm. With `keep_likelihood` (default) the raw likelihood is
+also stored as one channel `<bodypart>_likelihood` per bodypart (not NaN-ed and
+not scaled), so after `resample_signal` it is a session signal that
+`mask_from_signal` can re-threshold (`min=0.9`) without reloading.
+
+Multi-animal files (an `individuals` header level, four header rows in CSV) are
+read too: channels are `<individual>_<bodypart>_x`, `_y`, `_likelihood`, and
+`individuals=["mouse1"]` keeps a subset (DLC's `single` pseudo-individual holds
+unique bodyparts). Use the prefix `<individual>_<bodypart>` wherever a transform
+asks for a position (`head_direction`, `distance`, `zone_occupancy`). Passing
+`individuals` for a single-animal file raises. `dlc_centroid(signal, ["nose",
+"tail"])` returns the mean position as channels `x` and `y`, which is what
+`speed` and `bin_grid` look for by default.
 
 H5 files need `trusted_hdf=True`: `pandas.read_hdf` unpickles object columns, so a file from an untrusted source could execute code when read. Only pass it for files you produced yourself; the CSV export is always safe.
 

@@ -17,6 +17,8 @@ transforms:
   output: social
   min_duration_s: 0.0
   min_gap_s: 0.0
+  merge_gap_s: 0.0
+  point_event_window_s: null
 - name: bouts_to_states
   source: social
   behaviors: null
@@ -26,6 +28,8 @@ transforms:
   output: social_x
   min_duration_s: 0.0
   min_gap_s: 0.0
+  merge_gap_s: 0.0
+  point_event_window_s: null
 - name: design_matrix
   states:
   - social

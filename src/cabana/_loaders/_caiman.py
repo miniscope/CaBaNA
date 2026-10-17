@@ -11,7 +11,7 @@ import numpy as np
 from .._models import Session
 from ._common import check_path, require
 
-_KINDS = {"S": "deconvolved", "C": "raw", "F_dff": "dff"}
+_KINDS = {"S": "deconvolved", "C": "denoised", "F_dff": "dff"}
 
 
 def load_caiman(
@@ -32,7 +32,7 @@ def load_caiman(
     path : str or Path
         CaImAn results ``.hdf5`` file.
     activity : {"S", "C", "F_dff"}
-        Which estimate to load; sets ``activity_kind`` to ``deconvolved`` / ``raw`` / ``dff``.
+        Which estimate to load; sets ``activity_kind`` to ``deconvolved`` / ``denoised`` / ``dff``.
     fs : float
         Imaging frame rate in Hz (required; ``params/data/fr`` is stored as ``meta`` if present).
     keep_idx_components : bool, default True

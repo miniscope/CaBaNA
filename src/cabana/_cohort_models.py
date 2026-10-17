@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -124,6 +126,83 @@ class SessionSet(BaseModel):
                         f"session {sid!r} ({self.sessions[sid].n_cells} cells)"
                     )
         return self
+
+    @classmethod
+    def from_sessions(
+        cls,
+        sessions: list[Session] | dict[str, Session],
+        animal: dict[str, str] | None = None,
+        matches: list[CellMatch] | None = None,
+    ) -> SessionSet:
+        """Build a set from sessions, reading ids and animals from ``Session.info``.
+
+        Parameters
+        ----------
+        sessions : list[Session] or dict[str, Session]
+            A list uses ``info.session_id`` as the key (error when missing or
+            duplicated); a dict is used as given.
+        animal : dict[str, str], optional
+            Explicit animal per session id; takes precedence.  Sessions it does not
+            cover fall back to ``info.animal``.
+        matches : list[CellMatch], optional
+            Cell registrations.
+
+        Raises
+        ------
+        ValueError
+            If a session has no id, ids repeat, or a session has no animal anywhere.
+        """
+        if isinstance(sessions, dict):
+            by_id = dict(sessions)
+        else:
+            by_id = {}
+            for i, s in enumerate(sessions):
+                sid = s.info.session_id
+                if sid is None:
+                    raise ValueError(f"session {i} has no info.session_id; pass a dict instead")
+                if sid in by_id:
+                    raise ValueError(f"duplicate info.session_id {sid!r}")
+                by_id[sid] = s
+        amap = dict(animal or {})
+        for sid, s in by_id.items():
+            if sid not in amap:
+                if s.info.animal is None:
+                    raise ValueError(
+                        f"session {sid!r} has no animal (pass `animal` or set info.animal)"
+                    )
+                amap[sid] = s.info.animal
+        return cls(sessions=by_id, animal=amap, matches=matches or [])
+
+    def table(self) -> Any:
+        """One row per session: ``session_id, animal, date, condition, group, n_cells, duration_s, fs``."""
+        import pandas as pd
+
+        rows = [
+            {
+                "session_id": sid,
+                "animal": self.animal[sid],
+                "date": s.info.date,
+                "condition": s.info.condition,
+                "group": s.info.group,
+                "n_cells": s.n_cells,
+                "duration_s": s.duration_s,
+                "fs": s.fs,
+            }
+            for sid, s in self.sessions.items()
+        ]
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "session_id",
+                "animal",
+                "date",
+                "condition",
+                "group",
+                "n_cells",
+                "duration_s",
+                "fs",
+            ],
+        )
 
     @property
     def animals(self) -> list[str]:

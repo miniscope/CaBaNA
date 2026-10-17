@@ -44,7 +44,15 @@ plugin points. The middle is shared.
    vectors, step-resample syllables). They also add per-frame `signals`
    (x, y, speed) and coverage `masks`.
 3. **Preprocess.** `PreprocessStep` plugins add masks (speed threshold, time
-   range) or modify activity (temporal smoothing, z-score, binarize).
+   range) or modify activity (temporal smoothing, z-score, dF/F, detrend, band-pass, event
+   detection, clipping). Each activity step sets `activity_kind` to what its
+   output is (`dff`, `binary`, `zscored`, ...), because `Session.rebin` sums
+   event-like kinds and averages trace-like ones.
+   Masks compose: `mask_from_state`, `mask_from_signal`, `combine_masks` (a
+   tiny `~ & |` expression parser, no `eval`) and `clean_mask` (gap fill,
+   short-run drop, erode, dilate) all write named masks, so criteria such as
+   "moving and not sniffing" are built once in preprocessing and named in
+   `AnalysisSpec.masks`.
 4. **Analyze.** `Metric` plugins compute a statistic from `(activity, states,
    mask, fs)`. Optionally wrapped in `shuffle_test` for a null distribution.
    Each analysis runs on its target's `support` (below) AND the masks it lists:
@@ -77,6 +85,33 @@ Read the module; docstrings are the spec. Key points:
   `session.replace(...)` (a copy that re-runs validation, unlike
   `model_copy`); use `with_state`, `with_signal`,
   `with_mask`, `with_activity` helpers.
+- **Per-cell data.** `Session.cell_meta: dict[str, (n_cells,) array]` holds
+  per-cell columns (numeric, bool or `<U` string; object dtype rejected;
+  lengths validated). Conventional names (`CELL_META_CONVENTION`): `snr`,
+  `r_values`, `cnn_preds`, `accepted` (bool), `pve`, `alpha`, `baseline`,
+  `tau_rise_s`, `tau_decay_s`, `centroid_x`, `centroid_y`, `n_events`,
+  `mean_rate_hz`; anything else is free-form. `Session.cell_table()` returns a
+  DataFrame indexed by `cell_ids`. `Session.footprints` is an optional dense
+  `(n_cells, H, W)` array (sparse storage is future work; loaders should
+  downsample large fields of view; saved as float32);
+  `footprint_centroids()` returns `(n_cells, 2)` `(x, y)` from the footprints,
+  else from `centroid_x/y`, else `None`.
+- **Selecting.** `select_cells(idx)` (int array, bool mask or list of cell ids)
+  slices activity, `cell_ids`, `cell_meta` and `footprints` together and logs
+  `meta["cell_selection"] = {n_before, n_after, source}` (a QC step overwrites
+  `source`). `select_frames(idx)` (slice, int array or bool mask) slices every
+  per-frame object (activity, `t`, signals, state `onehot`/`support`, masks);
+  indices must be strictly increasing, `fs` is kept, and a non-contiguous
+  selection warns because the regular time base no longer holds.
+  `with_activity` with a different row count drops `cell_meta`/`footprints`
+  with a warning; `rebin` and `replace` carry them.
+- **`SessionInfo`** (`Session.info`): `animal`, `date` (ISO), `condition`,
+  `group`, `sex`, `genotype`, `rig`, `session_id`, `extra`. `Session.meta` stays
+  the free-form provenance dict. `SessionSet.from_sessions(sessions, animal=None)`
+  reads `info.animal` when no animal map is given; `SessionSet.table()` has one
+  row per session (`session_id, animal, date, condition, group, n_cells,
+  duration_s, fs`). Persistence is additive in format 2 (`cell_meta/<key>`
+  arrays, string columns and `info` in the manifest, `footprints` array).
 - `StateSpace.exclusive` is True for bins/syllables (one state per frame) and
   False for bouts (overlap allowed). `labels()` only works when exclusive.
 - `StateSpace.topology` (a `GridTopology`) exists only for binned continuous
@@ -678,3 +713,7 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 `cabana.sweep` sits above `Pipeline`: it needs only `set_param`, `iter_run`/`run` and `RunContext`. When no swept path touches `transforms.` or `preprocess.`, it consumes `iter_run`'s `("session", ...)` and `("pipeline", effective)` events once (transforms, preprocess and selectors run; the generator is closed before any analysis), then runs an analyses-only copy of the effective pipeline per grid point on that prepared session, so a sigma sweep never repeats the transforms. A swept path overrides whatever a selector chose for it; the selector's `Selection` stays in provenance. A transform sweep reruns the full pipeline per point and records each point's state-space layout (`SweepResult.layouts`) so plots can lay out rate maps whose grid changes. `SweepResult` is a plain dataclass (picklable); `save` writes `index.json` plus one `ResultSet` zip per point. `pick` is the only place a sweep becomes a `Selection`, and it refuses significance-based criteria unless told otherwise (STATISTICS.md, "Sweeps").
 
 The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_sweep_stability_data` and `plot_sweep_data` return plain dicts of arrays and labels without importing matplotlib types into their results, and `plot_sweep_gallery`, `plot_sweep_stability` and `plot_sweep` only render those dicts. This is the first piece of the plot-data layer (roadmap D1) the CaLab port needs; `plot_level_sweep` is now a thin wrapper over `plot_sweep`.
+
+## Behaviour signal transforms (`src/cabana/_transform_behavior.py`)
+
+Pure transforms on per-frame `Session.signals` (neural clock): `interpolate_gaps`, `smooth_signal` (NaN-aware median, Gaussian, Savitzky-Golay), `head_direction` (two points or a BNO quaternion), `distance`, `arena_transform` (similarity or numpy-only DLT homography), `zone_occupancy` (a `StateSpace` from polygons or rectangles, optionally from `meta["arena"]["zones"]`). A position is a prefix naming `{prefix}_x`/`{prefix}_y` signals (`""` = `x`, `y`). Signals carry no units field, so units live in `meta["signal_units"]`. `BoutsToStates` cleans in a fixed order (point windows, `merge_gap_s`, `min_gap_s`, `min_duration_s`); `LabelsToStates` mode-filters then removes short runs; `states_to_bouts` is the inverse of `bouts_to_states`. `load_dlc` keeps per-bodypart likelihood channels and reads multi-animal files. Adding fields to transforms changes the serialised `provenance["transforms"]`, so the golden fixtures were regenerated.

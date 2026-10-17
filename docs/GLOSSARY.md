@@ -1,6 +1,10 @@
 # Glossary
 
 - **Session**: one recording: activity, behavior, derived signals, states and masks on a shared clock. Immutable by convention; `Session.replace` returns a modified copy.
+- **cell_meta**: `Session.cell_meta`, a dict of per-cell columns (length `n_cells`; numeric, bool or string) such as `snr`, `r_values`, `cnn_preds`, `accepted`, `pve`, `alpha`, `baseline`, `tau_rise_s`, `tau_decay_s`, `centroid_x`, `centroid_y`, `n_events`, `mean_rate_hz`. `cell_table()` returns it as a DataFrame.
+- **footprints**: `Session.footprints`, optional dense `(n_cells, H, W)` spatial footprints; `footprint_centroids()` gives `(x, y)` per cell.
+- **select_cells / select_frames**: subset a session by cell (ints, bool mask or cell ids) or by frame (slice, ints, bool mask), slicing every dependent array together; `select_cells` logs `meta["cell_selection"]`.
+- **SessionInfo**: `Session.info`, the structured identity of a recording (animal, date, condition, group, sex, genotype, rig, session_id, extra); read by `SessionSet.from_sessions`.
 - **activity**: the `(n_cells, n_time)` neural array (deconvolved calcium, dF/F, or binned spikes).
 - **activity_kind**: label recording what the activity values are (`deconvolved`, `dff`, `spike_counts`, `raw`, `zscored`; `zscore_activity` sets the last). Used for rebinning (summed or averaged) and recorded with results; metrics do not currently enforce it.
 - **neural clock / t**: the frame times of the activity. Everything per-frame (signals, masks, states) is resampled onto it, and `fs` (Hz) is its rate.
@@ -14,6 +18,7 @@
 - **occupancy**: time spent in each state (frames or seconds) over the frames that count; the denominator of rate maps.
 - **support**: the frames where a state space is defined (a `(n_time,)` boolean on `StateSpace.support`): tracked and in-extent for a grid, the scored span for bouts, the labelled span for categorical labels. Applied automatically to every analysis on that space; an unscored frame is unknown, not "rest".
 - **mask**: `(n_time,)` boolean array of extra frames to include (speed above threshold). Chosen per analysis, on top of the target's support; `masks=None` or `[]` means support only.
+- **mask expression**: a boolean formula over mask names for `combine_masks`, using `~` (not), `&` (and), `|` (or) and parentheses, e.g. `speed & ~sniff`. `~` binds tighter than `&`, which binds tighter than `|`.
 - **target**: what a metric is computed against: a state space (`states=`) or a signal (`signal=`); an `AnalysisSpec` takes exactly one.
 - **analysis name**: the unique key of one analysis in a `ResultSet`, `AnalysisSpec.name`; if not given it is `metric[target]`, with `#<null>` or `#2` added when names collide. Look results up with `results["auroc[social]"]` or `results.get(name=...)`; the tidy table's `analysis` column holds it.
 - **provenance**: the dict on each `MetricResult` recording how it was made (version, seed, null, number of shuffles, alpha, tail, masks, frames used, fs, activity kind, target parameters, timestamp).
@@ -45,3 +50,11 @@
 - **sweep**: `cabana.sweep(session, pipeline, over={path: [values]})`, the Cartesian product of candidate values for one or more parameter paths, run as one pipeline per grid point and returned as a `SweepResult` (tidy `table`, `summary`, `stability`, `pick`, `apply`). `shuffle=False` runs observed values only.
 - **plateau rule**: `SweepResult.pick(rule="plateau")`: take the longest run of adjacent candidates whose criterion is within one standard error of the best, and choose its middle value. Recorded as `method="sweep_stability"`.
 - **flip count**: for one cell (or cell and state), the number of times its `significant` flag changes between adjacent grid points of a sweep, summed over the swept parameters; a cell with at least one flip is `unstable` in `SweepResult.stability`.
+- **dF/F**: fluorescence relative to baseline, `(F - F0) / F0`; produced by `ComputeDff` (kind `dff`), averaged on re-binning.
+- **denoised**: an `activity_kind` for a model-smoothed fluorescence trace (Minian and CaImAn `C`); trace-like (averaged on re-binning), not dF/F and not spikes.
+- **noise estimate**: the per-cell standard deviation of the measurement noise, here `diff_mad` (1.4826 x MAD of first differences / sqrt(2), robust to slow baseline and transients), `mad` or `psd` (high-frequency Welch average); recorded by `DetectEvents` in `meta["detect_events"]`.
+- **event detection**: `DetectEvents`, thresholding each cell at `median + k x noise` (or a percentile / absolute value), with minimum duration and refractory period, into a `binary` series (frames in event), onsets, or amplitudes (`deconvolved`). Event-like kinds are summed on re-binning.
+- **head direction**: the heading angle from `head_direction`, `atan2(front - back)` or the yaw of a w,x,y,z quaternion; 0 = +x (east), counter-clockwise (y up), wrapped to (-pi, pi] unless `unwrap`. A quaternion's zero is arbitrary until calibrated with `offset_deg`.
+- **zone occupancy**: `zone_occupancy` turns a position into a state space with one state per polygon or rectangle (chamber, cup area); frames in no zone are in no state, frames with a lost position are outside the support.
+- **mode filter**: `labels_to_states(mode_filter_s=...)`, a sliding-window majority vote on per-frame integer labels that removes flicker; unlabelled (-1) frames are ignored and stay unlabelled.
+- **merge gap**: `bouts_to_states(merge_gap_s=...)` / `states_to_bouts`, joining same-behavior bouts separated by a shorter gap; applied before the minimum-duration filter.

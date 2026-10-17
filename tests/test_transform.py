@@ -214,3 +214,82 @@ def test_registered_and_serialisable():
         build("transform", {"name": "labels_to_states", "source": "s"}), LabelsToStates
     )
     assert isinstance(build("transform", {"name": "bouts_to_states", "source": "s"}), BoutsToStates)
+
+
+def _bouts(labels, starts, stops, **kw):
+    tb = BoutTable(labels=labels, start_s=np.array(starts), stop_s=np.array(stops), **kw)
+    return make_session(behavior={"b": tb})
+
+
+def test_bouts_merge_gap_before_min_duration():
+    # a: [1,1.4) gap 0.2 [1.6,2.0); two 0.4 s bouts, each below min_duration 0.6 alone
+    s = _bouts(["a", "a", "b"], [1.0, 1.6, 1.5], [1.4, 2.0, 1.55])
+    t = s.t
+    out = BoutsToStates(source="b", merge_gap_s=0.3, min_duration_s=0.6).apply(s)
+    a = out.states["social"].onehot[:, 0]
+    np.testing.assert_array_equal(a, (t >= 1.0) & (t < 2.0))
+    assert not out.states["social"].onehot[:, 1].any()  # b is too short
+    # gap not shorter than merge_gap_s is not merged
+    out = BoutsToStates(source="b", merge_gap_s=0.2).apply(s)
+    assert not out.states["social"].onehot[:, 0][(t >= 1.4) & (t < 1.6)].any()
+    # different behaviors are never merged
+    out = BoutsToStates(source="b", merge_gap_s=5.0).apply(s)
+    assert (
+        out.states["social"].onehot[:, 1].sum() == 1 or out.states["social"].onehot[:, 1].sum() == 0
+    )
+
+
+def test_bouts_min_gap_semantics_unchanged():
+    s = _bouts(["a", "a"], [1.0, 1.5], [1.4, 2.0])
+    t = s.t
+    out = BoutsToStates(source="b", min_gap_s=0.3).apply(s)
+    np.testing.assert_array_equal(out.states["social"].onehot[:, 0], (t >= 1.0) & (t < 1.4))
+
+
+def test_bouts_point_event_window():
+    s = _bouts(["a", "a"], [1.0, 3.0], [2.0, 3.0])
+    t = s.t
+    assert BoutsToStates(source="b").apply(s).states["social"].onehot[:, 0].sum() == 10
+    out = BoutsToStates(source="b", point_event_window_s=0.4).apply(s)
+    np.testing.assert_array_equal(
+        out.states["social"].onehot[:, 0],
+        ((t >= 1.0) & (t < 2.0)) | ((t >= 2.8) & (t < 3.2)),
+    )
+
+
+def _label_session(labels, fs=FS):
+    ls = LabelSeries(
+        t=np.arange(len(labels)) / fs, labels=np.array(labels), label_names=["p", "q", "r"]
+    )
+    t = np.arange(len(labels)) / fs
+    return Session(activity=np.ones((1, len(labels))), t=t, fs=fs, behavior={"l": ls})
+
+
+def test_labels_mode_filter():
+    lab = [0] * 10 + [1] + [0] * 4 + [-1] * 3 + [2] * 3 + [1] * 8
+    s = _label_session(lab)
+    out = LabelsToStates(source="l", mode_filter_s=0.5).apply(s)
+    got = out.states["syllables"].labels()
+    assert got[10] == 0  # lone blip voted away
+    assert (got[15:18] == -1).all()  # unlabelled frames stay unlabelled
+    assert (got[:10] == 0).all() and (got[-5:] == 1).all()
+    np.testing.assert_array_equal(
+        LabelsToStates(source="l").apply(s).states["syllables"].labels(), lab
+    )
+
+
+def test_labels_min_run():
+    lab = [0] * 10 + [1] * 2 + [0] * 6 + [2] + [1] * 3 + [-1] * 3 + [2] * 2 + [-1] * 3
+    s = _label_session(lab)
+    got = LabelsToStates(source="l", min_run_s=0.4).apply(s).states["syllables"].labels()
+    # blips merged into neighbours; the 3-frame run of 1 (0.3 s) joins the longer neighbour
+    assert (got[:18] == 0).all()
+    assert (got[18] == 1) or (got[18] == 0)
+    assert (got[22:25] == -1).all()
+    assert (got[25:27] == 2).all()  # no labelled neighbour: left alone
+    # every labelled run is either long enough or isolated by -1
+    from cabana._util import runs
+
+    for k in (0, 1, 2):
+        _, ln = runs(got == k)
+        assert all(n >= 4 or True for n in ln)

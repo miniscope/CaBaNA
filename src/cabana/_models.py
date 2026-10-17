@@ -17,6 +17,7 @@ produce ``StateSpace`` objects and per-frame ``signals``.
 
 from __future__ import annotations
 
+import datetime as _dt
 import warnings
 from pathlib import Path
 from typing import Any, Literal
@@ -348,6 +349,67 @@ class StateSpace(_ArrayModel):
 # --------------------------------------------------------------------------- #
 
 
+class SessionInfo(BaseModel):
+    """Structured identity of a recording (who, when, which condition).
+
+    Everything is optional.  ``SessionSet.from_sessions`` reads ``animal`` (and the
+    ``SessionSet.table`` reports the rest) so cohorts need no hand-written maps.
+    ``Session.meta`` stays the free-form provenance dict.
+
+    Attributes
+    ----------
+    animal : str | None
+        Animal / subject id; the unit of replication in cohort statistics.
+    date : str | None
+        ISO 8601 date or datetime (``"2026-03-14"``); validated on construction.
+    condition, group, sex, genotype, rig : str | None
+        Experimental condition, cohort group, sex, genotype and recording rig.
+    session_id : str | None
+        Unique id of this recording (default key in ``SessionSet.from_sessions``).
+    extra : dict
+        Anything else worth keeping (JSON-like values; arrays are kept as arrays on save).
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    animal: str | None = None
+    date: str | None = None
+    condition: str | None = None
+    group: str | None = None
+    sex: str | None = None
+    genotype: str | None = None
+    rig: str | None = None
+    session_id: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_date(self) -> SessionInfo:
+        if self.date is not None:
+            try:
+                _dt.datetime.fromisoformat(self.date)
+            except ValueError as e:
+                raise ValueError(f"info.date {self.date!r} is not an ISO 8601 date") from e
+        return self
+
+
+#: Conventional ``Session.cell_meta`` column names (free-form names are also allowed).
+CELL_META_CONVENTION: dict[str, str] = {
+    "snr": "signal-to-noise ratio (float)",
+    "r_values": "CaImAn spatial-correlation quality (float)",
+    "cnn_preds": "CaImAn CNN classifier score in [0, 1] (float)",
+    "accepted": "passed the source tool's / user's quality control (bool)",
+    "pve": "CaLab fit: proportion of variance explained (float)",
+    "alpha": "CaLab fit: per-cell amplitude scale; deconvolved amplitudes are NOT comparable across cells (float)",
+    "baseline": "CaLab fit: per-cell baseline (float)",
+    "tau_rise_s": "calcium kernel rise time constant, seconds (float)",
+    "tau_decay_s": "calcium kernel decay time constant, seconds (float)",
+    "centroid_x": "footprint centroid, x = column, pixels (float)",
+    "centroid_y": "footprint centroid, y = row, pixels (float)",
+    "n_events": "number of detected events (int)",
+    "mean_rate_hz": "mean event rate, Hz (float)",
+}
+
+
 class Session(_ArrayModel):
     """One recording: neural activity plus everything known about behavior.
 
@@ -398,6 +460,20 @@ class Session(_ArrayModel):
     meta : dict
         Free-form provenance: animal, date, simulation ground truth, ...  Values
         that are not JSON types are stored as strings by :meth:`save`.
+    info : SessionInfo
+        Structured identity (animal, date, condition, group, ...); default empty.
+    cell_meta : dict[str, (n_cells,) array]
+        Per-cell columns, each 1-D of length ``n_cells`` with a numeric, bool or
+        ``<U`` string dtype (object dtype is rejected).  Conventional names (see
+        ``CELL_META_CONVENTION``): ``snr``, ``r_values``, ``cnn_preds``,
+        ``accepted`` (bool), ``pve``, ``alpha``, ``baseline``, ``tau_rise_s``,
+        ``tau_decay_s``, ``centroid_x``, ``centroid_y``, ``n_events``,
+        ``mean_rate_hz``; any other name is free-form.  :meth:`cell_table` gives a
+        DataFrame; :meth:`select_cells` slices it together with the activity.
+    footprints : (n_cells, H, W) float | None
+        Dense spatial footprints, one image per cell (first axis validated).
+        Sparse storage is future work: loaders should downsample large fields of
+        view before attaching them.  Saved as float32.
 
     See Also
     --------
@@ -415,6 +491,9 @@ class Session(_ArrayModel):
     states: dict[str, StateSpace] = Field(default_factory=dict)
     masks: dict[str, NDArray[Shape["* time"], bool]] = Field(default_factory=dict)
     meta: dict[str, Any] = Field(default_factory=dict)
+    info: SessionInfo = Field(default_factory=SessionInfo)
+    cell_meta: dict[str, NDArray] = Field(default_factory=dict)
+    footprints: np.ndarray | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Session:
@@ -425,6 +504,24 @@ class Session(_ArrayModel):
             self.cell_ids = [str(i) for i in range(n_cells)]
         elif len(self.cell_ids) != n_cells:
             raise ValueError(f"{len(self.cell_ids)} cell_ids for {n_cells} cells")
+        cm: dict[str, np.ndarray] = {}
+        for k, v in self.cell_meta.items():
+            a = np.asarray(v)
+            if a.ndim != 1 or a.shape[0] != n_cells:
+                raise ValueError(f"cell_meta[{k!r}] has shape {a.shape}, expected ({n_cells},)")
+            if a.dtype.kind not in "fiubU":
+                raise ValueError(
+                    f"cell_meta[{k!r}] has dtype {a.dtype}; use numeric, bool or <U string"
+                )
+            cm[str(k)] = a
+        self.cell_meta = cm
+        if self.footprints is not None:
+            fp = np.asarray(self.footprints)
+            if fp.ndim != 3 or fp.shape[0] != n_cells:
+                raise ValueError(f"footprints has shape {fp.shape}, expected ({n_cells}, H, W)")
+            if fp.dtype.kind not in "fiu":
+                raise ValueError(f"footprints has dtype {fp.dtype}; expected a float array")
+            self.footprints = fp
         for k, v in self.signals.items():
             if np.shape(v)[0] != n_time:
                 raise ValueError(f"signal {k!r} has {np.shape(v)[0]} frames, expected {n_time}")
@@ -591,6 +688,9 @@ class Session(_ArrayModel):
             states=states,
             masks=masks,
             meta=meta,
+            info=self.info,
+            cell_meta=self.cell_meta,
+            footprints=self.footprints,
         )
 
     def save(self, path: str | Path) -> None:
@@ -665,12 +765,190 @@ class Session(_ArrayModel):
         return self.replace(masks={**self.masks, name: m}, meta={**self.meta, "mask_info": info})
 
     def with_activity(self, activity: np.ndarray, kind: ActivityKind | None = None) -> Session:
+        """Copy with new ``activity`` (and optionally ``activity_kind``).
+
+        When the number of rows changes, ``cell_ids`` are reset and ``cell_meta`` /
+        ``footprints`` no longer apply: they are dropped with a ``UserWarning``
+        (use :meth:`select_cells` to subset cells and keep them aligned).
+        Otherwise they are carried over.
+        """
         upd: dict[str, Any] = {"activity": activity}
         if kind is not None:
             upd["activity_kind"] = kind
         if activity.shape[0] != self.n_cells:
             upd["cell_ids"] = None  # ids no longer apply; validator assigns defaults
+            if self.cell_meta or self.footprints is not None:
+                warnings.warn(
+                    f"activity has {activity.shape[0]} cells but the session had {self.n_cells}: "
+                    "dropping cell_meta and footprints (use select_cells to subset cells)",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                upd["cell_meta"] = {}
+                upd["footprints"] = None
         return self.replace(**upd)
+
+    # Per-cell tools ------------------------------------------------------- #
+
+    def cell_table(self) -> Any:
+        """``pandas.DataFrame`` indexed by ``cell_ids`` with one column per ``cell_meta`` key."""
+        import pandas as pd
+
+        return pd.DataFrame(
+            {k: v for k, v in self.cell_meta.items()},
+            index=pd.Index(self.cell_ids, name="cell_id"),
+        )
+
+    def footprint_centroids(self) -> np.ndarray | None:
+        """``(n_cells, 2)`` ``(x, y)`` centroids in pixels (x = column, y = row).
+
+        Intensity-weighted from ``footprints`` (negative values ignored; an empty
+        footprint gives NaN) when present, else ``cell_meta["centroid_x"/"centroid_y"]``,
+        else ``None``.
+        """
+        if self.footprints is not None:
+            w = np.clip(self.footprints.astype(np.float64), 0, None)
+            tot = w.sum(axis=(1, 2))
+            ys = np.arange(w.shape[1], dtype=np.float64)
+            xs = np.arange(w.shape[2], dtype=np.float64)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                cy = (w.sum(axis=2) @ ys) / tot
+                cx = (w.sum(axis=1) @ xs) / tot
+            return np.stack([cx, cy], axis=1)
+        if "centroid_x" in self.cell_meta and "centroid_y" in self.cell_meta:
+            return np.stack(
+                [
+                    self.cell_meta["centroid_x"].astype(np.float64),
+                    self.cell_meta["centroid_y"].astype(np.float64),
+                ],
+                axis=1,
+            )
+        return None
+
+    def select_cells(self, idx: Any) -> Session:
+        """Keep a subset of cells, slicing activity, ``cell_ids``, ``cell_meta`` and ``footprints`` together.
+
+        Parameters
+        ----------
+        idx : int array, bool array of length ``n_cells``, or list of cell-id strings
+            Cells to keep, in the order given (ids and integers) or session order (bool).
+            Duplicates and unknown ids raise ``ValueError``.
+
+        Returns
+        -------
+        Session
+            With ``meta["cell_selection"] = {"n_before", "n_after", "source": None}``;
+            a caller (e.g. a QC step) may overwrite ``source``.
+        """
+        n = self.n_cells
+        if isinstance(idx, (str, bytes)):
+            raise TypeError("idx must be an array of indices, a bool mask or a list of cell ids")
+        if isinstance(idx, (list, tuple)) and len(idx) and all(isinstance(v, str) for v in idx):
+            pos = {c: i for i, c in enumerate(self.cell_ids or [])}
+            missing = [v for v in idx if v not in pos]
+            if missing:
+                raise ValueError(f"unknown cell ids: {missing[:5]}")
+            sel = np.array([pos[v] for v in idx], dtype=np.int64)
+        else:
+            a = np.asarray(idx)
+            if a.dtype.kind == "b":
+                if a.shape != (n,):
+                    raise ValueError(f"bool mask has shape {a.shape}, expected ({n},)")
+                sel = np.flatnonzero(a)
+            elif a.size == 0:
+                sel = np.zeros(0, dtype=np.int64)
+            elif a.dtype.kind in "iu":
+                if a.ndim != 1:
+                    raise ValueError("integer idx must be 1-D")
+                if a.min() < -n or a.max() >= n:
+                    raise IndexError(f"cell index out of range for {n} cells")
+                sel = np.where(a < 0, a + n, a).astype(np.int64)
+            else:
+                raise TypeError("idx must be int indices, a bool mask or a list of cell ids")
+        if np.unique(sel).size != sel.size:
+            raise ValueError("duplicate cells in idx")
+        return self.replace(
+            activity=self.activity[sel],
+            cell_ids=[(self.cell_ids or [])[i] for i in sel],
+            cell_meta={k: v[sel] for k, v in self.cell_meta.items()},
+            footprints=None if self.footprints is None else self.footprints[sel],
+            meta={
+                **self.meta,
+                "cell_selection": {"n_before": n, "n_after": int(sel.size), "source": None},
+            },
+        )
+
+    def select_frames(self, idx: slice | np.ndarray | list[int]) -> Session:
+        """Keep a subset of frames, slicing every per-frame object consistently.
+
+        ``activity`` columns, ``t``, every ``signals`` entry, every ``StateSpace``
+        (``onehot`` and ``support``) and every mask are sliced with the same
+        index; raw ``behavior`` (own clocks) is untouched.  ``fs`` is kept: a
+        non-contiguous selection breaks the implicit regular time base, so a
+        ``UserWarning`` is issued (``t`` itself stays correct).
+
+        Parameters
+        ----------
+        idx : slice, int array or bool array of length ``n_time``
+            Must select frames in strictly increasing order (non-monotonic or
+            duplicated indices raise ``ValueError``).
+
+        Returns
+        -------
+        Session
+            With ``meta["frame_selection"] = {"n_before", "n_after", "contiguous"}``.
+        """
+        n = self.n_time
+        if isinstance(idx, slice):
+            sel = np.arange(n)[idx]
+        else:
+            a = np.asarray(idx)
+            if a.dtype.kind == "b":
+                if a.shape != (n,):
+                    raise ValueError(f"bool mask has shape {a.shape}, expected ({n},)")
+                sel = np.flatnonzero(a)
+            elif a.size == 0:
+                sel = np.zeros(0, dtype=np.int64)
+            elif a.dtype.kind in "iu" and a.ndim == 1:
+                if a.min() < -n or a.max() >= n:
+                    raise IndexError(f"frame index out of range for {n} frames")
+                sel = np.where(a < 0, a + n, a).astype(np.int64)
+            else:
+                raise TypeError("idx must be a slice, int indices or a bool mask")
+        if sel.size > 1 and np.any(np.diff(sel) <= 0):
+            raise ValueError("frame selection must be strictly increasing (time-ordered)")
+        contiguous = sel.size < 2 or bool(np.all(np.diff(sel) == 1))
+        if not contiguous:
+            warnings.warn(
+                "selected frames are not contiguous: the implicit regular time base "
+                "(fs) no longer holds; use t for timing",
+                UserWarning,
+                stacklevel=2,
+            )
+        states = {
+            k: st.model_copy(
+                update={
+                    "onehot": st.onehot[sel],
+                    "support": None if st.support is None else st.support[sel],
+                }
+            )
+            for k, st in self.states.items()
+        }
+        return self.replace(
+            activity=self.activity[:, sel],
+            t=self.t[sel],
+            signals={k: np.asarray(v)[sel] for k, v in self.signals.items()},
+            states=states,
+            masks={k: m[sel] for k, m in self.masks.items()},
+            meta={
+                **self.meta,
+                "frame_selection": {
+                    "n_before": n,
+                    "n_after": int(sel.size),
+                    "contiguous": contiguous,
+                },
+            },
+        )
 
 
 __all__ = [
@@ -681,7 +959,9 @@ __all__ = [
     "ContinuousSignal",
     "GridTopology",
     "LabelSeries",
+    "CELL_META_CONVENTION",
     "Session",
+    "SessionInfo",
     "StateKind",
     "StateSpace",
 ]
