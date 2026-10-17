@@ -58,3 +58,30 @@ def pytest_configure(config: pytest.Config) -> None:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.main()
+
+
+# --- a test-only selector shared by test_selector.py and test_sweep.py -------------------
+from typing import Any as _Any, ClassVar as _ClassVar  # noqa: E402
+
+from cabana import Pipeline as _Pipeline, Selection as _Selection  # noqa: E402
+from cabana._registry import Selector as _Selector, register as _register  # noqa: E402
+
+
+@_register("selector")
+class _FixedSigma(_Selector):
+    """Sets smooth_sigma_bins on every analysis that has it (test fixture)."""
+
+    name: _ClassVar[str] = "_test_fixed_sigma"
+    sigma: float = 2.0
+
+    def select(self, session: _Any, pipeline: _Pipeline) -> list[_Selection]:
+        return [
+            _Selection(
+                path="analyses.*.metric.smooth_sigma_bins",
+                value=self.sigma,
+                method="auto_rule",
+                criterion="test",
+                candidates=[0.0, 1.0, 2.0],
+                scores=[0.1, 0.5, 0.9],
+            )
+        ]

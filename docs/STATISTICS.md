@@ -293,6 +293,47 @@ classification between neighbouring reasonable settings on the simulator). The
 demo sets `smooth_sigma_bins` to 1.0 explicitly. A default of 0 means the
 library never smooths behind your back; it does not mean 0 is a good value.
 
+### Automatic smoothing
+
+`smooth_sigma_bins` can be chosen by the `auto_smooth_sigma` selector
+(`pipe = Pipeline(selectors=[{"name": "auto_smooth_sigma"}], analyses=[...])`),
+which writes the value onto every analysis on the chosen state space that has
+the field and records a `Selection` (`method="auto_cv"`,
+`criterion="heldout_poisson_loglik"`).
+
+**The rule.** The frames that count (state support AND the analysis masks) are
+cut into `n_folds` (default 5) contiguous time blocks. For each candidate sigma
+and each block, rate maps are built from the other blocks (smoothed with that
+sigma, same `min_occupancy_s`) and the held-out block is scored with
+`sum_t [x_t log(lambda_s(t) dt + eps) - lambda_s(t) dt]`, summed over cells
+(one sigma for the whole population). Held-out frames whose state has no valid
+training rate are skipped identically for every sigma. The mean over blocks is
+the candidate's score and the standard error over blocks its uncertainty. The
+**one-standard-error rule** then picks the smallest sigma whose score is within
+one SE of the best (`one_se=False` takes the argmax). Candidates can be given in
+bins or in mm (converted with the grid bin width, so the choice is portable
+across bin sizes). Deconvolved activity is continuous and non-negative, so the
+Poisson score is a scoring rule, not a likelihood proper; `likelihood="gaussian"`
+(negative squared error) is the alternative for z-scored or dF/F traces.
+
+**Why held-out likelihood and not reliability.** On the simulator (20 mm bins)
+split-half reliability rises monotonically with sigma (0.33, 0.87, 0.93, 0.94 for
+sigma 0, 1, 2, 3 bins), so as a criterion it always asks for more smoothing. A
+held-out score penalises over-smoothing: it peaks at an interior sigma and falls
+on both sides.
+
+**Validity of the p-values.** The selector never imports the shuffle engine and
+never sees a null or p-value; its inputs are the activity, the state labels and
+masks, and time order. The shuffle test is then run with sigma as a fixed number,
+so its false-positive guarantee holds given that sigma. Residual caveat: sigma is
+chosen on the same session that is later tested, so it is tuned to the data, not
+to the null. This cannot favour a particular cell being significant under the
+null, but it does mean the chosen sigma should be reported (it is, in
+`provenance["selections"]`), and that a different session may choose differently.
+For a stricter protocol choose sigma on one session or half of the data and
+test on the rest. `heldout_smoothing_scores` returns the whole score curve for
+plotting or for a sweep.
+
 ### Recording how a value was chosen
 
 Each chosen value can carry a `Selection` record (`cabana.Selection`): the
@@ -329,6 +370,73 @@ cells.** Choosing a parameter by how many cells it makes significant biases the
 null test in favour of the chosen value. Use a held-out score (cross-validated
 likelihood, decoding accuracy on held-out folds) or a data-quality measure that
 does not see the null. If a value was picked after looking at p-values anyway,
-set `informed_by_significance=True` so the record says so. The planned
-`cabana.sweep` facility (roadmap B1) and the automatic smoothing step (B3, B4)
-will enforce this and write the same record.
+set `informed_by_significance=True` so the record says so. `SweepResult.pick`
+(see "Sweeps" below) enforces this for sweeps and writes the same record.
+
+### Automatic null timescales
+
+`min_shift_s` (circular shift) and `block_s` (label shuffle) are timescales of the
+data, so they can be read off the data. The selector `auto_null_timescale`
+(`AutoNullTimescale`, roadmap B7) does this before the analyses run and records
+each choice as a `Selection` with `method="auto_rule"`.
+
+```python
+pipe = Pipeline(selectors=[{"name": "auto_null_timescale"}], analyses=[...])
+```
+
+**Definition.** The autocorrelation time of a series is the smallest lag at which
+its normalised autocorrelation first falls below 1/e. The autocorrelation uses
+only the analysis's effective frames (state support AND listed masks), removes
+the mean of those frames, ignores NaNs, is computed by FFT, and is searched up to
+`max_lag_s` (60 s). If it never falls below 1/e the result is `max_lag_s` and a
+warning is issued. White noise gives one frame. Plain functions
+`autocorrelation_time` and `state_autocorrelation_time`
+(`cabana._selectors_null`) expose the estimate for plotting.
+
+- `tau_activity`: the median over cells (cells with zero variance skipped). For
+  sparse deconvolved activity this is often one frame, so the behaviour usually
+  sets the timescale.
+- `tau_target`: for a state space, the occupancy-weighted mean of the
+  autocorrelation time of each state's 0/1 indicator; for a continuous signal,
+  its own autocorrelation time (first column if 2-D). With
+  `block_rule="mean_bout"` the target timescale for `block_s` is instead the mean
+  run length of the states.
+
+**Rules.** For a `circular_shift` null, `min_shift_s = clip(multiple *
+max(tau_activity, tau_target), min_shift_floor_s, max_fraction * duration)`,
+with `multiple=3`, floor 5 s and `max_fraction=0.25` (the same one-quarter
+session limit `draw_shifts` enforces, and more than the half-session it clamps
+to would leave too few distinct shifts). For a `label_shuffle` null, `block_s =
+clip(tau_target, block_floor_s, max_fraction * duration)`. Other nulls are not
+touched. The value is written to `analyses.<name>.shuffle.min_shift_s` when the null
+is the default, or to `analyses.<name>.shuffle.null` (a copy of the null with the
+new field) when a null was given explicitly.
+
+**Why three times.** After one autocorrelation time a signal has lost about 63%
+of its self-similarity; after three, about 95%. A shift of at least 3 tau makes
+the shifted activity nearly independent of the true alignment while the
+within-signal structure is preserved, which is what the null needs. The factor is
+a convention, not a derived optimum: change `multiple` and record why.
+
+**Never sees the null.** The selector uses only autocorrelation of activity and
+behaviour. It does not run a shuffle or read a result, so it cannot bias the test.
+
+**When not to use it.** Slow drifts or non-stationary sessions (photobleaching,
+state changes) make the autocorrelation not fall below 1/e, giving `max_lag_s`
+and then the cap; fix the drift (detrend, mask) or set the value by hand. Short
+sessions are capped at a quarter of the duration, where fewer than the requested
+distinct shifts may exist. A very long autocorrelation time of the behaviour
+(rare, long bouts) means the circular shift has little independent information
+regardless of the setting.
+
+### Sweeps
+
+A sweep runs the same pipeline at every point of a grid of parameter values and shows how the conclusions move. `cabana.sweep(session, pipeline, over={"analyses.*.metric.smooth_sigma_bins": [0, 1, 2, 3]}, shuffle=False)` takes parameter paths (the `set_param` grammar above) and candidate lists; several paths give the Cartesian product. List candidates from simplest to most complex, because the one-SE and plateau rules read the order.
+
+*Fast and full mode.* If no swept path starts with `transforms.` or `preprocess.`, transforms and preprocessing run once and each grid point reruns only the analyses on the prepared session. Otherwise (for example a bin-size sweep) the whole pipeline reruns per point. `shuffle=False` strips every shuffle, giving observed values only, which is cheap enough for interactive use (a 4-value sigma sweep on a 600 s, 60-cell session takes about 0.05 s). `shuffle=None` keeps each analysis's `ShuffleConfig`, and `shuffle=True` requires one. Without shuffles there are no p-values: `significant` is False and `frac_significant` is NaN.
+
+*Reading a sweep.* `SweepResult.table` is one row per grid point, result, cell and state with the swept values, `value`, `p_value`, `p_adj` and the significance flags. `summary()` gives, per grid point and analysis, `n_cells`, `n_significant`, `frac_significant`, the median `value` (`median_value`, with `se_value`) and, for every per-cell scalar extra whose key ends in `_r` or is `stability`, `reliability` or `loglik`, its median (`median_<key>`, `se_<key>`). `stability()` counts, for each cell, how many times `significant` flips between neighbouring grid points (one step along one path, others fixed), its modal classification and whether it is `unstable` (at least one flip), plus the fraction of unstable cells and the Spearman rank correlation of `value` between neighbours. A stable total count can hide several percent of cells swapping in and out (6-11% on the simulator), which is why the flip readout exists. `plot_sweep_gallery` shows one cell's rate map across the candidates, `plot_sweep_stability` the three views, and `plot_sweep` any summary table.
+
+*Guard rail.* `pick(criterion, ...)` chooses one value per swept path, but it refuses to choose by `p_value`, `p_adj`, `significant`, `significant_adj`, `n_significant`, `frac_significant`, or any column containing `sig` or starting with `p_`, and raises `ValueError`. Picking the setting that makes the most cells significant lets the data choose the analysis that favours the hypothesis (a researcher degree of freedom) and invalidates the null test for that choice. Use a value-based or reliability criterion (`median_value`, a split-half `r`, a held-out log-likelihood extra). Remember that raw reliability and information tend to rise monotonically with smoothing, so prefer a held-out score. `allow_significance=True` overrides the refusal and sets `informed_by_significance=True` on the record.
+
+*From a pick to a Selection.* `rule="max"` or `"min"` takes the best score (`method="auto_rule"`); `"one_se"` takes the first candidate within one standard error of the best, and `"plateau"` the middle of the longest run of neighbours within one standard error (both `method="sweep_stability"`). Each pick is a `Selection` with `criterion`, the `candidates` and their `scores`, and the rule in `note`; `SweepResult.apply(pipeline)` writes them with `set_param`, so they appear in `Pipeline.selections` and in each result's provenance. Sweeps can be saved with `SweepResult.save(dir)` and reloaded with `SweepResult.load(dir)`.

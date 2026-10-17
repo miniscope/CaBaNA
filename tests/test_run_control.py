@@ -176,6 +176,8 @@ def test_iter_run_incremental():
     it = pipe.iter_run(make_session())
     key, sess = next(it)
     assert key == "session" and isinstance(sess, Session)
+    key, eff = next(it)
+    assert key == "pipeline" and isinstance(eff, Pipeline)
     assert next(it)[0] == "a"
     assert next(it)[0] == "b"
     assert list(it) == []

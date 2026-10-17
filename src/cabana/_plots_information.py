@@ -9,12 +9,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
 from scipy.stats import spearmanr
 
 from ._models import Session, StateSpace
 from ._plots import _cell_label, _fmt_p, _get_ax, _significant
 from ._util import order_session_first
+from ._plots_sweep import plot_sweep
 from ._results import MetricResult
 
 __all__ = [
@@ -362,53 +362,23 @@ def plot_level_sweep(df: pd.DataFrame, ax: Any = None) -> Figure:
     if missing:
         raise ValueError(f"df is missing columns {sorted(missing)}")
     if ax is None:
-        fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.8), sharey=True, layout="constrained")
+        _, axes = plt.subplots(1, 2, figsize=(9.0, 3.8), sharey=True, layout="constrained")
     else:
         axes = np.asarray(ax).ravel()
         if axes.size != 2:
             raise ValueError("ax must be a pair of axes")
-        fig = axes[0].figure
-    metrics = list(dict.fromkeys(df["metric"])) if "metric" in df.columns else [None]
-    styles = ["-", "--", ":", "-."]
-    durations = sorted(df["duration_s"].unique())
-    cmap = plt.get_cmap("viridis")
-    colors = {d: cmap(i / max(len(durations) - 1, 1) * 0.85) for i, d in enumerate(durations)}
-    for a, col, label in (
-        (axes[0], "detection", "detection rate"),
-        (axes[1], "fpr", "false-positive rate"),
-    ):
-        for mi, met in enumerate(metrics):
-            sub_m = df if met is None else df[df["metric"] == met]
-            for d in durations:
-                sub = sub_m[sub_m["duration_s"] == d].sort_values("n_levels")
-                if sub.empty:
-                    continue
-                a.plot(
-                    sub["n_levels"],
-                    sub[col],
-                    marker="o",
-                    ms=4,
-                    color=colors[d],
-                    ls=styles[mi % len(styles)],
-                )
-        a.set_xlabel("number of activity levels")
-        a.set_ylabel(label)
-        a.set_ylim(0, 1.05)
-        a.set_xticks(sorted(df["n_levels"].unique()))
-    axes[1].axhline(0.05, color="k", ls="--", lw=1)
-    handles = [
-        Line2D([], [], color=colors[d], marker="o", ms=4, label=f"{d:g} s") for d in durations
-    ]
-    if len(metrics) > 1:
-        handles += [
-            Line2D([], [], color="0.3", ls=styles[i % len(styles)], label=str(m))
-            for i, m in enumerate(metrics)
-        ]
-    handles.append(Line2D([], [], color="k", ls="--", lw=1, label="alpha = 0.05"))
-    axes[1].legend(
-        handles=handles, fontsize=8, frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0)
+    return plot_sweep(
+        df,
+        x="n_levels",
+        hue="duration_s",
+        style="metric" if "metric" in df.columns else None,
+        panels=("detection", "fpr"),
+        alpha_line=0.05,
+        ax=axes,
+        xlabel="number of activity levels",
+        ylabels=("detection rate", "false-positive rate"),
+        hue_label=lambda d: f"{d:g} s",
     )
-    return fig
 
 
 def plot_decoded_trajectory(

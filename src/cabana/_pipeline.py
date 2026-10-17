@@ -23,9 +23,11 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from . import _preprocess as _preprocess  # noqa: F401  (registers plugins)
+from . import _selectors as _selectors  # noqa: F401  (registers plugins)
+from . import _selectors_null as _selectors_null  # noqa: F401  (registers plugins)
 from . import _transform as _transform  # noqa: F401  (registers plugins)
 from ._models import Session
-from ._registry import _REGISTRY, Metric, PreprocessStep, Transform, build
+from ._registry import _REGISTRY, Metric, PreprocessStep, Selector, Transform, build
 from ._results import MetricResult, ResultSet, RunError, RunWarning
 from ._selection import Selection
 from ._shuffle import RunCancelled, ShuffleConfig, resolve_n_jobs, shuffle_test
@@ -46,7 +48,7 @@ class ProgressEvent:
     stage and ``total`` the number of items in that stage.
     """
 
-    stage: Literal["transform", "preprocess", "analysis", "shuffle", "done"]
+    stage: Literal["transform", "preprocess", "select", "analysis", "shuffle", "done"]
     name: str
     index: int
     total: int
@@ -300,6 +302,10 @@ class Pipeline(BaseModel):
 
     transforms: list[Transform] = Field(default_factory=list, description="Applied first.")
     preprocess: list[PreprocessStep] = Field(default_factory=list, description="Applied second.")
+    selectors: list[Selector] = Field(
+        default_factory=list,
+        description="Data-driven parameter choices applied to a per-run copy before analyses.",
+    )
     analyses: list[AnalysisSpec] = Field(default_factory=list, description="Run last.")
     selections: list[Selection] = Field(
         default_factory=list,
@@ -315,6 +321,11 @@ class Pipeline(BaseModel):
     @classmethod
     def _p(cls, v: Any) -> Any:
         return _build_list("preprocess", v)
+
+    @field_validator("selectors", mode="before")
+    @classmethod
+    def _s(cls, v: Any) -> Any:
+        return _build_list("selector", v)
 
     def resolved_names(self) -> list[str]:
         """Result names of the analyses, in order, exactly as a run will assign them.
@@ -583,9 +594,11 @@ class Pipeline(BaseModel):
     ) -> Iterator[tuple[str, Any]]:
         """Generator form of :meth:`run` for incremental results.
 
-        Yields ``("session", transformed_session)`` once transforms and
-        preprocess steps are done, then ``(analysis_name, MetricResult)`` as each
-        analysis finishes.  Cancellation simply ends the iteration; recorded
+        Yields ``("session", transformed_session)`` once transforms,
+        preprocess steps and selectors are done, then ``("pipeline",
+        effective_pipeline)`` (this pipeline with any selector choices applied
+        and recorded in ``selections``), then ``(analysis_name, MetricResult)``
+        as each analysis finishes.  Cancellation simply ends the iteration; recorded
         errors / warnings are only reported through ``context`` (use :meth:`run`
         for a ``ResultSet`` carrying them).
         """
@@ -660,16 +673,29 @@ class Pipeline(BaseModel):
                     meta["activity_kind_history"] = [*hist, session.activity_kind]
                 session = session.replace(meta=meta)
                 step += 1
+            active = self
+            n_s = len(self.selectors)
+            for i, sel in enumerate(self.selectors):
+                check_cancel()
+                say(f"[select] {sel.name}")
+                emit("select", sel.name, i, n_s, pre_slice)
+                for s in sel.select(session, active):
+                    active = active.set_param(s.path, s.value, selection=s)
+                    say(f"  {s.path} = {s.value!r} ({s.method})")
             frac = pre_slice
             run_info = {
                 "env": _env_info(),
                 "pipeline_sha256": _sha_json(self.to_dict()),
                 "session_sha256": _session_sha(session),
             }
+            if n_s:
+                run_info["selectors"] = [sel.to_dict() for sel in self.selectors]
+                run_info["effective_pipeline_sha256"] = _sha_json(active.to_dict())
             yield ("session", session)
+            yield ("pipeline", active)
 
             done_w = 0.0
-            for ai, spec in enumerate(self.analyses):
+            for ai, spec in enumerate(active.analyses):
                 w = weights[ai]
                 base_frac = pre_slice + (1 - pre_slice) * done_w / wtot
                 check_cancel()
@@ -706,7 +732,7 @@ class Pipeline(BaseModel):
                             if ctx.capture_warnings:
                                 warnings.simplefilter("always")
                             try:
-                                result = self._analyze(
+                                result = active._analyze(
                                     session,
                                     spec,
                                     name,
@@ -887,7 +913,9 @@ class Pipeline(BaseModel):
             "preprocess": [p.to_dict() for p in self.preprocess],
             "analyses": [a.to_dict() for a in self.analyses],
         }
-        if self.selections:  # omitted when empty so pipelines without selections hash as before
+        if self.selectors:  # omitted when empty so older pipelines hash as before
+            d["selectors"] = [s.to_dict() for s in self.selectors]
+        if self.selections:
             d["selections"] = [s.model_dump(mode="json") for s in self.selections]
         return d
 
@@ -897,6 +925,7 @@ class Pipeline(BaseModel):
         return cls(
             transforms=d.get("transforms", []),
             preprocess=d.get("preprocess", []),
+            selectors=d.get("selectors", []),
             analyses=d.get("analyses", []),
             selections=d.get("selections", []),
         )

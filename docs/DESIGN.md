@@ -613,8 +613,8 @@ stage, analysis end and shuffle batch. Cancellation is polled between stages,
 analyses and after every shuffle batch and returns the partial `ResultSet` instead
 of raising: `ResultSet.status` is `ok`, `cancelled` or `partial` (errors recorded
 with `on_error="record"`), with `completed` (names), `errors` (`RunError`) and
-`warnings` (`RunWarning`). `Pipeline.iter_run` yields the transformed session and
-then each analysis as it finishes; `run_set(pipeline, sessions, context=, animal=)`
+`warnings` (`RunWarning`). `Pipeline.iter_run` yields the transformed session, then the
+effective pipeline (selector choices applied), then each analysis as it finishes; `run_set(pipeline, sessions, context=, animal=)`
 runs a `SessionSet` or dict and `RunSetResult.table()` is the cohort table.
 
 Parallelism has two levels. `ShuffleConfig.n_jobs` (threads, over batches of
@@ -664,3 +664,17 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 **Explicit shifts.** Kernels never draw randomness: shifts are an input `int64 (n_shifts,)` (any integer, negative or larger than `n_time` allowed; `roll(x, k)[t] = x[(t - k) mod n_time]`). The RNG is a boundary: the null plan (`draw_shifts`) lives outside, and a Rust port must consume the same explicit shifts to reproduce a null bit-for-bit.
 
 **Golden vectors.** `scripts/generate_kernel_golden.py` writes `tests/golden/kernels/{sums,ratemap,levels,rank}.npz` (5 cells x 400 frames, 7 states, 6 explicit shifts, a 6x5 grid, 3 levels; includes a masked-frame case, a silent cell and a NaN cell) with `in_*` inputs and `out_*` expected outputs; `tests/test_kernels.py` compares at rtol 1e-12 with NaN equal. These are separate from the pipeline-level goldens in `tests/golden/`. AUROC's per-shift thread pool stays in the metric; only the per-series and per-shift pieces are kernels.
+
+## Automatic null timescales (`_selectors_null.py`)
+
+`AutoNullTimescale` is a `Selector` that sets `min_shift_s` and `block_s` from the 1/e autocorrelation time of the activity and the behaviour (`autocorrelation_time`, `state_autocorrelation_time`); it works only on the data, writes `Selection(method="auto_rule")` records, and never imports the shuffle engine. See STATISTICS.md, "Automatic null timescales".
+
+## Selectors: automatic smoothing (`src/cabana/_selectors.py`)
+
+`AutoSmoothSigma` (`auto_smooth_sigma`) is the first built-in `Selector`. It is built only from kernels (`contiguous_folds`, `shifted_label_sums`, `masked_counts`, `rate_map`): per-state sums are computed once, each fold's training sums are total minus held-out sums, and the held-out Poisson (or Gaussian) score is evaluated per state from held-out sums and counts, so scoring a candidate never loops over frames. It returns one `Selection` per matching analysis; the pipeline applies them to a per-run copy, so the written spec is unchanged and `provenance["selections"]` records the curve. The module does not import `_shuffle`, which a test enforces. `heldout_smoothing_scores` is the plain function behind it for sweeps and plots. `pool="per_cell"` is not implemented because the metrics take one `smooth_sigma_bins` per analysis.
+
+## Sweeps (`src/cabana/_sweep.py`, `src/cabana/_plots_sweep.py`)
+
+`cabana.sweep` sits above `Pipeline`: it needs only `set_param`, `iter_run`/`run` and `RunContext`. When no swept path touches `transforms.` or `preprocess.`, it consumes `iter_run`'s `("session", ...)` and `("pipeline", effective)` events once (transforms, preprocess and selectors run; the generator is closed before any analysis), then runs an analyses-only copy of the effective pipeline per grid point on that prepared session, so a sigma sweep never repeats the transforms. A swept path overrides whatever a selector chose for it; the selector's `Selection` stays in provenance. A transform sweep reruns the full pipeline per point and records each point's state-space layout (`SweepResult.layouts`) so plots can lay out rate maps whose grid changes. `SweepResult` is a plain dataclass (picklable); `save` writes `index.json` plus one `ResultSet` zip per point. `pick` is the only place a sweep becomes a `Selection`, and it refuses significance-based criteria unless told otherwise (STATISTICS.md, "Sweeps").
+
+The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_sweep_stability_data` and `plot_sweep_data` return plain dicts of arrays and labels without importing matplotlib types into their results, and `plot_sweep_gallery`, `plot_sweep_stability` and `plot_sweep` only render those dicts. This is the first piece of the plot-data layer (roadmap D1) the CaLab port needs; `plot_level_sweep` is now a thin wrapper over `plot_sweep`.

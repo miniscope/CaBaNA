@@ -22,6 +22,7 @@ from ._plots_information import (
     plot_joint_histogram,
     plot_level_sweep,
 )
+from ._plots_sweep import plot_sweep, plot_sweep_gallery, plot_sweep_stability
 from ._plots_posthoc import (
     plot_classification,
     plot_clusters,
@@ -49,5 +50,8 @@ __all__ = [
     "plot_population_matrix",
     "plot_rate_maps",
     "plot_shuffle_distribution",
+    "plot_sweep",
+    "plot_sweep_gallery",
+    "plot_sweep_stability",
     "plot_tuning_heatmap",
 ]

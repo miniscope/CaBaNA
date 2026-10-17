@@ -70,6 +70,7 @@ from ._pipeline import (
     run_set,
 )
 from ._selection import Selection
+from ._sweep import StabilityReport, SweepResult, sweep
 from ._posthoc import (
     ClusterResult,
     OverlapResult,
@@ -200,6 +201,9 @@ __all__ = [
     "RunError",
     "RunSetResult",
     "Selection",
+    "StabilityReport",
+    "SweepResult",
+    "sweep",
     "RunWarning",
     "describe",
     "run_set",

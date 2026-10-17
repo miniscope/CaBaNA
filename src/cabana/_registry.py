@@ -31,8 +31,9 @@ from pydantic import BaseModel, ConfigDict
 
 from ._models import Session, StateSpace
 from ._results import Tail
+from ._selection import Selection
 
-PluginKind = Literal["transform", "preprocess", "metric", "null"]
+PluginKind = Literal["transform", "preprocess", "metric", "null", "selector"]
 
 #: What a metric is computed against: a ``StateSpace`` (discrete states) or a
 #: continuous per-frame signal ``(n_time,)`` / ``(n_time, d)``.
@@ -44,6 +45,7 @@ _REGISTRY: dict[str, dict[str, type[BaseModel]]] = {
     "preprocess": {},
     "metric": {},
     "null": {},
+    "selector": {},
 }
 
 
@@ -279,11 +281,37 @@ class Null(_Plugin):
         return None
 
 
+class Selector(_Plugin):
+    """Data-driven choice of pipeline parameters, run after preprocessing.
+
+    A selector looks at the (transformed, preprocessed) session and the pipeline
+    and returns :class:`~cabana.Selection` records; the pipeline applies each
+    one with ``Pipeline.set_param(path, value, selection=...)`` to a per-run
+    copy before any analysis runs, so the consuming plugins stay pure functions
+    of explicit numbers and every chosen value is recorded in provenance.
+
+    Contract
+    --------
+    * Must not look at shuffle nulls or p-values: choose on a criterion that is
+      independent of the significance test (held-out likelihood, map
+      reliability, a data statistic).  Set ``informed_by_significance`` on the
+      record if that rule is knowingly broken.
+    * Returns one ``Selection`` per parameter set; ``path`` follows the
+      ``Pipeline.set_param`` grammar (``analyses.*.metric.<field>`` to set a
+      field on every analysis that has it).
+    * Pure: must not mutate ``session`` or ``pipeline``.
+    """
+
+    @abstractmethod
+    def select(self, session: Session, pipeline: Any) -> list[Selection]: ...
+
+
 _BASES: dict[str, type[_Plugin]] = {
     "transform": Transform,
     "preprocess": PreprocessStep,
     "metric": Metric,
     "null": Null,
+    "selector": Selector,
 }
 
 
@@ -292,7 +320,7 @@ def register(kind: PluginKind):
 
     Parameters
     ----------
-    kind : {"transform", "preprocess", "metric", "null"}
+    kind : {"transform", "preprocess", "metric", "null", "selector"}
         Registry to add to; the class must subclass the matching base.
 
     Returns
@@ -329,7 +357,7 @@ def build(kind: PluginKind, spec: dict[str, Any] | _Plugin) -> Any:
 
     Parameters
     ----------
-    kind : {"transform", "preprocess", "metric", "null"}
+    kind : {"transform", "preprocess", "metric", "null", "selector"}
         Which registry to look in.
     spec : dict or plugin instance
         ``{"name": registry_name, **fields}``; an existing plugin instance is
@@ -367,7 +395,7 @@ def available(kind: PluginKind) -> list[str]:
 
     Parameters
     ----------
-    kind : {"transform", "preprocess", "metric", "null"}
+    kind : {"transform", "preprocess", "metric", "null", "selector"}
         Registry to list.
 
     Returns
