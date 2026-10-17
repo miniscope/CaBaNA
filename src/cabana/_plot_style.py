@@ -176,7 +176,7 @@ def metric_label(metric: str, params: dict[str, Any] | None = None) -> str:
     """
     label, units = METRIC_LABELS.get(metric, (metric.replace("_", " "), None))
     params = params or {}
-    if metric == "information_content" and params.get("per_second"):
+    if metric == "information_content" and params.get("units") == "bits_per_second":
         units = "bits/s"
     if metric == "signal_tuning" and params.get("statistic"):
         label = f"tuning ({params['statistic']})"
