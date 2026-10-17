@@ -30,8 +30,11 @@ loop over ``compute``.
 
 from __future__ import annotations
 
+import os
+import threading
 import warnings
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any, Literal
 
 import numpy as np
@@ -45,6 +48,23 @@ from ._results import ShuffleResult, Tail
 
 class RunCancelled(Exception):  # noqa: N818
     """Raised (by ``should_cancel`` returning True) to stop a shuffle test or pipeline run."""
+
+
+_worker = threading.local()
+
+
+def in_shuffle_worker() -> bool:
+    """True inside a ``shuffle_test`` worker thread (``n_jobs > 1``).
+
+    Metrics that run their own thread pool (AUROC) check this and stay serial,
+    so the outer pool is the only source of parallelism (no oversubscription).
+    """
+    return bool(getattr(_worker, "active", False))
+
+
+def resolve_n_jobs(n_jobs: int) -> int:
+    """``-1`` means all cores; otherwise the value itself (at least 1)."""
+    return max(1, (os.cpu_count() or 1) if n_jobs == -1 else int(n_jobs))
 
 
 class ShuffleConfig(BaseModel):
@@ -86,6 +106,12 @@ class ShuffleConfig(BaseModel):
     batch_size : int, default 100
         How many shifts to evaluate per call to ``compute_shifted`` (bounds
         memory for ``(batch, n_cells, n_states)`` intermediates).
+    n_jobs : int, default 1
+        Worker threads over batches of shuffles (``-1`` = all cores).  Results
+        are bit-identical for every value (shifts and per-surrogate child seeds
+        are fixed up front), so this is purely a speed knob.  Parallelism is
+        across batches: it needs ``n_shuffles / batch_size >= n_jobs``.  Nulls
+        that only implement ``surrogates`` (no per-draw ``surrogate``) run serially.
     keep_null : {"full", "none"}, default "full"
         ``"full"`` keeps the ``(n_shuffles, ...)`` null draws in
         ``ShuffleResult.null`` (needed by plots that draw the null).  ``"none"``
@@ -123,6 +149,11 @@ class ShuffleConfig(BaseModel):
     )
     batch_size: int = Field(
         100, ge=1, description="Shifts evaluated per compute_shifted call (bounds memory)."
+    )
+    n_jobs: int = Field(
+        1,
+        ge=-1,
+        description="Worker threads over batches of shuffles; -1 = all cores. Results do not depend on it.",
     )
     keep_null: Literal["full", "none"] = Field(
         "full",
@@ -389,6 +420,98 @@ def _null_bounds(null: np.ndarray, alpha: float, tail: Tail) -> tuple[np.ndarray
         return np.nanpercentile(null, q_lo, axis=0), np.nanpercentile(null, q_hi, axis=0)
 
 
+def _run_batches(
+    work: Callable[[int], int],
+    starts: list[int],
+    n_jobs: int,
+    tick: Callable[[int], None],
+    check_cancel: Callable[[], None],
+    *,
+    dedupe_warnings: bool,
+) -> None:
+    """Run ``work(start)`` for every batch start, serially or on a thread pool.
+
+    ``work`` fills its own disjoint slice of the null array and returns the
+    number of surrogates it computed.  ``tick`` and ``check_cancel`` are only
+    ever called from the calling thread.  Cancellation is checked before each
+    batch is submitted; on cancel nothing more is submitted, in-flight batches
+    finish (cancel granularity is one batch) and :class:`RunCancelled` is raised.
+    Warnings raised by ``work`` (in any thread) are captured, de-duplicated by
+    (category, message) and re-issued once from the calling thread.
+    """
+    done = 0
+    if n_jobs <= 1 or len(starts) <= 1:
+        if not dedupe_warnings:
+            for start in starts:
+                check_cancel()
+                done += work(start)
+                tick(done)
+            return
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            try:
+                for start in starts:
+                    check_cancel()
+                    done += work(start)
+                    tick(done)
+            finally:
+                caught = list(rec)
+        _reissue(caught)
+        return
+
+    def run(start: int) -> int:
+        _worker.active = True
+        try:
+            return work(start)
+        finally:
+            _worker.active = False
+
+    cancel: RunCancelled | None = None
+    caught: list[warnings.WarningMessage] = []
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        try:
+            with ThreadPoolExecutor(min(n_jobs, len(starts))) as ex:
+                pending: set[Future[int]] = set()
+                nxt = 0
+                try:
+                    while nxt < len(starts) or pending:
+                        while cancel is None and nxt < len(starts) and len(pending) < n_jobs:
+                            try:
+                                check_cancel()
+                            except RunCancelled as exc:
+                                cancel = exc
+                                break
+                            pending.add(ex.submit(run, starts[nxt]))
+                            nxt += 1
+                        if not pending:
+                            break
+                        finished, pending = wait(pending, return_when=FIRST_COMPLETED)
+                        for fut in finished:
+                            done += fut.result()
+                        tick(done)
+                except BaseException:
+                    for fut in pending:
+                        fut.cancel()
+                    raise
+        finally:
+            caught = list(rec)
+    _reissue(caught)
+    if cancel is not None:
+        raise cancel
+
+
+def _reissue(caught: list[warnings.WarningMessage]) -> None:
+    """Re-issue each distinct (category, message) once, through the caller's filters."""
+    seen: set[tuple[type, str]] = set()
+    for wm in caught:
+        key = (wm.category, str(wm.message))
+        if key in seen:
+            continue
+        seen.add(key)
+        warnings.warn(wm.message, wm.category, stacklevel=4)
+
+
 def shuffle_test(
     metric: Metric,
     activity: np.ndarray,
@@ -465,11 +588,15 @@ def shuffle_test(
         if should_cancel is not None and should_cancel():
             raise RunCancelled("cancelled during shuffle test")
 
+    n_jobs = resolve_n_jobs(config.n_jobs)
+    bs = config.batch_size
+    starts = list(range(0, total, bs))
+
     if isinstance(null_plugin, CircularShift):
         shifts = null_plugin.draw(activity.shape[1], fs, config.n_shuffles, rng)
-        for start in range(0, config.n_shuffles, config.batch_size):
-            check_cancel()
-            batch = shifts[start : start + config.batch_size]
+
+        def work(start: int) -> int:
+            batch = shifts[start : start + bs]
             fast = metric.compute_shifted(activity, target, mask, fs, batch)
             if fast is not None:
                 null[start : start + batch.size] = fast
@@ -478,14 +605,30 @@ def shuffle_test(
                     null[start + i] = metric.compute(
                         np.roll(activity, int(k), axis=1), target, mask, fs
                     )
-            tick(start + batch.size)
-    else:
+            return batch.size
+
+        _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=n_jobs > 1)
+    elif null_plugin.has_surrogate:
+        # one independent child stream per surrogate: the draw does not depend on batching or n_jobs
+        children = np.random.SeedSequence(config.seed).spawn(total)
+
+        def work(start: int) -> int:
+            stop = min(start + bs, total)
+            for i in range(start, stop):
+                act_s, target_s = null_plugin.surrogate(
+                    activity, target, mask, fs, np.random.default_rng(children[i])
+                )
+                null[i] = metric.compute(act_s, target_s, mask, fs)
+            return stop - start
+
+        _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=True)
+    else:  # legacy plugin implementing only ``surrogates``: one shared generator, serial
         surrogates = null_plugin.surrogates(activity, target, mask, fs, config.n_shuffles, rng)
         for i, (act_s, target_s) in enumerate(surrogates):
-            if i % config.batch_size == 0:
+            if i % bs == 0:
                 check_cancel()
             null[i] = metric.compute(act_s, target_s, mask, fs)
-            if (i + 1) % config.batch_size == 0 or i + 1 == total:
+            if (i + 1) % bs == 0 or i + 1 == total:
                 tick(i + 1)
 
     p = _p_values(observed, null, tail)

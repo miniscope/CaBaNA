@@ -217,8 +217,11 @@ class Metric(_Plugin):
 class Null(_Plugin):
     """A way of breaking the link between activity and behavior.
 
-    ``surrogates(activity, target, mask, fs, n, rng)`` yields ``n`` pairs
-    ``(activity_s, target_s)`` on which the metric is recomputed.  A null may
+    ``surrogate(activity, target, mask, fs, rng)`` returns one pair
+    ``(activity_s, target_s)`` on which the metric is recomputed (preferred:
+    enables per-surrogate seeds and parallel runs).  Alternatively
+    ``surrogates(activity, target, mask, fs, n, rng)`` yields ``n`` pairs from
+    one shared generator (serial only).  A null may
     perturb the activity (circular shift), the target (label shuffle, bout
     shuffle) or both.  ``perturbs`` says which, so the engine can pick fast
     paths (``compute_shifted``) when the null is a pure shift of activity.
@@ -226,7 +229,29 @@ class Null(_Plugin):
 
     perturbs: ClassVar[Literal["activity", "target"]] = "activity"
 
-    @abstractmethod
+    def surrogate(
+        self,
+        activity: np.ndarray,
+        target: Target,
+        mask: np.ndarray,
+        fs: float,
+        rng: np.random.Generator,
+    ) -> tuple[np.ndarray, Target]:
+        """One independent surrogate drawn from ``rng`` (and only from ``rng``).
+
+        Implement this to let the engine run surrogates in parallel and
+        deterministically: ``shuffle_test`` gives surrogate ``i`` its own
+        generator ``default_rng(SeedSequence(seed).spawn(n)[i])``, so the result
+        does not depend on ``n_jobs`` or on the order batches finish.  Must be
+        thread-safe (do not mutate ``self`` or the inputs).
+        """
+        raise NotImplementedError
+
+    @property
+    def has_surrogate(self) -> bool:
+        """True if the subclass implements :meth:`surrogate` (per-draw seeding, parallel)."""
+        return type(self).surrogate is not Null.surrogate
+
     def surrogates(
         self,
         activity: np.ndarray,
@@ -235,7 +260,19 @@ class Null(_Plugin):
         fs: float,
         n: int,
         rng: np.random.Generator,
-    ) -> Iterator[tuple[np.ndarray, Target]]: ...
+    ) -> Iterator[tuple[np.ndarray, Target]]:
+        """Yield ``n`` surrogates drawing sequentially from one ``rng``.
+
+        The default builds on :meth:`surrogate`.  Third-party nulls may override
+        this instead of implementing ``surrogate``; they then run serially from
+        the single main generator (``n_jobs`` is ignored).
+        """
+        if not self.has_surrogate:
+            raise NotImplementedError(
+                f"{type(self).__name__} must implement surrogate or surrogates"
+            )
+        for _ in range(n):
+            yield self.surrogate(activity, target, mask, fs, rng)
 
     def check_target(self, metric: Metric, target: Target) -> None:
         """Hook for nulls that only make sense for some targets (default: any)."""

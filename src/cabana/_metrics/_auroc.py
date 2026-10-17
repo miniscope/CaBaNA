@@ -13,7 +13,7 @@ from scipy.stats import rankdata
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
-from .._shuffle import shifted_sums
+from .._shuffle import in_shuffle_worker, shifted_sums
 
 _MAX_WORKERS = 8
 _MEM_BUDGET = 1_500_000_000  # bytes of per-shift scratch across worker threads
@@ -68,6 +68,8 @@ def _masked_shifted_rank_sums(
         1,
         min(_MAX_WORKERS, os.cpu_count() or 1, shifts.size, _MEM_BUDGET // max(per_shift_bytes, 1)),
     )
+    if in_shuffle_worker():  # outer shuffle pool (n_jobs > 1) already uses the cores
+        workers = 1
     if workers == 1:
         for i in range(shifts.size):
             one(i)

@@ -411,6 +411,18 @@ print(cs.median_observed, np.median(cs.null_median), cs.p_population)
 A `SessionSet` bundles sessions, the animal mapping and matches if you want a
 single object to pass around.
 
+### Speed
+
+Shuffle tests are the slow part. `ShuffleConfig(n_jobs=4)` (or `-1` for all cores,
+or `pipe.run(session, n_jobs=4)` to override a saved pipeline for one run) spreads
+batches of shuffles over threads, and the numbers are identical to `n_jobs=1`.
+Gains are largest for `label_shuffle` / `bout_shuffle` (several times faster on 4
+cores); `circular_shift` with the built-in metrics is already fast. Parallelism is
+per batch, so keep `n_shuffles / batch_size` at least `n_jobs`. For many sessions,
+`run_set(pipe, sessions, n_jobs=4, out_dir="runs/")` runs sessions in separate
+processes, saves each as it finishes and skips finished ones on a rerun. Colab
+gives you 2 cores, so `n_jobs=2` is the most you will gain there.
+
 ## 12. A custom metric
 
 A metric is a pydantic class registered by name. Implement `compute` and return

@@ -1,0 +1,124 @@
+transforms:
+- name: labels_to_states
+  source: syllables
+  output: syllables
+preprocess: []
+analyses:
+- name: mean
+  metric:
+    name: mean_per_state
+    statistic: mean
+    min_frames: 20
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: auroc
+  metric:
+    name: auroc
+    min_frames: 20
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: bh
+    correction_scope: states
+  masks: null
+- name: auroc_label_shuffle
+  metric:
+    name: auroc
+    min_frames: 20
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null':
+      name: label_shuffle
+      block_s: 1.0
+    min_shift_s: 10.0
+    seed: 16
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: mi
+  metric:
+    name: mutual_information
+    n_levels: 5
+    binning: quantile
+    units: bits
+    min_occupancy_s: 0.05
+    bias_correction: none
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: bayes
+  metric:
+    name: bayesian_decoder
+    likelihood: gaussian
+    binarize: true
+    window_s: 0.25
+    smooth_sigma_bins: 0.0
+    n_folds: 4
+    n_trial_blocks: 10
+    sigma: per_state
+    prior: occupancy
+    min_frames_per_class: 20
+    n_levels: 5
+    binning: quantile
+    pseudocount: 0.1
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null

@@ -273,13 +273,15 @@ def test_bout_shuffle_warns_when_too_dense() -> None:
     st = StateSpace(name="b", onehot=oh, state_names=["a"], kind="bouts", exclusive=False)
     mask = np.zeros(n, bool)
     mask[0:70] = True  # two 40-frame bouts cannot fit in 70 frames without overlap
+    cfg = ShuffleConfig(
+        n_shuffles=5, null={"name": "bout_shuffle", "refractory_s": 0.0}, batch_size=2
+    )
+    # each surrogate warns; shuffle_test de-duplicates to one warning per call
     with pytest.warns(UserWarning, match="too dense") as rec:
-        out = list(
-            BoutShuffle(refractory_s=0.0).surrogates(
-                np.zeros((1, n)), st, mask, FS, 5, np.random.default_rng(0)
-            )
+        res = shuffle_test(
+            build("metric", {"name": "mean_per_state"}), np.ones((1, n)), st, mask, cfg, FS
         )
-    assert len(out) == 5 and len([w for w in rec if "too dense" in str(w.message)]) == 1
+    assert res.null is not None and len([w for w in rec if "too dense" in str(w.message)]) == 1
 
 
 def test_bout_shuffle_rejects_signal_target() -> None:

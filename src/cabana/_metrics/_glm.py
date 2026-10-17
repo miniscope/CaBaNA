@@ -229,7 +229,7 @@ class GLMEncoding(Metric):
     ``session.signals``, not a ``StateSpace``; state-space exclusivity does not
     apply (state columns are ordinary 0/1 regressors).
 
-    Extras: ``group_names`` ``(n_groups,)`` object array naming the value
+    Extras: ``group_names`` ``(n_groups,)`` str array naming the value
     columns; ``deviance_explained`` ``(n_cells,)`` held-out deviance explained
     by the full model, mean over folds; ``weights`` ``(n_cells, n_columns + 1)``
     full-model weights refit on all valid frames, column 0 the intercept (link
@@ -356,7 +356,7 @@ class GLMEncoding(Metric):
     def extras(self, activity, target, mask, fs):
         x, y_all, idx, names, gnames, gcols, family = self._prepare(activity, target, mask)
         n_cells, d = y_all.shape[0], x.shape[1]
-        out: dict[str, np.ndarray] = {"group_names": np.array(gnames, dtype=object)}
+        out: dict[str, np.ndarray] = {"group_names": np.array([str(g) for g in gnames])}
         if idx.size < self.min_frames or idx.size < self.n_folds:
             out["weights"] = np.full((n_cells, d + 1), np.nan)
             out["deviance_explained"] = np.full(n_cells, np.nan)
@@ -384,7 +384,7 @@ class GLMEncoding(Metric):
             if kern:
                 out["kernels"] = np.stack(kern, axis=1)
                 out["kernel_lags_s"] = lags_s
-                out["kernel_group_names"] = np.array(kn, dtype=object)
+                out["kernel_group_names"] = np.array([str(k) for k in kn])
         return out
 
 

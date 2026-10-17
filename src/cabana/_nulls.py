@@ -102,18 +102,16 @@ class LabelShuffle(Null):
 
     block_s: float = Field(1.0, gt=0, description="Block length in seconds.")
 
-    def surrogates(self, activity, target, mask, fs, n, rng) -> Iterator[tuple[np.ndarray, Target]]:
+    def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
         n_time = activity.shape[1]
         block = max(1, int(round(self.block_s * fs)))
         idx = np.arange(n_time) if mask is None else np.flatnonzero(np.asarray(mask, dtype=bool))
-        for _ in range(n):
-            src = np.arange(n_time)
-            if idx.size:
-                src[idx] = idx[_block_permutation(idx.size, block, rng)]
-            if isinstance(target, StateSpace):
-                yield activity, target.model_copy(update={"onehot": target.onehot[src]})
-            else:
-                yield activity, np.asarray(target)[src]
+        src = np.arange(n_time)
+        if idx.size:
+            src[idx] = idx[_block_permutation(idx.size, block, rng)]
+        if isinstance(target, StateSpace):
+            return activity, target.model_copy(update={"onehot": target.onehot[src]})
+        return activity, np.asarray(target)[src]
 
 
 def _free_starts(free: np.ndarray, length: int) -> np.ndarray:
@@ -176,7 +174,7 @@ class BoutShuffle(Null):
             return max(0, min(lo, n_time - length)), True
         return int(rng.integers(lo, hi - length + 1)), True
 
-    def surrogates(self, activity, target, mask, fs, n, rng) -> Iterator[tuple[np.ndarray, Target]]:
+    def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
         assert isinstance(target, StateSpace)
         n_time = target.n_time
         mask_b = np.ones(n_time, bool) if mask is None else np.asarray(mask, dtype=bool)
@@ -188,38 +186,36 @@ class BoutShuffle(Null):
             for s in range(target.n_states)
         ]
         shared = bool(target.exclusive)
-        warned = False
-        for _ in range(n):
-            oh = np.zeros_like(target.onehot)
-            occ_shared = np.zeros(n_time, dtype=bool)
-            occ_state = [np.zeros(n_time, dtype=bool) for _ in runs_per_state]
-            movable: list[tuple[int, int]] = []  # (state, length)
-            for s, state_runs in enumerate(runs_per_state):
-                occ = occ_shared if shared else occ_state[s]
-                for start, length in state_runs:
-                    if 2 * int(mask_b[start : start + length].sum()) >= length:
-                        movable.append((s, length))
-                    else:  # mostly outside the mask: stays where it was
-                        oh[start : start + length, s] = True
-                        occ[start : start + length] = True
-            overlapped = False
-            for s, length in sorted(movable, key=lambda m: -m[1]):
-                occ = occ_shared if shared else occ_state[s]
-                start, over = self._place(length, occ, mask_b, lo, hi, gap, rng)
-                overlapped |= over
-                if shared:
-                    oh[start : start + length, :] = False
-                occ[start : start + length] = True
-                oh[start : start + length, s] = True
-            if overlapped and not warned:
-                warned = True
-                warnings.warn(
-                    "bout_shuffle: the state space is too dense to place every bout without "
-                    "overlap inside the mask; some bouts were placed overlapping others",
-                    UserWarning,
-                    stacklevel=3,  # generator -> shuffle_test -> caller
-                )
-            yield activity, target.model_copy(update={"onehot": oh, "exclusive": shared})
+        oh = np.zeros_like(target.onehot)
+        occ_shared = np.zeros(n_time, dtype=bool)
+        occ_state = [np.zeros(n_time, dtype=bool) for _ in runs_per_state]
+        movable: list[tuple[int, int]] = []  # (state, length)
+        for s, state_runs in enumerate(runs_per_state):
+            occ = occ_shared if shared else occ_state[s]
+            for start, length in state_runs:
+                if 2 * int(mask_b[start : start + length].sum()) >= length:
+                    movable.append((s, length))
+                else:  # mostly outside the mask: stays where it was
+                    oh[start : start + length, s] = True
+                    occ[start : start + length] = True
+        overlapped = False
+        for s, length in sorted(movable, key=lambda m: -m[1]):
+            occ = occ_shared if shared else occ_state[s]
+            start, over = self._place(length, occ, mask_b, lo, hi, gap, rng)
+            overlapped |= over
+            if shared:
+                oh[start : start + length, :] = False
+            occ[start : start + length] = True
+            oh[start : start + length, s] = True
+        if overlapped:
+            # one warning per surrogate; shuffle_test de-duplicates across the run
+            warnings.warn(
+                "bout_shuffle: the state space is too dense to place every bout without "
+                "overlap inside the mask; some bouts were placed overlapping others",
+                UserWarning,
+                stacklevel=2,
+            )
+        return activity, target.model_copy(update={"onehot": oh, "exclusive": shared})
 
 
 __all__ = ["BoutShuffle", "CircularShift", "LabelShuffle", "draw_shifts"]

@@ -82,6 +82,28 @@ reproduce results from before per-analysis seeding. Numbers from earlier runs
 differ from current ones for that reason (p-values move within sampling noise).
 Renaming an analysis changes its stream.
 
+**Per-surrogate child seeds (target-perturbing nulls).** `label_shuffle` and
+`bout_shuffle` no longer draw from one lazily consumed generator. `shuffle_test`
+spawns `SeedSequence(seed).spawn(n_shuffles)` and surrogate `i` uses
+`default_rng(children[i])`, so a surrogate is a pure function of `(seed, i)`:
+it does not depend on batching, on `n_jobs`, or on the order in which batches
+finish. This changed the label_shuffle and bout_shuffle numbers once (still valid
+draws from the same null, p-values move within sampling noise). `circular_shift`
+is untouched: its shifts are drawn up front from the main generator exactly as
+before. A third-party null that implements only `surrogates(...)` keeps the old
+single-generator behaviour and runs serially; implement
+`Null.surrogate(activity, target, mask, fs, rng)` to get per-draw seeds and
+parallelism.
+
+**Parallel determinism.** `ShuffleConfig.n_jobs` (`-1` = all cores) runs batches
+of shuffles on a thread pool. Because the shifts and child seeds are fixed before
+any batch starts and each batch writes its own slice of the null array, results
+(`observed`, `null`, `p_value`, `shifts`) are bit-identical for every `n_jobs`;
+this is regression-tested. `batch_size` is the unit of parallelism and of
+cancellation (in-flight batches finish, nothing new is submitted). AUROC's own
+internal thread pool over shifts is disabled inside shuffle workers, so
+`n_jobs > 1` does not oversubscribe the machine.
+
 ## NaN semantics
 
 If the observed metric is undefined (a silent cell, too few frames in a state)
@@ -106,12 +128,12 @@ state" was:
 Planted cells were still detected (fraction at least 0.8) under every
 correction. Correction reduces the inflation; it does not always remove it. In
 the demo's full run (80 untuned cells, 1000 shuffles, `max_stat` across states)
-the any-state false-positive rate went from 0.21 to 0.11 for `auroc[social]`,
-0.17 to 0.06 for `auroc[syllables]`, 0.21 to 0.07 for `mean_per_state[social]`
+the any-state false-positive rate went from 0.24 to 0.10 for `auroc[social]`,
+0.17 to 0.06 for `auroc[syllables]`, 0.19 to 0.09 for `mean_per_state[social]`
 and 0.10 to 0.04 for `peth[social]`; the dedicated noise-session measurement
 above came out at 0.02 to 0.08. Rules based on null percentiles (for example
 `responsive_cell_criteria` with the default `use_p=False`) are not adjusted:
-in the demo they flagged 17 untuned cells against 9 with the adjusted p-value
+in the demo they flagged 19 untuned cells against 8 with the adjusted p-value
 rule. The library does not correct by default; ask for it in
 `ShuffleConfig`:
 

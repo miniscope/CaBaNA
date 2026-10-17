@@ -616,6 +616,19 @@ with `on_error="record"`), with `completed` (names), `errors` (`RunError`) and
 then each analysis as it finishes; `run_set(pipeline, sessions, context=, animal=)`
 runs a `SessionSet` or dict and `RunSetResult.table()` is the cohort table.
 
+Parallelism has two levels. `ShuffleConfig.n_jobs` (threads, over batches of
+shuffles; `Pipeline.run(..., n_jobs=)` / `RunContext.n_jobs` override it per run
+without touching the spec, and provenance records the value used) never changes
+results. `run_set(..., n_jobs=)` runs sessions in `spawn`ed processes; with
+`out_dir=` it writes `<session_id>.results.zip` as each session finishes plus
+`run_set.json` (status per session) and, with `resume=True`, loads sessions
+already on disk (from the same pipeline hash) instead of recomputing them. A
+cancelled session is recorded and the others continue unless the cancel came from
+the shared `RunContext`. Cancel granularity is one shuffle batch inside a session
+and one session across processes (callbacks cannot cross processes, so workers
+run without them and `on_progress` fires per finished session). `RunSetResult.save`
+and `.load` write and read that directory layout.
+
 **CaLab readiness.** CaBaNA is meant to become an app inside CaLab. What a front
 end needs is now in the library: `describe()` returns a JSON-serialisable listing
 of the registered plugins (metrics with `level`, `input`, `default_tail`,
@@ -626,3 +639,7 @@ cancelled through `RunContext`, a failing analysis need not kill the run, partia
 results come back, a saved `ResultSet` and a pipeline YAML reproduce a run, and
 loaders follow CaLab's formats (the Minian and CaImAn ones are ported from its
 loaders).
+
+### Golden regression suite (`tests/golden/`, `tests/test_golden.py`)
+
+`scripts/generate_golden.py` builds three small seeded simulated sessions (2-D grid with a speed mask and `rebin_time`, social bouts with a design-matrix signal, categorical syllables) and runs a pipeline covering every registered metric with 50 shuffles (`circular_shift`, plus one `label_shuffle`, one `bout_shuffle`, `max_stat` and `keep_null="none"` analysis). It stores each case as `<case>.session.zip`, `<case>.pipeline.yaml` and `<case>.results.zip` with a `MANIFEST.json`. The test reloads the session, rebuilds the pipeline with `Pipeline.from_yaml`, reruns it and compares every value, null summary, shift, extra and stable provenance key with `rtol=1e-9` (exact for ints, bools and shifts). A failure means the numbers changed: if intentional (new seeding, a corrected metric), run `.venv/bin/pytest tests/test_golden.py --update-golden` (or `python scripts/generate_golden.py`) and review the diff. `tests/test_properties.py` adds Hypothesis properties (dense equals label path, cell-permutation invariance, shift 0 equals observed, p-value bounds, adjustment monotonicity, save/load with non-finite values).

@@ -21,6 +21,7 @@
 - **level**: whether a metric yields one value per cell (`cell`) or per population (`population`).
 - **null**: the plugin that defines how the activity-behavior link is broken: `circular_shift`, `label_shuffle` or `bout_shuffle`.
 - **surrogate**: one dataset produced by a null; the metric is recomputed on each to build the null distribution.
+- **n_jobs**: `ShuffleConfig.n_jobs`, worker threads over batches of shuffles (`-1` = all cores); results are bit-identical for any value. `run_set(n_jobs=)` is the separate process-level knob across sessions.
 - **shuffle**: the whole test (`ShuffleConfig`): `n_shuffles` surrogates, the null, `alpha`, `tail`, `seed`.
 - **tail**: which side of the null counts as extreme: `upper`, `lower` or `two`.
 - **p floor**: the smallest attainable p-value, `1 / (n_shuffles + 1)`.

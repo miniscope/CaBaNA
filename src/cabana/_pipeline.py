@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata as _md
 import json
+import os
 import platform
 import sys
 import time
@@ -26,7 +27,7 @@ from . import _transform as _transform  # noqa: F401  (registers plugins)
 from ._models import Session
 from ._registry import _REGISTRY, Metric, PreprocessStep, Transform, build
 from ._results import MetricResult, ResultSet, RunError, RunWarning
-from ._shuffle import RunCancelled, ShuffleConfig, shuffle_test
+from ._shuffle import RunCancelled, ShuffleConfig, resolve_n_jobs, shuffle_test
 
 try:  # optional
     import yaml
@@ -76,6 +77,10 @@ class RunContext:
     log : callable(str), optional
         Receives the human-readable stage lines; defaults to ``print`` when
         ``progress=True`` is passed to ``run``, else nothing.
+    n_jobs : int, optional
+        Overrides every analysis's ``ShuffleConfig.n_jobs`` for this run (``-1`` =
+        all cores) without touching the spec; provenance records the value used
+        under ``"n_jobs"``.  ``None`` keeps each spec's own value.
     """
 
     on_progress: Callable[[ProgressEvent], None] | None = None
@@ -83,6 +88,7 @@ class RunContext:
     on_error: Literal["raise", "record"] = "raise"
     capture_warnings: bool = True
     log: Callable[[str], None] | None = None
+    n_jobs: int | None = None
 
 
 def _print_log(msg: str) -> None:
@@ -308,6 +314,7 @@ class Pipeline(BaseModel):
         progress: bool = False,
         *,
         context: RunContext | None = None,
+        n_jobs: int | None = None,
     ) -> tuple[Session, ResultSet]:
         """Apply all stages; the input session is not modified.
 
@@ -321,6 +328,11 @@ class Pipeline(BaseModel):
         context : RunContext, optional
             Progress callbacks, cancellation, error isolation and warning
             capture; see :class:`RunContext`.
+        n_jobs : int, optional
+            Shuffle worker threads for every analysis, overriding each spec's
+            ``ShuffleConfig.n_jobs`` (and ``context.n_jobs``) for this run; the
+            spec, and so the provenance ``params``, stay as written.  Results do
+            not depend on it.
 
         Returns
         -------
@@ -350,6 +362,8 @@ class Pipeline(BaseModel):
         ``session.meta["transforms"]`` and recorded in each result's provenance.
         """
         ctx = self._context(context, progress)
+        if n_jobs is not None:
+            ctx = replace(ctx, n_jobs=n_jobs)
         results = ResultSet()
         out = session
         for key, val in self._execute(session, ctx, results):
@@ -512,6 +526,7 @@ class Pipeline(BaseModel):
                                     on_batch,
                                     ctx.should_cancel,
                                     run_info,
+                                    n_jobs=ctx.n_jobs,
                                 )
                             finally:
                                 caught = list(rec or [])
@@ -578,6 +593,8 @@ class Pipeline(BaseModel):
         on_batch: Callable[[int, int], None],
         should_cancel: Callable[[], bool] | None,
         run_info: dict[str, Any] | None = None,
+        *,
+        n_jobs: int | None = None,
     ) -> MetricResult:
         metric = spec.metric.model_copy()  # configure() mutates a per-run copy
         support = None
@@ -608,12 +625,16 @@ class Pipeline(BaseModel):
             mask = mask & support
         shuf = None
         effective_seed: int | None = None
+        used_n_jobs: int | None = None
         if spec.shuffle is not None:
             cfg = spec.shuffle
             effective_seed = cfg.seed
             if cfg.derive_seeds and cfg.seed is not None:
                 effective_seed = derive_seed(cfg.seed, name)
                 cfg = cfg.model_copy(update={"seed": effective_seed})
+            if n_jobs is not None:
+                cfg = cfg.model_copy(update={"n_jobs": n_jobs})
+            used_n_jobs = resolve_n_jobs(cfg.n_jobs)
             shuf = shuffle_test(
                 metric,
                 session.activity,
@@ -640,6 +661,7 @@ class Pipeline(BaseModel):
             "alpha": None if shuf is None else shuf.alpha,
             "tail": None if shuf is None else shuf.tail,
             "effective_seed": effective_seed,
+            "n_jobs": used_n_jobs,
             "masks": listed,
             "mask_info": {m: session.meta.get("mask_info", {}).get(m) for m in listed},
             "preprocess": list(session.meta.get("preprocess", [])),
@@ -759,8 +781,13 @@ class RunSetResult:
     Attributes
     ----------
     sessions_out : dict[str, Session]
+        Processed sessions of the sessions computed in this call (sessions
+        resumed from ``out_dir`` have results only).
     results : dict[str, ResultSet]
     animal : dict[str, str]
+    status : dict[str, str]
+        Per session: ``"ok"``, ``"partial"``, ``"cancelled"``, or ``"not_run"``
+        (never started because the shared context cancelled).
     """
 
     def __init__(
@@ -768,21 +795,88 @@ class RunSetResult:
         sessions_out: dict[str, Session],
         results: dict[str, ResultSet],
         animal: dict[str, str],
+        status: dict[str, str] | None = None,
     ) -> None:
         self.sessions_out = sessions_out
         self.results = results
         self.animal = animal
+        self.status = status if status is not None else {k: r.status for k, r in results.items()}
 
     @property
     def cancelled(self) -> bool:
-        """True if any session's run was cancelled (later sessions were not run)."""
-        return any(r.cancelled for r in self.results.values())
+        """True if any session's run was cancelled or not started because of a cancel."""
+        return any(v in ("cancelled", "not_run") for v in self.status.values())
 
     def table(self) -> Any:
         """Long cohort table (``cohort_table(results, animal)``)."""
         from ._cohort import cohort_table
 
         return cohort_table(self.results, self.animal)
+
+    def save(self, out_dir: str | Path) -> None:
+        """Write ``<session_id>.results.zip`` per session plus ``run_set.json``."""
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        info: dict[str, Any] = {}
+        for sid, rs in self.results.items():
+            _check_sid(sid)
+            rs.save(out / f"{sid}.results.zip")
+            info[sid] = {"status": self.status.get(sid, rs.status), "source": "saved"}
+        _write_run_set_json(out, None, info, self.animal)
+
+    @classmethod
+    def load(cls, out_dir: str | Path) -> RunSetResult:
+        """Read what :meth:`save` or an ``out_dir`` run of :func:`run_set` wrote.
+
+        Sessions with no results file (cancelled, not run) are absent from
+        ``results`` but keep their ``status`` entry; ``sessions_out`` is empty.
+        """
+        out = Path(out_dir)
+        meta = json.loads((out / "run_set.json").read_text())
+        res: dict[str, ResultSet] = {}
+        status: dict[str, str] = {}
+        for sid, info in meta["sessions"].items():
+            status[sid] = info["status"]
+            f = out / f"{sid}.results.zip"
+            if f.exists():
+                res[sid] = ResultSet.load(f)
+        animal = meta.get("animal") or {sid: sid for sid in status}
+        return cls({}, res, animal, status)
+
+
+def _check_sid(sid: str) -> None:
+    if not sid or "/" in sid or "\\" in sid or sid.startswith("."):
+        raise ValueError(f"session id {sid!r} cannot be used as a file name in out_dir")
+
+
+def _write_run_set_json(
+    out: Path, pipeline_sha: str | None, info: dict[str, Any], animal: dict[str, str]
+) -> None:
+    from . import __version__
+
+    doc = {
+        "cabana_version": __version__,
+        "pipeline_sha256": pipeline_sha,
+        "animal": animal,
+        "sessions": info,
+    }
+    tmp = out / "run_set.json.tmp"
+    tmp.write_text(json.dumps(doc, indent=2))
+    tmp.replace(out / "run_set.json")
+
+
+def _run_one(
+    pipeline: Pipeline,
+    sid: str,
+    session: Session,
+    ctx: RunContext,
+    out_file: str | None,
+) -> tuple[str, Session, ResultSet]:
+    """Process-pool worker (module level so it pickles under ``spawn``)."""
+    out, rs = pipeline.run(session, context=ctx)
+    if out_file is not None and not rs.cancelled:
+        rs.save(out_file)
+    return sid, out, rs
 
 
 def run_set(
@@ -791,15 +885,47 @@ def run_set(
     *,
     context: RunContext | None = None,
     animal: dict[str, str] | None = None,
+    n_jobs: int = 1,
+    out_dir: str | Path | None = None,
+    resume: bool = True,
 ) -> RunSetResult:
     """Run ``pipeline`` on every session of a ``SessionSet`` or ``{id: Session}`` dict.
 
-    Sessions run sequentially (parallel execution, ``n_jobs``, is out of scope).
-    Progress events carry ``"<session id>: ..."`` in ``message`` and an overall
-    ``fraction`` across sessions; per-session ``done`` events are suppressed and
-    one final ``done`` is emitted.  A cancelled session stops the loop and the
-    remaining sessions are not run.  ``animal`` defaults to the ``SessionSet``'s
-    map, else each session id is its own animal.
+    Parameters
+    ----------
+    pipeline : Pipeline
+    sessions : SessionSet or dict[str, Session]
+    context : RunContext, optional
+        Shared run control.  Progress events carry ``"<session id>: ..."`` in
+        ``message`` and an overall ``fraction``; per-session ``done`` events are
+        suppressed and one final ``done`` is emitted.
+    animal : dict, optional
+        Defaults to the ``SessionSet``'s map, else each session id is its own animal.
+    n_jobs : int, default 1
+        Sessions processed in parallel in separate processes (``spawn``; ``-1`` =
+        all cores).  ``1`` runs in this process.  Callbacks cannot cross
+        processes: with ``n_jobs > 1`` ``on_progress`` fires once per finished
+        session, ``should_cancel`` is polled in this process between submissions
+        and completions (running sessions finish; session granularity), and a
+        worker runs its shuffle tests with ``n_jobs=1`` unless ``context.n_jobs``
+        is set.  Plugins must be importable in the workers.
+    out_dir : path, optional
+        Write ``<session_id>.results.zip`` as each session finishes (cancelled
+        sessions are not written) and ``run_set.json`` (per-session status).
+    resume : bool, default True
+        With ``out_dir``, a session whose zip exists is loaded instead of run
+        (null draws come back float32), unless it was written by a different
+        pipeline (``pipeline_sha256`` mismatch), in which case it is rerun.
+
+    Returns
+    -------
+    RunSetResult
+
+    Notes
+    -----
+    A session whose run was cancelled is recorded as ``"cancelled"`` and the
+    remaining sessions still run, unless the cancel came from the shared
+    ``context.should_cancel``; then the rest are ``"not_run"``.
     """
     from ._cohort_models import SessionSet
 
@@ -817,30 +943,143 @@ def run_set(
     t0 = time.perf_counter()
     out: dict[str, Session] = {}
     res: dict[str, ResultSet] = {}
-    last = 0.0
-    for i, (sid, s) in enumerate(sess.items()):
+    status: dict[str, str] = {sid: "not_run" for sid in sess}
+    info: dict[str, Any] = {sid: {"status": "not_run"} for sid in sess}
+    pipe_sha = _sha_json(pipeline.to_dict())
+    shared_cancel = False
 
-        def wrap(ev: ProgressEvent, i: int = i, sid: str = sid) -> None:
-            nonlocal last
-            if ev.stage == "done":
-                return
-            last = (i + ev.fraction) / n
-            if ctx.on_progress is not None:
-                ctx.on_progress(
-                    replace(
-                        ev,
-                        fraction=last,
-                        elapsed_s=time.perf_counter() - t0,
-                        message=f"{sid}: {ev.message}".rstrip(": ").rstrip(),
+    def polled_cancel() -> bool:
+        nonlocal shared_cancel
+        if ctx.should_cancel is not None and ctx.should_cancel():
+            shared_cancel = True
+        return shared_cancel
+
+    outp = Path(out_dir) if out_dir is not None else None
+    if outp is not None:
+        outp.mkdir(parents=True, exist_ok=True)
+        for sid in sess:
+            _check_sid(sid)
+
+    def flush() -> None:
+        if outp is not None:
+            _write_run_set_json(outp, pipe_sha, info, animal)
+
+    todo: list[str] = []
+    for sid in sess:
+        f = None if outp is None else outp / f"{sid}.results.zip"
+        if resume and f is not None and f.exists():
+            loaded = ResultSet.load(f)
+            shas = {r.provenance.get("pipeline_sha256") for r in loaded}
+            if shas <= {pipe_sha}:  # same pipeline (or nothing to compare)
+                res[sid], status[sid] = loaded, loaded.status
+                info[sid] = {"status": loaded.status, "source": "resumed", "file": f.name}
+                continue
+            warnings.warn(
+                f"{f.name} was written by a different pipeline; recomputing {sid!r}", stacklevel=2
+            )
+        todo.append(sid)
+    flush()
+
+    done_count = n - len(todo)
+    last = done_count / n if n else 1.0
+
+    def record(sid: str, s_out: Session | None, rs: ResultSet, elapsed: float) -> None:
+        nonlocal done_count
+        if s_out is not None:
+            out[sid] = s_out
+        res[sid], status[sid] = rs, rs.status
+        info[sid] = {
+            "status": rs.status,
+            "source": "computed",
+            "elapsed_s": round(elapsed, 3),
+            **({"file": f"{sid}.results.zip"} if outp is not None and not rs.cancelled else {}),
+        }
+        flush()
+
+    workers = (os.cpu_count() or 1) if n_jobs == -1 else max(1, int(n_jobs))
+    if workers <= 1 or len(todo) <= 1:
+        for sid in todo:
+            if polled_cancel():
+                break
+            i = list(sess).index(sid)
+
+            def wrap(ev: ProgressEvent, i: int = i, sid: str = sid) -> None:
+                nonlocal last
+                if ev.stage == "done":
+                    return
+                last = (i + ev.fraction) / n
+                if ctx.on_progress is not None:
+                    ctx.on_progress(
+                        replace(
+                            ev,
+                            fraction=last,
+                            elapsed_s=time.perf_counter() - t0,
+                            message=f"{sid}: {ev.message}".rstrip(": ").rstrip(),
+                        )
                     )
-                )
 
-        inner = replace(ctx, on_progress=wrap)
-        out[sid], res[sid] = pipeline.run(s, context=inner)
-        if res[sid].cancelled:
-            break
+            inner = replace(ctx, on_progress=wrap, should_cancel=polled_cancel)
+            ts = time.perf_counter()
+            s_out, rs = pipeline.run(sess[sid], context=inner)
+            if outp is not None and not rs.cancelled:
+                rs.save(outp / f"{sid}.results.zip")
+            record(sid, s_out, rs, time.perf_counter() - ts)
+            if rs.cancelled and shared_cancel:
+                break
+        else:
+            last = 1.0
     else:
-        last = 1.0
+        import multiprocessing as mp
+        from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+
+        wctx = RunContext(
+            on_error=ctx.on_error,
+            capture_warnings=ctx.capture_warnings,
+            n_jobs=ctx.n_jobs if ctx.n_jobs is not None else 1,
+        )
+        queue = list(todo)
+        pending: dict[Any, tuple[str, float]] = {}
+        with ProcessPoolExecutor(
+            min(workers, len(queue)), mp_context=mp.get_context("spawn")
+        ) as ex:
+            try:
+                while queue or pending:
+                    while queue and len(pending) < workers and not polled_cancel():
+                        sid = queue.pop(0)
+                        f = None if outp is None else str(outp / f"{sid}.results.zip")
+                        fut = ex.submit(_run_one, pipeline, sid, sess[sid], wctx, f)
+                        pending[fut] = (sid, time.perf_counter())
+                    if not pending:
+                        break
+                    finished, _ = wait(list(pending), timeout=0.5, return_when=FIRST_COMPLETED)
+                    polled_cancel()
+                    for fut in finished:
+                        sid, ts = pending.pop(fut)
+                        _, s_out, rs = fut.result()
+                        record(sid, s_out, rs, time.perf_counter() - ts)
+                        done_count += 1
+                        last = done_count / n
+                        if ctx.on_progress is not None:
+                            ctx.on_progress(
+                                ProgressEvent(
+                                    "analysis",
+                                    sid,
+                                    done_count - 1,
+                                    n,
+                                    last,
+                                    elapsed_s=time.perf_counter() - t0,
+                                    message=f"{sid}: finished",
+                                )
+                            )
+                    if shared_cancel:
+                        queue.clear()
+            except BaseException:
+                for fut in pending:
+                    fut.cancel()
+                raise
+        if not shared_cancel:
+            last = 1.0
+    flush()
     if ctx.on_progress is not None:
         ctx.on_progress(
             ProgressEvent(
@@ -850,10 +1089,12 @@ def run_set(
                 n,
                 last,
                 elapsed_s=time.perf_counter() - t0,
-                message="cancelled" if any(r.cancelled for r in res.values()) else "done",
+                message="cancelled"
+                if any(v in ("cancelled", "not_run") for v in status.values())
+                else "done",
             )
         )
-    return RunSetResult(out, res, animal)
+    return RunSetResult(out, res, animal, status)
 
 
 def describe() -> dict[str, Any]:
