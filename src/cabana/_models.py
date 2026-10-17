@@ -25,7 +25,11 @@ import numpy as np
 from numpydantic import NDArray, Shape
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ActivityKind = Literal["deconvolved", "dff", "spike_counts", "raw", "zscored"]
+#: ``binary`` = 0/1 event indicator (summed by ``rebin`` like counts); ``denoised`` =
+#: a model-denoised fluorescence trace (Minian/CaImAn ``C``), averaged like ``dff``.
+ActivityKind = Literal["deconvolved", "dff", "spike_counts", "raw", "zscored", "binary", "denoised"]
+#: Kinds that are event-like: ``rebin`` sums them and negative values are suspicious.
+EVENT_KINDS: frozenset[str] = frozenset({"deconvolved", "spike_counts", "binary"})
 StateKind = Literal["grid", "categorical", "bouts"]
 
 
@@ -372,7 +376,7 @@ class Session(_ArrayModel):
         Frame times in seconds.  This is the canonical clock.
     fs : float
         Nominal sampling rate in Hz (must be positive).
-    activity_kind : {"deconvolved", "dff", "spike_counts", "raw", "zscored"}
+    activity_kind : {"deconvolved", "dff", "spike_counts", "raw", "zscored", "binary", "denoised"}
         What the numbers mean.  Metrics may branch on this (e.g. amplitude vs
         binary weighting); ``rebin`` sums ``deconvolved`` / ``spike_counts`` and
         averages the others.  ``"zscored"`` is set by the z-scoring preprocess
@@ -445,7 +449,7 @@ class Session(_ArrayModel):
                     UserWarning,
                     stacklevel=2,
                 )
-        if self.activity_kind in ("deconvolved", "spike_counts") and n_time:
+        if self.activity_kind in EVENT_KINDS and n_time:
             if np.nanmin(self.activity, initial=0.0) < 0:
                 warnings.warn(
                     f"activity_kind={self.activity_kind!r} but activity has negative values; "
@@ -549,7 +553,7 @@ class Session(_ArrayModel):
 
         method = activity_method
         if method == "auto":
-            method = "sum" if self.activity_kind in ("deconvolved", "spike_counts") else "mean"
+            method = "sum" if self.activity_kind in EVENT_KINDS else "mean"
         act_blocks = self.activity[:, :n_keep].reshape(self.n_cells, n_new, k)
         activity = act_blocks.sum(axis=2) if method == "sum" else act_blocks.mean(axis=2)
 
@@ -671,6 +675,7 @@ class Session(_ArrayModel):
 
 __all__ = [
     "ActivityKind",
+    "EVENT_KINDS",
     "BehaviorInput",
     "BoutTable",
     "ContinuousSignal",
