@@ -170,6 +170,15 @@ def test_decoded_trajectory(decoded_run):
     fig = plots.plot_decoded_trajectory(res, sess, sess.states["position"])
     # x, y, error CDF, path, accuracy map + 2 colourbars
     assert len(fig.axes) == 7
+    from matplotlib.collections import LineCollection
+
+    ax_path = fig.axes[3]
+    assert any(isinstance(c, LineCollection) for c in ax_path.collections)
+    assert not any(
+        c.get_offsets().shape[0]
+        for c in ax_path.collections
+        if hasattr(c, "get_offsets") and not isinstance(c, LineCollection)
+    )
     assert len(fig.axes[0].lines) == 2
     assert "median error" in fig._suptitle.get_text()
     plt.close(fig)
@@ -192,6 +201,7 @@ def test_decoded_trajectory_data_2d(decoded_run):
     assert d["accuracy_map"].shape == (topo.shape[1], topo.shape[0])
     assert d["axis_names"] == ["x", "y"] and len(d["units"]) == 2
     assert len(d["extent"]) == 4
+    assert d["decoded_valid"].shape == (n,) and len(d["bin_width"]) == 2
     # bins never visited are NaN, not zero
     conf = np.asarray(res.extras["confusion"], float)
     never = ~(np.nan_to_num(conf).sum(axis=1) > 0)

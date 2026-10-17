@@ -56,6 +56,7 @@ from ._plots import (
     plot_tuning_heatmap,
     plot_tuning_heatmap_data,
 )
+from ._plots_card import plot_cell_card, plot_cell_card_data, plot_cell_cards
 from ._plots_cohort import (
     plot_cohort_fractions,
     plot_cohort_fractions_data,
@@ -131,6 +132,9 @@ __all__ = [
     "plot_analysis_agreement",
     "plot_analysis_agreement_data",
     "plot_behavior_overview",
+    "plot_cell_card",
+    "plot_cell_card_data",
+    "plot_cell_cards",
     "plot_behavior_overview_data",
     "plot_classification",
     "plot_classification_data",

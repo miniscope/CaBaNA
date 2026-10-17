@@ -14,12 +14,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 
-from ._models import Session, StateSpace
+from ._models import EVENT_KINDS, Session, StateSpace
 from ._plot_data import PLOT_DATA_VERSION
 from ._plot_registry import register_plot
-from ._plot_style import UNVISITED_COLOR, axis_label, mark_significant, state_colors
+from ._plot_style import (
+    axis_label,
+    heatmap_cmap,
+    mark_significant,
+    state_colors,
+)
 from ._results import MetricResult, ResultSet
 from ._util import runs
 
@@ -34,7 +39,6 @@ __all__ = [
     "plot_session_qa_data",
 ]
 
-_EVENT_KINDS = ("spike_counts", "binary")
 _GREY = (0.6, 0.6, 0.6, 1.0)
 
 
@@ -129,14 +133,15 @@ def plot_activity_raster_data(
     idx = idx[:max_cells]
     act = np.asarray(session.activity, float)[idx][:, fr]
     fin = act[np.isfinite(act)]
-    if fin.size:
+    if session.activity_kind in EVENT_KINDS:
+        nz = fin[fin > 0]
+        vmin, vmax = 0.0, (float(np.percentile(nz, 99)) if nz.size else 1.0)
+    elif fin.size:
         vmin, vmax = (float(v) for v in np.percentile(fin, [1, 99]))
-        if vmax <= vmin:
-            vmin, vmax = float(fin.min()), float(fin.max())
-        if vmax <= vmin:
-            vmax = vmin + 1.0
     else:
         vmin, vmax = 0.0, 1.0
+    if vmax <= vmin:
+        vmax = float(fin.max()) if fin.size and fin.max() > vmin else vmin + 1.0
     ids = [str(c) for c in (session.cell_ids or range(session.n_cells))]
     names = list(session.states) if states is None else list(states)
     if states is None:
@@ -252,27 +257,37 @@ def plot_activity_raster(
     ext_x = (t[0] - dt / 2, t[-1] + dt / 2)
     if ax is None:
         fig = plt.figure(figsize=(8.0, 3.2 + 0.22 * nr), layout="constrained")
-        gs = fig.add_gridspec(2 if nr else 1, 1, height_ratios=[10, max(nr, 1)] if nr else [1])
-        ax = fig.add_subplot(gs[0])
-        rax = fig.add_subplot(gs[1], sharex=ax) if nr else None
+        gs = fig.add_gridspec(
+            2 if nr else 1,
+            2,
+            height_ratios=[10, max(nr, 1)] if nr else [1],
+            width_ratios=[1, 0.2],
+        )
+        ax = fig.add_subplot(gs[0, 0])
+        rax = fig.add_subplot(gs[1, 0], sharex=ax) if nr else None
+        lax = fig.add_subplot(gs[:, 1]) if nr else None
     else:
         fig = ax.figure
         rax = ax.inset_axes([0, -0.04 - 0.05 * nr, 1, 0.05 * nr], sharex=ax) if nr else None
-    event = d["activity_kind"] in _EVENT_KINDS
+        lax = rax.inset_axes([1.01, -1.0, 0.2, 2.0]) if nr else None
+    event = d["activity_kind"] in EVENT_KINDS
     n = d["activity"].shape[0]
-    im = ax.imshow(
+    ax.imshow(
         np.ma.masked_invalid(d["activity"]),
         aspect="auto",
         interpolation="nearest",
-        cmap="Greys" if event else "viridis",
+        cmap=heatmap_cmap("Greys" if event else "viridis"),
         vmin=d["vmin"],
         vmax=d["vmax"],
         extent=(ext_x[0], ext_x[1], n - 0.5, -0.5),
     )
-    im.set_cmap(im.cmap.with_extremes(bad=UNVISITED_COLOR))
-    ax.set_ylabel("cell")
-    if n <= 40:
-        ax.set_yticks(range(n), d["cell_ids"])
+    ax.set_ylabel(f"cell (n={n})")
+    if n <= 60:
+        step = int(np.ceil(n / 12))
+        k = np.arange(0, n, step)
+        ax.set_yticks(k, [d["cell_ids"][i] for i in k])
+    else:
+        ax.set_yticks([])
     ax.set_title(f"Activity ({d['activity_kind']}), {n} cells")
     if rax is not None:
         ax.tick_params(labelbottom=False)
@@ -296,18 +311,29 @@ def plot_activity_raster(
                         ec="0.3",
                     )
                 )
-        for r_i, r in enumerate(d["ribbon"]):
-            used = sorted({int(v) for v in np.unique(r["labels"]) if v >= 0})[:8]
-            if used and len(r["state_names"]) <= 8:
-                txt = " ".join(r["state_names"][u] for u in used)
-                rax.text(
-                    1.005,
-                    1 - (r_i + 0.5) / nr,
-                    txt,
-                    transform=rax.transAxes,
-                    fontsize=6,
-                    va="center",
+        y_off = 0.0
+        for r in d["ribbon"]:
+            used = sorted({int(v) for v in np.unique(r["labels"]) if v >= 0})
+            handles = [Patch(fc=r["colors"][u], label=r["state_names"][u]) for u in used[:8]]
+            if len(used) > 8:
+                handles.append(Patch(fc="white", ec="none", label=f"+{len(used) - 8} more"))
+            if handles:
+                lax.add_artist(
+                    lax.legend(
+                        handles=handles,
+                        loc="upper left",
+                        bbox_to_anchor=(0.0, 1 - y_off),
+                        title=r["name"],
+                        title_fontsize=6,
+                        fontsize=6,
+                        handlelength=0.8,
+                        handleheight=0.8,
+                        borderaxespad=0,
+                        labelspacing=0.2,
+                    )
                 )
+                y_off += 0.03 * (len(handles) + 2)
+        lax.axis("off")
         for s_ in ("top", "right"):
             rax.spines[s_].set_visible(False)
     else:
@@ -372,14 +398,15 @@ def plot_population_tuning_data(
     raw = _tuning_matrix(result)
     n, ns = raw.shape
     m = raw.copy()
+    space = session.states.get(result.target) if session is not None else None
+    if space is not None and space.n_states == ns:
+        m[:, space.occupancy() == 0] = np.nan  # never visited: no data, not zero
     if normalize:
         with np.errstate(all="ignore"):
             lo = np.nanmin(np.where(np.isfinite(m), m, np.inf), axis=1, keepdims=True)
             hi = np.nanmax(np.where(np.isfinite(m), m, -np.inf), axis=1, keepdims=True)
             rng = hi - lo
-            m = np.where(
-                rng > 0, (m - lo) / np.where(rng > 0, rng, 1), np.where(np.isfinite(m), 0.0, np.nan)
-            )
+            m = np.where(rng > 0, (m - lo) / np.where(rng > 0, rng, 1), np.nan)
     if sort_by == "peak":
         filled = np.where(np.isfinite(m), m, -np.inf)
         am = filled.argmax(axis=1)
@@ -392,7 +419,6 @@ def plot_population_tuning_data(
         raise ValueError("sort_by must be 'peak' or None")
     if order.size > max_cells:
         order = order[np.unique(np.linspace(0, order.size - 1, max_cells).round().astype(int))]
-    space = session.states.get(result.target) if session is not None else None
     names = result.state_names or (list(space.state_names) if space is not None else None)
     names = (
         [str(s) for s in names]
@@ -484,7 +510,7 @@ def plot_population_tuning(
     fig, ax = _get_ax(ax, (6.0, 5.0))
     m = d["matrix"]
     n, ns = m.shape
-    cmap = plt.get_cmap("magma").with_extremes(bad=UNVISITED_COLOR)
+    cmap = heatmap_cmap("magma")
     im = ax.imshow(
         np.ma.masked_invalid(m),
         aspect="auto",
@@ -494,8 +520,13 @@ def plot_population_tuning(
         vmax=1 if d["normalized"] else None,
     )
     fig.colorbar(
-        im, ax=ax, label="normalised response" if d["normalized"] else "response", shrink=0.8
+        im,
+        ax=ax,
+        label="normalised response" if d["normalized"] else "response",
+        shrink=0.8,
+        pad=0.08,
     )
+    ax.set_xlim(-0.5, ns - 0.5)
     ax.set_xlabel(d["x_label"])
     ax.set_ylabel("cell")
     numeric = d["x_label"] not in ("state", "bin") and ns > 0
@@ -508,7 +539,10 @@ def plot_population_tuning(
         ax.set_yticks(range(n), d["cell_ids"])
     sig = np.flatnonzero(d["significant"])
     if sig.size:
-        mark_significant(ax, np.full(sig.size, ns - 0.5 + 0.03 * ns), sig, clip_on=False)
+        strip = ax.inset_axes([1.015, 0, 0.03, 1], sharey=ax)
+        strip.set_xlim(-1, 1)
+        strip.axis("off")
+        mark_significant(strip, np.zeros(sig.size), sig, clip_on=False)
     ax.set_title(d["title"])
     return fig
 
@@ -601,9 +635,13 @@ def plot_session_qa_data(
     dt = np.diff(t)
     timing = None
     if dt.size:
-        lo, hi = np.percentile(dt, [0.5, 99.5])
-        hi = max(hi, lo + 1e-9)
-        counts, edges = np.histogram(np.clip(dt, lo, hi) * 1000.0, bins=40)
+        dms = np.round(dt * 1000.0, 2)
+        lo, hi = np.percentile(dms, [0.5, 99.5])
+        constant = bool(dms.max() - dms.min() < 0.05)
+        if constant:
+            counts, edges = np.array([dms.size]), np.array([dms.mean() - 0.5, dms.mean() + 0.5])
+        else:
+            counts, edges = np.histogram(np.clip(dms, lo, max(hi, lo + 0.01)), bins=40)
         rep = session.meta.get("timing") or {}
         timing = {
             "counts": counts,
@@ -612,6 +650,7 @@ def plot_session_qa_data(
             "dropped_fraction": rep.get("dropped_fraction"),
             "jitter_sd_s": rep.get("jitter_sd_s", float(np.std(dt))),
             "has_report": bool(rep),
+            "constant_ms": float(dms.mean()) if constant else None,
         }
     cells = None
     key = next((k for k in ("snr", "events_per_min") if k in session.cell_meta), None)
@@ -681,9 +720,8 @@ def plot_session_qa(session: Session, *, states: Sequence[str] | None = None) ->
             origin="lower",
             aspect="equal",
             extent=o["extent"],
-            cmap="viridis",
+            cmap=heatmap_cmap("viridis"),
         )
-        im.set_cmap(im.cmap.with_extremes(bad=UNVISITED_COLOR))
         fig.colorbar(im, ax=a, label="seconds", shrink=0.8)
         a.set_xlabel(o["axis_names"][0])
         a.set_ylabel(o["axis_names"][1])
@@ -719,9 +757,9 @@ def plot_session_qa(session: Session, *, states: Sequence[str] | None = None) ->
         _note(c, "no masks")
     else:
         mk = d["masks"]
-        labels = [*mk["names"], "kept after all"]
+        labels = [*mk["names"], "any mask"]
         vals = [*mk["excluded_fraction"], 1 - mk["kept_after_all"]]
-        c.barh(range(len(labels)), vals, color=["0.6"] * (len(labels) - 1) + ["#0072B2"])
+        c.barh(range(len(labels)), vals, color="0.6")
         c.set_yticks(range(len(labels)), labels)
         c.set_xlim(0, 1)
         c.set_xlabel("fraction of frames excluded")
@@ -732,6 +770,12 @@ def plot_session_qa(session: Session, *, states: Sequence[str] | None = None) ->
         _note(e, "fewer than two frames")
     else:
         e.stairs(tm["counts"], tm["edges_ms"], fill=True, color="0.6")
+        e.ticklabel_format(useOffset=False, style="plain", axis="x")
+        if tm["constant_ms"] is not None:
+            e.set_xticks([tm["constant_ms"]], [f"{tm['constant_ms']:.2f}"])
+            e.text(
+                0.5, 0.5, f"constant {tm['constant_ms']:.2f} ms", transform=e.transAxes, ha="center"
+            )
         e.set_xlabel(axis_label("frame interval", "ms"))
         e.set_ylabel("frames")
         txt = f"jitter sd {tm['jitter_sd_s'] * 1000:.2f} ms"
@@ -889,7 +933,7 @@ def plot_analysis_agreement(
     k = len(names)
     if kind == "jaccard":
         fig, ax = plt.subplots(figsize=(1.0 + 0.9 * k + 1, 0.8 + 0.8 * k + 1), layout="constrained")
-        cmap = plt.get_cmap("viridis").with_extremes(bad=UNVISITED_COLOR)
+        cmap = heatmap_cmap("viridis")
         im = ax.imshow(np.ma.masked_invalid(d["jaccard"]), vmin=0, vmax=1, cmap=cmap)
         fig.colorbar(im, ax=ax, label="Jaccard index", shrink=0.8)
         for i in range(k):
@@ -942,7 +986,7 @@ def plot_analysis_agreement(
     else:
         order = d["pgrid_order"]
         fig, ax = plt.subplots(figsize=(1.5 + 0.8 * k, 5.0), layout="constrained")
-        cmap = plt.get_cmap("magma").with_extremes(bad=UNVISITED_COLOR)
+        cmap = heatmap_cmap("magma")
         im = ax.imshow(
             np.ma.masked_invalid(d["neglog10_p"][order]),
             aspect="auto",

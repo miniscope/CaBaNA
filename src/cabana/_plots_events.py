@@ -278,7 +278,7 @@ def plot_peth(
     ncols = max(1, min(ncols, n_show))
     nrows = int(np.ceil(n_show / ncols))
     fig = plt.figure(figsize=(3.6 * ncols + 0.6, 5.2 * nrows), layout="constrained")
-    outer = fig.add_gridspec(nrows, ncols)
+    outer = fig.add_gridspec(nrows, ncols + 1, width_ratios=[1.0] * ncols + [0.05])
     dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
     lim = d["vlim"]
     im = None
@@ -342,7 +342,8 @@ def plot_peth(
         ax_m.set_xlabel(d["time_label"])
         ax_m.set_ylabel(d["units"] if k % ncols == 0 else "")
     if im is not None:
-        fig.colorbar(im, ax=heat_axes, label=d["units"], fraction=0.03, pad=0.02)
+        cax = fig.add_subplot(outer[:, -1])
+        fig.colorbar(im, cax=cax, label=d["units"])
     return fig
 
 

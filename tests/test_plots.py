@@ -456,3 +456,38 @@ def test_registry_wiring(rich, setup, tmp_path):
     plt.close(fig)
     assert cp.plot_spec("shuffle_distribution").defaults(ic, sess)["cell"] == 3
     assert cp.plot_spec("shuffle_distribution").defaults(au, sess).keys() == {"cell", "state"}
+
+
+def test_metric_strip_population_level(rich):
+    sess, ic, _ = rich
+    rng = np.random.default_rng(3)
+    sh = _shuffle(rng, (5,))
+    res = MetricResult(
+        metric="decode_states",
+        target="syll",
+        level="population",
+        values=sh.observed,
+        shuffle=sh,
+        state_names=[f"s{i}" for i in range(5)],
+    )
+    d = P.plot_metric_strip_data(res)
+    cp.check_plot_data(d, "metric_strip")
+    assert sorted(d["cell_labels"]) == [f"s{i}" for i in range(5)]
+    assert d["xlabel"].startswith("state")
+    assert "metric_strip" in cp.plots_for(res, sess)
+    fig = cp.plot(res, sess, "metric_strip")
+    assert fig.axes[0].get_xlabel().startswith("state")
+    plt.close(fig)
+
+
+def test_rate_map_titles_and_ticks(rich):
+    sess, ic, _ = rich
+    d = P.plot_rate_maps_data(sess, ic, [3, 0])
+    assert d["titles"][0].count("\n") == 1
+    assert "bits/event" in d["titles"][0] and "(floor)" in d["titles"][0]
+    fig = P.plot_rate_maps(sess, ic, [3, 0, 1, 2, 4, 5, 6], ncols=6)
+    assert any("*" in a.get_title() for a in fig.axes)
+    assert "* p at floor" in fig._supxlabel.get_text()
+    labels = [x.get_text() for x in fig.axes[1].get_xticklabels()]
+    assert labels == ["0", "40"]
+    plt.close(fig)

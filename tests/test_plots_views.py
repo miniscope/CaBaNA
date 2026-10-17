@@ -232,3 +232,27 @@ def test_agreement_per_state_p_and_empty():
     V.plot_analysis_agreement([_result(np.array([0.9, 0.9]), "E")], kind="upset")
     with pytest.raises(ValueError):
         V.plot_analysis_agreement_data([])
+
+
+def test_population_tuning_nan_column_and_constant_row():
+    res, _ = _tuning_result()
+    rm = np.asarray(res.extras["rate_map"]).copy()
+    rm[:, 4] = np.nan
+    rm[0, :] = 2.0  # constant row -> all NaN
+    res = res.model_copy(update={"extras": {"rate_map": rm}})
+    d = V.plot_population_tuning_data(res)
+    assert np.isnan(d["matrix"][:, 4]).all()
+    row0 = int(np.flatnonzero(d["order"] == 0)[0])
+    assert np.isnan(d["matrix"][row0]).all()
+    fig = V.plot_population_tuning(res)
+    arr = fig.axes[0].images[0].get_array()
+    assert np.ma.getmaskarray(arr)[:, 4].all()
+
+
+def test_qa_constant_timing_and_raster_event_range(small_session):
+    s = Session(activity=np.zeros((2, 50)), t=np.arange(50) / 20.0, fs=20.0)
+    d = V.plot_session_qa_data(s)
+    assert d["timing"]["constant_ms"] == pytest.approx(50.0)
+    V.plot_session_qa(s)
+    r = V.plot_activity_raster_data(small_session)
+    assert r["vmin"] == 0.0  # deconvolved is an event kind

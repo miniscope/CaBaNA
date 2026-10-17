@@ -12,6 +12,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 from scipy.stats import spearmanr
 
@@ -541,7 +542,8 @@ def plot_decoded_trajectory_data(
     ``units`` (per axis, from ``session.meta["signal_units"]``; ``""`` when
     unknown), ``error`` (window frames) and ``error_cdf`` (``{"x", "y"}`` over all
     decoded frames), ``median_error``, ``chance_error``, ``t_range``.  For a 2-D
-    grid also ``path_true`` / ``path_decoded`` ``(n_win, 2)``, ``accuracy_map``
+    grid also ``path_true`` / ``path_decoded`` ``(n_win, 2)`` (raw bin centres, no jitter), ``decoded_valid`` ``(n_win,)`` bool
+    (False where a frame was not decoded; break the path there), ``bin_width`` ``[dx, dy]``, ``accuracy_map``
     ``(ny, nx)`` -- the fraction of frames whose true bin was decoded exactly, NaN
     for bins never visited -- and its ``extent`` ``[x0, x1, y0, y1]``; for a 1-D
     grid those are ``None``.  ``kind="decoded_trajectory"``.
@@ -609,12 +611,16 @@ def plot_decoded_trajectory_data(
         "chance_error": float(np.asarray(ex["chance_error"]).ravel()[0]),
         "path_true": None,
         "path_decoded": None,
+        "decoded_valid": None,
+        "bin_width": None,
         "accuracy_map": None,
         "extent": None,
     }
     if n_axes == 2:
         out["path_true"] = truth[:, win].T
         out["path_decoded"] = dec[:, win].T
+        out["decoded_valid"] = ok[win]
+        out["bin_width"] = [float(np.median(np.diff(e))) for e in topo.edges]
         xe, ye = topo.edges
         out["extent"] = [float(xe[0]), float(xe[-1]), float(ye[0]), float(ye[-1])]
         conf = ex.get("confusion")
@@ -647,7 +653,7 @@ def plot_decoded_trajectory(
     panel per grid axis shows the true coordinate (grey; from the session signal of
     the same name when present, otherwise the bin centre) and the decoded bin centre
     (colour; gaps where a frame was not decoded).  For a 2-D grid a path panel draws
-    the true path (grey) and the decoded path (coloured by time) in arena
+    the true path (grey) and the decoded path (coloured by time; a small seeded jitter inside each bin is purely cosmetic) in arena
     coordinates, and a map panel shows, per true bin, the fraction of frames decoded
     to exactly that bin (unvisited bins in grey).  The last panel is the cumulative
     distribution of the per-frame error with the median and the chance level (always
@@ -721,7 +727,19 @@ def plot_decoded_trajectory(
     if two_d:
         pt, pd_ = d["path_true"], d["path_decoded"]
         ax_path.plot(pt[:, 0], pt[:, 1], color="0.7", lw=2.0, label="true")
-        sc = ax_path.scatter(pd_[:, 0], pd_[:, 1], c=t, s=6, cmap="viridis", label="decoded")
+        # cosmetic: seeded jitter (+/-15% of a bin) so repeat visits to a bin do not collapse
+        rng = np.random.default_rng(0)
+        jit = rng.uniform(-0.15, 0.15, pd_.shape) * np.asarray(d["bin_width"])
+        pj = pd_ + jit
+        good = np.asarray(d["decoded_valid"], bool)
+        seg_ok = good[:-1] & good[1:]
+        segs = np.stack([pj[:-1], pj[1:]], axis=1)[seg_ok]
+        lc = LineCollection(segs, cmap="viridis", linewidths=0.8, alpha=0.7)
+        lc.set_array(0.5 * (t[:-1] + t[1:])[seg_ok])
+        lc.set_clim(t.min(), t.max())
+        ax_path.add_collection(lc)
+        ax_path.autoscale_view()
+        sc = lc
         fig.colorbar(sc, ax=ax_path, label="time (s)", fraction=0.05, pad=0.02)
         ax_path.set_aspect("equal", adjustable="datalim")
         ax_path.set_xlabel(axis_label(d["axis_names"][0], d["units"][0]))

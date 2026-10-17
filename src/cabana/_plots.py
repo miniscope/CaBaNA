@@ -157,6 +157,15 @@ def _p_text(sh: Any, idx: Any) -> tuple[str, bool]:
     return txt, txt.endswith("(floor)")
 
 
+def _unit_of(label: str) -> str:
+    """Unit in the trailing parentheses of an axis label, ``""`` if none."""
+    return label[label.rfind("(") + 1 : -1] if label.endswith(")") else ""
+
+
+def _tick_fmt(v: float) -> str:
+    return f"{np.round(float(v), 1):g}"
+
+
 def _hex(c: Any) -> str:
     return to_hex(c)
 
@@ -454,10 +463,11 @@ def plot_rate_maps_data(
         floor = False
         p = np.nan
         if values.ndim == 1:
-            title += f"\n{result.metric}={values[c]:.3g}"
+            unit = _unit_of(metric_label(result.metric, result.params))
+            title += f"\n{values[c]:.3g}" + (f" {unit}" if unit else "")
             if sh is not None and np.ndim(sh.p_value) == 1:
                 txt, floor = _p_text(sh, c)
-                title += f", {txt}"
+                title += f" · {txt}"
                 p = float(sh.p_value[c])
         titles.append(title)
         floors.append(floor)
@@ -573,6 +583,10 @@ def plot_rate_maps(
         nrows, ncols, figsize=(2.6 * ncols, 2.4 * nrows + 0.4), squeeze=False, layout="constrained"
     )
     flat = list(axes.ravel())
+    titles, notes = list(d["titles"]), list(d["notes"])
+    if ncols > 5:  # narrow panels: abbreviate the floor flag, explain it in the footer
+        titles = [t.replace(" (floor)", "*") for t in titles]
+        notes = [("* " + x if x == FLOOR_NOTE else x) for x in notes]
     maps = d["rate_maps"]
     cm = plt.get_cmap(cmap).with_extremes(bad=d["unvisited_color"])
     state_names = d["state_names"]
@@ -585,7 +599,7 @@ def plot_rate_maps(
         if k >= n:
             ax.axis("off")
             continue
-        ax.set_title(d["titles"][k], fontsize=8)
+        ax.set_title(titles[k], fontsize=8)
         rate_axes.append(ax)
         m = maps[k]
         if lay == "grid2d":
@@ -629,15 +643,15 @@ def plot_rate_maps(
             f"({paging['n_total']} cells, {paging['max_cells']} per page)",
             fontsize=8,
         )
-    if d["notes"]:
-        fig.supxlabel("\n".join(d["notes"]), fontsize=7, x=0.01, ha="left")
+    if notes:
+        fig.supxlabel("\n".join(notes), fontsize=7, x=0.01, ha="left")
     return fig
 
 
 def _grid_ticks(ax: Any, d: dict[str, Any]) -> None:
     xe, ye = d["edges"]
-    ax.set_xticks([xe[0], xe[-1]])
-    ax.set_yticks([ye[0], ye[-1]])
+    ax.set_xticks([xe[0], xe[-1]], [_tick_fmt(xe[0]), _tick_fmt(xe[-1])])
+    ax.set_yticks([ye[0], ye[-1]], [_tick_fmt(ye[0]), _tick_fmt(ye[-1])])
     ax.tick_params(labelsize=6)
     ax.set_xlabel(d["axis_labels"][0], fontsize=7)
     ax.set_ylabel(d["axis_labels"][1], fontsize=7)
@@ -718,11 +732,11 @@ def plot_split_half_maps_data(
     sh = result.shuffle
     titles, floors = [], []
     for c in shown:
-        t = f"{_cell_label(result, c)}  r={values[c]:.2f}"
+        t = f"{_cell_label(result, c)}\nr={values[c]:.2f}"
         floor = False
         if sh is not None and np.ndim(sh.p_value) == 1:
             txt, floor = _p_text(sh, c)
-            t += f", {txt}"
+            t += f" · {txt}"
         titles.append(t)
         floors.append(floor)
     notes = []
@@ -1179,6 +1193,8 @@ def plot_metric_strip_data(
     lo = np.asarray(sh.null_lo, float)[order] if sh is not None else None
     hi = np.asarray(sh.null_hi, float)[order] if sh is not None else None
     n_sig = int(sig_o.sum())
+    pop = result.level == "population"
+    labels = ordered_names(result.state_names, v.size) if pop else None
     title = f"{result.name or result.metric}"
     if sh is not None:
         title += f": {n_sig}/{order.size} significant"
@@ -1189,7 +1205,9 @@ def plot_metric_strip_data(
         metric=result.metric,
         values=v[order],
         cells=order.astype(int),
-        cell_labels=[_cell_label(result, int(c)) for c in order],
+        cell_labels=(
+            [labels[int(c)] for c in order] if pop else [_cell_label(result, int(c)) for c in order]
+        ),
         null_lo=lo,
         null_hi=hi,
         significant=np.asarray(sig_o, bool),
@@ -1197,12 +1215,12 @@ def plot_metric_strip_data(
         n_total=int(n_total),
         sorted=bool(sort),
         ylabel=metric_label(result.metric, result.params),
-        xlabel="cell (sorted by value)" if sort else "cell",
+        xlabel=("state" if pop else "cell") + (" (sorted by value)" if sort else ""),
         title=title,
     )
 
 
-@register_plot("metric_strip", data=plot_metric_strip_data, level="cell", requires=("values:1d",))
+@register_plot("metric_strip", data=plot_metric_strip_data, level="any", requires=("values:1d",))
 def plot_metric_strip(
     result: MetricResult, *, sort: bool = True, max_cells: int | None = None, ax: Any = None
 ) -> Figure:
