@@ -14,7 +14,7 @@ spot-checked against the code by the coordinator.
 | A: safety net and contracts | done | `2a1e940`, `0af355a` | CI, format 2 persistence, per-analysis seeds, provenance, `n_jobs`, resumable `run_set`, golden and property tests |
 | B: parameters, sweeps, provenance | done | `26aca15`, `1326010`, `d660898` | `_kernels`, `Selection` + parameter paths, `Selector` stage, `cabana.sweep` with guard rail, `auto_smooth_sigma`, `auto_null_timescale`, demo figures 28–29, notebook section 5. F1 (kernels) and F4 (tuning export: partially, via `Selection`) pulled forward |
 | C: real data in | done except C8 layers | `3d01847`, `3a3b22b`, `bd70127` | cell metadata and QC, activity conditioning, mask composition, behaviour transforms, alignment, Miniscope-format loaders, `load_calab`, `load_session_dir`, three-chamber fixture, `PLUGINS.md` + `check_plugin`. Deferred: `Session.layers` (multiple activity representations side by side); "preprocess before transforms" resolved by writing Transforms instead |
-| D: evidence-first presentation | not started | | `plot_data` layer exists only for the sweep plots |
+| D: evidence-first presentation | done (2026-10-17) | `ab98aed`, `76cd2c2`, `ae4116a` | `_data` companion for every plot (versioned contract, strict JSON), plot registry with `default_plots`, `result.plot` / `plot_all`, shared style, per-cell evidence cards, raster / population tuning / session QA / analysis agreement views, and the D6 figure fixes; guide in `docs/PLOTS.md` |
 | E: metrics and nulls | not started | | |
 | F: CaLab integration | F1 done; F2–F6 open | | licence decision still pending |
 
@@ -95,14 +95,14 @@ subagents). Phases are ordered by dependency, not importance.
 
 ### Phase D: evidence-first presentation
 
-| # | Item | Effort | Source |
-|---|---|---|---|
-| D1 | `plot_data` layer: `<plot>_data(...) -> dict` of JSON-serialisable arrays, labels, units, state colours, significance; matplotlib functions become renderers; versioned alongside the results schema | M–L | Plots, CaLab |
-| D2 | Plot registry: `Metric.default_plots`, `cabana.plots.plot(result, session)`, `result.plot()`, `ResultSet.plot_all()`, `save_figures` | S–M | Plots |
-| D3 | `plot_cell_card(session, results, cell)`: rate map or tuning, null histogram per analysis with raw and adjusted p, PETH/raster if events, metric strip, trace with behaviour shading; `plot_cell_cards(cells="significant")` | M | Plots |
-| D4 | Shared style: `use_style()`, `state_colors(session)` memoised per state space, one significance marker, unit-bearing axis labels, colour-blind-safe palette, warn above 20 states | S | Plots |
-| D5 | Missing views: `plot_activity_raster` with behaviour ribbon, `plot_population_tuning` sorted by peak with cell IDs, `plot_session_qa` (occupancy, bout counts, excluded fraction, dropped frames), `plot_analysis_agreement` (UpSet/Jaccard, −log10 p_adj grid) | M | Plots |
-| D6 | Specific fixes: rate maps need colourbar/occupancy/units and an explanation of the p floor; PETH sorted by latency with colourbar and SEM; decoded trajectory as 2-D path plus posterior heatmap; joint histogram per-panel or lift scaling by default; NaN drawn as unvisited rather than 0; `max_cells` paging; ground-truth figure overlays adjusted FPR | S each | Plots |
+| # | Item | Effort | Source | Status |
+|---|---|---|---|---|
+| D1 | `plot_data` layer: `<plot>_data(...) -> dict` of JSON-serialisable arrays, labels, units, state colours, significance; matplotlib functions become renderers; versioned alongside the results schema | M–L | Plots, CaLab | done: every plot has a `_data` companion; `check_plot_data` in the tests |
+| D2 | Plot registry: `Metric.default_plots`, `cabana.plots.plot(result, session)`, `result.plot()`, `ResultSet.plot_all()`, `save_figures` | S–M | Plots | done |
+| D3 | `plot_cell_card(session, results, cell)`: rate map or tuning, null histogram per analysis with raw and adjusted p, PETH/raster if events, metric strip, trace with behaviour shading; `plot_cell_cards(cells="significant")` | M | Plots | done: `plot_cell_card`, `plot_cell_cards` |
+| D4 | Shared style: `use_style()`, `state_colors(session)` memoised per state space, one significance marker, unit-bearing axis labels, colour-blind-safe palette, warn above 20 states | S | Plots | done |
+| D5 | Missing views: `plot_activity_raster` with behaviour ribbon, `plot_population_tuning` sorted by peak with cell IDs, `plot_session_qa` (occupancy, bout counts, excluded fraction, dropped frames), `plot_analysis_agreement` (UpSet/Jaccard, −log10 p_adj grid) | M | Plots | done |
+| D6 | Specific fixes: rate maps need colourbar/occupancy/units and an explanation of the p floor; PETH sorted by latency with colourbar and SEM; decoded trajectory as 2-D path plus posterior heatmap; joint histogram per-panel or lift scaling by default; NaN drawn as unvisited rather than 0; `max_cells` paging; ground-truth figure overlays adjusted FPR | S each | Plots | done; the decoded-trajectory path is honest but busy on coarse grids |
 
 ### Phase E: metrics and nulls
 

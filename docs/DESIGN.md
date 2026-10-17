@@ -66,16 +66,17 @@ plugin points. The middle is shared.
    the results: `significant_cells`, overlaps, clustering and, since the fifth
    increment, the **criteria layer** (`_criteria.py`): `Criteria` / `Clause`
    rules evaluated by `classify` into per-cell class labels.
-6. **Plots.** Functions that look at `StateSpace.kind` and `topology` to
-   decide how to draw. They live in `_plots.py`, `_plots_events.py`,
-   `_plots_posthoc.py`, `_plots_cohort.py` and `_plots_information.py` behind
-   the `cabana.plots` facade (20 functions: `plot_behavior_overview`,
-   `plot_classification`, `plot_clusters`, `plot_cohort_fractions`, `plot_cross_session`,
-   `plot_decoded_trajectory`, `plot_event_raster`, `plot_ground_truth_recovery`,
-   `plot_hierarchical_bootstrap`, `plot_information_comparison`,
-   `plot_joint_histogram`, `plot_level_sweep`, `plot_metric_scatter`,
-   `plot_overlap`, `plot_overlap_matrix`, `plot_peth`, `plot_population_matrix`,
-   `plot_rate_maps`, `plot_shuffle_distribution`, `plot_tuning_heatmap`).
+6. **Plots.** Three layers (see "Plots" below and [`PLOTS.md`](PLOTS.md)):
+   a *data* layer (`plot_<x>_data(...) -> dict`, everything a figure shows, no
+   matplotlib), *renderers* (`plot_<x>(...) -> Figure`, drawn from that dict
+   alone, looking at `StateSpace.kind` and `topology` to decide how), and a
+   *registry* (`Metric.default_plots`, `cabana.plots.plot`, `result.plot`,
+   `ResultSet.plot_all`). Modules: `_plot_style.py`, `_plot_data.py`,
+   `_plot_registry.py`, and the renderers in `_plots.py`, `_plots_events.py`,
+   `_plots_information.py`, `_plots_posthoc.py`, `_plots_cohort.py`,
+   `_plots_sweep.py`, `_plots_views.py` and `_plots_card.py`, all behind the
+   `cabana.plots` facade (`len(cabana.plots.__all__)` is 82 names: the renderers
+   and their `_data` companions plus the registry and style helpers).
 
 ## Core objects (`src/cabana/_models.py`)
 
@@ -303,27 +304,51 @@ Skaggs convention), then divided. Smoothing with no topology raises.
 | `population_vector_overlap` | population | `(n_states, n_states)` | Rate maps `(n_cells, n_states)`; `similarity="cosine"` (default) or `"pearson"` between every pair of state population vectors; `normalize_cells=True` divides each cell's map by its max first; invalid states NaN. Extras: `rate_map`. No `compute_shifted` (a common shift does not break cell–cell structure in a useful way here). | upper |
 | `pv_stability` | population | `(n_states,)` | Per state: Pearson r across cells between half-A and half-B population vectors (same halves as `split_half_stability`). Shifted via `[M_A \| M_B]` — a common shift keeps cell–cell structure and breaks the behavior link, which is the right null for "is the population code for this state stable". | upper |
 
-### `_plots.py` — matplotlib
+### Plots (`_plot_*.py`, `_plots*.py`)
 
-All return a `Figure` (accept `ax=None` where single-panel). Dispatch on
-`StateSpace.kind` / `topology`.
+Three layers; the user-facing guide is [`PLOTS.md`](PLOTS.md).
 
-- `plot_behavior_overview(session, *, position_signals=("x","y"), states=None)`:
-  trajectory (if x,y), speed trace with the speed mask shaded, ethogram raster
-  for each `bouts` state space, label strip for each `categorical` one.
-- `plot_rate_maps(session, result, cells, ncols=6)`: grid → `imshow` of
-  `extras["rate_map"]` reshaped to `topology.shape` (NaN transparent),
-  annotated with value and p; otherwise bar chart per state.
-- `plot_shuffle_distribution(result, cell, state=None, ax=None)`: null
-  histogram, observed line, `null_lo/null_hi` lines, p in title.
-- `plot_tuning_heatmap(result, sort_by=None)`: cells × states heatmap of
-  `values` with significance markers; for `auroc` center the colormap at 0.5.
-- `plot_metric_scatter(result_x, result_y, ax=None)`: e.g. information vs
-  stability, points colored by joint significance (CaMAP summary scatter).
-- `plot_population_matrix(result)`: `imshow` of a population-level matrix with
-  state names on both axes.
-- `plot_ground_truth_recovery(session, resultset)`: for each planted
-  population, fraction detected vs. false-positive rate among untuned cells.
+**Plot-data layer (`_plot_data.py`).** Every renderer `plot_<x>` has a companion
+`plot_<x>_data(...) -> dict` holding everything the figure shows (arrays, labels,
+units, colours, significance flags, titles). The renderer draws from the dict and
+never goes back to the `MetricResult` or `Session`. Contract: `"kind"` (the plot
+name) and `"version"` (`PLOT_DATA_VERSION`, bumped when any dict's keys or meaning
+change); values are numpy arrays, scalars, strings, bools, `None`, dicts or lists
+(no `Figure`, pandas object or `Session`); NaN means "no data" and is drawn as
+unvisited, never zero. `to_json` writes strict JSON (NaN and inf become the same
+`{"__float__": ...}` sentinel as the results manifest), `from_json` reverses it,
+and `check_plot_data` asserts the contract and is applied to every `_data`
+function in the tests. This is what lets CaLab draw the same figure.
+
+**Renderers.** `_plots.py` (maps, tuning, strips, null histograms, ground truth,
+behaviour overview), `_plots_events.py` (PETH, event raster),
+`_plots_information.py` (joint histogram, decoded trajectory, information
+comparison, level sweep), `_plots_posthoc.py` (overlap, clusters,
+classification), `_plots_cohort.py`, `_plots_sweep.py` (sweep gallery, stability
+and facet plots), `_plots_views.py` (`plot_activity_raster`,
+`plot_population_tuning`, `plot_session_qa`, `plot_analysis_agreement`) and
+`_plots_card.py` (`plot_cell_card`, `plot_cell_cards`: one page per cell,
+assembled from the same `_data` functions and the registry's panel renderers).
+All return a `Figure`, never call `plt.show`.
+
+**Style (`_plot_style.py`).** `use_style()` (an rc context), `state_colors`
+(Okabe-Ito up to 8 states, `tab20` to 20, warning beyond, memoised on the names),
+one significance marker (`mark_significant`), `axis_label` / `metric_label` with
+units, `fmt_p` (`p=0.023`, `p<0.001`, `(floor)` at the shuffle resolution), and
+the unvisited-bin grey. Adjusted p-values are used for every significance mark
+whenever a correction was applied.
+
+**Registry (`_plot_registry.py`).** `@register_plot(name, data=, needs_session=,
+level=, requires=, defaults=)` stores a `PlotSpec`. `requires` is a tuple from
+`"shuffle"`, `"null"`, `"extras:<key>"`, `"values:1d"`, `"values:2d"`,
+`"topology"`, `"ground_truth"`; `plots_for(result, session)` returns the
+metric's `default_plots` that apply, falling back to generic views for metrics
+without any. `defaults(result, session)` fills keyword arguments the caller did
+not give (for example which cells). `plot(result, session, kind=None, **kw)`,
+`MetricResult.plot` / `.plots` and `ResultSet.plot_all(session, out_dir=...)`
+dispatch through it inside `use_style()`; `plot_all` skips defaults whose
+requirements fail. `Metric.default_plots` (in `_registry.py`) is the per-metric
+tuple of registry names. Re-registering a name replaces the entry.
 
 ### `examples/demo.py`, `notebooks/cabana_demo.ipynb`, `tests/`
 
@@ -714,7 +739,7 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 
 `cabana.sweep` sits above `Pipeline`: it needs only `set_param`, `iter_run`/`run` and `RunContext`. When no swept path touches `transforms.` or `preprocess.`, it consumes `iter_run`'s `("session", ...)` and `("pipeline", effective)` events once (transforms, preprocess and selectors run; the generator is closed before any analysis), then runs an analyses-only copy of the effective pipeline per grid point on that prepared session, so a sigma sweep never repeats the transforms. A swept path overrides whatever a selector chose for it; the selector's `Selection` stays in provenance. A transform sweep reruns the full pipeline per point and records each point's state-space layout (`SweepResult.layouts`) so plots can lay out rate maps whose grid changes. `SweepResult` is a plain dataclass (picklable); `save` writes `index.json` plus one `ResultSet` zip per point. `pick` is the only place a sweep becomes a `Selection`, and it refuses significance-based criteria unless told otherwise (STATISTICS.md, "Sweeps").
 
-The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_sweep_stability_data` and `plot_sweep_data` return plain dicts of arrays and labels without importing matplotlib types into their results, and `plot_sweep_gallery`, `plot_sweep_stability` and `plot_sweep` only render those dicts. This is the first piece of the plot-data layer (roadmap D1) the CaLab port needs; `plot_level_sweep` is now a thin wrapper over `plot_sweep`.
+The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_sweep_stability_data` and `plot_sweep_data` return plain dicts of arrays and labels without importing matplotlib types into their results, and `plot_sweep_gallery`, `plot_sweep_stability` and `plot_sweep` only render those dicts. These were the first pieces of the plot-data layer (roadmap D1), now general; `plot_level_sweep` is now a thin wrapper over `plot_sweep`.
 
 ## Behaviour signal transforms (`src/cabana/_transform_behavior.py`)
 

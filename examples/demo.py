@@ -30,7 +30,8 @@ without the shuffle test (figures 28 and 29), and runs the number-of-levels comp
 Outputs in --out: results.csv, results.zip and session.zip (reload with
 `cabana.ResultSet.load` / `cabana.Session.load`), nulls_compared.csv, levels_sweep.csv,
 selections.json, provenance files and figures 01 to 29 (20 to 26 are the amplitude / decoding
-figures, 27 the classification, 28a/28b the smoothing choice, 29 the smoothing stability).
+figures, 27 the classification, 28a/28b the smoothing choice, 29 the smoothing stability), and the evidence-first views (all/, cards/, 30 to 33,
+rate_maps_data.json).
 """
 
 from __future__ import annotations
@@ -770,6 +771,37 @@ def smoothing_choice(session, selections: list[dict], out: Path, n_shuffles: int
     )
 
 
+def evidence_first_views(session, results, place_result, out: Path) -> int:
+    """Every default figure, cell cards, and the population/QA/agreement views; returns the count."""
+    n = 0
+    with cabana.plots.use_style():
+        # one call: every default figure of every analysis, keyed "<analysis>/<plot>"
+        written = results.plot_all(session, out_dir=out / "all")
+        n += len(written)
+        # one card per significant cell: tuning, null with raw and adjusted p, trace
+        cards = cabana.plots.plot_cell_cards(
+            session, results, cells="significant", max_cards=6, out_dir=out / "cards"
+        )
+        n += len(cards)
+        # population and session-level views
+        save_fig(
+            cabana.plots.plot_activity_raster(session, max_cells=60), out / "30_activity_raster.png"
+        )
+        save_fig(cabana.plots.plot_session_qa(session), out / "31_session_qa.png")
+        for kind in ("jaccard", "upset"):
+            fig = cabana.plots.plot_analysis_agreement(results, kind=kind)
+            save_fig(fig, out / f"32_analysis_agreement_{kind}.png")
+        save_fig(
+            cabana.plots.plot_population_tuning(place_result, session),
+            out / "33_population_tuning_place.png",
+        )
+        n += 5
+    # the same figure as data: what a non-Python front end (CaLab) would draw from
+    data = cabana.plots.plot_rate_maps_data(session, place_result, cells=[0, 1, 2])
+    (out / "rate_maps_data.json").write_text(cabana.plots.to_json(data))
+    return n
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
@@ -1236,6 +1268,10 @@ def main(argv=None) -> int:
     print(
         recovery_table(session, results).to_string(index=False, float_format=lambda v: f"{v:.2f}")
     )
+    print("\nEvidence-first views (docs/PLOTS.md):")
+    n_views = evidence_first_views(session, results, ic_pos, out)
+    print(f"  {n_views} figures written to {out}/all, {out}/cards and {out}")
+
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0
 

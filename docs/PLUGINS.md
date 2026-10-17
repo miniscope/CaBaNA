@@ -324,6 +324,28 @@ to exercise masking; pass `target=` to choose.
 - For results that must stay stable, add a golden file (see "Golden regression
   suite" in `docs/DESIGN.md`).
 
+## Plots for your metric
+
+A metric with no plots falls back to generic views. To give yours its own, write
+a `plot_<x>_data(result, ...) -> dict` function and a renderer that draws from
+it, register the renderer, and name it in the metric:
+
+```python
+from cabana.plots import register_plot
+
+@register_plot("active_fraction_bars", data=active_fraction_bars_data,
+               level="cell", requires=("values:2d",))
+def plot_active_fraction_bars(result, cells=None): ...   # returns a Figure
+
+class ActiveFraction(Metric):
+    default_plots: ClassVar[tuple[str, ...]] = ("active_fraction_bars", "tuning_heatmap")
+```
+
+`result.plot(session)` and `results.plot_all(session, out_dir=...)` then draw it.
+A complete, tested example, the `requires` conditions, the `defaults` hook and the
+style rules (`state_colors`, one significance marker, NaN as unvisited grey) are in
+[`PLOTS.md`](PLOTS.md), section 5.
+
 ## 10. What a front end sees
 
 `cabana.describe()` returns `plugins[kind][name]` with the pydantic JSON schema

@@ -165,6 +165,15 @@ def overview_figure(ses, geo_name: str = "investigation_geo"):
     return fig
 
 
+def _significant_ids(session, result, limit: int = 4) -> list:
+    """Ids of cells significant in at least one state of ``result``, strongest first."""
+    sig = result.shuffle.significant
+    sig = sig.reshape(sig.shape[0], -1).any(axis=1)
+    strength = np.nanmax(np.abs(np.nan_to_num(result.values - 0.5)).reshape(len(sig), -1), axis=1)
+    order = [int(i) for i in np.argsort(-strength) if sig[i]][:limit]
+    return [session.cell_ids[i] for i in order]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -350,6 +359,19 @@ def main(argv=None) -> int:
     cls = cabana.classify(rs, tests)
     print("\nClassification:", cls.counts())
     save_fig(cabana.plots.plot_classification(cls), out / "06_classification.png")
+
+    # ---- evidence-first views ------------------------------------------------------------
+    # one card per cell that is significant for auROC (adjusted p when a correction was used):
+    # tuning, null histogram with raw and adjusted p, PETH and the trace with behaviour shading
+    cards = cabana.plots.plot_cell_cards(
+        session, rs, cells=_significant_ids(session, au), max_cards=4, out_dir=out / "cards"
+    )
+    print(f"\nwrote {len(cards)} cell cards in {out / 'cards'}")
+    save_fig(cabana.plots.plot_session_qa(session), out / "session_qa.png")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        written = rs.plot_all(session, out_dir=out / "all")
+    print(f"wrote {len(written)} default figures in {out / 'all'}")
 
     # ---- 7. save -------------------------------------------------------------------------
     rs.save(out / "results.zip")

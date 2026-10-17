@@ -142,7 +142,13 @@ results.to_dataframe()    # cell × state × metric, with p-values and an `analy
 results.save("results.zip")  # later: cabana.ResultSet.load("results.zip")
 # a cell class from the results: place cells = information AND split-half stability significant
 cabana.classify(results, [cabana.place_cell_criteria("position")]).counts()
+
+# figures: every default plot of every analysis, then one evidence card per significant cell
+results.plot_all(session, out_dir="figs")
+cabana.plots.plot_cell_cards(session, results, cells="significant", out_dir="figs/cards")
 ```
+
+[`docs/PLOTS.md`](docs/PLOTS.md) says what each figure shows and what to look for.
 
 Give an analysis your own name with `AnalysisSpec(name="...", ...)`; otherwise it is
 `metric[target]`, with `#<null>` or `#2` added when two analyses would collide.
@@ -185,6 +191,7 @@ block in it runs.
 ## Documentation
 
 - [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results; classifying cells.
+- [`docs/PLOTS.md`](docs/PLOTS.md): what each figure shows and what to look for, `plot_all`, cell cards, the plot-data layer, adding a plot for your metric.
 - [`docs/PLUGINS.md`](docs/PLUGINS.md): writing your own transform, preprocess step, metric, null or selector, and `check_plugin`.
 - [`docs/LOADERS.md`](docs/LOADERS.md): reading Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files, and the clock convention.
 - [`docs/DESIGN.md`](docs/DESIGN.md): architecture, module specs, design history.
