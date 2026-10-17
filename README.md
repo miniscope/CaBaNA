@@ -151,6 +151,12 @@ For the full end-to-end run on simulated data with planted ground truth, try
 `python examples/demo.py --quick` (about 20–40 s; writes figures, tables and the
 pipeline YAML to `examples/output/`; the full run takes a few minutes) or open `notebooks/cabana_demo.ipynb`.
 
+If your data is a session folder (activity, miniscope and camera timestamps, position, head orientation,
+annotated epochs, a `session.yaml`), start with the social-behaviour walkthrough instead:
+`python examples/three_chamber.py` (about 15 s, runs on the bundled simulated three-chamber session) or
+`notebooks/three_chamber_walkthrough.ipynb`. It goes from the folder to QC, geometry-derived investigation,
+a pipeline, cell classes and figures.
+
 ## Bring your own data
 
 For Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files use

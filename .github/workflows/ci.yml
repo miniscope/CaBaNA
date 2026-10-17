@@ -66,3 +66,14 @@ jobs:
           nb = nbformat.read("notebooks/cabana_demo.ipynb", as_version=4)
           NotebookClient(nb, timeout=900, kernel_name="python3", resources={"metadata": {"path": "notebooks"}}).execute()
           PY
+      - name: Three-chamber script
+        run: python examples/three_chamber.py --quick --out /tmp/three_chamber_out
+      - name: Execute three-chamber notebook
+        run: |
+          python - <<'PY'
+          import nbformat
+          from nbclient import NotebookClient
+
+          nb = nbformat.read("notebooks/three_chamber_walkthrough.ipynb", as_version=4)
+          NotebookClient(nb, timeout=900, kernel_name="python3", resources={"metadata": {"path": "notebooks"}}).execute()
+          PY

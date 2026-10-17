@@ -1,5 +1,9 @@
 # Bring your own data
 
+> If your data looks like a session folder (activity, timestamps, position, head orientation and
+> annotation files), start with the walkthrough: `examples/three_chamber.py` or
+> `notebooks/three_chamber_walkthrough.ipynb`. This guide covers building a `Session` from arrays.
+
 This guide takes you from arrays you already have (calcium traces, a DeepLabCut
 position file, a BORIS export, a distance trace, maybe syllable labels) to
 results with p-values. If your files come from Minian, CaImAn, DeepLabCut, BORIS,
