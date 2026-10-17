@@ -11,9 +11,13 @@ from ._dlc import dlc_centroid, load_dlc
 from ._minian import load_minian
 from ._miniscope import load_head_orientation, load_miniscope_timestamps, timing_report
 from ._moseq import load_moseq
+from ._session_dir import SessionDirConfig, load_session_dir, write_session_dir_template
 from ._tabular import load_epochs_csv, load_position_csv
 
 __all__ = [
+    "SessionDirConfig",
+    "load_session_dir",
+    "write_session_dir_template",
     "dlc_centroid",
     "infer_fs",
     "load_boris",

@@ -1,0 +1,25 @@
+# cabana session-folder config for the simulated three-chamber fixture
+# (config.yaml is the lab member's original file and is left untouched).
+name: sim3ch
+neural:
+  file: neural_deconvolved.npy
+  orientation: cells_x_frames
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {denoised: neural_denoised.npy, raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  position: {file: position.csv, frame_column: frame, columns: [x, y], missing_value: -1, units: cm, max_gap_s: 0.5}
+  head_orientation: {file: headOrientation.csv, format: quaternion_wxyz, output: head_direction}
+  epochs:
+    zones: {file: zone_annotations.csv, exclusive: true, merge_gap_s: 0.5, min_duration_s: 0.5}
+    investigation: {file: investigation_annotations.csv, exclusive: false, merge_gap_s: 0.5, min_duration_s: 0.5}
+arena:
+  size: [60, 30]
+  units: cm
+  zones: {left: [0, 20], center: [20, 40], right: [40, 60]}
+  enclosures:
+    left_cup: {center: [0, 15], radius: 9, contents: stimulus}
+    right_cup: {center: [60, 15], radius: 9, contents: empty}
+  dividers: {left: [20, 9, 30], right: [40, 0, 21]}
+subjects: {focal: sim3ch, stimulus: {left_cup: stimulus_mouse, right_cup: null}}

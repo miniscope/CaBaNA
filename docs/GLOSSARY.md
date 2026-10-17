@@ -64,3 +64,10 @@
 - **dropped frame**: a frame the camera or miniscope never wrote, seen as an interval above 1.5 times the median between stamps; `timing_report` estimates how many each gap hides (`round(dt / median) - 1`).
 - **clock offset / scale**: the two numbers of `fit_clock`, `t_b = scale * (t_a - offset_s)`; the offset is how long clock A had run when clock B started, the scale corrects drift. `apply_clock` applies them; with `scale = 1` it is `t_neural = t_video - t_offset_s`.
 - **timing report**: the dict from `timing_report(t, fs_nominal)` (frame count, `fs_median` / `fs_mean`, dropped frames and gap positions, jitter, first stamp); the `timing_check` step stores it in `meta["timing"]`.
+- **zone**: a named region of the arena (rect, polygon, or x-range expanded to a rect); `zone_occupancy` or an annotated zone file turns it into a categorical `StateSpace`. Stored in `meta["arena"]["zones"]`.
+- **enclosure**: a cup or cage the subject cannot enter, a disc with `center`, `radius` and `contents` (`stimulus`, `empty`); `meta["enclosures"]`. Distances to it are measured to its edge.
+- **investigation bout**: a run of frames in which the animal is close to an enclosure and facing it, either scored by a person (epochs) or derived by `investigation_from_geometry` (distance to the edge at most `max_distance`, heading within `max_angle_deg` of the bearing to the target; merge gap and minimum duration as in `bouts_to_states`).
+- **focal animal / stimulus animal**: the recorded animal and the animal(s) in the enclosures; `meta["subjects"]`, `info.animal` (focal) and `info.extra["stimulus"]`.
+- **epoch**: one row `label, start_s, stop_s` of an annotation file, on the session clock; a table of them is a `BoutTable` (`load_epochs_csv`).
+- **frame labels**: a per-frame categorical annotation; as epochs it becomes states with `bouts_to_states`, as integers with `labels_to_states`.
+- **session folder config**: the `session.yaml` / `config.yaml` read by `load_session_dir` (schema `SessionDirConfig`) that names the files, orientation, clocks, arena and subjects of one recording; `write_session_dir_template` writes a commented example.

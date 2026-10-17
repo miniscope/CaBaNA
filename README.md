@@ -179,6 +179,7 @@ block in it runs.
 ## Documentation
 
 - [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results; classifying cells.
+- [`docs/PLUGINS.md`](docs/PLUGINS.md): writing your own transform, preprocess step, metric, null or selector, and `check_plugin`.
 - [`docs/LOADERS.md`](docs/LOADERS.md): reading Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files, and the clock convention.
 - [`docs/DESIGN.md`](docs/DESIGN.md): architecture, module specs, design history.
 - [`docs/ANALYSIS_COVERAGE.md`](docs/ANALYSIS_COVERAGE.md): survey of analyses in the literature and what is implemented.

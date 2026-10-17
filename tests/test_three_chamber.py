@@ -175,3 +175,90 @@ def test_small_pipeline(prepared):
     au = rs.get(name="auroc_inv").values
     assert au.shape == (nc, 2) and np.isfinite(au).any()
     assert rs.to_dataframe()["cell"].nunique() == nc
+
+
+# ---- geometry-derived investigation vs the lab's annotations
+
+_PAIR = {"left_cup": "investigate_stimulus", "right_cup": "investigate_empty"}
+
+
+def _bout_match(pred, ref, tol):
+    """Number of ``pred`` bouts with a ``ref`` bout whose start and stop are both within tol s."""
+    return sum(
+        any(abs(a - c) <= tol and abs(b - d) <= tol for c, d in zip(*ref, strict=True))
+        for a, b in zip(*pred, strict=True)
+    )
+
+
+@pytest.fixture(scope="module")
+def derived(three_chamber_dir):
+    s = loaders.load_session_dir(three_chamber_dir)
+    return build(
+        "transform", {"name": "investigation_from_geometry", "output": "investigation_geo"}
+    ).apply(s)
+
+
+def _agreement(s, tol=0.5):
+    from cabana._transform_behavior import states_to_bouts
+
+    geo, ann = s.states["investigation_geo"], s.states["investigation"]
+    gb = states_to_bouts(geo, s.fs, t0=s.t[0])
+    ab = states_to_bouts(ann, s.fs, t0=s.t[0])
+    out = {}
+    for tgt, lab in _PAIR.items():
+        g = geo.onehot[:, geo.state_names.index(tgt)]
+        a = ann.onehot[:, ann.state_names.index(lab)]
+        ok = geo.support & ann.support
+        gi = [i for i, n in enumerate(gb.labels) if n == tgt]
+        ai = [i for i, n in enumerate(ab.labels) if n == lab]
+        gs, as_ = (gb.start_s[gi], gb.stop_s[gi]), (ab.start_s[ai], ab.stop_s[ai])
+        out[tgt] = dict(
+            agree=float((g[ok] == a[ok]).mean()),
+            n_pred=len(gi),
+            n_ann=len(ai),
+            precision=_bout_match(gs, as_, tol) / max(len(gi), 1),
+            recall=_bout_match(as_, gs, tol) / max(len(ai), 1),
+        )
+    return out
+
+
+def test_geometry_investigation_matches_annotations(derived):
+    geo = derived.states["investigation_geo"]
+    assert geo.state_names == ["left_cup", "right_cup"] and geo.exclusive
+    assert "investigation_geo_valid" in derived.masks
+    assert derived.meta["investigation_from_geometry"]["targets_used"]["left_cup"] == [0, 15, 9]
+    res = _agreement(derived)
+    print("geometry vs annotation:", res)
+    for tgt, r in res.items():
+        assert r["agree"] >= 0.97, (tgt, r)
+    st = res["left_cup"]
+    assert st["n_ann"] >= 3 and st["precision"] >= 0.8 and st["recall"] >= 0.8, st
+
+
+def test_geometry_needs_distance_and_angle(derived):
+    s = derived
+    loose = build(
+        "transform",
+        {"name": "investigation_from_geometry", "max_distance": 50.0, "output": "g2"},
+    ).apply(s)
+    tight = build(
+        "transform",
+        {"name": "investigation_from_geometry", "max_angle_deg": 5.0, "output": "g3"},
+    ).apply(s)
+    n = lambda x, k: int(x.states[k].onehot.sum())  # noqa: E731
+    assert n(tight, "g3") < n(s, "investigation_geo") < n(loose, "g2")
+
+
+def test_pipeline_on_derived_investigation(derived):
+    cfg = ShuffleConfig(n_shuffles=20, min_shift_s=5.0, seed=2)
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                name="auroc_geo", metric={"name": "auroc"}, states="investigation_geo", shuffle=cfg
+            )
+        ]
+    )
+    _, rs = pipe.run(derived, progress=False)
+    r = rs.get(name="auroc_geo")
+    assert r.values.shape == (derived.n_cells, 2) and np.isfinite(r.values).any()
+    assert r.shuffle.null.shape == (20, derived.n_cells, 2)

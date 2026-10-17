@@ -128,6 +128,8 @@ Read the module; docstrings are the spec. Key points:
 
 ## Plugin contract (`src/cabana/_registry.py`)
 
+Authoring guide with worked examples and the `check_plugin` conformance helper: [`PLUGINS.md`](PLUGINS.md).
+
 Plugins are pydantic models whose fields are the parameters, registered by a
 class-level `name`:
 
@@ -725,3 +727,7 @@ Loaders populate `Session.cell_meta` (CaImAn `snr` / `r_values` / `cnn_preds` / 
 ## Clock alignment and timing (`src/cabana/_alignment.py`)
 
 Alignment happens before resampling, on the raw behavior times: `fit_clock` (least squares `t_b = scale * (t_a - offset_s)` from paired sync events) and `apply_clock` are plain functions, not steps, because they act on times that are not yet frames of a session. The registered preprocess steps work on a session already on the neural clock: `timing_check` (pure; `timing_report` into `meta["timing"]`, warns on dropped frames or jitter), `trim_to_overlap` (longest contiguous run where every `*_covered` mask or state support is True, via `select_frames`) and `resample` (non-integer `fs_target`: linear for continuous kinds, summed bins for event kinds, nearest for states, all-true for masks; delegates to `rebin` for an integer ratio and warns that integer re-binning is preferred). `ResampleSignal` gained `method` and `max_gap_s`, and omits both from `to_dict()` while at their defaults so recorded provenance, and the golden fixtures, do not change. `timing_report`, `load_miniscope_timestamps`, `load_head_orientation`, `load_position_csv` and `load_epochs_csv` live in `cabana.loaders`; the lab's three-chamber dataset (75 s slice, `scripts/slim_three_chamber.py`) is the end-to-end fixture.
+
+## Session folders and geometry-derived investigation (`_loaders/_session_dir.py`, `_transform_behavior.py`)
+
+`load_session_dir` replaces the hand assembly in `tests/test_three_chamber.py`: a typed pydantic config (`SessionDirConfig`, unknown keys rejected) names the activity file and its orientation, the two timestamps files, the position / head-orientation / epoch tables and the arena, and the loader composes the existing pieces (`load_miniscope_timestamps`, `timing_report`, `load_position_csv`, `load_head_orientation`, `load_epochs_csv`, `apply_clock`, and the registered `resample_signal`, `head_direction`, `bouts_to_states` transforms) rather than adding new readers. Validation is the lab's own spec (position frames a subset of the stamps, one head row per neural frame, strictly increasing time, stop at or after start, frame counts matching) with errors that name the field and file. The arena is stored in the layout `zone_occupancy` already reads, plus `meta["enclosures"]`, `meta["subjects"]` and per-clock `meta["timing"]`. `investigation_from_geometry` derives investigation states from position, heading and enclosure geometry (edge distance and bearing, then the `bouts_to_states` cleanup); on the three-chamber fixture it reproduces the annotations (about 99.9 % frame agreement, all bouts within 0.5 s), so the lab's scoring rule is testable rather than assumed.

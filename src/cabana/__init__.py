@@ -92,7 +92,17 @@ from ._preprocess import (
     ZscoreActivity,
 )
 from ._nulls import BoutShuffle, CircularShift, LabelShuffle
-from ._registry import Metric, Null, PreprocessStep, Transform, available, build, register
+from ._plugin_check import PluginReport, check_plugin
+from ._registry import (
+    Metric,
+    Null,
+    PreprocessStep,
+    Selector,
+    Transform,
+    available,
+    build,
+    register,
+)
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
@@ -128,11 +138,14 @@ __all__ = [
     "StateSpace",
     # plugin system
     "Metric",
+    "PluginReport",
+    "Selector",
     "Null",
     "PreprocessStep",
     "Transform",
     "available",
     "build",
+    "check_plugin",
     "register",
     # transforms
     "BinGrid",

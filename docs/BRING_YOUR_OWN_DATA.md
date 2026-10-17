@@ -22,6 +22,7 @@ count time from the start of the video, so the loaders take `t_offset_s`, the
 imaging start in video time, and compute `t_neural = t_video - t_offset_s`.
 [`LOADERS.md`](LOADERS.md) lists what each reads, the optional dependencies and
 the `pip` extras, the clock convention with a worked example, and the caveats.
+For a folder of files described by a YAML, `load_session_dir` builds the whole `Session` in one call.
 The rest of this guide builds the same objects by hand.
 
 ## 1. The clock convention
@@ -291,6 +292,35 @@ the later bout; prefer `merge_gap_s`. For syllables,
 `labels_to_states(mode_filter_s=0.2, min_run_s=0.1)` votes away single-frame
 flicker. `cabana.states_to_bouts(states, fs, merge_gap_s=..., min_duration_s=...)`
 turns any state space back into a `BoutTable` for export.
+
+### Social behaviour vocabulary
+
+How a lab's words map onto the framework (`load_session_dir` does most of it from one config,
+see [`LOADERS.md`](LOADERS.md#a-session-folder-with-a-config)):
+
+| lab term | framework |
+|---|---|
+| zone / chamber (left, centre, right) | arena zones in `meta["arena"]["zones"]`; `zone_occupancy` makes a categorical `StateSpace` from position, an annotated zone file makes one through `bouts_to_states(exclusive=True)` |
+| investigation, epoch, frame labels (`label, start_s, stop_s`) | a `BoutTable` (`load_epochs_csv`) turned into a boolean `StateSpace` by `bouts_to_states`; `states_to_bouts` goes back |
+| derived investigation | `investigation_from_geometry`: within `max_distance` of an enclosure edge and heading within `max_angle_deg` of it; one state per enclosure |
+| cup / enclosure | `meta["enclosures"]` (`center`, `radius`, `contents`); distance is measured to its edge |
+| stimulus animal, focal animal | `meta["subjects"]` and `info` (`animal` = focal, `extra["stimulus"]`) |
+| "frames x cells" | activity is cells x time: `orientation: frames_x_cells` transposes on load |
+| `-1` for a lost position | NaN (`missing_value: -1`); lost frames are outside the state support |
+| frame number | an index, not a time: join to the timestamps file by frame number |
+
+Investigation from geometry (the lab's annotation rule, "within 4 cm of an enclosure, head
+within 45 degrees"):
+
+```python
+ses = build("transform", {"name": "investigation_from_geometry", "max_distance": 4.0,
+                          "max_angle_deg": 45.0, "output": "investigation_geo"}).apply(ses)
+```
+
+Heading uses the `head_direction` convention (0 = +x, counter-clockwise); calibrate a
+quaternion's arbitrary zero with `head_direction(offset_deg=...)` first. On the simulated
+three-chamber slice it agrees with the annotations on 99.9 to 100 % of frames and finds every
+annotated bout within 0.5 s (zero offset needed).
 
 ## 5. Masks and support
 
@@ -657,49 +687,17 @@ per batch, so keep `n_shuffles / batch_size` at least `n_jobs`. For many session
 processes, saves each as it finishes and skips finished ones on a rerun. Colab
 gives you 2 cores, so `n_jobs=2` is the most you will gain there.
 
-## 12. A custom metric
+## 12. Your own metric, null, transform or step
 
-A metric is a pydantic class registered by name. Implement `compute` and return
-`(n_cells,)` or `(n_cells, n_states)`. Override `check_target` if the metric
-needs a particular kind of state space.
-
-```python
-from typing import ClassVar
-
-from cabana import Metric, register
-
-
-@register("metric")
-class FracActive(Metric):
-    """Fraction of frames with activity above zero, per cell and state."""
-
-    name: ClassVar[str] = "frac_active"
-
-    def check_target(self, target):
-        super().check_target(target)
-        # e.g. self.require_exclusive(target) if the metric needs one state per frame
-
-    def compute(self, activity, states, mask, fs):
-        m = states.masked(mask)  # (n_time, n_states) float, already restricted to the mask
-        return (activity > 0).astype(float) @ m / np.maximum(m.sum(0), 1)
-
-
-custom = Pipeline(
-    transforms=[t for t in transforms if t.get("output") == "social"],
-    analyses=[AnalysisSpec(metric={"name": "frac_active"}, states="social",
-                           shuffle=ShuffleConfig(n_shuffles=50))],
-)
-_, r = custom.run(make_session(load_session(5)))
-print(r.names(), r["frac_active[social]"].values.shape)
-```
-
-A metric can also define `compute_shifted` for a fast circular-shift null
-(see `information_content` for the pattern); without it the engine recomputes
-`compute` on every shuffle, which is correct but slower.
+Every stage is a registered plugin: a pydantic class with a `name`, `@register(kind)`
+and one method to implement (`compute`, `surrogate`, `apply` or `select`). See
+[`PLUGINS.md`](PLUGINS.md) for the contract, one tested example per kind (including
+a metric with the fast circular-shift path) and `cabana.check_plugin`, which checks
+a plugin before you trust its numbers.
 
 ## Where to go next
 
-- [`DESIGN.md`](DESIGN.md) for how the pieces fit, [`GLOSSARY.md`](GLOSSARY.md)
+- [`PLUGINS.md`](PLUGINS.md) to write your own plugins; [`DESIGN.md`](DESIGN.md) for how the pieces fit, [`GLOSSARY.md`](GLOSSARY.md)
   for terms, [`STATISTICS.md`](STATISTICS.md) for choosing a null.
 - `examples/demo.py` and `notebooks/cabana_demo.ipynb` for plots, decoders,
   population analyses and the GLM.

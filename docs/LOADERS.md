@@ -232,6 +232,90 @@ selects the recording. Frames without a syllable are `-1`; default names are
 `cell_qc_table(session)` (plus computed `fraction_finite`, `n_events`,
 `mean_rate_hz`) shows them for choosing `select_cells` thresholds.
 
+## A session folder with a config
+
+When a recording is a folder of files (activity, two timestamp files, position, head
+orientation, annotations) a YAML next to them says what is what, and one call builds the
+`Session`:
+
+```python
+from cabana.loaders import load_session_dir, write_session_dir_template
+
+write_session_dir_template("my_session")      # writes my_session/session.yaml, commented
+ses = load_session_dir("my_session")          # folder holding session.yaml / config.yaml, or the yaml
+```
+
+The folder is searched for `session.yaml`, then `config.yaml`; every path inside is relative to
+the YAML. The schema is the pydantic model `cabana.loaders.SessionDirConfig` (unknown keys are an
+error, so typos surface). Example, the simulated three-chamber fixture
+(`tests/data/simulated_3chamber/session.yaml`):
+
+```yaml
+name: sim3ch
+neural:
+  file: neural_deconvolved.npy        # .npy, or .npz plus `key:`
+  orientation: cells_x_frames         # or frames_x_cells (transposed on load)
+  kind: deconvolved                   # deconvolved | denoised | raw | dff | spike_counts | binary
+  timestamps: neural_timestamps.csv   # Miniscope timeStamps.csv; or omit and give `fs: 30.0`
+  cell_ids: null                      # or a list, or a text / .npy file
+  alternatives: {denoised: neural_denoised.npy}   # other layers; load_session_dir(activity="denoised")
+behavior:
+  timestamps: behavior_timestamps.csv # camera clock, same zero as the neural clock
+  clock: {offset_s: 0.0, scale: 1.0}  # optional: scale * (t - offset_s), see apply_clock
+  position: {file: position.csv, frame_column: frame, columns: [x, y], missing_value: -1, units: cm, max_gap_s: 0.5}
+  head_orientation: {file: headOrientation.csv, format: quaternion_wxyz, output: head_direction, offset_deg: 0}
+  signals: {wheel: {file: wheel.csv, columns: [speed]}}     # extra tables, joined like position
+  epochs:
+    zones: {file: zone_annotations.csv, exclusive: true, merge_gap_s: 0.5, min_duration_s: 0.5}
+    investigation: {file: investigation_annotations.csv, exclusive: false, merge_gap_s: 0.5, min_duration_s: 0.5}
+arena:
+  size: [60, 30]
+  units: cm
+  zones: {left: [0, 20], center: [20, 40], right: [40, 60]}  # [x0,y0,x1,y1], polygon, or x-range
+  enclosures: {left_cup: {center: [0, 15], radius: 9, contents: stimulus}}   # or [cx, cy, r]
+  dividers: {left: [20, 9, 30]}                              # recorded only
+subjects: {focal: sim3ch, stimulus: {left_cup: stimulus_mouse, right_cup: null}}
+```
+
+What the loader does, in order:
+
+1. Reads both timestamps files (`load_miniscope_timestamps` rules) and requires strictly
+   increasing time; the neural frame count must equal the activity's frames (a wrong
+   `orientation` shows up here). Without `neural.timestamps`, `t = arange(n) / fs`.
+   `Session.fs` is `fs_mean` of the neural stamps. With no `behavior.timestamps` the position
+   frame numbers index the neural frames.
+2. Joins `position` (and each `signals` entry) to the behavior stamps by frame number
+   (`load_position_csv`; the frame column must be a subset of the stamps' frame numbers), turns
+   the `-1` sentinel into NaN, and applies `behavior.clock` to those times when given. Head
+   orientation must have one row per neural frame. Epoch times are taken as already on the
+   session clock (the clock is not applied to them). Epochs must stop at or after they start;
+   the scored span is the neural time range.
+3. With `resample=True` (default): resamples position and signals onto the neural frames
+   (`resample_signal`, `max_gap_s`), writes `head_w/x/y/z` and `head_direction`
+   (`head_direction(quaternion=...)`, with `offset_deg`), and turns each `epochs` entry into a
+   `StateSpace` named by its key (`bouts_to_states` with that entry's cleanup). With
+   `resample=False` only the raw inputs are put in `session.behavior`.
+
+Where things are recorded:
+
+| what | where |
+|---|---|
+| raw position, head quaternions, epoch tables | `session.behavior["position"]`, `["head"]`, `["<epochs key>_epochs"]` |
+| x, y, extra columns, `head_*`, `head_direction` | `session.signals` (units in `meta["signal_units"]`) |
+| epoch states | `session.states["zones"]`, `["investigation"]` (one per `epochs` key) |
+| `timing_report` per clock | `meta["timing"]["neural"]`, `["behavior"]` (plus the behavior `clock`) |
+| arena (x-range zones expanded to rects using `size`) | `meta["arena"]`, the layout `zone_occupancy(zones_from_meta=True)` reads |
+| enclosures (`center`, `radius`, `contents`) | `meta["enclosures"]` (also in `meta["arena"]`), read by `investigation_from_geometry` |
+| focal / stimulus animals | `meta["subjects"]`; `info.animal` (focal, else `name`), `info.session_id` (`name`), `info.extra["stimulus"]` |
+| provenance | `meta["source"] == "session_dir"`, `meta["config_path"]`, `meta["neural_alternatives"]` |
+
+`info=SessionInfo(...)` overrides the fields you set. Only one activity layer is loaded;
+`activity="denoised"` loads that alternative instead. Every error names the config field and the
+file (for example `behavior.position (position.csv): ... frame numbers ... are not in the
+timestamps file`). Derived investigation without hand annotations:
+`{"name": "investigation_from_geometry"}` reads `meta["enclosures"]` (see
+`BRING_YOUR_OWN_DATA.md`).
+
 ## Caveats
 
 - **Behavior times must be on the neural clock.** Get `t_offset_s` wrong and every
