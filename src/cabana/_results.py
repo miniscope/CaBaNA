@@ -205,6 +205,33 @@ class MetricResult(BaseModel):
             "correction": "none" if sh is None else sh.correction,
         }
 
+    def plot(self, session: Any = None, kind: str | None = None, **kw: Any) -> Any:
+        """Draw a registered figure for this result (see ``cabana.plots.plot``).
+
+        Parameters
+        ----------
+        session : Session, optional
+            Needed by plots that read state spaces, signals or ground truth.
+        kind : str, optional
+            Registry name (``cabana.plots.available_plots()``); default is the first
+            applicable entry of the metric's ``default_plots``.
+        **kw
+            Renderer keyword arguments (e.g. ``cells=[0, 3]``).
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+        """
+        from ._plot_registry import plot
+
+        return plot(self, session, kind, **kw)
+
+    def plots(self, session: Any = None) -> list[str]:
+        """Registry names of the plots that apply to this result (``cabana.plots.plots_for``)."""
+        from ._plot_registry import plots_for
+
+        return plots_for(self, session)
+
     def state_index(self, state: int | str) -> int:
         """Column index of a state given by index or by name.
 
@@ -567,6 +594,16 @@ class ResultSet(BaseModel):
                     seen.add(key)
                     out.append(s)
         return out
+
+    def plot_all(self, session: Any = None, **kw: Any) -> dict[str, Any]:
+        """Every default plot of every result; see ``cabana.plots.plot_all``.
+
+        ``out_dir=`` saves them (``<analysis>__<plot>.png``) and returns paths;
+        otherwise returns open figures keyed ``"<analysis>/<plot>"``.
+        """
+        from ._plot_registry import plot_all
+
+        return plot_all(self, session, **kw)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Tidy table over cell-level results and per-state population results.

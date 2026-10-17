@@ -136,6 +136,12 @@ class Metric(_Plugin):
     accepts_kinds: ClassVar[tuple[str, ...] | None] = None
     #: Which tail of the null is "interesting" by default when shuffling.
     default_tail: ClassVar[Tail] = "upper"
+    #: Registry names (``cabana.plots.available_plots()``) of the figures that
+    #: make sense for this metric, most informative first.  ``result.plot()``
+    #: draws the first one that applies; ``ResultSet.plot_all`` draws them all.
+    #: Empty means "use the generic views" (tuning heatmap / metric strip /
+    #: shuffle distribution / population matrix, whichever fits the result).
+    default_plots: ClassVar[tuple[str, ...]] = ()
 
     @abstractmethod
     def compute(
