@@ -24,8 +24,8 @@ from ._plot_style import (
     OBSERVED_COLOR,
     UNVISITED_COLOR,
     axis_label,
-    fmt_p,
     mark_significant,
+    p_label,
     ordered_names,
     state_colors,
 )
@@ -61,7 +61,9 @@ def _level_labels(edges: np.ndarray) -> list[str]:
     return labels
 
 
-def _normalized(result: MetricResult, normalize: str) -> tuple[np.ndarray, str, dict[str, Any]]:
+def _normalized(
+    result: MetricResult, normalize: str, cells: Sequence[int] | None = None
+) -> tuple[np.ndarray, str, dict[str, Any]]:
     """Return ``(n_cells, n_states, n_levels)`` array, colourbar label and colour limits."""
     ex = result.extras
     for key in ("joint", "conditional", "edges"):
@@ -70,8 +72,9 @@ def _normalized(result: MetricResult, normalize: str) -> tuple[np.ndarray, str, 
                 f"result for metric {result.metric!r} has no {key!r} in extras; "
                 f"available keys: {sorted(ex)}"
             )
-    joint = np.asarray(ex["joint"], float)
-    cond = np.asarray(ex["conditional"], float)
+    sel = slice(None) if cells is None else list(cells)
+    joint = np.asarray(ex["joint"], float)[sel]
+    cond = np.asarray(ex["conditional"], float)[sel]
     valid = np.asarray(ex["valid"], bool) if "valid" in ex else np.ones(joint.shape[1], bool)
     if normalize == "conditional":
         return cond, "p(level | state)", {"cmap": "viridis"}
@@ -127,11 +130,11 @@ def plot_joint_histogram_data(
         mutual information averages; ``"conditional"`` is p(level | state);
         ``"joint"`` is p(state, level).
     """
-    arr, cbar_label, kw = _normalized(result, normalize)
-    edges = np.asarray(result.extras["edges"], float)
     cells_l = [int(cells)] if np.isscalar(cells) else [int(c) for c in cells]  # type: ignore[arg-type]
     if not cells_l:
         raise ValueError("cells must not be empty")
+    arr, cbar_label, kw = _normalized(result, normalize, cells_l)
+    edges = np.asarray(result.extras["edges"], float)
     values = np.asarray(result.values, float)
     sh = result.shuffle
     unit = "bits/event" if result.params.get("units") == "bits_per_event" else "bits"
@@ -139,10 +142,10 @@ def plot_joint_histogram_data(
     def title(c: int) -> str:
         t = f"cell {_cell_label(result, c)}: MI = {values[c]:.3f} {unit}"
         if sh is not None and np.ndim(sh.p_value) == 1:
-            t += f", {fmt_p(float(sh.p_value[c]), sh.n_shuffles, sh.tail)}"
+            t += f", {p_label(sh, c)}"
         return t
 
-    panels = arr[cells_l]
+    panels = arr
     if "vmin" in kw:
         vmin, vmax = float(kw["vmin"]), float(kw["vmax"])
     else:
@@ -193,7 +196,9 @@ def _joint_defaults(result: MetricResult, session: Any) -> dict[str, Any]:
     """The most significant cell (lowest p, else largest MI) and the target's state space."""
     vals = np.asarray(result.values, float)
     if result.shuffle is not None and np.ndim(result.shuffle.p_value) == 1:
-        p = np.nan_to_num(np.asarray(result.shuffle.p_value, float), nan=np.inf)
+        sh = result.shuffle
+        adj = getattr(sh, "correction", "none") not in (None, "none") and sh.p_adj is not None
+        p = np.nan_to_num(np.asarray(sh.p_adj if adj else sh.p_value, float), nan=np.inf)
         c = int(np.lexsort((-np.nan_to_num(vals, nan=-np.inf), p))[0])
     else:
         c = int(np.argmax(np.nan_to_num(vals, nan=-np.inf)))

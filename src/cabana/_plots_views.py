@@ -12,9 +12,8 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Patch
 
 from ._models import EVENT_KINDS, Session, StateSpace
 from ._plot_data import PLOT_DATA_VERSION
@@ -183,21 +182,47 @@ def plot_activity_raster_data(
     }
 
 
-def _ribbon_image(d: dict[str, Any]) -> tuple[np.ndarray, list[str]]:
-    rows, names = [], []
-    nt = d["t"].size
+def _time_edges(t: np.ndarray) -> np.ndarray:
+    """Frame boundaries in seconds: midpoints between samples, extrapolated at both ends."""
+    t = np.asarray(t, float)
+    if t.size == 1:
+        return np.array([t[0] - 0.5, t[0] + 0.5])
+    mid = 0.5 * (t[1:] + t[:-1])
+    return np.concatenate([[t[0] - (mid[0] - t[0])], mid, [t[-1] + (t[-1] - mid[-1])]])
+
+
+def _run_spans(edges: np.ndarray, mask: np.ndarray) -> list[tuple[float, float]]:
+    """``(x_start, width)`` in seconds for each run of True in ``mask``, on real time edges."""
+    s, ln = runs(mask)
+    return [(float(edges[a]), float(edges[a + b] - edges[a])) for a, b in zip(s, ln, strict=True)]
+
+
+def _draw_ribbon(rax: Any, d: dict[str, Any], edges: np.ndarray) -> list[str]:
+    """Draw ribbon and mask rows as spans against real time; return the row names."""
+    names: list[str] = []
+    row = 0
     for r in d["ribbon"]:
-        pal = np.array([to_rgba(c) for c in r["colors"]] + [(1, 1, 1, 1)])
-        img = pal[np.where(r["labels"] >= 0, r["labels"], len(r["colors"]))]
-        img[~r["support"]] = _GREY
-        rows.append(img)
+        lab = np.asarray(r["labels"])
+        for u in range(len(r["colors"])):
+            sp = _run_spans(edges, (lab == u) & r["support"])
+            if sp:
+                rax.broken_barh(sp, (row - 0.5, 1), facecolors=r["colors"][u], lw=0)
+        sp = _run_spans(edges, ~r["support"])
+        if sp:
+            rax.broken_barh(sp, (row - 0.5, 1), facecolors=_GREY, lw=0)
         names.append(r["name"])
+        row += 1
     for m in d["masks"]:
-        img = np.ones((nt, 4))
-        img[m["excluded"]] = _GREY
-        rows.append(img)
+        sp = _run_spans(edges, m["excluded"])
+        if sp:
+            rax.broken_barh(
+                sp, (row - 0.5, 1), facecolors=_GREY, edgecolor="0.3", hatch="///", lw=0
+            )
         names.append(f"mask: {m['name']}")
-    return (np.stack(rows) if rows else np.zeros((0, nt, 4))), names
+        row += 1
+    rax.set_xlim(edges[0], edges[-1])
+    rax.set_ylim(row - 0.5, -0.5)
+    return names
 
 
 def plot_activity_raster(
@@ -250,11 +275,9 @@ def plot_activity_raster(
         sort_by=sort_by,
         show_masks=show_masks,
     )
-    img, rnames = _ribbon_image(d)
-    nr = len(rnames)
+    nr = len(d["ribbon"]) + len(d["masks"])
     t = d["t"]
-    dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
-    ext_x = (t[0] - dt / 2, t[-1] + dt / 2)
+    edges = _time_edges(t)
     if ax is None:
         fig = plt.figure(figsize=(8.0, 3.2 + 0.22 * nr), layout="constrained")
         gs = fig.add_gridspec(
@@ -272,15 +295,17 @@ def plot_activity_raster(
         lax = rax.inset_axes([1.01, -1.0, 0.2, 2.0]) if nr else None
     event = d["activity_kind"] in EVENT_KINDS
     n = d["activity"].shape[0]
-    ax.imshow(
+    ax.pcolormesh(
+        edges,
+        np.arange(n + 1) - 0.5,
         np.ma.masked_invalid(d["activity"]),
-        aspect="auto",
-        interpolation="nearest",
         cmap=heatmap_cmap("Greys" if event else "viridis"),
         vmin=d["vmin"],
         vmax=d["vmax"],
-        extent=(ext_x[0], ext_x[1], n - 0.5, -0.5),
+        rasterized=True,
     )
+    ax.set_xlim(edges[0], edges[-1])
+    ax.set_ylim(n - 0.5, -0.5)
     ax.set_ylabel(f"cell (n={n})")
     if n <= 60:
         step = int(np.ceil(n / 12))
@@ -291,26 +316,9 @@ def plot_activity_raster(
     ax.set_title(f"Activity ({d['activity_kind']}), {n} cells")
     if rax is not None:
         ax.tick_params(labelbottom=False)
-        rax.imshow(
-            img, aspect="auto", interpolation="nearest", extent=(ext_x[0], ext_x[1], nr - 0.5, -0.5)
-        )
+        rnames = _draw_ribbon(rax, d, edges)
         rax.set_yticks(range(nr), rnames)
         rax.set_xlabel(axis_label("time", "s"))
-        for i, m in enumerate(d["masks"]):
-            row = len(d["ribbon"]) + i
-            s, ln = runs(m["excluded"])
-            for a, b in zip(s[:200], ln[:200], strict=False):
-                rax.add_patch(
-                    Rectangle(
-                        (t[a] - dt / 2, row - 0.5),
-                        b * dt,
-                        1,
-                        fill=False,
-                        hatch="///",
-                        lw=0,
-                        ec="0.3",
-                    )
-                )
         y_off = 0.0
         for r in d["ribbon"]:
             used = sorted({int(v) for v in np.unique(r["labels"]) if v >= 0})
@@ -408,11 +416,12 @@ def plot_population_tuning_data(
             rng = hi - lo
             m = np.where(rng > 0, (m - lo) / np.where(rng > 0, rng, 1), np.nan)
     if sort_by == "peak":
+        allnan = ~np.isfinite(m).any(axis=1)
         filled = np.where(np.isfinite(m), m, -np.inf)
         am = filled.argmax(axis=1)
         mx = filled.max(axis=1)
         mx = np.where(np.isfinite(mx), mx, -np.inf)
-        order = np.lexsort((-mx, am))
+        order = np.lexsort((-mx, am, allnan))  # all-NaN rows last
     elif sort_by is None:
         order = np.arange(n)
     else:
@@ -464,9 +473,9 @@ def _tuning_defaults(result: MetricResult, session: Any) -> dict[str, Any]:
 @register_plot(
     "population_tuning",
     data=plot_population_tuning_data,
-    needs_session=True,
+    needs_session=False,
     level="cell",
-    requires=(),
+    requires=("extras:rate_map",),
     defaults=_tuning_defaults,
 )
 def plot_population_tuning(
@@ -584,6 +593,13 @@ def plot_session_qa_data(
             "state_names": [str(s) for s in sp.state_names],
             "seconds": sec,
             "image": img,
+            "is_grid": sp.kind == "grid",
+            "x": (
+                np.asarray(topo.centers()[0], float)
+                if topo is not None and topo.ndim == 1
+                else None
+            ),
+            "axis_label": topo.axis_names[0] if topo is not None and topo.ndim == 1 else None,
             "extent": (
                 [
                     float(topo.edges[0][0]),
@@ -727,9 +743,15 @@ def plot_session_qa(session: Session, *, states: Sequence[str] | None = None) ->
         a.set_ylabel(o["axis_names"][1])
         a.set_title(f"Occupancy: {o['space']}")
     else:
-        cols = state_colors(o["state_names"])
-        a.bar(range(len(o["seconds"])), o["seconds"], color=[cols[s] for s in o["state_names"]])
-        if len(o["state_names"]) <= 20:
+        if o["is_grid"]:
+            xs = o["x"] if o["x"] is not None else np.arange(len(o["seconds"]), dtype=float)
+            w = float(np.median(np.diff(xs))) if xs.size > 1 else 1.0
+            a.bar(xs, o["seconds"], width=0.9 * w, color="0.45")
+            a.set_xlabel(o["axis_label"] or "bin")
+        else:
+            cols = state_colors(o["state_names"])
+            a.bar(range(len(o["seconds"])), o["seconds"], color=[cols[s] for s in o["state_names"]])
+        if not o["is_grid"] and len(o["state_names"]) <= 20:
             a.set_xticks(range(len(o["state_names"])), o["state_names"], rotation=60, ha="right")
         a.set_ylabel(axis_label("occupancy", "s"))
         a.set_title(f"Occupancy: {o['space']}")

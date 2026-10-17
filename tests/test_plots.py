@@ -491,3 +491,53 @@ def test_rate_map_titles_and_ticks(rich):
     labels = [x.get_text() for x in fig.axes[1].get_xticklabels()]
     assert labels == ["0", "40"]
     plt.close(fig)
+
+
+def test_shuffle_distribution_no_state_names_2d(setup):
+    sess = setup[0]
+    rng = np.random.default_rng(5)
+    sh = _shuffle(rng, (NC, 4), tail="two")
+    p = np.full((NC, 4), 0.5)
+    p[6, 2] = 0.01
+    sh = sh.model_copy(update={"p_value": p, "significant": p < 0.05})
+    res = MetricResult(
+        metric="auroc", target="social", level="cell", values=sh.observed, shuffle=sh
+    )
+    assert res.state_names is None
+    dflt = cp.plot_spec("shuffle_distribution").defaults(res, sess)
+    assert dflt == {"cell": 6, "state": 2}
+    fig = res.plot(sess, kind="shuffle_distribution")
+    assert "state=2" in fig.axes[0].get_title()
+    plt.close(fig)
+
+
+def test_adjusted_p_in_titles_and_two_tailed_order(rich):
+    sess, ic, _ = rich
+    sh = ic.shuffle
+    adj = sh.model_copy(update={"p_adj": np.minimum(1, sh.p_value * 5), "correction": "bonferroni"})
+    d = P.plot_rate_maps_data(sess, ic.model_copy(update={"shuffle": adj}), [3])
+    assert "p_adj=" in d["titles"][0] and d["p_texts"][0].startswith("p_adj=")
+    # two-tailed: ordering follows |v|
+    neg = ic.model_copy(
+        update={
+            "values": np.where(np.arange(NC) == 9, -5.0, np.asarray(ic.values)),
+            "shuffle": sh.model_copy(
+                update={
+                    "tail": "two",
+                    "p_value": np.full(NC, 0.5),
+                    "significant": np.zeros(NC, bool),
+                }
+            ),
+        }
+    )
+    assert P._ordered_cells(neg)[0] == 9
+
+
+def test_heatmap_peak_nan_rows_last_and_target_requirement(setup):
+    sess, _, _, au, _ = setup
+    vals = np.array(au.values, float)
+    vals[2] = np.nan
+    d = P.plot_tuning_heatmap_data(au.model_copy(update={"values": vals, "shuffle": None}), "peak")
+    assert d["order"][-1] == 2
+    for name in ("rate_maps", "split_half_maps"):
+        assert "target" in cp.plot_spec(name).requires

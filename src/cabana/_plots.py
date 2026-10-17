@@ -30,8 +30,8 @@ from ._plot_style import (
     OBSERVED_COLOR,
     UNVISITED_COLOR,
     axis_label,
-    fmt_p,
     mark_significant,
+    p_label,
     metric_label,
     ordered_names,
     state_colors,
@@ -116,9 +116,24 @@ def _cell_scores(result: MetricResult) -> np.ndarray:
     return v
 
 
+def _two_tailed(result: MetricResult) -> bool:
+    if result.shuffle is not None:
+        return result.shuffle.tail == "two"
+    from ._registry import _REGISTRY
+
+    cls = _REGISTRY.get("metric", {}).get(result.metric)
+    return getattr(cls, "default_tail", "upper") == "two"
+
+
 def _ordered_cells(result: MetricResult) -> list[int]:
-    """All cells: significant ones by descending value, then the rest by descending value."""
+    """All cells: significant ones by descending effect, then the rest by descending effect.
+
+    The effect is the value, or its distance from chance (``|v|``; ``|v - 0.5|`` for
+    auroc) when the test is two-tailed.
+    """
     score = _cell_scores(result)
+    if _two_tailed(result):
+        score = np.abs(score - 0.5) if result.metric == "auroc" else np.abs(score)
     order = np.argsort(-np.where(np.isfinite(score), score, -np.inf), kind="stable")
     sig = _significant(result)
     sig_c = _per_cell(sig) if sig is not None and sig.shape[:1] == score.shape else None
@@ -153,8 +168,8 @@ def _signal_units(session: Session, name: str) -> str:
 
 
 def _p_text(sh: Any, idx: Any) -> tuple[str, bool]:
-    txt = fmt_p(float(np.asarray(sh.p_value)[idx]), sh.n_shuffles, sh.tail)
-    return txt, txt.endswith("(floor)")
+    txt = p_label(sh, idx)
+    return txt, "(floor)" in txt
 
 
 def _unit_of(label: str) -> str:
@@ -457,21 +472,24 @@ def plot_rate_maps_data(
     values = np.asarray(result.values)
     sh = result.shuffle
     sig = _significant(result)
-    titles, floors, sigs, pvals = [], [], [], []
+    titles, floors, sigs, pvals, ptexts = [], [], [], [], []
     for c in shown:
         title = _cell_label(result, c)
         floor = False
         p = np.nan
+        ptxt = ""
         if values.ndim == 1:
             unit = _unit_of(metric_label(result.metric, result.params))
             title += f"\n{values[c]:.3g}" + (f" {unit}" if unit else "")
             if sh is not None and np.ndim(sh.p_value) == 1:
                 txt, floor = _p_text(sh, c)
-                title += f" · {txt}"
+                title += ("\n" if txt.startswith("p_adj") else " · ") + txt
                 p = float(sh.p_value[c])
+                ptxt = txt
         titles.append(title)
         floors.append(floor)
         pvals.append(p)
+        ptexts.append(ptxt)
         sigs.append(bool(_per_cell(sig)[c]) if sig is not None and values.ndim == 1 else False)
     maps = _shape_maps(rate[shown], lay) if shown else np.empty((0, *rate.shape[1:]))
     finite = maps[np.isfinite(maps)]
@@ -498,6 +516,7 @@ def plot_rate_maps_data(
         rate_label=_rate_label(session),
         titles=titles,
         p_values=np.asarray(pvals, float),
+        p_texts=ptexts,
         p_floor=np.asarray(floors, bool),
         significant=np.asarray(sigs, bool),
         occupancy=occ,
@@ -519,7 +538,7 @@ def plot_rate_maps_data(
     data=plot_rate_maps_data,
     needs_session=True,
     level="cell",
-    requires=("extras:rate_map",),
+    requires=("extras:rate_map", "target"),
     defaults=rate_maps_defaults,
 )
 def plot_rate_maps(
@@ -736,7 +755,7 @@ def plot_split_half_maps_data(
         floor = False
         if sh is not None and np.ndim(sh.p_value) == 1:
             txt, floor = _p_text(sh, c)
-            t += f" · {txt}"
+            t += ("\n" if txt.startswith("p_adj") else " · ") + txt
         titles.append(t)
         floors.append(floor)
     notes = []
@@ -773,7 +792,7 @@ def plot_split_half_maps_data(
     data=plot_split_half_maps_data,
     needs_session=True,
     level="cell",
-    requires=("extras:rate_map_a",),
+    requires=("extras:rate_map_a", "target"),
     defaults=split_half_defaults,
 )
 def plot_split_half_maps(
@@ -936,8 +955,12 @@ def plot_shuffle_distribution_data(
             raise ValueError("result values are 2D; pass `state` (index or name)")
         state_i = result.state_index(state)
         idx = (cell, state_i)
-        names = result.state_names or [state_i]
-        suffix = f", state={state if isinstance(state, str) else names[state_i]}"
+        sname = (
+            state
+            if isinstance(state, str)
+            else (result.state_names[state_i] if result.state_names else str(state_i))
+        )
+        suffix = f", state={sname}"
     null = np.asarray(sh.null)[(slice(None), *idx)]
     txt, floor = _p_text(sh, idx)
     return _base(
@@ -1055,7 +1078,10 @@ def plot_tuning_heatmap_data(result: MetricResult, sort_by: str | None = None) -
     order = np.arange(n_cells)
     if sort_by == "peak":
         filled = np.where(np.isfinite(vals), vals, -np.inf)
-        order = np.lexsort((-filled.max(axis=1), filled.argmax(axis=1)))
+        empty = ~np.isfinite(vals).any(axis=1)  # all-NaN rows go last
+        order = np.lexsort(
+            (np.where(empty, 0.0, -filled.max(axis=1)), filled.argmax(axis=1), empty)
+        )
     elif sort_by is not None:
         if sort_by not in names:
             raise ValueError(f"sort_by {sort_by!r} is not 'peak' or one of {names}")
@@ -1648,7 +1674,8 @@ def plot_ground_truth_recovery(
             h = d["bar_fraction"][j]
             xj = xs + (j - (len(order) - 1) / 2) * width
             label = "untuned (raw)" if pop == "untuned" and any(d["has_correction"]) else pop
-            ax.bar(xj, np.nan_to_num(h), width, label=label, color=d["colors"][pop])
+            ok_h = np.isfinite(h)  # NaN = not available: skip the bar, never draw 0
+            ax.bar(xj[ok_h], h[ok_h], width, label=label, color=d["colors"][pop])
             if pop == "untuned":
                 sub = df[df["population"] == "untuned"].set_index("result")["adjusted_fraction"]
                 adj = np.array([sub.get(r, np.nan) for r in results], float)

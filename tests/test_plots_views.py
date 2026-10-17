@@ -147,6 +147,7 @@ def test_population_tuning_1d_grid_and_registry(small_session):
         level="cell",
         values=np.random.default_rng(0).random((n, ns)),
     )
+    r = r.model_copy(update={"extras": {"rate_map": np.asarray(r.values)}})
     d = V.plot_population_tuning_data(r, s)
     np.testing.assert_allclose(d["x"], [5, 15, 25, 35])
     assert d["x_label"] == "x"
@@ -244,6 +245,7 @@ def test_population_tuning_nan_column_and_constant_row():
     assert np.isnan(d["matrix"][:, 4]).all()
     row0 = int(np.flatnonzero(d["order"] == 0)[0])
     assert np.isnan(d["matrix"][row0]).all()
+    assert row0 == len(d["order"]) - 1  # all-NaN rows sort last
     fig = V.plot_population_tuning(res)
     arr = fig.axes[0].images[0].get_array()
     assert np.ma.getmaskarray(arr)[:, 4].all()
@@ -256,3 +258,59 @@ def test_qa_constant_timing_and_raster_event_range(small_session):
     V.plot_session_qa(s)
     r = V.plot_activity_raster_data(small_session)
     assert r["vmin"] == 0.0  # deconvolved is an event kind
+
+
+def test_registry_requires_rate_map():
+    from cabana._plot_registry import plot_spec
+
+    spec = plot_spec("population_tuning")
+    assert spec.requires == ("extras:rate_map",) and not spec.needs_session
+    no_map = MetricResult(metric="auroc", target="x", level="cell", values=np.zeros(4))
+    assert not spec.applies_to(no_map)
+
+
+def test_raster_ribbon_follows_real_time_with_dropped_frames():
+    n = 400
+    keep = np.ones(n, bool)
+    keep[150:190] = False  # 10% dropped from the middle
+    t = (np.arange(n) / 10.0)[keep]
+    oh = np.zeros((t.size, 2), bool)
+    oh[200:230, 0] = True
+    oh[260:300, 1] = True
+    sp = StateSpace(
+        name="beh", onehot=oh, state_names=["a", "b"], kind="categorical", exclusive=True
+    )
+    s = Session(
+        activity=np.random.default_rng(0).random((3, t.size)),
+        t=t,
+        fs=10.0,
+        states={"beh": sp},
+        masks={"m": np.arange(t.size) < 250},
+    )
+    d = V.plot_activity_raster_data(s)
+    edges = V._time_edges(d["t"])
+    ((x0, w),) = V._run_spans(edges, d["ribbon"][0]["labels"] == 0)
+    assert abs(x0 - t[200]) <= 0.1 and abs(x0 + w - t[229]) <= 0.1
+    ((m0, mw),) = V._run_spans(edges, d["masks"][0]["excluded"])
+    assert abs(m0 - t[250]) <= 0.1 and abs(m0 + mw - t[-1]) <= 0.1
+    fig = V.plot_activity_raster(s)
+    assert fig.axes[1].get_xlim() == pytest.approx((edges[0], edges[-1]))
+
+
+def test_qa_1d_grid_occupancy_no_warning():
+    import warnings
+
+    ns = 30
+    topo = GridTopology(shape=(ns,), edges=[np.linspace(0, 300, ns + 1)], axis_names=["x"])
+    sp = StateSpace(
+        name="track",
+        onehot=np.eye(ns, dtype=bool)[np.arange(300) % ns],
+        state_names=[f"b{i}" for i in range(ns)],
+        kind="grid",
+        exclusive=True,
+        topology=topo,
+    )
+    s = Session(activity=np.zeros((2, 300)), t=np.arange(300) / 10.0, fs=10.0, states={"track": sp})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        V.plot_session_qa(s)

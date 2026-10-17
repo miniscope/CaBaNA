@@ -128,7 +128,8 @@ def plot_cohort_fractions_data(
         if len(wide) > 1
         else np.zeros(len(states))
     )
-    top = float(np.nanmax(mat)) if wide.size else 1.0
+    finite = mat[np.isfinite(mat)]
+    top = max(float(finite.max()), 0.05) if finite.size else 0.05
     comparisons: list[dict[str, Any]] = []
     if control_state is not None:
         ci = states.index(control_state)

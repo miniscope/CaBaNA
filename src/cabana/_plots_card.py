@@ -21,6 +21,8 @@ takes a whole ``ResultSet`` rather than one result.
 
 from __future__ import annotations
 
+import re
+import textwrap
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,7 +30,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import to_hex, to_rgba
+from matplotlib.colors import ListedColormap, to_hex
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
@@ -44,6 +46,7 @@ from ._plot_style import (
     fmt_p,
     heatmap_cmap,
     mark_significant,
+    p_label,
     metric_label,
     state_colors,
     use_style,
@@ -125,6 +128,8 @@ def _effect(result: MetricResult) -> np.ndarray:
     base = _baseline(result)
     if base is not None:
         e = np.abs(v - base)
+    elif _tail(result) == "two":
+        e = np.abs(v)
     elif _tail(result) == "lower":
         e = -v
     else:
@@ -184,6 +189,7 @@ def _cell_stats(result: MetricResult, c: int) -> dict[str, Any]:
     sh = result.shuffle
     names = result.state_names
     out: dict[str, Any] = {
+        "idx": idx,
         "state_index": s,
         "state": "" if s is None else (str(names[s]) if names else str(s)),
         "value": float(values[idx]),
@@ -208,12 +214,15 @@ def _cell_stats(result: MetricResult, c: int) -> dict[str, Any]:
 
 
 def _p_text(st: dict[str, Any], sh: Any) -> str:
-    if sh is None:
-        return "no shuffle"
-    txt = fmt_p(st["p"], sh.n_shuffles, sh.tail)
-    if st["correction"] != "none":
-        txt += f", adj {fmt_p(st['p_adj'], sh.n_shuffles, sh.tail)} ({st['correction']})"
-    return txt
+    return "no shuffle" if sh is None else p_label(sh, st["idx"])
+
+
+def _wrap(text: str, width: int = 28) -> str:
+    """Wrap ``text`` to ``width`` characters per line, allowing a break before ``[``."""
+    return "\n".join(
+        textwrap.fill(re.sub(r"(?<! )\[", " [", line), width, break_long_words=False)
+        for line in text.split("\n")
+    )
 
 
 def _order_results(results: Sequence[MetricResult], c: int) -> list[int]:
@@ -307,11 +316,27 @@ def _null_text(result: MetricResult, c: int, st: dict[str, Any]) -> str:
     lines = [
         f"observed {st['value']:.3g}",
         f"null [{lo:.3g}, {hi:.3g}]",
-        _p_text(st, sh).replace(", adj", "\nadj"),
+        _p_text(st, sh),
     ]
     if sh.null is None:
         lines.append("(null draws not kept)")
     return "\n".join(lines)
+
+
+def _centroid(session: Session, c: int) -> np.ndarray | None:
+    """``(x, y)`` footprint centroid of one cell in pixels (only that cell's image is read)."""
+    if session.footprints is not None:
+        w = np.clip(np.asarray(session.footprints[c], np.float64), 0, None)
+        tot = w.sum()
+        if tot <= 0:
+            return np.full(2, np.nan)
+        return np.array([w.sum(0) @ np.arange(w.shape[1]), w.sum(1) @ np.arange(w.shape[0])]) / tot
+    m = session.cell_meta
+    if "centroid_x" in m and "centroid_y" in m:
+        return np.array(
+            [float(np.asarray(m["centroid_x"])[c]), float(np.asarray(m["centroid_y"])[c])]
+        )
+    return None
 
 
 def _header(session: Session, c: int, n_total: int) -> dict[str, Any]:
@@ -344,10 +369,9 @@ def _header(session: Session, c: int, n_total: int) -> dict[str, Any]:
         if len(meta) >= _MAX_META:
             break
     h["meta"] = meta
-    cen = session.footprint_centroids()
-    if cen is not None and np.all(np.isfinite(cen[c])):
-        h["centroid_x"] = float(cen[c, 0])
-        h["centroid_y"] = float(cen[c, 1])
+    cen = _centroid(session, c)
+    if cen is not None and np.all(np.isfinite(cen)):
+        h["centroid_x"], h["centroid_y"] = float(cen[0]), float(cen[1])
     h["n_analyses_total"] = n_total
     return h
 
@@ -444,6 +468,7 @@ def plot_cell_card_data(
                 "significant": st["significant"],
                 "rank": st["rank"],
                 "n_cells": st["n_cells"],
+                "corrected": _corrected(r),
                 "shown": shown,
             }
         )
@@ -467,8 +492,8 @@ def plot_cell_card_data(
                 "rank": st["rank"],
                 "n_cells": st["n_cells"],
                 "state": st["state"],
-                "title": f"{name}\n{label}{state_txt} = {st['value']:.3g}",
-                "p_text": ptxt,
+                "title": _wrap(f"{name}\n{label}{state_txt} = {st['value']:.3g}"),
+                "p_text": _wrap(ptxt),
                 "null_title": ""
                 if sh is None
                 else f"null: {sh.null_name}, n={sh.n_shuffles}"
@@ -547,20 +572,22 @@ def _draw_trace(ax: Any, tr: dict[str, Any]) -> None:
     ax.set_xlim(float(t[0]), float(t[-1]))
     xform = ax.get_xaxis_transform()
     handles: list[Patch] = []
+    if t.size > 1:
+        mid = (t[1:] + t[:-1]) / 2
+        edges = np.concatenate([[t[0] - (t[1] - t[0]) / 2], mid, [t[-1] + (t[-1] - t[-2]) / 2]])
+    else:
+        edges = np.array([t[0] - 0.5, t[0] + 0.5])
     for k, r in enumerate(rib):
-        pal = np.array([to_rgba(c) for c in r["colors"]] + [(1, 1, 1, 1)])
+        n_st = len(r["colors"])
+        pal = ListedColormap([*r["colors"], "white", _GREY])
         lab = np.asarray(r["labels"])
-        img = pal[np.where(lab >= 0, lab, len(r["colors"]))]
-        img[~np.asarray(r["support"], bool)] = _GREY
+        idx_img = np.where(lab >= 0, lab, n_st)
+        idx_img = np.where(np.asarray(r["support"], bool), idx_img, n_st + 1)
         y0 = k * band
-        ax.imshow(
-            img[None],
-            extent=(float(t[0]), float(t[-1]), y0, y0 + band),
-            transform=xform,
-            aspect="auto",
-            interpolation="nearest",
-            zorder=1,
-        )
+        ax.pcolormesh(
+            edges, [y0, y0 + band], idx_img[None], cmap=pal, vmin=-0.5, vmax=n_st + 1.5,
+            transform=xform, zorder=1, rasterized=True,
+        )  # fmt: skip
         ax.text(
             float(t[0]), y0 + band / 2, f" {r['name']}", transform=xform, fontsize=6,
             va="center", ha="left", color="0.1", zorder=3,
@@ -577,9 +604,8 @@ def _draw_trace(ax: Any, tr: dict[str, Any]) -> None:
     ax.set_xlim(float(t[0]), float(t[-1]))
     exc = _runs(tr["excluded"])
     if exc:
-        dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
         ax.broken_barh(
-            [(float(t[a]), n * dt) for a, n in exc],
+            [(float(edges[a]), float(edges[a + n] - edges[a])) for a, n in exc],
             (0.0, 1.0),
             transform=xform,
             facecolor="none",
@@ -643,15 +669,19 @@ def _draw_rate_map(ax: Any, d: dict[str, Any], *, halves: bool = False) -> None:
     else:
         idx = np.arange(len(a))
         w = 0.4 if b is not None else 0.7
+        for i in np.flatnonzero(np.isnan(a) | (np.isnan(b) if b is not None else False)):
+            ax.axvspan(i - 0.5, i + 0.5, color=UNVISITED_COLOR, lw=0, zorder=0)
+        oka = np.isfinite(a)
         ax.bar(
-            idx - (w / 2 if b is not None else 0),
-            np.nan_to_num(a),
+            (idx - (w / 2 if b is not None else 0))[oka],
+            a[oka],
             w,
             color="C0",
             label="half A" if b is not None else None,
         )
         if b is not None:
-            ax.bar(idx + w / 2, np.nan_to_num(b), w, color="C1", label="half B")
+            okb = np.isfinite(b)
+            ax.bar((idx + w / 2)[okb], b[okb], w, color="C1", label="half B")
             ax.legend(fontsize=6)
         ax.set_xticks(idx, d["state_names"], rotation=45, ha="right", fontsize=6)
         ax.set_ylabel(d["rate_label"], fontsize=7)
@@ -669,13 +699,17 @@ def _draw_state_bars(ax: Any, d: dict[str, Any]) -> None:
                label="null range")  # fmt: skip
     edge = ["black" if i == d["selected"] else "none" for i in x]
     base = d["baseline"] or 0.0
-    ax.bar(x, np.nan_to_num(vals, nan=base) - base, 0.55, bottom=base, color=d["colors"],
-           edgecolor=edge, lw=1.0, zorder=2)  # fmt: skip
+    ok = np.isfinite(vals)
+    for i in x[~ok]:
+        ax.axvspan(i - 0.5, i + 0.5, color=UNVISITED_COLOR, lw=0, zorder=0)
+    ax.bar(x[ok], vals[ok] - base, 0.55, bottom=base, color=np.asarray(d["colors"])[ok],
+           edgecolor=np.asarray(edge)[ok], lw=1.0, zorder=2)  # fmt: skip
     if d["baseline"] is not None:
         ax.axhline(d["baseline"], color="0.4", lw=0.7, ls="--", zorder=0)
     sig = d["significant"]
     if sig is not None and np.any(sig):
         s = np.asarray(sig, bool)
+        s = s & ok
         mark_significant(ax, x[s], vals[s], zorder=5)
     ax.set_xticks(x, d["state_names"], rotation=45, ha="right", fontsize=6)
     ax.set_ylabel(d["ylabel"], fontsize=7)
@@ -795,7 +829,7 @@ def _draw_table(ax: Any, table: list[dict[str, Any]]) -> None:
     for row, y in zip(table, ys[1:], strict=True):
         shade = "black" if row["shown"] else "0.55"
         name = row["analysis"] + (f" [{row['state']}]" if row["state"] else "")
-        corr = row["p"] != row["p_adj"] and np.isfinite(row["p_adj"])
+        corr = bool(row.get("corrected", False)) and np.isfinite(row["p_adj"])
         cells = [
             name,
             f"{row['value']:.3g}",
@@ -941,6 +975,13 @@ def plot_cell_cards(
     if isinstance(cells, str):
         if cells == "significant":
             idx = [int(i) for i in order if n_sig[i] > 0]
+            if not idx:
+                warnings.warn(
+                    "no cell is significant in any analysis; no cards drawn",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                return {}
         elif cells == "all":
             idx = [int(i) for i in order]
         else:
@@ -956,8 +997,12 @@ def plot_cell_cards(
             stacklevel=2,
         )
         idx = idx[:max_cards]
-    figs = {_cell_id(session, c): plot_cell_card(session, res, c, **kw) for c in idx}
-    if out_dir is None:
-        return dict(figs)
-    paths = save_figures(figs, out_dir, fmt=fmt, dpi=dpi)
-    return dict(zip(figs, paths, strict=True))
+    out: dict[str, Figure | Path] = {}
+    for c in idx:
+        fig = plot_cell_card(session, res, c, **kw)
+        cid = _cell_id(session, c)
+        if out_dir is None:
+            out[cid] = fig
+        else:
+            out[cid] = save_figures({cid: fig}, out_dir, fmt=fmt, dpi=dpi)[0]
+    return out

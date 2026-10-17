@@ -141,3 +141,36 @@ def test_registry_wiring(monkeypatch, planted, planted_result):
         plt.close(fig)
     fig = plots.plot(planted_result, planted, "peth", sort_by="latency")
     plt.close(fig)
+
+
+def test_adjusted_significance_used():
+    from cabana._results import ShuffleResult
+
+    res, _ = _synthetic()
+    p = np.full((4, 2), np.nan)
+    p[:, 0] = [0.01, 0.01, 0.2, 0.2]
+    p_adj = p.copy()
+    p_adj[:, 0] = [0.01, 0.2, 0.2, 0.2]  # cell 1: raw < alpha but adjusted >= alpha
+    z = np.zeros((4, 2))
+    res.shuffle = ShuffleResult(
+        observed=res.values,
+        null=None,
+        shifts=None,
+        p_value=p,
+        null_lo=z,
+        null_hi=z,
+        significant=p < 0.05,
+        p_adj=p_adj,
+        significant_adj=p_adj < 0.05,
+        correction="bh",
+        alpha=0.05,
+        tail="two",
+        n_shuffles=100,
+    )
+    d = pe.plot_peth_data(res, None, states=[0], sort_by="response")
+    sig_cells = {d["cell_ids_sorted"][0][i] for i in np.flatnonzero(d["significant"][0])}
+    assert sig_cells == {"a"}
+    assert pe._raster_defaults(res, None) == {"cell": 0, "state": 0}
+    from cabana._plot_style import p_label
+
+    assert "p_adj" in p_label(res.shuffle, (1, 0))

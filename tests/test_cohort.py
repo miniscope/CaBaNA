@@ -276,3 +276,15 @@ def test_cross_session_plot_data():
     check_plot_data(d, "cross_session")
     assert d["pair_kind"] == "map" and np.asarray(d["observed"]).shape == (10,)
     assert int(np.sum(d["observed_counts"])) == 10
+
+
+def test_cohort_fractions_data_degenerate_axis():
+    for v in (0.0, np.nan):
+        rows = [
+            dict(animal=f"m{i}", state=s, fraction_significant=v)
+            for i in range(3)
+            for s in ("a", "ctl")
+        ]
+        d = plot_cohort_fractions_data(pd.DataFrame(rows), states=["a"], control_state="ctl")
+        assert d["top"] == 0.05 and d["ylim_top"] > 0
+        check_plot_data(d, "cohort_fractions")

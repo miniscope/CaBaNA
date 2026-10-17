@@ -21,6 +21,7 @@ from ._plot_style import (
     RESPONSE_SHADE,
     axis_label,
     mark_significant,
+    p_label,
     metric_label,
     ordered_names,
 )
@@ -58,6 +59,19 @@ def _shade(ax: Any, baseline: Sequence[float], response: Sequence[float]) -> Non
     ax.axvspan(*baseline, color=BASELINE_SHADE, alpha=0.6, lw=0)
     ax.axvspan(*response, color=RESPONSE_SHADE, alpha=0.2, lw=0)
     ax.axvline(0.0, color="k", lw=0.8, ls="--")
+
+
+def _decision(shuffle: Any) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """``(significant, p)`` honouring the multiplicity correction (adjusted when applied)."""
+    if shuffle is None:
+        return None, None
+    adj = getattr(shuffle, "correction", "none") not in (None, "none")
+    if adj and getattr(shuffle, "p_adj", None) is not None:
+        sig = shuffle.significant_adj
+        if sig is None:
+            sig = np.asarray(shuffle.p_adj) < shuffle.alpha
+        return np.asarray(sig, bool), np.asarray(shuffle.p_adj, float)
+    return np.asarray(shuffle.significant, bool), np.asarray(shuffle.p_value, float)
 
 
 def _two(a: Any, b: Any) -> tuple[Any, Any]:
@@ -130,7 +144,7 @@ def plot_peth_data(
     state_idx = list(range(n_states)) if states is None else [result.state_index(s) for s in states]
     ids_all = result.cell_ids or (session.cell_ids if session is not None else None)
     ids = [str(ids_all[c]) if ids_all else str(c) for c in cell_idx]
-    sig_all = None if result.shuffle is None else np.asarray(result.shuffle.significant, bool)
+    sig_all = _decision(result.shuffle)[0]
     base, resp_w = _windows(result)
     in_resp = (t >= resp_w[0]) & (t < resp_w[1])
     if not in_resp.any():
@@ -221,7 +235,7 @@ def plot_peth_data(
     data=plot_peth_data,
     needs_session=True,
     level="cell",
-    requires=("extras:peth",),
+    requires=("extras:peth", "target"),
 )
 def plot_peth(
     result: MetricResult,
@@ -351,7 +365,7 @@ def _raster_defaults(result: MetricResult, session: Any) -> dict[str, Any]:
     """Most significant cell (lowest p, else largest response) and its best state."""
     vals = np.asarray(result.values, float)
     if result.shuffle is not None:
-        score = -np.nan_to_num(np.asarray(result.shuffle.p_value, float), nan=np.inf)
+        score = -np.nan_to_num(_decision(result.shuffle)[1], nan=np.inf)
         tie = np.nan_to_num(vals, nan=-np.inf)
         flat = np.lexsort((tie.ravel(), score.ravel()))[-1]
     else:
@@ -392,8 +406,11 @@ def plot_event_raster_data(
         sem = win.std(axis=0, ddof=1) / np.sqrt(ons.size) if ons.size > 1 else np.zeros_like(mean)
     else:
         win, mean, sem = np.zeros((0, t.size)), np.full(t.size, np.nan), np.full(t.size, np.nan)
+    p_txt = p_label(result.shuffle, (int(cell), int(s))) if result.shuffle is not None else ""
+    title = f"cell {label}, {names[s]} (n={ons.size} events)" + (f", {p_txt}" if p_txt else "")
     return {
         "kind": "event_raster",
+        "title": title,
         "version": PLOT_DATA_VERSION,
         "time_s": t,
         "windows": win,
@@ -414,7 +431,7 @@ def plot_event_raster_data(
     data=plot_event_raster_data,
     needs_session=True,
     level="cell",
-    requires=("extras:peth",),
+    requires=("extras:peth", "target"),
     defaults=_raster_defaults,
 )
 def plot_event_raster(
@@ -456,7 +473,7 @@ def plot_event_raster(
     fig, (ax, ax_m) = plt.subplots(
         2, 1, figsize=(5.5, 5.5), sharex=True, height_ratios=[3, 1.3], layout="constrained"
     )
-    ax.set_title(f"cell {d['cell_id']}, {d['state_name']} (n={d['n_events']} events)", fontsize=9)
+    ax.set_title(d["title"], fontsize=9)
     if d["n_events"] == 0:
         ax.text(0.5, 0.5, "no events", ha="center", va="center", transform=ax.transAxes)
         return fig

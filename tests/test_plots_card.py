@@ -181,3 +181,10 @@ def test_plot_cell_cards_writes_files(session, rs, tmp_path):
     for cid, path in out.items():
         assert path.name == f"{cid}.png" and path.exists() and path.stat().st_size > 0
     assert not plt.get_fignums()
+
+
+def test_no_significant_cells_warns_and_returns_empty(small_session, tmp_path):
+    s, rs3 = cabana.Pipeline(analyses=_specs({**_SH, "alpha": 0.001})[:2]).run(small_session)
+    with pytest.warns(UserWarning, match="no cell is significant"):
+        out = plot_cell_cards(s, rs3, "significant", out_dir=tmp_path / "none")
+    assert out == {} and not (tmp_path / "none").exists()
