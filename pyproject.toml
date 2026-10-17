@@ -4,10 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cabana"
-version = "0.0.1"
+version = "0.1.0.dev0"
 description = "CaBaNA: Calcium Behavioral and Neural Analysis. A general pipeline for relating neural activity to behavioral states."
 readme = "README.md"
 license = { file = "LICENSE" }
+keywords = ["calcium imaging", "neuroscience", "behavior", "miniscope", "place cells", "shuffle test"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
@@ -25,7 +37,13 @@ notebook = ["jupyter", "ipywidgets"]
 minian = ["xarray", "zarr"]
 caiman = ["h5py"]
 loaders = ["xarray", "zarr", "h5py", "tables", "pyarrow"]
-dev = ["pytest", "ruff", "nbformat", "nbclient", "ipykernel"]
+calab = ["calab"]
+test = ["pytest", "hypothesis"]
+dev = ["pytest", "ruff", "nbformat", "nbclient", "ipykernel", "hypothesis"]
+
+[project.urls]
+Homepage = "https://github.com/miniscope/CaBaNA"
+Repository = "https://github.com/miniscope/CaBaNA"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cabana"]
@@ -40,3 +58,4 @@ ignore = ["E501", "UP007", "F722"]  # F722: numpydantic Shape strings
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: tests that take more than ~10 s (deselect with -m 'not slow')"]

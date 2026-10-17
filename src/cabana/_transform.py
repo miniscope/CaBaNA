@@ -71,7 +71,7 @@ class ResampleSignal(Transform):
                 res[~covered] = np.nan
                 res[~ok[nearest]] = np.nan
             out = out.with_signal(c, res)
-        return out.with_mask(f"{self.source}_covered", covered)
+        return out.with_mask(f"{self.source}_covered", covered, source=self.to_dict())
 
 
 @register("transform")
@@ -208,7 +208,9 @@ class BinGrid(Transform):
             topology=topo,
             support=ok.copy(),
         )
-        return session.with_state(space).with_mask(f"{self.output}_valid", ok)
+        return session.with_state(space).with_mask(
+            f"{self.output}_valid", ok, source=self.to_dict()
+        )
 
 
 @register("transform")
@@ -304,7 +306,9 @@ class BoutsToStates(Transform):
             exclusive=self.exclusive,
             support=scored,
         )
-        return session.with_state(space).with_mask(f"{self.output}_scored", scored)
+        return session.with_state(space).with_mask(
+            f"{self.output}_scored", scored, source=self.to_dict()
+        )
 
 
 @register("transform")
@@ -334,7 +338,9 @@ class LabelsToStates(Transform):
             exclusive=True,
             support=np.asarray(covered, bool),
         )
-        return session.with_state(space).with_mask(f"{self.output}_covered", covered)
+        return session.with_state(space).with_mask(
+            f"{self.output}_covered", covered, source=self.to_dict()
+        )
 
 
 __all__ = [

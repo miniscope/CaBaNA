@@ -94,11 +94,11 @@ from ._simulate import SimulationConfig, simulate_session
 from ._transform import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
 
 try:
-    from importlib.metadata import version as _version
+    from importlib.metadata import PackageNotFoundError, version as _version
 
     __version__ = _version("cabana")
-except Exception:  # pragma: no cover - not installed
-    __version__ = "0.0.1"
+except PackageNotFoundError:  # pragma: no cover - not installed
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     # cell classification

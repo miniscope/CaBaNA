@@ -646,8 +646,19 @@ class Session(_ArrayModel):
     def with_signal(self, name: str, values: np.ndarray) -> Session:
         return self.replace(signals={**self.signals, name: np.asarray(values)})
 
-    def with_mask(self, name: str, mask: np.ndarray) -> Session:
-        return self.replace(masks={**self.masks, name: np.asarray(mask, bool)})
+    def with_mask(
+        self, name: str, mask: np.ndarray, *, source: dict[str, Any] | str | None = None
+    ) -> Session:
+        """Copy with mask ``name`` set; ``source`` (step dict or short text) is recorded.
+
+        ``meta["mask_info"][name] = {"source", "n_true", "n_frames"}``.
+        """
+        m = np.asarray(mask, bool)
+        info = {
+            **self.meta.get("mask_info", {}),
+            name: {"source": source, "n_true": int(m.sum()), "n_frames": int(m.size)},
+        }
+        return self.replace(masks={**self.masks, name: m}, meta={**self.meta, "mask_info": info})
 
     def with_activity(self, activity: np.ndarray, kind: ActivityKind | None = None) -> Session:
         upd: dict[str, Any] = {"activity": activity}

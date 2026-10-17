@@ -1,10 +1,33 @@
-"""Persistence: ``ResultSet`` and ``Session`` to a directory or ``.zip`` (JSON manifest + npz)."""
+"""Persistence: ``ResultSet`` and ``Session`` to a directory or ``.zip`` (JSON manifest + npz).
+
+**Format version.**  ``manifest["format"]`` (currently 2).  A missing value means 1.
+Loading a file with a greater version raises ``ValueError``; an older one is upgraded
+in memory by the ``_MIGRATIONS`` chain (``(manifest, arrays) -> (manifest, arrays)``,
+applied one version at a time).  Format 2 moved ``cell_ids`` out of the npz files into
+the manifest (as JSON lists of ``str``); format 1 stored them as ``<U`` arrays.
+
+**Strict JSON.**  Manifests are written with ``allow_nan=False``.  Non-finite floats
+anywhere in the manifest are written as ``{"__float__": "nan" | "inf" | "-inf"}`` and
+restored on load, so every manifest parses with any JSON reader.
+
+**Dtype contract** (enforced on save by ``_canon_array``, checked by ``_check_dtypes``):
+
+* floating arrays are ``float64``, or ``float32`` if they already are (shuffle null
+  draws are always stored as ``float32``);
+* masks and significance flags are ``bool``;
+* integer arrays (``state_index``, ``shifts``, ...) are ``int32`` when every value
+  fits; ``int64`` only when a value exceeds the ``int32`` range.  Integer types
+  narrower than 32 bits are kept as they are;
+* never ``object`` dtype (``allow_pickle`` stays ``False`` on load).  Fixed-width
+  unicode arrays are only tolerated inside user ``meta``.
+"""
 
 from __future__ import annotations
 
 import io
 import json
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +43,15 @@ from ._models import (
 )
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 
-_FORMAT = 1
+_FORMAT = 2
+
+# Keys a file must contain (everything else is read with ``.get`` and defaulted).
+_REQUIRED_RESULT_ARRAYS = ("values",)
+_REQUIRED_SHUFFLE_ARRAYS = ("sh_observed", "sh_p_value", "sh_null_lo", "sh_null_hi")
+_REQUIRED_ENTRY_KEYS = ("metric", "target", "file")
+_REQUIRED_SHUFFLE_META = ("alpha", "tail", "n_shuffles", "null_name")
+_REQUIRED_SESSION_ARRAYS = ("activity", "t")
+_REQUIRED_SESSION_KEYS = ("fs", "activity_kind")
 
 
 # --------------------------------------------------------------------------- #
@@ -65,8 +96,55 @@ def _npz_load(data: bytes) -> dict[str, np.ndarray]:
         return {k: z[k] for k in z.files}
 
 
-def _strs(x: list[str]) -> np.ndarray:
-    return np.array([str(v) for v in x], dtype="<U") if len(x) else np.array([], dtype="<U1")
+_INT32 = np.iinfo(np.int32)
+
+
+def _canon_array(a: Any) -> np.ndarray:
+    """Cast ``a`` to the on-disk dtype contract (see module docstring)."""
+    a = np.asarray(a)
+    k = a.dtype.kind
+    if k == "O":
+        raise TypeError("object arrays cannot be saved (allow_pickle is disabled)")
+    if k == "f":
+        return a if a.dtype in (np.float32, np.float64) else a.astype(np.float64)
+    if k in "iu" and a.dtype.itemsize >= 4:
+        if a.size == 0 or (a.min() >= _INT32.min and a.max() <= _INT32.max):
+            return a.astype(np.int32)
+        return a.astype(np.int64)  # values exceed int32: keep 64 bit
+    return a
+
+
+def _check_dtypes(arrays: dict[str, np.ndarray]) -> None:
+    """Raise ``ValueError`` if any array violates the dtype contract (used on save and in tests)."""
+    bad = []
+    for k, a in arrays.items():
+        a = np.asarray(a)
+        kind = a.dtype.kind
+        if kind == "O":
+            bad.append(f"{k}: object dtype")
+        elif kind == "f" and a.dtype not in (np.float32, np.float64):
+            bad.append(f"{k}: {a.dtype} (floats must be float32/float64)")
+        elif kind in "iu" and a.dtype.itemsize >= 4:
+            fits = a.size == 0 or (a.min() >= _INT32.min and a.max() <= _INT32.max)
+            if fits and a.dtype != np.int32:
+                bad.append(f"{k}: {a.dtype} but values fit int32")
+            elif not fits and a.dtype != np.int64:
+                bad.append(f"{k}: {a.dtype} but values exceed int32 (use int64)")
+    if bad:
+        raise ValueError("dtype contract violated: " + "; ".join(bad))
+
+
+def _npz_bytes(arrays: dict[str, np.ndarray]) -> bytes:
+    arrays = {k: _canon_array(v) for k, v in arrays.items()}
+    _check_dtypes(arrays)
+    buf = io.BytesIO()
+    np.savez_compressed(buf, **arrays)
+    return buf.getvalue()
+
+
+def _npz_load(data: bytes) -> dict[str, np.ndarray]:
+    with np.load(io.BytesIO(data), allow_pickle=False) as z:
+        return {k: z[k] for k in z.files}
 
 
 def _jsonable(x: Any, store: dict[str, np.ndarray] | None = None) -> Any:
@@ -88,6 +166,30 @@ def _jsonable(x: Any, store: dict[str, np.ndarray] | None = None) -> Any:
     return str(x)
 
 
+_FLOAT_KEY = "__float__"
+
+
+def _encode_floats(x: Any) -> Any:
+    """Replace non-finite floats by ``{"__float__": "nan"|"inf"|"-inf"}`` (recursively)."""
+    if isinstance(x, float) and not np.isfinite(x):
+        return {_FLOAT_KEY: "nan" if np.isnan(x) else ("inf" if x > 0 else "-inf")}
+    if isinstance(x, dict):
+        return {k: _encode_floats(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_encode_floats(v) for v in x]
+    return x
+
+
+def _decode_floats(x: Any) -> Any:
+    if isinstance(x, dict):
+        if set(x) == {_FLOAT_KEY} and x[_FLOAT_KEY] in ("nan", "inf", "-inf"):
+            return float(x[_FLOAT_KEY])
+        return {k: _decode_floats(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_decode_floats(v) for v in x]
+    return x
+
+
 def _unjson(x: Any, arrays: dict[str, np.ndarray]) -> Any:
     if isinstance(x, dict):
         if set(x) == {"__array__"}:
@@ -99,7 +201,68 @@ def _unjson(x: Any, arrays: dict[str, np.ndarray]) -> Any:
 
 
 def _dump(obj: Any) -> bytes:
-    return json.dumps(obj, indent=2, allow_nan=True).encode()
+    return json.dumps(_encode_floats(obj), indent=2, allow_nan=False).encode()
+
+
+def _str_list(x: Any) -> list[str]:
+    return [str(v) for v in x]
+
+
+# --------------------------------------------------------------------------- #
+# format versions and migrations
+# --------------------------------------------------------------------------- #
+
+Migration = Callable[[dict, dict], tuple[dict, dict]]
+
+
+def _migrate_1_to_2(man: dict, arrays: dict) -> tuple[dict, dict]:
+    """Format 1 -> 2: ``cell_ids`` moves from ``<U`` npz arrays into the manifest as ``list[str]``.
+
+    ``arrays`` is the flat ``{"<npz file>:<name>": array}`` view for a ResultSet
+    (one npz per result) and ``{"<name>": array}`` for a Session.
+    """
+    if man.get("kind") == "cabana.ResultSet":
+        for e in man.get("results", []):
+            key = f"{e['file']}:cell_ids"
+            if e.pop("has_cell_ids", False) and key in arrays:
+                e["cell_ids"] = _str_list(arrays.pop(key))
+            else:
+                arrays.pop(key, None)
+                e.setdefault("cell_ids", None)
+    elif man.get("kind") == "cabana.Session":
+        man["cell_ids"] = _str_list(arrays.pop("cell_ids", []))
+    man["format"] = 2
+    return man, arrays
+
+
+_MIGRATIONS: dict[int, Migration] = {1: _migrate_1_to_2}
+
+
+def _format_of(man: dict) -> int:
+    fmt = man.get("format", 1)
+    if isinstance(fmt, bool) or not isinstance(fmt, int) or fmt < 1:
+        raise ValueError(f"invalid manifest format {fmt!r}")
+    if fmt > _FORMAT:
+        raise ValueError(
+            f"file was written by a newer cabana (format {fmt} > {_FORMAT}); upgrade cabana"
+        )
+    return fmt
+
+
+def _migrate(man: dict, arrays: dict, fmt: int) -> tuple[dict, dict]:
+    while fmt < _FORMAT:
+        if fmt not in _MIGRATIONS:
+            raise ValueError(f"no migration from format {fmt} to {fmt + 1}")
+        man, arrays = _MIGRATIONS[fmt](man, arrays)
+        fmt += 1
+        man["format"] = fmt
+    return man, arrays
+
+
+def _require(d: dict, keys: tuple[str, ...], what: str) -> None:
+    missing = [k for k in keys if k not in d]
+    if missing:
+        raise ValueError(f"saved file is missing required {what}: {', '.join(missing)}")
 
 
 # --------------------------------------------------------------------------- #
@@ -112,8 +275,10 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
 
     Layout: ``manifest.json`` (``format``, ``kind="cabana.ResultSet"`` and one
     entry per result with names, params, provenance and shuffle settings) plus
-    ``results/NNN.npz`` per result holding ``values``, ``cell_ids``, the extras
-    and the shuffle arrays (null draws as float32).
+    ``results/NNN.npz`` per result holding ``values``, the extras
+    and the shuffle arrays (null draws as float32).  ``cell_ids`` and ``state_names``
+    are lists of ``str`` in the manifest entry.  See the module docstring for the
+    format version, strict-JSON and dtype rules.
 
     Parameters
     ----------
@@ -126,8 +291,6 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
     entries = []
     for i, r in enumerate(rs.results):
         arrays: dict[str, np.ndarray] = {"values": np.asarray(r.values)}
-        if r.cell_ids is not None:
-            arrays["cell_ids"] = _strs(r.cell_ids)
         extra_keys = {}
         for j, (k, v) in enumerate(r.extras.items()):
             arrays[f"extra_{j}"] = np.asarray(v)
@@ -164,8 +327,8 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
                 "level": r.level,
                 "params": _jsonable(r.params),
                 "provenance": _jsonable(r.provenance),
-                "state_names": r.state_names,
-                "has_cell_ids": r.cell_ids is not None,
+                "state_names": None if r.state_names is None else _str_list(r.state_names),
+                "cell_ids": None if r.cell_ids is None else _str_list(r.cell_ids),
                 "extras": extra_keys,
                 "shuffle": sh_meta,
             }
@@ -206,23 +369,38 @@ def load_results(path: str | Path) -> ResultSet:
     files = _read_files(path)
     if "manifest.json" not in files:
         raise ValueError(f"{str(path)!r} has no manifest.json")
-    man = json.loads(files["manifest.json"])
+    man = _decode_floats(json.loads(files["manifest.json"]))
     if man.get("kind") != "cabana.ResultSet":
         raise ValueError(f"{str(path)!r} is not a saved ResultSet")
+    fmt = _format_of(man)
+    flat: dict[str, np.ndarray] = {}
+    for e in man.get("results", []):
+        _require(e, _REQUIRED_ENTRY_KEYS, "result keys")
+        for k, v in _npz_load(files[e["file"]]).items():
+            flat[f"{e['file']}:{k}"] = v
+    man, flat = _migrate(man, flat, fmt)
     rs = ResultSet()
-    for e in man["results"]:
-        a = _npz_load(files[e["file"]])
+    for e in man.get("results", []):
+        pre = f"{e['file']}:"
+        a = {k[len(pre) :]: v for k, v in flat.items() if k.startswith(pre)}
+        _require(a, _REQUIRED_RESULT_ARRAYS, f"arrays in {e['file']}")
         sh = None
-        if e["shuffle"] is not None:
+        if e.get("shuffle") is not None:
             m = e["shuffle"]
+            _require(m, _REQUIRED_SHUFFLE_META, "shuffle settings")
+            _require(a, _REQUIRED_SHUFFLE_ARRAYS, f"shuffle arrays in {e['file']}")
+            p = a["sh_p_value"]
+            sig = a.get("sh_significant")
+            if sig is None:
+                sig = np.nan_to_num(p, nan=1.0) < m["alpha"]
             sh = ShuffleResult(
                 observed=a["sh_observed"],
                 null=a.get("sh_null"),
                 shifts=a.get("sh_shifts"),
-                p_value=a["sh_p_value"],
+                p_value=p,
                 null_lo=a["sh_null_lo"],
                 null_hi=a["sh_null_hi"],
-                significant=a["sh_significant"],
+                significant=sig,
                 null_median=a.get("sh_null_median"),
                 null_mean=a.get("sh_null_mean"),
                 p_adj=a.get("sh_p_adj"),
@@ -238,17 +416,17 @@ def load_results(path: str | Path) -> ResultSet:
         rs.add(
             MetricResult(
                 metric=e["metric"],
-                name=e["name"],
+                name=e.get("name"),
                 target=e["target"],
-                target_kind=e["target_kind"],
-                level=e["level"],
+                target_kind=e.get("target_kind", "states"),
+                level=e.get("level", "cell"),
                 values=a["values"],
                 shuffle=sh,
-                params=e["params"],
-                provenance=e["provenance"],
-                extras={k: a[f] for f, k in e["extras"].items()},
-                cell_ids=[str(c) for c in a["cell_ids"]] if e["has_cell_ids"] else None,
-                state_names=e["state_names"],
+                params=e.get("params") or {},
+                provenance=e.get("provenance") or {},
+                extras={k: a[f] for f, k in (e.get("extras") or {}).items() if f in a},
+                cell_ids=e.get("cell_ids"),
+                state_names=e.get("state_names"),
             )
         )
     rs.status = man.get("status", "ok")
@@ -267,8 +445,8 @@ def save_session(s: Session, path: str | Path) -> None:
     """Write a ``Session`` (backs :meth:`Session.save`).
 
     Layout: ``manifest.json`` (``format``, ``kind="cabana.Session"``, ``fs``,
-    ``activity_kind``, state / behavior descriptions, JSON-safe ``meta``) and
-    ``arrays.npz`` (activity, ``t``, cell ids, masks, signals, state ``onehot`` /
+    ``activity_kind``, ``cell_ids``, state / behavior descriptions, JSON-safe ``meta``) and
+    ``arrays.npz`` (activity, ``t``, masks, signals, state ``onehot`` /
     ``support`` / grid edges, raw behavior arrays and arrays found in ``meta``).
     Non-JSON ``meta`` values are stored as strings.
 
@@ -282,7 +460,6 @@ def save_session(s: Session, path: str | Path) -> None:
     arrays: dict[str, np.ndarray] = {
         "activity": np.asarray(s.activity),
         "t": np.asarray(s.t),
-        "cell_ids": _strs(list(s.cell_ids or [])),
     }
     for k, v in s.masks.items():
         arrays[f"mask/{k}"] = np.asarray(v, bool)
@@ -337,6 +514,7 @@ def save_session(s: Session, path: str | Path) -> None:
         "kind": "cabana.Session",
         "fs": s.fs,
         "activity_kind": s.activity_kind,
+        "cell_ids": _str_list(s.cell_ids or []),
         "masks": list(s.masks),
         "signals": list(s.signals),
         "states": states,
@@ -368,14 +546,17 @@ def load_session(path: str | Path) -> Session:
     files = _read_files(path)
     if "manifest.json" not in files or "arrays.npz" not in files:
         raise ValueError(f"{str(path)!r} is not a saved Session")
-    man = json.loads(files["manifest.json"])
+    man = _decode_floats(json.loads(files["manifest.json"]))
     if man.get("kind") != "cabana.Session":
         raise ValueError(f"{str(path)!r} is not a saved Session")
-    a = _npz_load(files["arrays.npz"])
+    fmt = _format_of(man)
+    man, a = _migrate(man, _npz_load(files["arrays.npz"]), fmt)
+    _require(a, _REQUIRED_SESSION_ARRAYS, "arrays")
+    _require(man, _REQUIRED_SESSION_KEYS, "manifest keys")
     states = {}
-    for k, m in man["states"].items():
+    for k, m in (man.get("states") or {}).items():
         topo = None
-        if m["topology"] is not None:
+        if m.get("topology") is not None:
             shape = tuple(m["topology"]["shape"])
             topo = GridTopology(
                 shape=shape,
@@ -389,10 +570,10 @@ def load_session(path: str | Path) -> Session:
             kind=m["kind"],
             exclusive=m["exclusive"],
             topology=topo,
-            support=a[f"state/{k}/support"] if m["has_support"] else None,
+            support=a[f"state/{k}/support"] if m.get("has_support") else None,
         )
     behavior: dict[str, Any] = {}
-    for k, m in man["behavior"].items():
+    for k, m in (man.get("behavior") or {}).items():
         if m["type"] == "continuous":
             behavior[k] = ContinuousSignal(
                 t=a[f"behavior/{k}/t"],
@@ -419,12 +600,12 @@ def load_session(path: str | Path) -> Session:
         t=a["t"],
         fs=man["fs"],
         activity_kind=man["activity_kind"],
-        cell_ids=[str(c) for c in a["cell_ids"]],
+        cell_ids=_str_list(man.get("cell_ids", [])),
         behavior=behavior,
-        signals={k: a[f"signal/{k}"] for k in man["signals"]},
+        signals={k: a[f"signal/{k}"] for k in man.get("signals", [])},
         states=states,
-        masks={k: a[f"mask/{k}"] for k in man["masks"]},
-        meta=_unjson(man["meta"], a),
+        masks={k: a[f"mask/{k}"] for k in man.get("masks", [])},
+        meta=_unjson(man.get("meta") or {}, a),
     )
 
 

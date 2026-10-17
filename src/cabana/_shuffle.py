@@ -64,7 +64,16 @@ class ShuffleConfig(BaseModel):
         Convenience for the default null: smallest allowed |shift| in seconds.
         Ignored when ``null`` is given explicitly.
     seed : int | None, default 0
-        RNG seed for reproducibility; ``None`` draws fresh entropy.
+        Base RNG seed for reproducibility; ``None`` draws fresh entropy.  In a
+        ``Pipeline`` the stream actually used is derived per analysis from this
+        base and the analysis name (see ``derive_seeds``); a direct
+        ``shuffle_test`` call uses it as is.
+    derive_seeds : bool, default True
+        Pipeline only.  ``True`` gives every analysis its own stream,
+        ``SeedSequence([seed, crc32(name)])``, so nulls are independent across
+        analyses.  ``False`` restores the old behaviour in which all analyses
+        sharing a seed draw identical shifts (correlated nulls).  Wanted never,
+        except to reproduce results produced before per-analysis seeding.
     alpha : float, default 0.05
         Significance level, in (0, 1); ``significant`` means ``p_value < alpha``
         and the null bounds are percentiles at ``alpha`` (or ``alpha / 2``).
@@ -98,7 +107,11 @@ class ShuffleConfig(BaseModel):
     min_shift_s: float = Field(
         20.0, ge=0, description="Smallest |shift| (s) of the default circular_shift null."
     )
-    seed: int | None = Field(0, description="RNG seed; None = non-reproducible.")
+    seed: int | None = Field(0, description="Base RNG seed; None = non-reproducible.")
+    derive_seeds: bool = Field(
+        True,
+        description="Pipeline: derive a per-analysis seed from (seed, analysis name).",
+    )
     alpha: float = Field(0.05, gt=0, lt=1, description="Significance level (p < alpha).")
     tail: Tail | None = Field(
         None,
@@ -434,7 +447,7 @@ def shuffle_test(
     null_plugin.check_target(metric, target)
     activity = np.asarray(activity)
     mask = np.asarray(mask, dtype=bool)
-    rng = np.random.default_rng(config.seed)
+    rng = np.random.default_rng(np.random.SeedSequence(config.seed))
     tail: Tail = config.tail if config.tail is not None else metric.resolve_tail(target)
 
     observed = np.asarray(metric.compute(activity, target, mask, fs), dtype=np.float64)

@@ -32,7 +32,7 @@ class SpeedThreshold(PreprocessStep):
             if self.max_speed is not None:
                 m &= v <= self.max_speed
         m &= np.isfinite(v)
-        return session.with_mask(self.output, m)
+        return session.with_mask(self.output, m, source=self.to_dict())
 
 
 @register("preprocess")
@@ -57,7 +57,7 @@ class TimeRange(PreprocessStep):
             m &= session.t >= self.start_s
         if self.stop_s is not None:
             m &= session.t <= self.stop_s
-        return session.with_mask(self.output, m)
+        return session.with_mask(self.output, m, source=self.to_dict())
 
 
 @register("preprocess")

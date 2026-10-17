@@ -1,5 +1,7 @@
 # CaBaNA
 
+[![CI](https://github.com/miniscope/CaBaNA/actions/workflows/ci.yml/badge.svg)](https://github.com/miniscope/CaBaNA/actions/workflows/ci.yml)
+
 **Ca**lcium **B**ehavioral **a**nd **N**eural **A**nalysis: a pipeline for asking
 how neural activity relates to behavioral states.
 
@@ -76,6 +78,9 @@ python3.12 -m venv .venv
 .venv/bin/pytest
 .venv/bin/python examples/demo.py
 ```
+
+For a reproducible install with the tested dependency versions, add `-c constraints.txt`:
+`pip install -c constraints.txt -e ".[dev,loaders]"`.
 
 In Colab or any environment without a checkout:
 

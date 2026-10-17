@@ -514,8 +514,15 @@ Targets that are signals have no support. `Session.rebin` carries support along
 **Provenance.** `MetricResult.provenance` records `cabana_version`, `seed`,
 `null`, `n_shuffles`, `alpha`, `tail`, `masks` (as listed), `support_used`,
 `n_frames_used`, `fs`, `activity_kind`, `n_cells`, `target_kind`,
-`target_params` and `timestamp`. Transform parameters are appended to
-`session.meta["transforms"]`, so a saved session says how its states were built.
+`target_params` and `timestamp`. Transform and preprocess parameters are appended to
+`session.meta["transforms"]` / `["preprocess"]` (kind changes to
+`["activity_kind_history"]`), so a saved session says how it was built. Masks carry
+their origin in `meta["mask_info"][name] = {source, n_true, n_frames}` (`Session.with_mask(..., source=)`).
+Provenance also holds `effective_seed` (the per-analysis seed derived from the base
+`seed` and the analysis name, see STATISTICS.md "Seeding"), `mask_info`, `preprocess`,
+`transforms`, `env` (python and package versions, platform), `pipeline_sha256` (canonical
+JSON of `Pipeline.to_dict()`) and `session_sha256` (activity bytes, shape, dtype; once per run).
+Results from before per-analysis seeding differ because shifts are now per-analysis.
 
 **Persistence (`_io.py`).** `ResultSet.save(path)` / `ResultSet.load(path)` and
 `Session.save` / `Session.load` write a directory or a `.zip` holding

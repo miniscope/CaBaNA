@@ -7,12 +7,14 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from cabana import ResultSet
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.slow
 def test_demo_quick(tmp_path):
     proc = subprocess.run(
         [sys.executable, str(ROOT / "examples" / "demo.py"), "--quick", "--out", str(tmp_path)],

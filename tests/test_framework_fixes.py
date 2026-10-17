@@ -364,13 +364,15 @@ def test_keep_null_none_drops_draws_but_keeps_inference(tmp_path):
                 name="full",
                 metric={"name": "auroc"},
                 states="social",
-                shuffle=ShuffleConfig(n_shuffles=10, min_shift_s=2.0),
+                shuffle=ShuffleConfig(n_shuffles=10, min_shift_s=2.0, derive_seeds=False),
             ),
             AnalysisSpec(
                 name="lean",
                 metric={"name": "auroc"},
                 states="social",
-                shuffle=ShuffleConfig(n_shuffles=10, min_shift_s=2.0, keep_null="none"),
+                shuffle=ShuffleConfig(
+                    n_shuffles=10, min_shift_s=2.0, keep_null="none", derive_seeds=False
+                ),
             ),
         ],
     )

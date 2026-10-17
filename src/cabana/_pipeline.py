@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata as _md
+import json
+import platform
+import sys
 import time
 import traceback as _tb
 import warnings
+import zlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -201,6 +207,38 @@ def _target_params(session: Session, target: str) -> dict[str, Any] | None:
             if chans is None or target in chans:
                 return _plain(entry)
     return None
+
+
+def derive_seed(base: int, name: str) -> int:
+    """Per-analysis seed: ``SeedSequence([base, crc32(name)])`` state word (stable across machines)."""
+    ss = np.random.SeedSequence([int(base), zlib.crc32(name.encode())])
+    return int(ss.generate_state(1, dtype=np.uint64)[0])
+
+
+def _sha_json(obj: Any) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _session_sha(session: Session) -> str:
+    a = np.ascontiguousarray(session.activity)
+    h = hashlib.sha256()
+    h.update(f"{a.shape}|{a.dtype}".encode())
+    h.update(a.tobytes())
+    return h.hexdigest()
+
+
+def _env_info() -> dict[str, str | None]:
+    def v(pkg: str) -> str | None:
+        try:
+            return _md.version(pkg)
+        except Exception:
+            return None
+
+    return {
+        "python": sys.version.split()[0],
+        **{p: v(p) for p in ("numpy", "scipy", "pydantic", "numpydantic", "scikit-learn")},
+        "platform": platform.platform(),
+    }
 
 
 class Pipeline(BaseModel):
@@ -408,9 +446,23 @@ class Pipeline(BaseModel):
                 check_cancel()
                 say(f"[preprocess] {p.name}")
                 emit("preprocess", p.name, i, n_p, step * stage_slice)
+                kind_before = session.activity_kind
                 session = p.apply(session)
+                meta = {
+                    **session.meta,
+                    "preprocess": [*session.meta.get("preprocess", []), p.to_dict()],
+                }
+                if session.activity_kind != kind_before:
+                    hist = session.meta.get("activity_kind_history") or [kind_before]
+                    meta["activity_kind_history"] = [*hist, session.activity_kind]
+                session = session.replace(meta=meta)
                 step += 1
             frac = pre_slice
+            run_info = {
+                "env": _env_info(),
+                "pipeline_sha256": _sha_json(self.to_dict()),
+                "session_sha256": _session_sha(session),
+            }
             yield ("session", session)
 
             done_w = 0.0
@@ -453,7 +505,13 @@ class Pipeline(BaseModel):
                                 warnings.simplefilter("always")
                             try:
                                 result = self._analyze(
-                                    session, spec, name, __version__, on_batch, ctx.should_cancel
+                                    session,
+                                    spec,
+                                    name,
+                                    __version__,
+                                    on_batch,
+                                    ctx.should_cancel,
+                                    run_info,
                                 )
                             finally:
                                 caught = list(rec or [])
@@ -519,6 +577,7 @@ class Pipeline(BaseModel):
         version: str,
         on_batch: Callable[[int, int], None],
         should_cancel: Callable[[], bool] | None,
+        run_info: dict[str, Any] | None = None,
     ) -> MetricResult:
         metric = spec.metric.model_copy()  # configure() mutates a per-run copy
         support = None
@@ -548,13 +607,19 @@ class Pipeline(BaseModel):
         if support is not None:
             mask = mask & support
         shuf = None
+        effective_seed: int | None = None
         if spec.shuffle is not None:
+            cfg = spec.shuffle
+            effective_seed = cfg.seed
+            if cfg.derive_seeds and cfg.seed is not None:
+                effective_seed = derive_seed(cfg.seed, name)
+                cfg = cfg.model_copy(update={"seed": effective_seed})
             shuf = shuffle_test(
                 metric,
                 session.activity,
                 target,
                 mask,
-                spec.shuffle,
+                cfg,
                 session.fs,
                 on_batch=on_batch,
                 should_cancel=should_cancel,
@@ -574,7 +639,12 @@ class Pipeline(BaseModel):
             "n_shuffles": None if shuf is None else shuf.n_shuffles,
             "alpha": None if shuf is None else shuf.alpha,
             "tail": None if shuf is None else shuf.tail,
+            "effective_seed": effective_seed,
             "masks": listed,
+            "mask_info": {m: session.meta.get("mask_info", {}).get(m) for m in listed},
+            "preprocess": list(session.meta.get("preprocess", [])),
+            "transforms": list(session.meta.get("transforms", [])),
+            **(run_info or {}),
             "support_used": support is not None,
             "n_frames_used": int(mask.sum()),
             "fs": float(session.fs),

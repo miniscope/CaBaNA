@@ -61,6 +61,27 @@ and fewer only for quick looks.
 For a two-sided test the one-sided count is doubled, `2 (min(k_upper, k_lower) + 1) / (n + 1)`,
 and clipped to 1, so the floor is `2 / (n_shuffles + 1)`.
 
+## Seeding
+
+`ShuffleConfig.seed` is a *base* seed (default 0; `None` draws fresh entropy).
+A direct `shuffle_test(..., ShuffleConfig(seed=s))` call uses it as is, via
+`default_rng(SeedSequence(s))`, which is bit-identical to `default_rng(s)`.
+
+Inside a `Pipeline` each analysis gets its own stream:
+`effective_seed = SeedSequence([seed, crc32(name)]).generate_state(1, uint64)[0]`,
+where `name` is the resolved analysis name (`information_content[position]`,
+`...#2`, or an explicit `AnalysisSpec.name`). This is deterministic across runs
+and machines, differs between analyses, and does not change when an unrelated
+analysis is added. Without it every analysis drew the identical shift sequence,
+which correlates the nulls across analyses and makes "significant in A and B"
+criteria and `overlap_vs_chance` too optimistic about independence. Provenance
+records both `seed` (base) and `effective_seed`.
+
+`derive_seeds=False` restores the shared stream. Use it never, except to
+reproduce results from before per-analysis seeding. Numbers from earlier runs
+differ from current ones for that reason (p-values move within sampling noise).
+Renaming an analysis changes its stream.
+
 ## NaN semantics
 
 If the observed metric is undefined (a silent cell, too few frames in a state)

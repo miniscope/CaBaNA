@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, framework-demo]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.deps == 'latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+        deps: [pinned, latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - name: Install (pinned)
+        if: matrix.deps == 'pinned'
+        run: pip install -c constraints.txt -e ".[dev,loaders]"
+      - name: Install (latest)
+        if: matrix.deps == 'latest'
+        run: pip install -e ".[dev,loaders]"
+      - run: pytest -q
+
+  notebook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - run: pip install -c constraints.txt -e ".[dev,loaders]"
+      - name: Demo script
+        run: python examples/demo.py --quick --out /tmp/demo_out
+      - name: Execute notebook
+        run: |
+          python - <<'PY'
+          import nbformat
+          from nbclient import NotebookClient
+
+          nb = nbformat.read("notebooks/cabana_demo.ipynb", as_version=4)
+          NotebookClient(nb, timeout=900, kernel_name="python3", resources={"metadata": {"path": "notebooks"}}).execute()
+          PY
