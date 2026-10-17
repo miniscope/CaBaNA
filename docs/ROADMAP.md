@@ -7,6 +7,19 @@ reviewer rendered and inspected the demo figures; the parameter reviewer ran a
 smoothing × bin-size sweep on the simulator. Claims that change priorities were
 spot-checked against the code by the coordinator.
 
+## 0. Status (updated 2026-10-17)
+
+| Phase | State | Commits | Notes |
+|---|---|---|---|
+| A: safety net and contracts | done | `2a1e940`, `0af355a` | CI, format 2 persistence, per-analysis seeds, provenance, `n_jobs`, resumable `run_set`, golden and property tests |
+| B: parameters, sweeps, provenance | done | `26aca15`, `1326010`, `d660898` | `_kernels`, `Selection` + parameter paths, `Selector` stage, `cabana.sweep` with guard rail, `auto_smooth_sigma`, `auto_null_timescale`, demo figures 28–29, notebook section 5. F1 (kernels) and F4 (tuning export: partially, via `Selection`) pulled forward |
+| C: real data in | done except C8 layers | `3d01847`, `3a3b22b`, `bd70127` | cell metadata and QC, activity conditioning, mask composition, behaviour transforms, alignment, Miniscope-format loaders, `load_calab`, `load_session_dir`, three-chamber fixture, `PLUGINS.md` + `check_plugin`. Deferred: `Session.layers` (multiple activity representations side by side); "preprocess before transforms" resolved by writing Transforms instead |
+| D: evidence-first presentation | not started | | `plot_data` layer exists only for the sweep plots |
+| E: metrics and nulls | not started | | |
+| F: CaLab integration | F1 done; F2–F6 open | | licence decision still pending |
+
+Open decisions: licence (AGPL-3.0 vs CaLab's MIT); `auto_null_timescale` floor (5 s) vs the 20–30 s convention.
+
 ## 1. Where the framework stands
 
 The plugin/spec/criteria layers are judged sound by every reviewer. The gaps are
