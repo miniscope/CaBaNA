@@ -85,3 +85,13 @@ class _FixedSigma(_Selector):
                 scores=[0.1, 0.5, 0.9],
             )
         ]
+
+
+@pytest.fixture(scope="session")
+def three_chamber_dir():
+    """Directory of the slimmed lab dataset (``tests/data/simulated_3chamber``, first 75 s)."""
+    from pathlib import Path
+
+    d = Path(__file__).resolve().parent / "data" / "simulated_3chamber"
+    assert (d / "neural_timestamps.csv").exists(), d
+    return d

@@ -2,6 +2,8 @@ transforms:
 - name: resample_signal
   source: position
   channels: null
+  method: linear
+  max_gap_s: null
 - name: speed
   signals:
   - x

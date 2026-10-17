@@ -287,9 +287,13 @@ def test_labels_min_run():
     assert (got[18] == 1) or (got[18] == 0)
     assert (got[22:25] == -1).all()
     assert (got[25:27] == 2).all()  # no labelled neighbour: left alone
-    # every labelled run is either long enough or isolated by -1
-    from cabana._util import runs
-
-    for k in (0, 1, 2):
-        _, ln = runs(got == k)
-        assert all(n >= 4 or True for n in ln)
+    # every labelled run is either long enough (>= 4 frames at 10 Hz) or has no
+    # labelled neighbour to merge into (bounded by -1 or the recording edges)
+    starts = np.flatnonzero(np.r_[True, got[1:] != got[:-1]])
+    stops = np.r_[starts[1:], got.size]
+    for a, b in zip(starts, stops, strict=True):
+        if got[a] < 0 or b - a >= 4:
+            continue
+        left = got[a - 1] if a > 0 else -1
+        right = got[b] if b < got.size else -1
+        assert left < 0 and right < 0, f"short run {got[a]} at {a}:{b} has a labelled neighbour"

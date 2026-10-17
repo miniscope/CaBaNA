@@ -58,3 +58,9 @@
 - **zone occupancy**: `zone_occupancy` turns a position into a state space with one state per polygon or rectangle (chamber, cup area); frames in no zone are in no state, frames with a lost position are outside the support.
 - **mode filter**: `labels_to_states(mode_filter_s=...)`, a sliding-window majority vote on per-frame integer labels that removes flicker; unlabelled (-1) frames are ignored and stay unlabelled.
 - **merge gap**: `bouts_to_states(merge_gap_s=...)` / `states_to_bouts`, joining same-behavior bouts separated by a shorter gap; applied before the minimum-duration filter.
+- **SNR**: per-cell signal-to-noise ratio, here CaImAn's `SNR_comp` in `cell_meta["snr"]`; compare against a threshold in `select_cells(min_snr=...)`. Not comparable across tools.
+- **accepted component**: a CaImAn component in `estimates/idx_components` that passed its quality evaluation (SNR, spatial correlation, CNN); stored as the bool `cell_meta["accepted"]`. `load_caiman(accepted_only=True)` keeps only these.
+- **alpha**: CaLab's per-cell amplitude scale (fluorescence per unit of deconvolved activity), `cell_meta["alpha"]`. Because it differs per cell, deconvolved amplitudes are not comparable across cells; use binary or z-scored activity or divide by alpha.
+- **dropped frame**: a frame the camera or miniscope never wrote, seen as an interval above 1.5 times the median between stamps; `timing_report` estimates how many each gap hides (`round(dt / median) - 1`).
+- **clock offset / scale**: the two numbers of `fit_clock`, `t_b = scale * (t_a - offset_s)`; the offset is how long clock A had run when clock B started, the scale corrects drift. `apply_clock` applies them; with `scale = 1` it is `t_neural = t_video - t_offset_s`.
+- **timing report**: the dict from `timing_report(t, fs_nominal)` (frame count, `fs_median` / `fs_mean`, dropped frames and gap positions, jitter, first stamp); the `timing_check` step stores it in `meta["timing"]`.

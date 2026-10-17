@@ -71,6 +71,7 @@ from ._pipeline import (
     run_set,
 )
 from ._selection import Selection
+from ._preprocess_cells import SelectCells, cell_qc_table
 from ._selectors import grid_bin_size, heldout_smoothing_scores
 from ._sweep import StabilityReport, SweepResult, sweep
 from ._posthoc import (
@@ -122,6 +123,7 @@ __all__ = [
     "GridTopology",
     "LabelSeries",
     "Session",
+    "SelectCells",
     "SessionInfo",
     "StateSpace",
     # plugin system
@@ -208,6 +210,7 @@ __all__ = [
     "Selection",
     "StabilityReport",
     "SweepResult",
+    "cell_qc_table",
     "grid_bin_size",
     "heldout_smoothing_scores",
     "sweep",

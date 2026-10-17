@@ -10,12 +10,18 @@ extra to install. For what to do with the result, see
 | --- | --- | --- | --- |
 | `load_minian` | Minian zarr directory or store, or a netCDF file | `Session` | `xarray` and `zarr` or `netCDF4` (`cabana[minian]`) |
 | `load_caiman` | CaImAn results `.hdf5` | `Session` | `h5py` (`cabana[caiman]`) |
+| `load_calab` | CaLab `CaDeconResult` (or dict), or an `.npz` | `Session` | nothing extra (`calab` is not imported) |
 | `load_camap` | CaMAP `.camap` bundle directory | `Session` | `pyarrow` for `canonical.parquet` (`cabana[loaders]`) |
 | `load_boris` | BORIS events export, `.csv` or `.tsv` | `BoutTable` | nothing extra |
 | `load_dlc` | DeepLabCut single- or multi-animal `.csv` or `.h5` | `ContinuousSignal` | `tables` for `.h5` (`cabana[loaders]`) |
 | `load_moseq` | Keypoint-MoSeq `.csv` or `results.h5` | `LabelSeries` | `h5py` for `.h5` (`cabana[loaders]`) |
+| `load_miniscope_timestamps` | Miniscope `timeStamps.csv` (`Frame Number`, `Time Stamp (ms)`, `Buffer Index`) | `ndarray` seconds | nothing extra |
+| `load_head_orientation` | Miniscope V4 `headOrientation.csv` (`Time Stamp (ms)`, `qw`, `qx`, `qy`, `qz`) | `(t, quat)` | nothing extra |
+| `load_position_csv` | `frame, x, y` table joined to a timestamps file by frame number | `(t, xy)` | nothing extra |
+| `load_epochs_csv` | annotation epochs `label, start_s, stop_s` | `BoutTable` | nothing extra |
 
-Helpers: `video_time_to_neural`, `infer_fs`, `validate_time`, `dlc_centroid`.
+Helpers: `video_time_to_neural`, `infer_fs`, `validate_time`, `dlc_centroid`, `timing_report`,
+`fit_clock`, `apply_clock`.
 
 Install the extras the same way as the package itself:
 
@@ -62,6 +68,63 @@ offset). `load_dlc` takes either `t` (one neural-clock time per row) or
 (`t`, `time`, `timestamp`, `timestamps` or `timestamp_s`, in seconds), else
 `fs`; `load_caiman` always uses `arange(n_frames) / fs`.
 
+## Two clocks, timestamps files and dropped frames
+
+Miniscope and behavior-camera recordings usually each write a `timeStamps.csv`.
+If both were stamped by one acquisition system their stamps are **already on one
+shared axis** (milliseconds since the recording started; the first stamp is often
+slightly negative), and nothing needs converting: use the stamps as they are and
+leave `t_offset_s` alone. `t_offset_s` (above) is for a *video* clock that starts
+at a different zero from imaging, where all you have is frame indices.
+
+**`load_miniscope_timestamps(path)`** returns `Time Stamp (ms)` as float64
+seconds. Frame numbers must be strictly increasing (the error names the first
+offending frame); time stamps that go backwards give a warning naming the frame.
+`Buffer Index` is ignored; a negative first stamp is kept.
+
+**`timing_report(t, fs_nominal=None)`** (also fine on `Session.t`) returns a dict:
+`n_frames`, `duration_s`, `fs_median`, `fs_mean`, `fs_nominal`, `fs_ratio`,
+`n_dropped_frames`, `dropped_fraction`, `gap_index` / `gap_start_s` /
+`gap_n_frames` (where each gap is and how many frames it hides), `jitter_sd_s` and
+`first_t`. A frame counts as dropped when an interval exceeds 1.5 times the
+median; a gap of `dt` hides `round(dt / median) - 1` frames. Prefer `fs_mean` for
+`Session.fs` when stamps are rounded to whole milliseconds (33 and 34 ms
+alternate at 30 Hz, so `fs_median` reads 30.3). The `timing_check` preprocess step
+stores the report in `meta["timing"]` and warns above a dropped-frame fraction.
+
+**`load_position_csv(path, *, timestamps, frame_column="frame",
+columns=("x", "y"), missing_value=-1, units="cm")`** returns `(t, xy)`. The table
+has no time column, so rows are matched to `timestamps` (a `timeStamps.csv` path,
+or an array whose index is the frame number) by **frame number**, not row order;
+frames missing from the timestamps are dropped with a warning. A row whose
+coordinates all equal `missing_value` becomes NaN. Pass `units` on as
+`ContinuousSignal(units=...)`; nothing converts units.
+
+**`load_head_orientation(path, *, timestamps=None)`** returns `(t, quat)` with
+`quat` `(n, 4)` in `w, x, y, z` order, on the neural clock. Stamps come from the
+file unless `timestamps=` overrides them (a warning if they disagree by more than
+1 ms). Put it in a `ContinuousSignal` whose channels are `head_w`, ...,
+`head_z`, then `resample_signal` and `head_direction(quaternion="head")`. Name
+the channels with a prefix: plain `x`, `y`, `z` would overwrite the position
+signals. The zero of yaw is the sensor's power-on heading; calibrate it with
+`offset_deg`.
+
+**`load_epochs_csv(path, *, label_column="label", start_column="start_s",
+stop_column="stop_s", scored_span=None)`** returns a `BoutTable`. Times are
+already on the session clock (no offset applied). `stop >= start` is checked and
+the row named if not; zero-length rows are point events. Pass `scored_span`, as
+for `load_boris`.
+
+**Aligning two clocks that really differ.** `fit_clock(t_a_events, t_b_events)`
+fits `t_b = scale * (t_a - offset_s)` by least squares from paired sync events
+(TTL pulses, LED flashes) and returns `(offset_s, scale)`;
+`apply_clock(t, offset_s, scale)` applies it. With `scale = 1` this is the same
+`t_neural = t_video - t_offset_s` rule as above, and `scale` absorbs drift. Align
+the behavior times first, then `resample_signal`.
+
+The lab's `simulated_3chamber` dataset (`tests/data/simulated_3chamber`, see its
+README and `tests/test_three_chamber.py`) uses all of these.
+
 ## What each loader reads
 
 **Minian** (`load_minian(path, *, activity="S", fs=None, t=None)`). `path` is a
@@ -69,12 +132,50 @@ Minian output directory holding `S.zarr` / `C.zarr`, a zarr store with the whole
 dataset, or a netCDF file. The variable (`S` deconvolved, `C` denoised
 fluorescence) needs dims `unit_id` and `frame` in either order. `cell_ids` are the
 `unit_id` values; `activity_kind` is `deconvolved` for `S` and `raw` for `C`.
+`cell_meta` gets `unit_id` and, if the store has `A` (dims `unit_id`, `height`,
+`width`) covering every unit, `centroid_x` / `centroid_y` in pixels (computed lazily
+from row and column marginals). `footprints=True` also attaches `A` as
+`Session.footprints` (float32), block-averaged by `footprint_downsample`
+(default 1; centroid columns stay in original pixels). Off by default: dense
+footprints are large.
 
-**CaImAn** (`load_caiman(path, *, activity="S", fs, keep_idx_components=True)`).
+**CaImAn** (`load_caiman(path, *, activity="S", fs, accepted_only=True)`).
 Reads `estimates/S`, `estimates/C` or `estimates/F_dff` (`deconvolved`, `raw`,
 `dff`), shaped `(n_components, n_frames)`. By default only the accepted components
 in `estimates/idx_components` are kept and `cell_ids` are the original component
 indices. `fs` is required; `params/data/fr` is stored in `meta` if present.
+
+`accepted_only` semantics: the loader always builds the full session first, with
+`cell_meta` columns `snr` (`SNR_comp`), `r_values`, `cnn_preds`, `accepted` (bool,
+only if `idx_components` exists) and `centroid_x` / `centroid_y` (from the sparse
+`A` and `params/data/dims`), each present only if the file has it. With
+`accepted_only=True` it then calls `Session.select_cells`, so
+`meta["cell_selection"]` records `n_before`, `n_after` and
+`source={"loader": "caiman", "accepted_only": True}` and `cell_meta` stays aligned.
+`accepted_only=False` returns every component; filter later with the
+`select_cells` step (`require=["accepted"]`, `min_snr=...`). An empty
+`idx_components` with `accepted_only=True` raises. `keep_idx_components` is a
+deprecated alias.
+
+**CaLab** (`load_calab(result_or_path, *, fs=None, t=None, t_offset_s=0.0,
+raw=None, cell_ids=None, info=None)`). Takes a `calab.CaDeconResult` (any object
+with `.activity` `(n_cells, n_time)` and `.fs`, optionally `.alphas`,
+`.baselines`, `.pves`, `.metadata`), a dict with those keys, or an `.npz` with
+`activity` and `fs` plus any of `alphas`/`alpha`, `baselines`/`baseline`,
+`pves`/`pve`, `tau_rise`, `tau_decay`, `beta`, `residual` (CaLab has no native
+result writer; `np.savez(path, activity=r.activity, fs=r.fs, alphas=r.alphas, ...)`
+makes one). CaLab itself is never imported. `activity_kind="deconvolved"`; float32
+is promoted to float64. `cell_meta`: `alpha`, `baseline`, `pve` when given, and
+`tau_rise_s` / `tau_decay_s` (one fitted value per session, repeated per cell)
+when the fit ran. `meta["kernel"]` holds `tau_rise_s`, `tau_decay_s`, `beta`,
+`residual` (`None` if not fitted), `meta["source"]="calab"`, and
+`meta["calab_version"]` if calab is installed. `raw` is validated and discarded
+with a warning (one activity layer per session until roadmap C8).
+
+**CaLab alphas make amplitudes incomparable across cells.** Each cell's activity
+is scaled by its own `alpha`, so a larger deconvolved value in one cell does not
+mean a larger event. Compare binary activity (`detect_events`), z-scored
+activity, or divide by `cell_meta["alpha"]` first.
 
 **CaMAP** (`load_camap(path)`). Reads the layout written by CaMAP's
 `save_bundle`: `metadata.json`, `config.yaml` (`neural.fps` gives `fs`) and
@@ -118,6 +219,18 @@ names=None)`). A CSV with `syllable` and `frame_index` (or `frame`) columns, or
 a `results.h5` with one `<recording>/syllable` dataset per recording; `key`
 selects the recording. Frames without a syllable are `-1`; default names are
 `syl00`, `syl01`, ....
+
+## Per-cell metadata by loader
+
+| loader | `cell_meta` columns |
+| --- | --- |
+| `load_minian` | `unit_id`; `centroid_x`, `centroid_y` if `A` is present |
+| `load_caiman` | `snr`, `r_values`, `cnn_preds`, `accepted`, `centroid_x`, `centroid_y` (each if in the file) |
+| `load_calab` | `alpha`, `baseline`, `pve`, `tau_rise_s`, `tau_decay_s` (each if available) |
+| `detect_events` step | `noise_sd`, `event_threshold`, `n_events` |
+
+`cell_qc_table(session)` (plus computed `fraction_finite`, `n_events`,
+`mean_rate_hz`) shows them for choosing `select_cells` thresholds.
 
 ## Caveats
 

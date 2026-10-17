@@ -38,6 +38,50 @@ example by subtracting the imaging start time from your behavior timestamps.
 `fs` is the imaging rate in Hz. It should match the spacing of `t`; a mismatch
 of more than 5% gives a warning.
 
+### Two clocks and dropped frames
+
+The miniscope and the behavior camera are separate recorders. First find out how
+their clocks relate, then check each for dropped frames, then resample.
+
+```python
+from cabana import loaders
+
+t_n = loaders.load_miniscope_timestamps("neural_timestamps.csv")      # seconds
+t_b = loaders.load_miniscope_timestamps("behavior_timestamps.csv")
+report = loaders.timing_report(t_n, 30.0)      # n_dropped_frames, gaps, jitter, fs_mean
+print(report, loaders.timing_report(t_b, 50.0))
+
+# 1. Same acquisition system, shared axis: use the stamps as they are.
+# 2. Video clock starting elsewhere, one known offset: t_neural = t_video - t_offset_s.
+# 3. Two free-running clocks: fit offset and drift from paired sync events.
+offset_s, scale = loaders.fit_clock(led_times_video, led_times_neural)
+t_b = loaders.apply_clock(t_b, offset_s, scale)
+
+t_pos, xy = loaders.load_position_csv("position.csv", timestamps=t_b)   # -1 -> NaN
+position = ContinuousSignal(t=t_pos, values=xy, channel_names=["x", "y"], units="cm")
+session = Session(activity=act, t=t_n, fs=report["fs_mean"], behavior={"position": position})
+
+transforms = [
+    {"name": "resample_signal", "source": "position", "max_gap_s": 0.5},  # no bridging
+    {"name": "interpolate_gaps", "signal": ["x", "y"], "max_gap_s": 0.5},
+]
+preprocess = [
+    {"name": "timing_check"},                         # meta["timing"], warns on drops
+    {"name": "trim_to_overlap", "signals": ["position"]},   # contiguous covered span
+]
+```
+
+(`transforms` run before `preprocess` in a `Pipeline`, so the steps above see the
+resampled signals.) Why each step: dropped neural frames make `Session.t` irregular, but metrics,
+shuffles and rebinning treat frames as evenly spaced, so a few missing frames
+are tolerable (`timing_check` warns above 1%) and many are not. A behavior gap
+longer than `max_gap_s` should stay NaN rather than be interpolated into a
+straight line across the animal's missing path. `trim_to_overlap` keeps the
+longest contiguous stretch covered by every behavior input. When you need a
+different rate, `Session.rebin` (integer ratios) is exact; the `resample` step
+(`fs_target`) handles non-integer ratios by interpolation and warns that it is
+approximate.
+
 ## 2. Build the raw inputs
 
 The first block stands in for your loaders. Replace it with your own reading
@@ -300,6 +344,32 @@ preprocess = [
   `meta["zscore_source_kind"]`.
 - `binarize_activity` (one absolute threshold, kind becomes `binary`) is
   deprecated in favour of `detect_events`.
+
+### Cell QC
+
+Loaders fill `Session.cell_meta` (SNR, `accepted`, alpha, ...; see LOADERS.md).
+Look before choosing thresholds, then drop cells with the `select_cells` step:
+
+```python
+import cabana
+
+# DataFrame: cell_meta plus fraction_finite, n_events, mean_rate_hz
+print(cabana.cell_qc_table(session).describe())
+
+preprocess = [
+    {"name": "select_cells", "require": ["accepted"], "min_snr": 3.0,
+     "min_events": 10, "min_fraction_finite": 0.9, "keep_at_least": 5},
+    ...
+]
+```
+
+A criterion whose column is missing is skipped with a warning (it does not pass
+everything silently). The dropped ids and the step's parameters are in
+`meta["cell_selection"]`, and `provenance["n_cells"]` shows the effect. `n_events`
+and `mean_rate_hz` are computed for `binary`, `deconvolved` and `spike_counts`
+activity only (over finite frames inside the masks); run `detect_events` first for
+traces. CaLab `alpha` rescales each cell's deconvolved amplitudes, so do not rank
+cells by raw amplitude: use binary or z-scored activity, or divide by alpha.
 
 ### Building masks
 

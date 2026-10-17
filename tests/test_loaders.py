@@ -167,7 +167,7 @@ def test_caiman(tmp_path):
     s = loaders.load_caiman(f, fs=20.0)
     assert s.activity.shape == (2, 50) and s.cell_ids == ["1", "3"]
     assert s.activity_kind == "deconvolved"
-    s = loaders.load_caiman(f, activity="C", fs=20.0, keep_idx_components=False)
+    s = loaders.load_caiman(f, activity="C", fs=20.0, accepted_only=False)
     assert s.n_cells == 5 and s.activity_kind == "denoised"
     with pytest.raises(KeyError, match="F_dff"):
         loaders.load_caiman(f, activity="F_dff", fs=20.0)
@@ -284,7 +284,7 @@ def test_caiman_empty_idx_components_raises(tmp_path):
         h["estimates/idx_components"] = np.array([], dtype=int)
     with pytest.raises(ValueError, match="accepted 0 components"):
         loaders.load_caiman(f, fs=10.0)
-    assert loaders.load_caiman(f, fs=10.0, keep_idx_components=False).n_cells == 4
+    assert loaders.load_caiman(f, fs=10.0, accepted_only=False).n_cells == 4
     g = tmp_path / "absent.hdf5"
     with h5py.File(g, "w") as h:
         h["estimates/S"] = np.random.default_rng(0).random((4, 30))
@@ -401,3 +401,88 @@ def test_dlc_multi_animal_csv(tmp_path):
     _dlc_csv(single)
     with pytest.raises(ValueError, match="single-animal"):
         loaders.load_dlc(single, fs_video=20.0, individuals=["a"])
+
+
+def _caiman_file(tmp_path, with_A=True):
+    h5py = pytest.importorskip("h5py")
+    tmp_path.mkdir(exist_ok=True)
+    rng = np.random.default_rng(0)
+    f = tmp_path / "meta.hdf5"
+    d1, d2 = 6, 8
+    with h5py.File(f, "w") as h:
+        h["estimates/S"] = rng.random((4, 50))
+        h["estimates/idx_components"] = np.array([0, 2, 3])
+        h["estimates/SNR_comp"] = np.array([1.0, 2.0, 3.0, 4.0])
+        h["estimates/r_values"] = np.array([0.1, 0.2, 0.3, 0.4])
+        h["estimates/cnn_preds"] = np.array([0.9, 0.1, 0.8, 0.7])
+        h["params/data/fr"] = 20.0
+        h["params/data/dims"] = np.array([d1, d2])
+        if with_A:
+            # component j: single pixel at (row=j, col=2*j); CSC, pixel index = row + d1 * col
+            h["estimates/A/data"] = np.ones(4)
+            h["estimates/A/indices"] = np.array([j + d1 * 2 * j for j in range(4)])
+            h["estimates/A/indptr"] = np.arange(5)
+            h["estimates/A/shape"] = np.array([d1 * d2, 4])
+    return f
+
+
+def test_caiman_cell_meta_accepted_only(tmp_path):
+    f = _caiman_file(tmp_path)
+    s = loaders.load_caiman(f, fs=20.0)
+    assert s.cell_ids == ["0", "2", "3"] and s.activity.shape == (3, 50)
+    assert s.cell_meta["snr"].tolist() == [1.0, 3.0, 4.0]
+    assert s.cell_meta["cnn_preds"].tolist() == [0.9, 0.8, 0.7]
+    assert s.cell_meta["accepted"].tolist() == [True, True, True]
+    np.testing.assert_allclose(s.cell_meta["centroid_x"], [0, 4, 6])
+    np.testing.assert_allclose(s.cell_meta["centroid_y"], [0, 2, 3])
+    sel = s.meta["cell_selection"]
+    assert (sel["n_before"], sel["n_after"]) == (4, 3) and sel["source"]["loader"] == "caiman"
+    a = loaders.load_caiman(f, fs=20.0, accepted_only=False)
+    assert a.n_cells == 4 and a.cell_ids == ["0", "1", "2", "3"]
+    assert a.cell_meta["accepted"].tolist() == [True, False, True, True]
+    assert "cell_selection" not in a.meta and a.meta["kept_idx_components"] is False
+    with pytest.warns(DeprecationWarning):
+        assert loaders.load_caiman(f, fs=20.0, keep_idx_components=False).n_cells == 4
+    # missing A / SNR / idx: columns just absent
+    g = _caiman_file(tmp_path / "noA", with_A=False)
+    assert "centroid_x" not in loaders.load_caiman(g, fs=20.0).cell_meta
+
+
+def test_minian_cell_meta_and_footprints(tmp_path):
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("zarr")
+    rng = np.random.default_rng(0)
+    ids = [7, 8, 9]
+    S = xr.DataArray(
+        rng.random((3, 40)),
+        dims=("unit_id", "frame"),
+        coords={"unit_id": ids, "frame": np.arange(40)},
+        name="S",
+    )
+    A = np.zeros((3, 6, 8))
+    for i in range(3):
+        A[i, i + 1, 2 * i + 1] = 2.0
+    Ada = xr.DataArray(
+        A,
+        dims=("unit_id", "height", "width"),
+        coords={"unit_id": ids, "height": np.arange(6), "width": np.arange(8)},
+        name="A",
+    )
+    root = tmp_path / "minian"
+    root.mkdir()
+    S.to_dataset().to_zarr(root / "S.zarr")
+    s = loaders.load_minian(root, fs=30.0)
+    assert s.cell_meta["unit_id"].tolist() == ids and s.footprints is None
+    assert "centroid_x" not in s.cell_meta  # no A yet
+    Ada.to_dataset().to_zarr(root / "A.zarr")
+    s = loaders.load_minian(root, fs=30.0)
+    np.testing.assert_allclose(s.cell_meta["centroid_x"], [1, 3, 5])
+    np.testing.assert_allclose(s.cell_meta["centroid_y"], [1, 2, 3])
+    assert s.footprints is None
+    s = loaders.load_minian(root, fs=30.0, footprints=True)
+    assert s.footprints.shape == (3, 6, 8)
+    np.testing.assert_allclose(s.footprint_centroids(), np.c_[[1, 3, 5], [1, 2, 3]])
+    s = loaders.load_minian(root, fs=30.0, footprints=True, footprint_downsample=2)
+    assert s.footprints.shape == (3, 3, 4)
+    with pytest.raises(ValueError, match="footprint_downsample"):
+        loaders.load_minian(root, fs=30.0, footprint_downsample=0)

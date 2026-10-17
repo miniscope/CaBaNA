@@ -300,8 +300,10 @@ class DetectEvents(PreprocessStep):
     ``deconvolved`` (event-like, non-negative if the threshold is >= 0, summed on
     re-binning).  NaN frames are never events and stay NaN in the output.
 
-    Per-cell ``noise`` (always computed with the ``noise`` estimator) and ``threshold`` are
-    stored in ``meta["detect_events"]`` along with the parameters and event counts.
+    Per-cell ``noise`` (always computed with the ``noise`` estimator), ``threshold`` and
+    event counts are written to ``cell_meta["noise_sd"]``, ``["event_threshold"]`` and
+    ``["n_events"]`` (and, with the parameters, to ``meta["detect_events"]`` for
+    compatibility).
     """
 
     name: ClassVar[str] = "detect_events"
@@ -380,7 +382,6 @@ class DetectEvents(PreprocessStep):
         out[~np.isfinite(a)] = np.nan
         kind = "deconvolved" if self.output == "amplitude" else "binary"
         new = session.with_activity(out, kind=kind)
-        # TODO: move to cell_meta["noise_sd"] / ["event_threshold"] once Session.cell_meta lands.
         info = {
             "method": self.method,
             "k": self.k,
@@ -391,7 +392,13 @@ class DetectEvents(PreprocessStep):
             "n_events": [int(x) for x in n_events],
             "source_kind": session.activity_kind,
         }
-        return new.replace(meta={**new.meta, "detect_events": info})
+        cm = {
+            **new.cell_meta,
+            "noise_sd": np.asarray(noise_rec, dtype=float),
+            "event_threshold": np.asarray(thr, dtype=float),
+            "n_events": n_events.astype(np.int64),
+        }
+        return new.replace(cell_meta=cm, meta={**new.meta, "detect_events": info})
 
 
 # --------------------------------------------------------------------------- #

@@ -562,6 +562,133 @@ class ZoneOccupancy(Transform):
         )
 
 
+@register("transform")
+class InvestigationFromGeometry(Transform):
+    """Social investigation derived from geometry: close to a target and facing it.
+
+    A frame counts as investigating target ``k`` when the animal is within ``max_distance`` of
+    the target **and** its heading points at the target to within ``max_angle_deg``.  The
+    distance is measured to the enclosure *edge* (centre distance minus the radius) when the
+    radius is known, which is how a person scores "sniffing the cup"; for a point target
+    (no radius) it is the centre distance.  The bearing is ``atan2(target_y - y, target_x -
+    x)`` and the heading follows the ``head_direction`` convention (0 = +x, counter-clockwise,
+    radians), so ``|wrap(heading - bearing)| <= max_angle_deg``.  If the heading zero is
+    arbitrary (a quaternion's power-on yaw), calibrate it with ``head_direction(offset_deg=)``
+    before this step.
+
+    Targets come from ``targets`` (name to ``[x, y]`` or ``[x, y, radius]``) or, with
+    ``targets_from_meta=True`` and no ``targets``, from ``session.meta["enclosures"]`` (name to
+    ``{"center": [x, y], "radius": r}``, as written by ``load_session_dir``).  One state per
+    target, in that order.  ``exclusive=True`` gives a frame close to two targets to the nearer
+    one (``kind="categorical"``); otherwise the states may overlap (``kind="bouts"``).
+    Same-state runs separated by less than ``merge_gap_s`` are merged and runs shorter than
+    ``min_duration_s`` dropped, the same cleanup as ``bouts_to_states``.  ``support`` is the
+    frames with a finite position *and* heading, also written to the ``{output}_valid`` mask.
+    """
+
+    name: ClassVar[str] = "investigation_from_geometry"
+
+    position: str = Field("", description="Position prefix (`{position}_x`, `{position}_y`).")
+    heading: str = Field("head_direction", description="Heading signal, radians.")
+    targets: dict[str, list[float]] | None = Field(
+        None, description="Target name -> [x, y] or [x, y, radius], position units."
+    )
+    targets_from_meta: bool = Field(
+        True, description="Without `targets`, read session.meta['enclosures']."
+    )
+    max_distance: float = Field(4.0, ge=0, description="Max distance to the target edge.")
+    max_angle_deg: float = Field(45.0, gt=0, le=180, description="Max heading error, degrees.")
+    merge_gap_s: float = Field(0.5, ge=0, description="Join runs separated by less than this.")
+    min_duration_s: float = Field(0.5, ge=0, description="Drop runs shorter than this.")
+    output: str = Field("investigation", description="Name of the StateSpace written.")
+    exclusive: bool = Field(True, description="Nearest target wins when several qualify.")
+
+    @model_validator(mode="after")
+    def _check(self) -> InvestigationFromGeometry:
+        for k, v in (self.targets or {}).items():
+            if len(v) not in (2, 3):
+                raise ValueError(f"target {k!r} needs [x, y] or [x, y, radius], got {v}")
+            if len(v) == 3 and v[2] < 0:
+                raise ValueError(f"target {k!r} has a negative radius")
+        if self.targets is None and not self.targets_from_meta:
+            raise ValueError("give targets, or leave targets_from_meta=True")
+        return self
+
+    def _targets(self, session: Session) -> dict[str, tuple[float, float, float]]:
+        if self.targets is not None:
+            return {k: (v[0], v[1], v[2] if len(v) == 3 else 0.0) for k, v in self.targets.items()}
+        enc = session.meta.get("enclosures")
+        if not enc:
+            raise KeyError("no targets given and session.meta['enclosures'] is empty")
+        out = {}
+        for k, e in enc.items():
+            c = e["center"]
+            out[k] = (float(c[0]), float(c[1]), float(e.get("radius") or 0.0))
+        return out
+
+    def apply(self, session: Session) -> Session:
+        if self.heading not in session.signals:
+            raise KeyError(
+                f"heading signal {self.heading!r} not found; available: {sorted(session.signals)}"
+            )
+        xy = _get_xy(session, self.position)
+        head = np.asarray(session.signals[self.heading], float)
+        valid = np.isfinite(xy).all(axis=1) & np.isfinite(head)
+        tg = self._targets(session)
+        lim = np.radians(self.max_angle_deg)
+        cols, gaps = [], []
+        with np.errstate(invalid="ignore"):
+            for cx, cy, r in tg.values():
+                dx, dy = cx - xy[:, 0], cy - xy[:, 1]
+                gap = np.hypot(dx, dy) - r
+                err = np.abs(
+                    np.arctan2(np.sin(head - np.arctan2(dy, dx)), np.cos(head - np.arctan2(dy, dx)))
+                )
+                cols.append(valid & (gap <= self.max_distance) & (err <= lim))
+                gaps.append(gap)
+        onehot = np.stack(cols, axis=1)
+        if self.exclusive and onehot.shape[1] > 1:
+            g = np.where(onehot, np.stack(gaps, axis=1), np.inf)
+            best = np.argmin(g, axis=1)
+            onehot &= np.arange(onehot.shape[1])[None, :] == best[:, None]
+        fs = session.fs
+        for k in range(onehot.shape[1]):
+            onehot[:, k] = _clean_runs(onehot[:, k], fs, self.merge_gap_s, self.min_duration_s)
+        space = StateSpace(
+            name=self.output,
+            onehot=onehot,
+            state_names=list(tg),
+            kind="categorical" if self.exclusive else "bouts",
+            exclusive=self.exclusive,
+            support=valid.copy(),
+        )
+        out = session.with_state(space).with_mask(
+            f"{self.output}_valid", valid, source=self.to_dict()
+        )
+        return out.replace(
+            meta={
+                **out.meta,
+                self.name: {**self.to_dict(), "targets_used": {k: list(v) for k, v in tg.items()}},
+            }
+        )
+
+
+def _clean_runs(v: np.ndarray, fs: float, merge_gap_s: float, min_duration_s: float) -> np.ndarray:
+    """Merge True runs separated by < ``merge_gap_s`` and drop runs shorter than ``min_duration_s``."""
+    v = v.copy()
+    if merge_gap_s > 0:
+        a, ln = runs(~v)
+        for s0, n0 in zip(a.tolist(), ln.tolist(), strict=True):
+            if s0 > 0 and s0 + n0 < v.size and n0 / fs < merge_gap_s:
+                v[s0 : s0 + n0] = True
+    if min_duration_s > 0:
+        a, ln = runs(v)
+        for s0, n0 in zip(a.tolist(), ln.tolist(), strict=True):
+            if n0 / fs < min_duration_s - 1e-12:
+                v[s0 : s0 + n0] = False
+    return v
+
+
 def states_to_bouts(
     states: StateSpace,
     fs: float,
@@ -615,6 +742,7 @@ __all__ = [
     "Distance",
     "HeadDirection",
     "InterpolateGaps",
+    "InvestigationFromGeometry",
     "SmoothSignal",
     "ZoneOccupancy",
     "fit_homography",

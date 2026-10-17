@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -37,7 +37,17 @@ def _missing_signal_msg(name: str, session: Session) -> str:
 
 @register("transform")
 class ResampleSignal(Transform):
-    """Resample a ``ContinuousSignal`` onto the neural clock with linear interpolation."""
+    """Resample a ``ContinuousSignal`` onto the neural clock.
+
+    ``method="linear"`` (default) interpolates between the finite source samples that bracket
+    each frame; frames outside the source range, or whose nearest source sample is NaN, are NaN.
+    ``"nearest"`` takes the nearest finite source sample (NaN where that nearest raw sample is
+    NaN) and ``"ffill"`` holds the most recent finite sample.  ``max_gap_s`` limits how far a
+    value may be carried: a frame whose bracketing finite samples (for ``"ffill"``, the last
+    finite sample and the frame) are more than ``max_gap_s`` apart is NaN instead of filled.
+    That covers both missing frames in the source clock and long runs of NaN (tracker
+    dropouts).  With the defaults the result is the plain linear interpolation.
+    """
 
     name: ClassVar[str] = "resample_signal"
 
@@ -45,6 +55,46 @@ class ResampleSignal(Transform):
     channels: list[str] | None = Field(
         None, description="Channels to resample; None means all channels."
     )
+    method: Literal["linear", "nearest", "ffill"] = Field(
+        "linear", description="Interpolation rule between source samples."
+    )
+    max_gap_s: float | None = Field(
+        None, gt=0, description="Do not fill across source gaps longer than this; None = always."
+    )
+
+    def _resample(self, tb: np.ndarray, v: np.ndarray, t: np.ndarray, covered: np.ndarray):
+        res = np.full(t.shape, np.nan)
+        ok = np.isfinite(v)
+        if ok.sum() < 1:
+            return res
+        tf, vf = tb[ok], v[ok]
+        k = np.clip(np.searchsorted(tf, t, side="right") - 1, 0, tf.size - 1)  # last <= t
+        k1 = np.clip(k + 1, 0, tf.size - 1)
+        if self.method == "linear":
+            res = np.interp(t, tf, vf)
+            left_t, right_t = tf[k], tf[k1]
+        elif self.method == "nearest":
+            pick = np.where(np.abs(t - tf[k]) <= np.abs(tf[k1] - t), k, k1)
+            res = vf[pick]
+            left_t, right_t = tf[k], tf[k1]
+        else:
+            res = vf[k]
+            left_t = right_t = tf[k]
+        res = np.where(covered, res, np.nan)
+        if self.method != "ffill":
+            # nearest raw sample (finite or not) decides whether a dropout is propagated
+            j = np.clip(np.searchsorted(tb, t), 1, max(tb.size - 1, 1))
+            j0, j1 = np.clip(j - 1, 0, tb.size - 1), np.clip(j, 0, tb.size - 1)
+            nearest = np.where(np.abs(t - tb[j0]) <= np.abs(tb[j1] - t), j0, j1)
+            res[~ok[nearest]] = np.nan
+        if self.max_gap_s is not None:
+            on_sample = (np.abs(t - left_t) < 1e-9) | (np.abs(right_t - t) < 1e-9)
+            if self.method == "ffill":
+                too_far = (t - left_t) > self.max_gap_s
+            else:
+                too_far = (right_t - left_t) > self.max_gap_s
+            res[too_far & ~on_sample] = np.nan
+        return res
 
     def apply(self, session: Session) -> Session:
         sig = _get_behavior(session, self.source, ContinuousSignal)
@@ -56,20 +106,9 @@ class ResampleSignal(Transform):
         t = session.t
         covered = (t >= tb[0]) & (t <= tb[-1]) if tb.size else np.zeros(t.shape, bool)
         out = session
-        if tb.size:
-            # nearest source sample for every frame (used to propagate NaN)
-            j = np.clip(np.searchsorted(tb, t), 1, max(tb.size - 1, 1))
-            j0 = np.clip(j - 1, 0, tb.size - 1)
-            j1 = np.clip(j, 0, tb.size - 1)
-            nearest = np.where(np.abs(t - tb[j0]) <= np.abs(tb[j1] - t), j0, j1)
         for c in chans:
             v = np.asarray(sig.values[:, sig.channel_names.index(c)], dtype=float)
-            res = np.full(t.shape, np.nan)
-            ok = np.isfinite(v)
-            if ok.sum() >= 1:
-                res = np.interp(t, tb[ok], v[ok])
-                res[~covered] = np.nan
-                res[~ok[nearest]] = np.nan
+            res = self._resample(tb, v, t, covered) if tb.size else np.full(t.shape, np.nan)
             out = out.with_signal(c, res)
         return out.with_mask(f"{self.source}_covered", covered, source=self.to_dict())
 
