@@ -48,6 +48,7 @@ Recent additions:
 - **Multiple-comparison correction:** `ShuffleConfig(correction="max_stat" | "bh" | "bonferroni")` fills `p_adj` and `significant_adj`; on noise it cut the "significant in any state" rate from 29% to 8% (6 syllables).
 - **Fast path for fine grids:** exclusive state spaces above 256 states use per-cell integer-label sums instead of a dense one-hot matmul (6400 states: about 28 s and 2.6 GB down to 0.9 s and 1.0 GB).
 - **Cell classification:** `Criteria` / `Clause` rules (YAML round-trip), `classify`, `place_cell_criteria`, `responsive_cell_criteria` and `plots.plot_classification`.
+- **Data-driven parameters and sweeps:** `selectors=[{"name": "auto_smooth_sigma"}, {"name": "auto_null_timescale"}]` choose spatial smoothing (held-out score, one-SE rule) and the circular-shift length from the data without seeing a p-value; `cabana.sweep` reruns a pipeline over a grid of values and reports how many cells change classification; every chosen value carries a `Selection` record (`results.selections`), and picking a value by significance is refused. The demo shows both (figures 28-29).
 - **Loaders:** `cabana.loaders` reads Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files with one clock convention (`t_neural = t_video - t_offset_s`).
 - **Run control:** `RunContext` gives progress callbacks, cancellation with partial results, recorded errors and captured warnings; also `run_set`, `Pipeline.iter_run` and `describe()` for a front end.
 

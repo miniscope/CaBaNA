@@ -251,6 +251,26 @@ than one analysis. `provenance` records the version, seed, null, masks, number
 of frames used and parameters; `session.meta["transforms"]` logs the
 transforms that built the states.
 
+### Choosing bin size and smoothing
+
+Do not copy `bin_size=20` and `smooth_sigma_bins=1.0` from the examples: both depend on your arena, your animal and your frame rate, and smoothing in particular changes which cells pass (a few percent of cells change classification between neighbouring reasonable values). Give the bin size in physical units, at most a quarter of the expected field width. Let the data choose the smoothing with a selector, which runs before the analyses and never sees a p-value:
+
+```python
+pipe = Pipeline(
+    selectors=[
+        {"name": "auto_smooth_sigma", "states": "position"},  # held-out score, one-SE rule
+        {"name": "auto_null_timescale"},                      # min_shift_s from autocorrelation
+    ],
+    transforms=transforms, preprocess=preprocess,
+    analyses=[AnalysisSpec(metric={"name": "information_content"}, states="position",
+                           shuffle=circ, masks=["speed"])],       # no smooth_sigma_bins typed
+)
+session, results = pipe.run(session)
+print(results.selections)             # path, value, method, criterion, candidates, scores
+```
+
+Then look at what the choice does: `cabana.sweep(session, pipe, {"analyses.*.metric.smooth_sigma_bins": [0, 1, 2, 4]}, shuffle=False)` is fast (observed values only) and feeds `plots.plot_sweep_gallery` (one cell across the values); rerun it with the shuffle on and `plots.plot_sweep_stability` shows how many cells flip classification. A sweep can be turned into a recorded choice with `SweepResult.pick`, which refuses to choose by p-values or by the number of significant cells; to set a value yourself use `pipe.set_param(path, value, method="user_pick", note=...)`. Report the chosen values (they are saved with the pipeline and in each result's `provenance["selections"]`). The rules, their caveats and the numbers are in [`STATISTICS.md`](STATISTICS.md) ("Where the defaults come from", "Automatic smoothing", "Sweeps"); `examples/demo.py` (figures 28 and 29) and the notebook section "Choosing parameters" run them end to end.
+
 ## 7. Calling the shuffle engine directly
 
 A pipeline is a convenience. To test one metric on arrays you already have:

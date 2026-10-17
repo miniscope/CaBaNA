@@ -70,6 +70,7 @@ from ._pipeline import (
     run_set,
 )
 from ._selection import Selection
+from ._selectors import grid_bin_size, heldout_smoothing_scores
 from ._sweep import StabilityReport, SweepResult, sweep
 from ._posthoc import (
     ClusterResult,
@@ -203,6 +204,8 @@ __all__ = [
     "Selection",
     "StabilityReport",
     "SweepResult",
+    "grid_bin_size",
+    "heldout_smoothing_scores",
     "sweep",
     "RunWarning",
     "describe",

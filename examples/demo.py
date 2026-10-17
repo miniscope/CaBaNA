@@ -21,9 +21,16 @@ The fifth increment adds multiple-comparison correction (the cell x state analys
 raw and adjusted), cell classification with the criteria layer (figure 27), and run control
 (the main pipeline reports progress through a ``RunContext`` callback).
 
+The parameter-selection increment replaces the hard-coded smoothing and null timescale with
+selectors (``auto_smooth_sigma``, ``auto_null_timescale``) that record how each value was
+chosen (``selections.json``), shows the held-out score curve and a sweep over sigma with and
+without the shuffle test (figures 28 and 29), and runs the number-of-levels comparison through
+``cabana.sweep``.
+
 Outputs in --out: results.csv, results.zip and session.zip (reload with
-`cabana.ResultSet.load` / `cabana.Session.load`), nulls_compared.csv, levels_sweep.csv, provenance
-files and figures 01 to 27 (20 to 26 are the amplitude / decoding figures, 27 the classification).
+`cabana.ResultSet.load` / `cabana.Session.load`), nulls_compared.csv, levels_sweep.csv,
+selections.json, provenance files and figures 01 to 29 (20 to 26 are the amplitude / decoding
+figures, 27 the classification, 28a/28b the smoothing choice, 29 the smoothing stability).
 """
 
 from __future__ import annotations
@@ -41,6 +48,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 import cabana  # noqa: E402
+from cabana import grid_bin_size, heldout_smoothing_scores  # noqa: E402
 from cabana import (  # noqa: E402
     AnalysisSpec,
     CellMatch,
@@ -96,12 +104,27 @@ def describe_ground_truth(session) -> str:
     )
 
 
+# Candidate smoothing widths (grid bins; 1 bin = 20 mm here), simplest first.
+SIGMA_CANDIDATES = [0, 0.5, 1, 1.5, 2, 3, 4]
+
+
 def build_pipeline(n_shuffles: int) -> Pipeline:
     shuf = ShuffleConfig(n_shuffles=n_shuffles, min_shift_s=20.0, seed=0)
     # cell x state analyses: "significant in any state" is corrected across a cell's states
     # (single-step max-statistic from the null draws; costs almost nothing)
     shuf_c = shuf.model_copy(update={"correction": "max_stat"})
     return Pipeline(
+        # parameter selectors run once before the analyses and record a Selection per value:
+        # smoothing from a held-out score on the position analyses, and the null timescale
+        # (min_shift_s) from the autocorrelation of activity and behavior.  Neither sees a p-value.
+        selectors=[
+            {
+                "name": "auto_smooth_sigma",
+                "states": "position",
+                "candidates_bins": SIGMA_CANDIDATES,
+            },
+            {"name": "auto_null_timescale"},
+        ],
         transforms=[
             {"name": "resample_signal", "source": "position"},
             {"name": "speed"},
@@ -127,13 +150,13 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
         preprocess=[{"name": "speed_threshold", "min_speed": 20.0}],
         analyses=[
             AnalysisSpec(
-                metric={"name": "information_content", "smooth_sigma_bins": 1.0},
+                metric={"name": "information_content"},  # sigma: auto_smooth_sigma
                 states="position",
                 shuffle=shuf,
                 masks=["speed"],
             ),
             AnalysisSpec(
-                metric={"name": "split_half_stability", "smooth_sigma_bins": 1.0},
+                metric={"name": "split_half_stability"},  # sigma: auto_smooth_sigma
                 states="position",
                 shuffle=shuf,
                 masks=["speed"],
@@ -363,13 +386,39 @@ def decoder_table(dec_results) -> pd.DataFrame:
 
 
 def levels_sweep(seed: int, quick: bool) -> pd.DataFrame:
-    """Detection and false-positive rate versus number of activity levels and duration."""
+    """Detection and false-positive rate versus number of activity levels and duration.
+
+    One ``cabana.sweep`` per duration over ``analyses.*.metric.n_levels``.  The ``*`` skips
+    analyses without the field, so the Skaggs information analysis rides along unchanged (its
+    value does not depend on the number of levels: a flat reference line).
+    """
     durations = (300.0, 600.0) if quick else (300.0, 600.0, 1200.0)
     n_shuf = 50 if quick else 100
-    levels = (2, 3, 5, 8)
+    levels = [2, 3, 5, 8]
     shuf = ShuffleConfig(n_shuffles=n_shuf, min_shift_s=20.0, seed=0)
     prep = build_pipeline(1)
     prep = Pipeline(transforms=prep.transforms, preprocess=prep.preprocess, analyses=[])
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "information_content", "smooth_sigma_bins": 1.0},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+            AnalysisSpec(
+                metric={"name": "mutual_information"},
+                states="position",
+                shuffle=shuf,
+                masks=["speed"],
+            ),
+        ]
+    )
+    label = {
+        "information_content[position]": "skaggs_information",
+        "mutual_information[position]": "mutual_information",
+    }
+    key = "analyses.*.metric.n_levels"
     rows = []
     for dur in durations:
         t = time.perf_counter()
@@ -379,50 +428,33 @@ def levels_sweep(seed: int, quick: bool) -> pd.DataFrame:
         sess, _ = prep.run(simulate_session(**kw))
         gt = sess.meta["ground_truth"]
         rel, unt = list(gt["place_cells"]), list(gt["untuned_cells"])
-        specs = [
-            AnalysisSpec(
-                metric={"name": "information_content", "smooth_sigma_bins": 1.0},
-                states="position",
-                shuffle=shuf,
-                masks=["speed"],
-            )
-        ]
-        _, res = Pipeline(analyses=specs).run(sess)
-        sig = np.asarray(res.get("information_content", "position").shuffle.p_value) < 0.05
-        for k in levels:  # Skaggs information does not depend on levels: a flat reference line
+        row_of = {str(c): i for i, c in enumerate(sess.cell_ids)}
+        sw = cabana.sweep(sess, pipe, {key: levels})
+        tab = sw.table.assign(row=sw.table["cell_id"].astype(str).map(row_of))
+        tab["sig"] = tab["p_value"] < 0.05
+        for (name, k), g in tab.groupby(["analysis", key]):
+            sig = g.set_index("row")["sig"]
             rows.append(
                 {
-                    "metric": "skaggs_information",
+                    "metric": label[name],
                     "n_levels": k,
                     "duration_s": dur,
-                    "detection": float(sig[rel].mean()),
-                    "fpr": float(sig[unt].mean()),
-                    "n_relevant": len(rel),
-                    "n_untuned": len(unt),
-                }
-            )
-        for k in levels:
-            spec = AnalysisSpec(
-                metric={"name": "mutual_information", "n_levels": k},
-                states="position",
-                shuffle=shuf,
-                masks=["speed"],
-            )
-            _, res = Pipeline(analyses=[spec]).run(sess)
-            sig = np.asarray(res.get("mutual_information", "position").shuffle.p_value) < 0.05
-            rows.append(
-                {
-                    "metric": "mutual_information",
-                    "n_levels": k,
-                    "duration_s": dur,
-                    "detection": float(sig[rel].mean()),
-                    "fpr": float(sig[unt].mean()),
+                    "detection": float(sig.loc[rel].mean()),
+                    "fpr": float(sig.loc[unt].mean()),
                     "n_relevant": len(rel),
                     "n_untuned": len(unt),
                 }
             )
         print(f"  {dur:g} s session: {time.perf_counter() - t:.1f} s")
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # the previous layout: per duration, the Skaggs rows first, then mutual information
+    order = {"skaggs_information": 0, "mutual_information": 1}
+    return (
+        df.assign(_o=df["metric"].map(order))
+        .sort_values(["duration_s", "_o", "n_levels"], kind="stable")
+        .drop(columns="_o")
+        .reset_index(drop=True)
+    )
 
 
 def nulls_compared(session, n_shuffles: int) -> pd.DataFrame:
@@ -574,6 +606,170 @@ def save_fig(fig, path: Path) -> None:
     print(f"  wrote {path}")
 
 
+def selections_table(selections: list[dict]) -> pd.DataFrame:
+    """Readable table of ``ResultSet.selections``: one row per chosen value."""
+    return pd.DataFrame(
+        [
+            {
+                "path": d["path"].removeprefix("analyses."),
+                "value": d["value"],
+                "method": d["method"],
+                "criterion": d["criterion"],
+            }
+            for d in selections
+        ]
+    )
+
+
+def chosen_value(selections: list[dict], suffix: str, analysis: str | None = None):
+    """The value of the first selection whose path ends with ``suffix`` (and names ``analysis``)."""
+    for d in selections:
+        if d["path"].endswith(suffix) and (analysis is None or f".{analysis}." in d["path"]):
+            return d["value"]
+    return None
+
+
+def chosen_parameters_line(selections: list[dict], bin_mm: float) -> str:
+    """One line for the recovery-table printout: which sigma / min_shift_s the analyses used."""
+    sigma = sorted({d["value"] for d in selections if d["path"].endswith("smooth_sigma_bins")})
+    shifts = sorted({d["value"] for d in selections if d["path"].endswith("min_shift_s")})
+    return (
+        "Chosen parameters: smooth_sigma_bins = "
+        + (", ".join(f"{v:g}" for v in sigma) or "not selected")
+        + (f" ({sigma[0] * bin_mm:g} mm)" if len(sigma) == 1 and bin_mm else "")
+        + "; null min_shift_s = "
+        + (", ".join(f"{v:g}" for v in shifts) or "not selected")
+        + " s (per analysis; see selections.json)"
+    )
+
+
+def smoothing_choice(session, selections: list[dict], out: Path, n_shuffles: int, quick: bool):
+    """Figures 28 (score curve and sigma gallery) and 29 (stability across sigma); guard rail.
+
+    The held-out score is the selection criterion; the sweep over sigma without shuffles
+    shows what the choice does to a rate map; the sweep with shuffles shows how many cells
+    change classification, and which of them are planted place cells.
+    """
+    gt = session.meta["ground_truth"]
+    place, untuned = np.asarray(gt["place_cells"]), np.asarray(gt["untuned_cells"])
+    topo = session.states["position"].topology
+    bin_mm, _ = grid_bin_size(topo)
+    cands = np.asarray(SIGMA_CANDIDATES, float)
+
+    # --- figure 28a: the held-out score curve ---
+    mean, se = heldout_smoothing_scores(
+        session, "position", cands, mask=session.valid_mask(["speed"])
+    )
+    i_max = int(np.argmax(mean))
+    i_se = int(np.flatnonzero(mean >= mean[i_max] - se[i_max]).min())
+    print(
+        f"\nHeld-out score over sigma (bins): argmax {cands[i_max]:g} bins "
+        f"({cands[i_max] * bin_mm:g} mm), one-SE pick {cands[i_se]:g} bins "
+        f"({cands[i_se] * bin_mm:g} mm); the pipeline selector chose "
+        f"{chosen_value(selections, 'smooth_sigma_bins')}"
+    )
+    d = mean - mean[i_max]
+    fig, ax = plt.subplots(figsize=(6.0, 4.2), layout="constrained")
+    ylo = 1.3 * np.sort(d)[2]  # zoom past the (far worse) smallest candidates; they are annotated
+    ax.axhspan(-se[i_max], 0, color="0.9", label="within 1 SE of the best")
+    ax.errorbar(
+        cands,
+        d,
+        yerr=se,
+        fmt="o-",
+        color="C0",
+        capsize=3,
+        label="held-out score (mean +/- SE over folds)",
+    )
+    ax.axvline(cands[i_max], color="C3", ls="--", lw=1.2, label=f"argmax: {cands[i_max]:g} bins")
+    ax.axvline(cands[i_se], color="C2", lw=1.8, label=f"one-SE pick: {cands[i_se]:g} bins")
+    off = [f"{x:g} bins: {y:,.0f}" for x, y in zip(cands, d, strict=True) if y < ylo]
+    if off:
+        ax.text(
+            0.02,
+            0.04,
+            "off scale (score minus best):\n" + "\n".join(off),
+            transform=ax.transAxes,
+            fontsize=8,
+            va="bottom",
+            bbox={"boxstyle": "round", "fc": "white", "ec": "0.7"},
+        )
+    ax.set_ylim(ylo, 0.15 * abs(ylo))
+    ax.set_xlabel("smoothing sigma (grid bins)")
+    ax.set_ylabel("held-out Poisson score minus best")
+    ax.secondary_xaxis("top", functions=(lambda v: v * bin_mm, lambda v: v / bin_mm)).set_xlabel(
+        "sigma (mm)"
+    )
+    ax.legend(fontsize=8, loc="lower right", framealpha=0.95)
+    save_fig(fig, out / "28a_smoothing_score.png")
+
+    # --- figure 28b: one planted place cell across sigma (no shuffles: fast) ---
+    key = "analyses.*.metric.smooth_sigma_bins"
+    shuf = ShuffleConfig(
+        n_shuffles=n_shuffles,
+        min_shift_s=chosen_value(selections, "information_content[position].shuffle.min_shift_s")
+        or 20.0,
+        seed=0,
+    )
+    info = AnalysisSpec(
+        metric={"name": "information_content"}, states="position", shuffle=shuf, masks=["speed"]
+    )
+    gal = cabana.sweep(session, Pipeline(analyses=[info]), {key: [0, 1, 2, 4]}, shuffle=False)
+    base = Pipeline(analyses=[info]).run(session)[1]["information_content[position]"]
+    cell = int(place[np.argmax(base.values[place])])
+    save_fig(
+        cabana.plots.plot_sweep_gallery(session, gal, cell, param=key),
+        out / "28b_smoothing_gallery.png",
+    )
+
+    # --- figure 29: stability of the shuffle-test classification across sigma ---
+    ids = [str(c) for c in session.cell_ids]
+    half = AnalysisSpec(
+        metric={"name": "split_half_stability"}, states="position", shuffle=None, masks=["speed"]
+    )
+    t = time.perf_counter()
+    sw = cabana.sweep(session, Pipeline(analyses=[info, half]), {key: list(SIGMA_CANDIDATES)})
+    print(
+        f"\nSigma sweep with the shuffle test ({n_shuffles} shuffles, {len(SIGMA_CANDIDATES)} "
+        f"values): {time.perf_counter() - t:.1f} s"
+    )
+    save_fig(
+        cabana.plots.plot_sweep_stability(sw, analysis="information_content[position]", param=key),
+        out / "29_smoothing_stability.png",
+    )
+    cells, overall = sw.stability("information_content[position]")
+    print("Stability across sigma (information_content[position]):")
+    print(
+        "  "
+        + ", ".join(
+            f"{k} = {v:.3g}" if isinstance(v, float) else f"{k} = {v}"
+            for k, v in overall.items()
+            if k != "spearman_by_pair"
+        )
+    )
+    cells = cells.assign(idx=cells["cell_id"].astype(str).map(ids.index))
+    for name, pop in (("planted place cells", place), ("untuned cells", untuned)):
+        sub = cells[cells["idx"].isin(pop)]
+        print(
+            f"  {name}: {int(sub['unstable'].sum())} of {len(sub)} change classification at least "
+            f"once across sigma (mean flips {sub['n_flips'].mean():.2f})"
+        )
+
+    # --- guard rail: a significance count can never be the selection criterion ---
+    print("\nGuard rail: choosing sigma by how many cells it makes significant")
+    try:
+        sw.pick("frac_significant")
+    except ValueError as e:
+        print(f"  sw.pick('frac_significant') raises: {str(e).splitlines()[0]}")
+    pick = sw.pick("median_value", analysis="split_half_stability[position]", rule="one_se")[0]
+    print(
+        f"  sanctioned: a reliability criterion, {pick.criterion} (one-SE rule) -> sigma "
+        f"{pick.value:g} bins; the held-out score (the selector) chose "
+        f"{chosen_value(selections, 'smooth_sigma_bins')}. Reliability alone rises with sigma, "
+        "so prefer the held-out score. Nothing is applied: the selector's choice stands."
+    )
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
@@ -617,6 +813,11 @@ def main(argv=None) -> int:
         f"{len(results.errors)} errors, {len(results.warnings)} warnings\n"
     )
 
+    selections = results.selections
+    print("Parameter selections (how each value was chosen; none saw a p-value):")
+    print(selections_table(selections).to_string(index=False, float_format=lambda v: f"{v:g}"))
+    print()
+
     # two mutual_information analyses share metric and target; the second was named explicitly
     mi_bin = results["mutual_information_binary[position]"]
 
@@ -630,6 +831,7 @@ def main(argv=None) -> int:
     except ImportError:
         (out / "pipeline.json").write_text(json.dumps(pipe.to_dict(), indent=2, default=str))
     (out / "ground_truth.json").write_text(json.dumps(session.meta["ground_truth"], indent=2))
+    (out / "selections.json").write_text(json.dumps(selections, indent=2, default=str))
 
     # --- figures ---
     gt = session.meta["ground_truth"]
@@ -913,10 +1115,10 @@ def main(argv=None) -> int:
 
     t_sw = time.perf_counter()
     print("\nLevels sweep (planted place-cell detection and untuned FPR):")
-    sweep = levels_sweep(args.seed, args.quick)
-    sweep.to_csv(out / "levels_sweep.csv", index=False)
+    lvl = levels_sweep(args.seed, args.quick)
+    lvl.to_csv(out / "levels_sweep.csv", index=False)
     print(
-        sweep.pivot_table(
+        lvl.pivot_table(
             index=["metric", "n_levels"], columns="duration_s", values=["detection", "fpr"]
         ).to_string(float_format=lambda v: f"{v:.2f}")
     )
@@ -946,7 +1148,7 @@ def main(argv=None) -> int:
         ),
         out / "22_info_vs_mi.png",
     )
-    save_fig(cabana.plots.plot_level_sweep(sweep), out / "23_level_sweep.png")
+    save_fig(cabana.plots.plot_level_sweep(lvl), out / "23_level_sweep.png")
     g_dec = bd_pos[1]  # gaussian, pooled sigma
     save_fig(
         cabana.plots.plot_decoded_trajectory(g_dec, session, pos_states),
@@ -1008,6 +1210,9 @@ def main(argv=None) -> int:
     print("\nFigure (classification):")
     save_fig(cabana.plots.plot_classification(cls), out / "27_classification.png")
 
+    print("\nFigures (parameter choice):")
+    smoothing_choice(session, selections, out, 100 if args.quick else 300, args.quick)
+
     print("\nGround-truth recovery (fraction significant, raw p-values, alpha=0.05):")
     print(summary.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
     print("\nGLM unique contributions (population pipeline, Poisson, held-out blocks):")
@@ -1027,6 +1232,7 @@ def main(argv=None) -> int:
         "\nRecovery by analysis (relevant vs untuned = false-positive rate; raw p-values and, "
         "in the *_adj columns, the max_stat-adjusted ones for the cell x state analyses):"
     )
+    print(chosen_parameters_line(selections, grid_bin_size(session.states["position"].topology)[0]))
     print(
         recovery_table(session, results).to_string(index=False, float_format=lambda v: f"{v:.2f}")
     )

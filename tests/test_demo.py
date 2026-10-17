@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -57,3 +58,12 @@ def test_demo_quick(tmp_path):
     assert (tmp_path / "27_classification.png").exists()
     auroc = df[df["analysis"] == "auroc[social]"]
     assert (auroc["p_adj"] >= auroc["p_value"] - 1e-12).all()
+    # parameter selection: selectors, sweeps, guard rail
+    sel = json.loads((tmp_path / "selections.json").read_text())
+    assert {s["method"] for s in sel} == {"auto_cv", "auto_rule"}
+    assert not any(s["informed_by_significance"] for s in sel)
+    for name in ("28a_smoothing_score", "28b_smoothing_gallery", "29_smoothing_stability"):
+        assert (tmp_path / f"{name}.png").exists()
+    assert "Chosen parameters: smooth_sigma_bins" in proc.stdout
+    assert "raises: refusing to pick by 'frac_significant'" in proc.stdout
+    assert "Stability across sigma" in proc.stdout

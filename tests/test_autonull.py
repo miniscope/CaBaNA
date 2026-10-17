@@ -125,7 +125,9 @@ def test_selector_deterministic_and_applied_value(sim_session):
     p = _pipe()
     a, b = _chosen(p, sim_session), _chosen(p, sim_session)
     assert {k: v.value for k, v in a.items()} == {k: v.value for k, v in b.items()}
-    eff = p.set_param("analyses.shift.shuffle.min_shift_s", a["analyses.shift.shuffle.min_shift_s"].value)
+    eff = p.set_param(
+        "analyses.shift.shuffle.min_shift_s", a["analyses.shift.shuffle.min_shift_s"].value
+    )
     assert (
         eff.analyses[0].shuffle.resolved_null().min_shift_s
         == a["analyses.shift.shuffle.min_shift_s"].value
