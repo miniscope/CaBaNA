@@ -38,6 +38,7 @@ __all__ = [
     "axis_label",
     "fmt_p",
     "heatmap_cmap",
+    "p_label",
     "mark_significant",
     "metric_label",
     "state_colors",
@@ -214,6 +215,27 @@ def fmt_p(p: float, n_shuffles: int | None = None, tail: str | None = None) -> s
         if p <= floor * (1 + 1e-9):
             txt += " (floor)"
     return txt
+
+
+def p_label(shuffle: Any, idx: int | tuple[int, ...]) -> str:
+    """The p text for one entry of a ShuffleResult, adjusted-aware.
+
+    ``"p=0.012"`` without a correction; ``"p_adj=0.048 (raw 0.012)"`` when
+    ``shuffle.correction != "none"`` and ``p_adj`` is stored, so a title never
+    shows a raw p next to a marker that was decided on the adjusted one.  The
+    "(floor)" note from :func:`fmt_p` is applied to the raw value.
+    """
+    if shuffle is None:
+        return ""
+    idx_t = idx if isinstance(idx, tuple) else (idx,)
+    raw = float(np.asarray(shuffle.p_value)[idx_t])
+    n, tail = shuffle.n_shuffles, shuffle.tail
+    corr = getattr(shuffle, "correction", "none")
+    p_adj = getattr(shuffle, "p_adj", None)
+    if corr and corr != "none" and p_adj is not None:
+        adj = float(np.asarray(p_adj)[idx_t])
+        return f"p_adj={adj:.3g} (raw {fmt_p(raw, n, tail)[2:]})"
+    return fmt_p(raw, n, tail)
 
 
 def mark_significant(ax: Any, x: Iterable[float], y: Iterable[float], **kw: Any) -> Any:

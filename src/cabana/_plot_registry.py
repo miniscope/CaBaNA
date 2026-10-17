@@ -17,8 +17,10 @@ Then::
 
 ``requires`` is a tuple of conditions the result must meet, checked by
 :func:`plots_for`: ``"shuffle"`` (a ShuffleResult), ``"null"`` (null draws
-kept), ``"extras:<key>"``, ``"values:2d"``, ``"topology"`` (grid target,
-needs the session), ``"ground_truth"`` (``session.meta["ground_truth"]``).
+kept), ``"extras:<key>"``, ``"values:1d"`` / ``"values:2d"``, ``"target"``
+(``result.target`` is a state space of the session), ``"topology"`` (that
+state space has a 1-D or 2-D grid; ``"topology:any"`` accepts any
+dimensionality), ``"ground_truth"`` (``session.meta["ground_truth"]``).
 A default plot whose requirements the result does not meet is skipped by
 ``plot_all`` rather than raising.
 
@@ -85,9 +87,14 @@ class PlotSpec:
                 return False
             if req == "values:1d" and np.ndim(result.values) != 1:
                 return False
-            if req == "topology":
+            if req == "target":
+                if session is None or result.target not in getattr(session, "states", {}):
+                    return False
+            if req in ("topology", "topology:any"):
                 space = getattr(session, "states", {}).get(result.target) if session else None
                 if space is None or space.topology is None:
+                    return False
+                if req == "topology" and getattr(space.topology, "ndim", 2) not in (1, 2):
                     return False
             if req == "ground_truth" and not (session and session.meta.get("ground_truth")):
                 return False
@@ -224,7 +231,9 @@ def plot_all(
     session : Session, optional
     kinds : mapping analysis name -> plot names, optional
         Restrict or extend what is drawn per analysis; analyses not listed keep
-        their metric defaults.
+        their metric defaults.  A plot named here that does not apply to its
+        result raises ``ValueError`` (default plots that do not apply are
+        skipped silently).
     out_dir : path, optional
         When given, each figure is saved as ``<out_dir>/<analysis>__<plot>.<fmt>``
         (``/`` and ``[`` ``]`` in names become ``_``) and the dict holds the
@@ -242,10 +251,17 @@ def plot_all(
     out: dict[str, Figure | Path] = {}
     for r in results:
         name = str(r.name or f"{r.metric}[{r.target}]")
-        names = list((kinds or {}).get(name, plots_for(r, session)))
+        explicit = kinds is not None and name in kinds
+        names = list(kinds[name]) if explicit else plots_for(r, session)
         for k in names:
             spec = plot_spec(k)
             if not spec.applies_to(r, session):
+                if explicit:
+                    raise ValueError(
+                        f"plot {k!r} requested for {name!r} does not apply: needs "
+                        f"level={spec.level}, requires={list(spec.requires)}, "
+                        f"session={'yes' if spec.needs_session else 'no'}"
+                    )
                 continue
             fig = plot(r, session, k, **_accepted(spec.render, kw))
             key = f"{name}/{k}"
