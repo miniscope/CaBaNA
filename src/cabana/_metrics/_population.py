@@ -84,6 +84,7 @@ class PopulationVectorOverlap(Metric):
     name: ClassVar[str] = "population_vector_overlap"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
 
     similarity: Literal["cosine", "pearson"] = Field(
         "cosine", description="Cosine similarity or Pearson r between state rate vectors."
@@ -177,6 +178,7 @@ class PopulationVectorStability(Metric):
     name: ClassVar[str] = "pv_stability"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
 
     n_blocks: int = Field(
         2, ge=2, description="Number of contiguous blocks; even blocks are half A, odd half B."

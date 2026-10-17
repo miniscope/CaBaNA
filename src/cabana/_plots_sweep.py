@@ -17,7 +17,8 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from ._kernels import rate_map
-from ._plots import _fmt_p
+from ._plot_data import PLOT_DATA_VERSION
+from ._plot_style import fmt_p
 from ._sweep import SweepResult, _wilson
 
 __all__ = [
@@ -30,6 +31,13 @@ __all__ = [
 ]
 
 _STYLES = ["-", "--", ":", "-."]
+
+
+def _py(v: Any) -> Any:
+    """Plain Python value for a numpy / pandas scalar (``None`` and str pass through)."""
+    if isinstance(v, np.generic):
+        return v.item()
+    return v
 
 
 # --------------------------------------------------------------------------- #
@@ -45,7 +53,7 @@ def plot_sweep_data(
     panels: Sequence[str] = ("frac_significant",),
     style: str | None = None,
 ) -> dict[str, Any]:
-    """Lines for :func:`plot_sweep`: ``{"x", "hue", "style", "panels", "lines"}``.
+    """Lines for :func:`plot_sweep`: ``{"kind", "version", "x", "hue", "style", "panels", ...}``.
 
     ``lines`` is a list of ``{"hue", "style", "x", "y": {panel: array}}`` sorted by
     ``x``; one line per (style, hue) combination.
@@ -53,8 +61,8 @@ def plot_sweep_data(
     missing = {x, *panels, *(c for c in (hue, style) if c)} - set(df.columns)
     if missing:
         raise ValueError(f"df is missing columns {sorted(missing)}")
-    styles = list(dict.fromkeys(df[style])) if style else [None]
-    hues = sorted(df[hue].unique()) if hue else [None]
+    styles = [_py(v) for v in dict.fromkeys(df[style])] if style else [None]
+    hues = [_py(v) for v in sorted(df[hue].unique())] if hue else [None]
     lines = []
     for sv in styles:
         sub_s = df if style is None else df[df[style] == sv]
@@ -65,20 +73,22 @@ def plot_sweep_data(
             sub = sub.sort_values(x)
             lines.append(
                 {
-                    "hue": hv,
-                    "style": sv,
+                    "hue": _py(hv),
+                    "style": _py(sv),
                     "x": sub[x].to_numpy(),
                     "y": {c: sub[c].to_numpy(float) for c in panels},
                 }
             )
     return {
+        "kind": "sweep",
+        "version": PLOT_DATA_VERSION,
         "x": x,
         "hue": hue,
         "style": style,
         "panels": list(panels),
         "hue_values": hues,
         "style_values": styles,
-        "x_values": np.sort(df[x].unique()),
+        "x_values": [_py(v) for v in np.sort(df[x].unique())],
         "lines": lines,
     }
 
@@ -283,7 +293,7 @@ def plot_sweep_gallery_data(
 ) -> dict[str, Any]:
     """Per-candidate panels for one cell (see :func:`plot_sweep_gallery`).
 
-    Returns ``{"param", "analysis", "cell_id", "metric", "shared_scale", "vmin",
+    Returns ``{"kind", "version", "param", "analysis", "cell_id", "metric", "shared_scale", "vmin",
     "vmax", "panels"}``; each panel is ``{"param_value", "kind"
     ("grid2d"|"grid1d"|"bar"|"none"), "map" (array or None), "shape", "edges",
     "state_names", "value", "p_value", "significant"}``.
@@ -334,7 +344,7 @@ def plot_sweep_gallery_data(
                 kind = "bar"
         panels.append(
             {
-                "param_value": cv,
+                "param_value": _py(cv),
                 "kind": kind,
                 "map": rate,
                 "shape": shape,
@@ -350,6 +360,8 @@ def plot_sweep_gallery_data(
     vmin = float(min(f.min() for f in fin)) if fin else 0.0
     vmax = float(max(f.max() for f in fin)) if fin else 1.0
     return {
+        "kind": "sweep_gallery",
+        "version": PLOT_DATA_VERSION,
         "param": param,
         "analysis": name,
         "cell_id": cell_id,
@@ -421,7 +433,7 @@ def plot_sweep_gallery(
         if pn["value"] is not None:
             cap.append(f"{d['metric']}={pn['value']:.3g}")
         if pn["p_value"] is not None:
-            cap.append(_fmt_p(pn["p_value"]))
+            cap.append(fmt_p(pn["p_value"]))
         if cap:
             title += "\n" + ", ".join(cap)
         ax.set_title(title, fontsize=8)
@@ -478,7 +490,7 @@ def plot_sweep_stability_data(
 ) -> dict[str, Any]:
     """Arrays for :func:`plot_sweep_stability`.
 
-    Keys: ``candidates``, ``frac_significant``, ``ci_lo``, ``ci_hi`` (Wilson 95%),
+    Keys: ``kind``, ``version``, ``candidates``, ``frac_significant``, ``ci_lo``, ``ci_hi`` (Wilson 95%),
     ``n_cells``, ``units`` (row labels), ``matrix`` ``(n_units, n_candidates)``
     float (1 significant, 0 not, NaN missing / no p-value) sorted by first
     flip, ``flip_counts`` per unit, ``spearman`` and ``spearman_n`` per adjacent
@@ -513,16 +525,18 @@ def plot_sweep_stability_data(
         rho.append(float(va[ok].rank().corr(vb[ok].rank())) if ok.sum() > 2 else float("nan"))
         rho_n.append(int(ok.sum()))
     return {
+        "kind": "sweep_stability",
+        "version": PLOT_DATA_VERSION,
         "param": param,
         "analysis": analysis,
-        "candidates": cands,
+        "candidates": [_py(c) for c in cands],
         "frac_significant": frac,
         "ci_lo": np.array([c[0] for c in ci]),
         "ci_hi": np.array([c[1] for c in ci]),
         "n_cells": n_fin,
         "units": [units[i] for i in order],
         "matrix": m[order],
-        "flip_counts": flips[order],
+        "flip_counts": flips[order].astype(int),
         "pair_labels": [f"{a}->{b}" for a, b in zip(cands[:-1], cands[1:], strict=True)],
         "spearman": np.array(rho),
         "spearman_n": np.array(rho_n),

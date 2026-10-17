@@ -68,6 +68,7 @@ class InformationContent(Metric):
 
     name: ClassVar[str] = "information_content"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("rate_maps", "metric_strip", "shuffle_distribution")
 
     units: Literal["bits_per_event", "bits_per_second"] = Field(
         "bits_per_event", description="bits per event, or bits per second (times mean rate)."

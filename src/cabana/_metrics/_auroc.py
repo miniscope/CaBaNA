@@ -116,6 +116,7 @@ class AUROC(Metric):
     name: ClassVar[str] = "auroc"
     level: ClassVar[Literal["cell", "population"]] = "cell"
     default_tail: ClassVar[Tail] = "two"
+    default_plots: ClassVar[tuple[str, ...]] = ("tuning_heatmap", "shuffle_distribution")
 
     min_frames: int = Field(
         20, ge=1, description="Minimum masked frames in and out of a state; otherwise NaN."

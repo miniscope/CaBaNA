@@ -14,6 +14,7 @@ import pytest
 
 from cabana import Pipeline, ShuffleConfig, build, sweep
 from cabana import plots
+from cabana._plot_data import check_plot_data
 from cabana._plots_sweep import (
     plot_sweep_data,
     plot_sweep_gallery_data,
@@ -65,6 +66,7 @@ def test_gallery_grid(small_session, grid_sweep):
     assert [p["kind"] for p in d["panels"]] == ["grid2d"] * 3 and d["cell_id"] == "cell_001"
     assert d["vmin"] <= d["vmax"]
     json.loads(_dump(d))
+    check_plot_data(d, "sweep_gallery")
 
 
 def test_gallery_without_rate_map_extra_recomputes(small_session):
@@ -111,6 +113,7 @@ def test_gallery_categorical_and_1d(small_session, session1d):
     d = plot_sweep_gallery_data(session1d, sw, 3, param=SIGMA)
     assert d["panels"][0]["kind"] == "grid1d"
     json.loads(_dump(d))
+    check_plot_data(d, "sweep_gallery")
     plt.close(fig)
 
 
@@ -124,6 +127,7 @@ def test_stability_plot_and_data(grid_sweep):
     flips = d["flip_counts"]
     assert flips[0] >= flips[-1]  # sorted by first flip: flippers first
     json.loads(_dump(d))
+    check_plot_data(d, "sweep_stability")
 
 
 def test_stability_without_shuffles(small_session):
@@ -150,5 +154,7 @@ def test_plot_sweep_generic(grid_sweep):
     d = plot_sweep_data(df, x="x", hue="h", panels=("y",))
     assert len(d["lines"]) == 2
     json.loads(_dump(d))
+    check_plot_data(d, "sweep")
+    check_plot_data(plot_sweep_data(grid_sweep.summary(), x=SIGMA, panels=("frac_significant",)))
     with pytest.raises(ValueError):
         plots.plot_sweep(df, x="nope")

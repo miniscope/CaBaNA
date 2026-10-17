@@ -15,8 +15,11 @@ from cabana import (  # noqa: E402
     SimulationConfig,
     simulate_session,
 )
+from cabana import _plots_information as pi  # noqa: E402
 from cabana import plots  # noqa: E402
 from cabana._models import GridTopology, StateSpace  # noqa: E402
+from cabana._plot_style import UNVISITED_COLOR  # noqa: E402
+from cabana._registry import _REGISTRY  # noqa: E402
 from cabana._results import MetricResult  # noqa: E402
 
 
@@ -143,7 +146,8 @@ def test_level_sweep():
         plots.plot_level_sweep(pd.DataFrame({"n_levels": [2]}))
 
 
-def test_decoded_trajectory():
+@pytest.fixture(scope="module")
+def decoded_run():
     sess = simulate_session(SimulationConfig(duration_s=300, n_cells=12, seed=0))
     prep = Pipeline(
         transforms=[
@@ -158,13 +162,131 @@ def test_decoded_trajectory():
         ],
     )
     sess, rs = prep.run(sess)
-    res = rs.get("bayesian_decoder", "position")
+    return sess, rs.get("bayesian_decoder", "position")
+
+
+def test_decoded_trajectory(decoded_run):
+    sess, res = decoded_run
     fig = plots.plot_decoded_trajectory(res, sess, sess.states["position"])
-    assert len(fig.axes) == 3  # x, y, error CDF
+    # x, y, error CDF, path, accuracy map + 2 colourbars
+    assert len(fig.axes) == 7
     assert len(fig.axes[0].lines) == 2
     assert "median error" in fig._suptitle.get_text()
     plt.close(fig)
     fig = plots.plot_decoded_trajectory(res, sess, sess.states["position"], t_range=(100, 130))
     plt.close(fig)
+    fig = plots.plot_decoded_trajectory(res, sess)  # states default to session.states[target]
+    plt.close(fig)
     with pytest.raises(ValueError):
         plots.plot_decoded_trajectory(res, sess, sess.states["position"], ax=object())
+
+
+def test_decoded_trajectory_data_2d(decoded_run):
+    sess, res = decoded_run
+    topo = sess.states["position"].topology
+    d = pi.plot_decoded_trajectory_data(res, sess, t_range=(100, 130))
+    plots.check_plot_data(d, "decoded_trajectory")
+    n = d["time_s"].size
+    assert d["true"].shape == d["decoded"].shape == (2, n)
+    assert d["path_true"].shape == d["path_decoded"].shape == (n, 2)
+    assert d["accuracy_map"].shape == (topo.shape[1], topo.shape[0])
+    assert d["axis_names"] == ["x", "y"] and len(d["units"]) == 2
+    assert len(d["extent"]) == 4
+    # bins never visited are NaN, not zero
+    conf = np.asarray(res.extras["confusion"], float)
+    never = ~(np.nan_to_num(conf).sum(axis=1) > 0)
+    acc = d["accuracy_map"].T.ravel()
+    assert np.isnan(acc[never]).all()
+    assert np.nanmin(acc) >= 0 and np.nanmax(acc) <= 1
+    assert d["error_cdf"]["y"][-1] == pytest.approx(1.0)
+
+
+def test_decoded_trajectory_registry(monkeypatch, decoded_run):
+    sess, res = decoded_run
+    monkeypatch.setattr(
+        _REGISTRY["metric"]["bayesian_decoder"],
+        "default_plots",
+        ("decoded_trajectory",),
+        raising=False,
+    )
+    assert plots.plots_for(res, sess) == ["decoded_trajectory"]
+    fig = plots.plot(res, sess, "decoded_trajectory")
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_decoded_trajectory_data_1d():
+    sess = simulate_session(SimulationConfig(duration_s=200, n_cells=10, seed=1))
+    prep = Pipeline(
+        transforms=[
+            {"name": "resample_signal", "source": "position"},
+            {"name": "bin_grid", "signals": ["x"], "bin_size": 100.0, "output": "x1d"},
+        ],
+        analyses=[AnalysisSpec(metric={"name": "bayesian_decoder", "n_folds": 2}, states="x1d")],
+    )
+    sess, rs = prep.run(sess)
+    res = rs.get("bayesian_decoder", "x1d")
+    d = pi.plot_decoded_trajectory_data(res, sess)
+    plots.check_plot_data(d, "decoded_trajectory")
+    assert d["accuracy_map"] is None and d["true"].shape[0] == 1
+    fig = plots.plot_decoded_trajectory(res, sess)
+    assert len(fig.axes) == 2
+    plt.close(fig)
+
+
+def test_joint_histogram_default_lift_and_nan():
+    res, space = _fake_1d()
+    d = pi.plot_joint_histogram_data(res, [0, 1], states=space)
+    plots.check_plot_data(d, "joint_histogram")
+    assert d["normalize"] == "lift" and "lift" in d["cbar_label"]
+    assert d["vmin"] == -d["vmax"]
+    assert np.isnan(d["panels"][:, 2, :]).all()  # unvisited state is NaN, not 0
+    assert d["layout"] == "grid1d" and len(d["level_labels"][0]) == 3
+    assert d["level_labels"][0][0] == "0" and d["level_labels"][0][-1].startswith("≥")
+    d2 = pi.plot_joint_histogram_data(res, 0, normalize="conditional")
+    assert d2["layout"] == "categorical" and d2["state_names"][0] == "b0"
+    assert d2["vmin"] == 0.0 and "p(level" in d2["cbar_label"]
+    fig = plots.plot_joint_histogram(res, [0, 1], states=space)
+    im = fig.axes[0].images[0]
+    assert im.get_cmap()(np.nan) == pytest.approx(matplotlib.colors.to_rgba(UNVISITED_COLOR))
+    assert fig.axes[-1].get_ylabel().startswith("log2 lift")
+    plt.close(fig)
+
+
+def test_joint_histogram_registry(mi_run, monkeypatch):
+    prep, rs = mi_run
+    res = rs.get("mutual_information", "position")
+    monkeypatch.setattr(
+        _REGISTRY["metric"]["mutual_information"],
+        "default_plots",
+        ("joint_histogram",),
+        raising=False,
+    )
+    assert plots.plots_for(res, prep) == ["joint_histogram"]
+    fig = plots.plot(res, prep, "joint_histogram")
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+    d = pi.plot_joint_histogram_data(res, [0], prep.states["position"])
+    assert d["layout"] == "grid2d" and d["extent"][1] > d["extent"][0]
+    plots.check_plot_data(d, "joint_histogram")
+
+
+def test_information_comparison_data(mi_run):
+    _, rs = mi_run
+    a = rs.get("mutual_information", "position")
+    b = rs.get("information_content", "position")
+    d = pi.plot_information_comparison_data(a, b, ("MI", "Skaggs"), highlight=[0, 1], identity=True)
+    plots.check_plot_data(d, "information_comparison")
+    assert sum(g["n"] for g in d["groups"]) == d["x"].size
+    assert list(d["highlight"]) == [0, 1] and d["identity_line"] is not None
+
+
+def test_level_sweep_data():
+    rows = [
+        {"n_levels": k, "duration_s": dur, "detection": 0.5, "fpr": 0.05}
+        for k in (2, 3)
+        for dur in (300, 900)
+    ]
+    d = pi.plot_level_sweep_data(pd.DataFrame(rows))
+    plots.check_plot_data(d, "level_sweep")
+    assert d["hue_labels"] == ["300 s", "900 s"] and len(d["sweep"]["lines"]) == 2

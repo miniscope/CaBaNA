@@ -3,6 +3,10 @@
 Every function returns a :class:`matplotlib.figure.Figure` and never calls
 ``plt.show``.  Single-panel functions accept ``ax=None`` and create a figure
 when it is omitted.  Plots dispatch on ``StateSpace.kind`` / ``topology``.
+
+Each ``plot_<x>`` has a companion ``plot_<x>_data`` that returns everything the
+figure shows as a plain dict (see :mod:`cabana._plot_data`); the renderer draws
+from that dict only.
 """
 
 from __future__ import annotations
@@ -13,24 +17,51 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, to_hex
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from ._models import Session, StateSpace
+from ._models import EVENT_KINDS, ContinuousSignal, Session
+from ._plot_data import PLOT_DATA_VERSION
+from ._plot_registry import register_plot
+from ._plot_style import (
+    NULL_COLOR,
+    OBSERVED_COLOR,
+    UNVISITED_COLOR,
+    axis_label,
+    fmt_p,
+    mark_significant,
+    metric_label,
+    ordered_names,
+    state_colors,
+)
 from ._results import MetricResult, ResultSet
 from ._util import order_session_first, runs
 
 __all__ = [
     "plot_behavior_overview",
+    "plot_behavior_overview_data",
     "plot_ground_truth_recovery",
+    "plot_ground_truth_recovery_data",
     "plot_metric_scatter",
+    "plot_metric_scatter_data",
+    "plot_metric_strip",
+    "plot_metric_strip_data",
     "plot_population_matrix",
+    "plot_population_matrix_data",
     "plot_rate_maps",
+    "plot_rate_maps_data",
     "plot_shuffle_distribution",
+    "plot_shuffle_distribution_data",
+    "plot_split_half_maps",
+    "plot_split_half_maps_data",
     "plot_tuning_heatmap",
+    "plot_tuning_heatmap_data",
 ]
+
+FLOOR_NOTE = "p at floor: no surrogate reached the observed value; raise n_shuffles for finer p"
+UNVISITED_NOTE = "Light grey: unvisited or below minimum occupancy (no estimate, not zero)"
 
 
 # --------------------------------------------------------------------------- #
@@ -51,27 +82,173 @@ def _cell_label(result: MetricResult, cell: int) -> str:
     return str(cell)
 
 
-def _fmt_p(p: float) -> str:
-    return "p=nan" if not np.isfinite(p) else (f"p={p:.3g}" if p >= 0.001 else "p<0.001")
-
-
-def _discrete_cmap(n: int) -> ListedColormap:
-    base = plt.get_cmap("tab20" if n > 10 else "tab10")
-    return ListedColormap([base(i % base.N) for i in range(max(n, 1))])
-
-
 def _significant(result: MetricResult, alpha: float | None = None) -> np.ndarray | None:
+    """Significance mask of ``result`` (adjusted when a correction was applied).
+
+    ``None`` without a shuffle.  An explicit ``alpha`` tests the raw p-values.
+    """
     sh = result.shuffle
     if sh is None:
         return None
-    if alpha is None:
-        return np.asarray(sh.significant, bool)
-    return np.asarray(sh.p_value) < alpha
+    if alpha is not None:
+        return np.asarray(sh.p_value) < alpha
+    if sh.correction != "none" and sh.p_adj is not None:
+        return np.asarray(sh.p_adj) < sh.alpha
+    return np.asarray(sh.significant, bool)
+
+
+def _per_cell(mask: np.ndarray) -> np.ndarray:
+    """Reduce a ``(n_cells, ...)`` mask to ``(n_cells,)`` (any over the other axes)."""
+    mask = np.asarray(mask, bool)
+    return mask.reshape(mask.shape[0], -1).any(axis=1) if mask.ndim > 1 else mask
+
+
+def _cell_scores(result: MetricResult) -> np.ndarray:
+    v = np.asarray(result.values, float)
+    if v.ndim > 1:
+        v = v.reshape(v.shape[0], -1)
+        with np.errstate(all="ignore"):
+            v = np.where(
+                np.isfinite(v).any(axis=1),
+                np.nanmax(np.where(np.isfinite(v), v, -np.inf), 1),
+                np.nan,
+            )
+    return v
+
+
+def _ordered_cells(result: MetricResult) -> list[int]:
+    """All cells: significant ones by descending value, then the rest by descending value."""
+    score = _cell_scores(result)
+    order = np.argsort(-np.where(np.isfinite(score), score, -np.inf), kind="stable")
+    sig = _significant(result)
+    sig_c = _per_cell(sig) if sig is not None and sig.shape[:1] == score.shape else None
+    if sig_c is None:
+        return [int(i) for i in order]
+    return [int(i) for i in order if sig_c[i]] + [int(i) for i in order if not sig_c[i]]
+
+
+def _page(cells: Sequence[int], max_cells: int | None, page: int) -> tuple[list[int], int, int]:
+    """``(cells on this page, page, n_pages)``."""
+    cells = [int(c) for c in cells]
+    if not max_cells or max_cells <= 0 or len(cells) <= max_cells:
+        if page not in (0,):
+            raise ValueError(f"page={page} out of range: only 1 page of cells")
+        return cells, 0, 1
+    n_pages = int(np.ceil(len(cells) / max_cells))
+    if not 0 <= page < n_pages:
+        raise ValueError(f"page={page} out of range: {len(cells)} cells make {n_pages} page(s)")
+    return cells[page * max_cells : (page + 1) * max_cells], page, n_pages
+
+
+def _signal_units(session: Session, name: str) -> str:
+    """Units of the behavior input called ``name`` (or carrying channel ``name``), else ``""``."""
+    b = getattr(session, "behavior", {}) or {}
+    sig = b.get(name)
+    if isinstance(sig, ContinuousSignal):
+        return sig.units or ""
+    for s in b.values():
+        if isinstance(s, ContinuousSignal) and name in s.channel_names:
+            return s.units or ""
+    return ""
+
+
+def _p_text(sh: Any, idx: Any) -> tuple[str, bool]:
+    txt = fmt_p(float(np.asarray(sh.p_value)[idx]), sh.n_shuffles, sh.tail)
+    return txt, txt.endswith("(floor)")
+
+
+def _hex(c: Any) -> str:
+    return to_hex(c)
+
+
+def _base(kind: str, **kw: Any) -> dict[str, Any]:
+    return {"kind": kind, "version": PLOT_DATA_VERSION, **kw}
 
 
 # --------------------------------------------------------------------------- #
 # behavior overview
 # --------------------------------------------------------------------------- #
+
+
+def plot_behavior_overview_data(
+    session: Session,
+    *,
+    position_signals: tuple[str, str] = ("x", "y"),
+    speed_signal: str = "speed",
+    speed_mask: str = "speed",
+    states: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_behavior_overview`.
+
+    Returns
+    -------
+    dict
+        ``t`` plus ``panels``: a list of dicts with ``type`` in ``"trajectory"``
+        (``x``, ``y``, ``x_label``, ``y_label``), ``"speed"`` (``values``,
+        ``label``, ``excluded`` as ``[t0, t1]`` pairs), ``"ethogram"`` (``name``,
+        ``state_names``, ``segments`` per state as ``[start, duration]`` pairs,
+        ``colors``) or ``"strip"`` (``name``, ``labels`` with -1 for none,
+        ``state_names``, ``colors``).  ``panels`` is empty when nothing can be drawn.
+    """
+    t = np.asarray(session.t, float)
+    names = list(session.states) if states is None else list(states)
+    spaces = [session.states[n] for n in names if n in session.states]
+    panels: list[dict[str, Any]] = []
+    px, py = position_signals
+    if px in session.signals and py in session.signals:
+        panels.append(
+            {
+                "type": "trajectory",
+                "x": np.asarray(session.signals[px], float),
+                "y": np.asarray(session.signals[py], float),
+                "x_label": axis_label(px, _signal_units(session, px)),
+                "y_label": axis_label(py, _signal_units(session, py)),
+            }
+        )
+    if speed_signal in session.signals:
+        excluded: list[list[float]] = []
+        if speed_mask in session.masks:
+            for a, n in zip(*runs(~session.masks[speed_mask]), strict=True):
+                excluded.append([float(t[a]), float(t[min(a + n, len(t) - 1)])])
+        panels.append(
+            {
+                "type": "speed",
+                "values": np.asarray(session.signals[speed_signal], float),
+                "label": axis_label(speed_signal, _signal_units(session, speed_signal)),
+                "excluded": excluded,
+            }
+        )
+    dt = float(np.median(np.diff(t))) if len(t) > 1 else 1.0
+    for s in spaces:
+        if s.kind == "bouts":
+            cols = state_colors(s.state_names)
+            panels.append(
+                {
+                    "type": "ethogram",
+                    "name": s.name,
+                    "state_names": list(s.state_names),
+                    "segments": [
+                        [
+                            [float(t[a]), float(n * dt)]
+                            for a, n in zip(*runs(s.onehot[:, j]), strict=True)
+                        ]
+                        for j in range(s.n_states)
+                    ],
+                    "colors": [_hex(cols[n]) for n in s.state_names],
+                }
+            )
+        elif s.kind == "categorical" and s.exclusive:
+            cols = state_colors(s.state_names)
+            panels.append(
+                {
+                    "type": "strip",
+                    "name": s.name,
+                    "labels": np.asarray(s.labels(), int),
+                    "state_names": list(s.state_names),
+                    "colors": [_hex(cols[n]) for n in s.state_names],
+                }
+            )
+    return _base("behavior_overview", t=t, panels=panels)
 
 
 def plot_behavior_overview(
@@ -95,7 +272,7 @@ def plot_behavior_overview(
         Session whose ``signals``, ``masks`` and ``states`` are drawn.
     position_signals : (str, str), default ("x", "y")
         Names of the two per-frame position signals (trajectory panel, coloured
-        by time).
+        by time).  Units come from the session's behavior input of the same name.
     speed_signal : str, default "speed"
         Per-frame speed signal drawn as a time trace.
     speed_mask : str, default "speed"
@@ -108,22 +285,15 @@ def plot_behavior_overview(
     -------
     matplotlib.figure.Figure
     """
-    t = np.asarray(session.t)
-    names = list(session.states) if states is None else list(states)
-    spaces = [session.states[n] for n in names if n in session.states]
-
-    panels: list[tuple[str, Any, float]] = []
-    px, py = position_signals
-    if px in session.signals and py in session.signals:
-        panels.append(("traj", None, 3.2))
-    if speed_signal in session.signals:
-        panels.append(("speed", None, 1.4))
-    for s in spaces:
-        if s.kind == "bouts":
-            panels.append(("ethogram", s, max(1.0, 0.4 * s.n_states + 0.6)))
-        elif s.kind == "categorical" and s.exclusive:
-            panels.append(("strip", s, 1.0))
-
+    d = plot_behavior_overview_data(
+        session,
+        position_signals=position_signals,
+        speed_signal=speed_signal,
+        speed_mask=speed_mask,
+        states=states,
+    )
+    t = d["t"]
+    panels = d["panels"]
     if not panels:
         fig, ax = plt.subplots(figsize=(5, 2), layout="constrained")
         ax.axis("off")
@@ -136,68 +306,65 @@ def plot_behavior_overview(
         )
         return fig
 
-    fig = plt.figure(figsize=(8, sum(p[2] for p in panels) + 0.5), layout="constrained")
-    gs = fig.add_gridspec(len(panels), 1, height_ratios=[p[2] for p in panels])
-    time_axes = []
-    for i, (kind, s, _) in enumerate(panels):
+    def height(p: dict[str, Any]) -> float:
+        return {"trajectory": 3.2, "speed": 1.4, "strip": 1.0}.get(
+            p["type"], max(1.0, 0.4 * len(p.get("state_names", [])) + 0.6)
+        )
+
+    fig = plt.figure(figsize=(8, sum(height(p) for p in panels) + 0.5), layout="constrained")
+    gs = fig.add_gridspec(len(panels), 1, height_ratios=[height(p) for p in panels])
+    for i, p in enumerate(panels):
         ax = fig.add_subplot(gs[i])
-        if kind == "traj":
-            x = np.asarray(session.signals[px], float)
-            y = np.asarray(session.signals[py], float)
-            sc = ax.scatter(x, y, c=t, s=4, cmap="viridis")
-            ax.plot(x, y, color="0.8", lw=0.5, zorder=0)
-            ax.set_xlabel(px)
-            ax.set_ylabel(py)
+        kind = p["type"]
+        if kind == "trajectory":
+            sc = ax.scatter(p["x"], p["y"], c=t, s=4, cmap="viridis")
+            ax.plot(p["x"], p["y"], color="0.8", lw=0.5, zorder=0)
+            ax.set_xlabel(p["x_label"])
+            ax.set_ylabel(p["y_label"])
             ax.set_aspect("equal", adjustable="datalim")
             ax.set_title("Trajectory")
             fig.colorbar(sc, ax=ax, label="time (s)", fraction=0.046, pad=0.02)
         elif kind == "speed":
-            ax.plot(t, np.asarray(session.signals[speed_signal], float), color="C0", lw=0.8)
-            if speed_mask in session.masks:
-                for a, n in zip(*runs(~session.masks[speed_mask]), strict=True):
-                    ax.axvspan(t[a], t[min(a + n, len(t) - 1)], color="0.5", alpha=0.25, lw=0)
-            ax.set_ylabel(speed_signal)
+            ax.plot(t, p["values"], color="C0", lw=0.8)
+            for a, b in p["excluded"]:
+                ax.axvspan(a, b, color="0.5", alpha=0.25, lw=0)
+            ax.set_ylabel(p["label"])
             ax.set_xlabel("time (s)")
             ax.set_xlim(t[0], t[-1])
-            time_axes.append(ax)
         elif kind == "ethogram":
-            assert isinstance(s, StateSpace)
-            dt = float(np.median(np.diff(t))) if len(t) > 1 else 1.0
-            for j in range(s.n_states):
-                segs = [(t[a], n * dt) for a, n in zip(*runs(s.onehot[:, j]), strict=True)]
-                ax.broken_barh(segs, (j - 0.4, 0.8), facecolors=f"C{j % 10}")
-            ax.set_yticks(range(s.n_states), s.state_names)
-            ax.set_ylim(s.n_states - 0.4, -0.6)
+            n = len(p["state_names"])
+            for j, segs in enumerate(p["segments"]):
+                ax.broken_barh([tuple(s) for s in segs], (j - 0.4, 0.8), facecolors=p["colors"][j])
+            ax.set_yticks(range(n), p["state_names"])
+            ax.set_ylim(n - 0.4, -0.6)
             ax.set_xlim(t[0], t[-1])
             ax.set_xlabel("time (s)")
-            ax.set_title(s.name, fontsize=10)
-            time_axes.append(ax)
+            ax.set_title(p["name"], fontsize=10)
         else:
-            assert isinstance(s, StateSpace)
-            lab = s.labels()
-            img = np.ma.masked_less(lab, 0)[None, :]
-            cmap = _discrete_cmap(s.n_states)
+            lab = np.asarray(p["labels"])
+            cmap = ListedColormap(p["colors"] or ["0.5"])
             ax.imshow(
-                img,
+                np.ma.masked_less(lab, 0)[None, :],
                 aspect="auto",
                 cmap=cmap,
                 vmin=-0.5,
-                vmax=s.n_states - 0.5,
+                vmax=len(p["state_names"]) - 0.5,
                 extent=(t[0], t[-1], 0, 1),
                 interpolation="nearest",
             )
             ax.set_yticks([])
             ax.set_xlabel("time (s)")
-            ax.set_title(s.name, fontsize=10)
+            ax.set_title(p["name"], fontsize=10)
             used = np.unique(lab[lab >= 0])
             ax.legend(
-                handles=[Patch(color=cmap(int(u)), label=s.state_names[int(u)]) for u in used],
+                handles=[
+                    Patch(color=p["colors"][int(u)], label=p["state_names"][int(u)]) for u in used
+                ],
                 loc="upper left",
                 bbox_to_anchor=(1.01, 1.0),
                 fontsize=8,
                 frameon=False,
             )
-            time_axes.append(ax)
     return fig
 
 
@@ -206,38 +373,67 @@ def plot_behavior_overview(
 # --------------------------------------------------------------------------- #
 
 
-def plot_rate_maps(
+def _rate_label(session: Session) -> str:
+    return axis_label("rate", "events/s" if session.activity_kind in EVENT_KINDS else "a.u./s")
+
+
+def _map_layout(session: Session, result: MetricResult) -> dict[str, Any]:
+    space = session.states[result.target]
+    topo = space.topology
+    if topo is not None and topo.ndim == 2:
+        layout = "grid2d"
+    elif topo is not None and topo.ndim == 1:
+        layout = "grid1d"
+    else:
+        layout = "categorical"
+    out: dict[str, Any] = {"layout": layout, "state_names": list(space.state_names)}
+    if layout != "categorical":
+        out["axis_names"] = list(topo.axis_names)
+        out["axis_units"] = [_signal_units(session, n) for n in topo.axis_names]
+        out["axis_labels"] = [
+            axis_label(n, u) for n, u in zip(out["axis_names"], out["axis_units"], strict=True)
+        ]
+        out["edges"] = [np.asarray(e, float) for e in topo.edges]
+        out["centers"] = [np.asarray(c, float) for c in topo.centers()]
+        out["grid_shape"] = list(topo.shape)
+    return out
+
+
+def _shape_maps(maps: np.ndarray, lay: dict[str, Any]) -> np.ndarray:
+    """``(..., n_states)`` -> ``(..., *grid_shape)`` for a 2-D grid, unchanged otherwise."""
+    if lay["layout"] == "grid2d":
+        return maps.reshape(*maps.shape[:-1], *lay["grid_shape"])
+    return maps
+
+
+def rate_maps_defaults(result: MetricResult, session: Any = None) -> dict[str, Any]:
+    """Registry ``defaults`` hook: ``{"cells": ...}`` significant cells first, then the rest.
+
+    The list is ordered by value (descending) and not truncated; ``max_cells`` and
+    ``page`` of :func:`plot_rate_maps` pick the block that is drawn.
+    """
+    return {"cells": _ordered_cells(result)}
+
+
+def plot_rate_maps_data(
     session: Session,
     result: MetricResult,
-    cells: Sequence[int],
-    ncols: int = 6,
-    cmap: str = "viridis",
-) -> Figure:
-    """Per-cell rate maps from ``result.extras["rate_map"]``.
-
-    ``session`` and ``result`` may be given in either order.  Look for: compact
-    single fields (2-D / 1-D grids) or a bar peak at one state (categorical);
-    titles give the metric value and, with a shuffle, its p-value.
-
-    Parameters
-    ----------
-    session : Session
-        Supplies the target state space (``session.states[result.target]``) for the
-        grid layout and state names.
-    result : MetricResult
-        Result whose ``extras["rate_map"]`` is ``(n_cells, n_states)`` (e.g.
-        ``information_content``); missing key raises ``ValueError``.
-    cells : sequence of int
-        Row indices of the cells to draw.
-    ncols : int, default 6
-        Maximum panels per row.
-    cmap : str, default "viridis"
-        Colormap for 2-D maps (NaN bins are transparent).
+    cells: Sequence[int] | None = None,
+    max_cells: int | None = 24,
+    page: int = 0,
+    show_occupancy: bool = True,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_rate_maps`.
 
     Returns
     -------
-    matplotlib.figure.Figure
-        One panel per cell: image for a 2-D grid, line for 1-D, bars otherwise.
+    dict
+        ``layout`` (``"grid2d"``, ``"grid1d"`` or ``"categorical"``), ``cells``,
+        ``cell_labels``, ``rate_maps`` (``(n, nx, ny)`` for 2-D grids, else
+        ``(n, n_states)``; NaN = unvisited, never zero), ``vmin``/``vmax`` (shared),
+        ``rate_label``, ``titles``, ``significant``, ``p_floor`` flags, ``notes``
+        (floor / unvisited), axis names, units and edges, optional ``occupancy``
+        (same layout as one map, seconds) and ``paging``.
     """
     session, result = order_session_first(session, result)
     if "rate_map" not in result.extras:
@@ -246,46 +442,427 @@ def plot_rate_maps(
             f"available keys: {sorted(result.extras)}"
         )
     rate = np.asarray(result.extras["rate_map"], float)
-    space = session.states[result.target]
-    topo = space.topology
-    cells = [int(c) for c in cells]
-    n = max(len(cells), 1)
-    ncols = max(1, min(ncols, n))
-    nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(
-        nrows, ncols, figsize=(2.6 * ncols, 2.4 * nrows), squeeze=False, layout="constrained"
-    )
+    lay = _map_layout(session, result)
+    all_cells = _ordered_cells(result) if cells is None else [int(c) for c in cells]
+    shown, page, n_pages = _page(all_cells, max_cells, page)
     values = np.asarray(result.values)
     sh = result.shuffle
-    for k, ax in enumerate(axes.ravel()):
-        if k >= len(cells):
-            ax.axis("off")
-            continue
-        c = cells[k]
-        title = f"{_cell_label(result, c)}"
+    sig = _significant(result)
+    titles, floors, sigs, pvals = [], [], [], []
+    for c in shown:
+        title = _cell_label(result, c)
+        floor = False
+        p = np.nan
         if values.ndim == 1:
             title += f"\n{result.metric}={values[c]:.3g}"
             if sh is not None and np.ndim(sh.p_value) == 1:
-                title += f", {_fmt_p(float(sh.p_value[c]))}"
-        ax.set_title(title, fontsize=8)
-        if topo is not None and topo.ndim == 2:
-            img = np.ma.masked_invalid(rate[c].reshape(topo.shape).T)
-            cm = plt.get_cmap(cmap).with_extremes(bad=(0, 0, 0, 0))
-            xe, ye = topo.edges
-            ax.imshow(
-                img, origin="lower", cmap=cm, aspect="auto", extent=(xe[0], xe[-1], ye[0], ye[-1])
+                txt, floor = _p_text(sh, c)
+                title += f", {txt}"
+                p = float(sh.p_value[c])
+        titles.append(title)
+        floors.append(floor)
+        pvals.append(p)
+        sigs.append(bool(_per_cell(sig)[c]) if sig is not None and values.ndim == 1 else False)
+    maps = _shape_maps(rate[shown], lay) if shown else np.empty((0, *rate.shape[1:]))
+    finite = maps[np.isfinite(maps)]
+    vmin = float(finite.min()) if finite.size else 0.0
+    vmax = float(finite.max()) if finite.size else 1.0
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    occ = result.extras.get("occupancy_s") if show_occupancy else None
+    if occ is not None:
+        occ = _shape_maps(np.asarray(occ, float), lay)
+    notes: list[str] = []
+    if np.isnan(maps).any():
+        notes.append(UNVISITED_NOTE)
+    if any(floors):
+        notes.append(FLOOR_NOTE)
+    return _base(
+        "rate_maps",
+        metric=result.metric,
+        cells=np.asarray(shown, int),
+        cell_labels=[_cell_label(result, c) for c in shown],
+        rate_maps=maps,
+        vmin=vmin,
+        vmax=vmax,
+        rate_label=_rate_label(session),
+        titles=titles,
+        p_values=np.asarray(pvals, float),
+        p_floor=np.asarray(floors, bool),
+        significant=np.asarray(sigs, bool),
+        occupancy=occ,
+        occupancy_label="occupancy (s)",
+        unvisited_color=UNVISITED_COLOR,
+        notes=notes,
+        paging={
+            "page": page,
+            "n_pages": n_pages,
+            "max_cells": max_cells,
+            "n_total": len(all_cells),
+        },
+        **lay,
+    )
+
+
+@register_plot(
+    "rate_maps",
+    data=plot_rate_maps_data,
+    needs_session=True,
+    level="cell",
+    requires=("extras:rate_map",),
+    defaults=rate_maps_defaults,
+)
+def plot_rate_maps(
+    session: Session,
+    result: MetricResult,
+    cells: Sequence[int] | None = None,
+    ncols: int = 6,
+    cmap: str = "viridis",
+    max_cells: int | None = 24,
+    page: int = 0,
+    show_occupancy: bool = True,
+) -> Figure:
+    """Per-cell rate maps from ``result.extras["rate_map"]``.
+
+    ``session`` and ``result`` may be given in either order.  Look for: compact
+    single fields (2-D / 1-D grids) or a bar peak at one state (categorical);
+    titles give the metric value and, with a shuffle, its p-value; a white dot in
+    a panel corner marks a significant cell.  Light-grey bins were never visited
+    (or fell below the minimum occupancy): they have no estimate and are not zero.
+
+    Parameters
+    ----------
+    session : Session
+        Supplies the target state space (``session.states[result.target]``) for the
+        grid layout and state names, the activity kind (colourbar unit) and the
+        axis units of the source signal.
+    result : MetricResult
+        Result whose ``extras["rate_map"]`` is ``(n_cells, n_states)`` (e.g.
+        ``information_content``); missing key raises ``ValueError``.
+    cells : sequence of int, optional
+        Row indices of the cells to draw.  ``None`` picks the significant cells
+        (adjusted when a correction was applied) by descending value, then the
+        rest by descending value.
+    ncols : int, default 6
+        Maximum panels per row.
+    cmap : str, default "viridis"
+        Colormap for 2-D maps (NaN bins are drawn light grey).
+    max_cells : int, default 24
+        Panels per figure; longer lists are split into pages (``None`` = all).
+    page : int, default 0
+        Which block of ``max_cells`` cells to draw.
+    show_occupancy : bool, default True
+        Add an occupancy panel (seconds per bin) when ``extras["occupancy_s"]`` exists.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        One panel per cell: image for a 2-D grid (one shared colourbar), line for
+        1-D, bars otherwise.
+    """
+    d = plot_rate_maps_data(
+        session, result, cells, max_cells=max_cells, page=page, show_occupancy=show_occupancy
+    )
+    lay = d["layout"]
+    n = len(d["cells"])
+    occ = d["occupancy"]
+    n_panels = max(n + (1 if occ is not None else 0), 1)
+    ncols = max(1, min(ncols, n_panels))
+    nrows = int(np.ceil(n_panels / ncols))
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(2.6 * ncols, 2.4 * nrows + 0.4), squeeze=False, layout="constrained"
+    )
+    flat = list(axes.ravel())
+    maps = d["rate_maps"]
+    cm = plt.get_cmap(cmap).with_extremes(bad=d["unvisited_color"])
+    state_names = d["state_names"]
+    slots = list(flat)
+    if occ is not None:
+        _draw_occupancy(slots.pop(0), d, occ, cm)
+    last_im = None
+    rate_axes = []
+    for k, ax in enumerate(slots):
+        if k >= n:
+            ax.axis("off")
+            continue
+        ax.set_title(d["titles"][k], fontsize=8)
+        rate_axes.append(ax)
+        m = maps[k]
+        if lay == "grid2d":
+            xe, ye = d["edges"]
+            last_im = ax.imshow(
+                np.ma.masked_invalid(m.T),
+                origin="lower",
+                cmap=cm,
+                aspect="auto",
+                extent=(xe[0], xe[-1], ye[0], ye[-1]),
+                vmin=d["vmin"],
+                vmax=d["vmax"],
             )
-            ax.set_xticks([])
-            ax.set_yticks([])
-        elif topo is not None and topo.ndim == 1:
-            ax.plot(topo.centers()[0], rate[c], color="C0")
+            _grid_ticks(ax, d)
+        elif lay == "grid1d":
+            ax.plot(d["centers"][0], m, color="C0")
+            _shade_nan(ax, d["edges"][0], np.isnan(m), d)
+            ax.set_ylim(min(d["vmin"], 0.0), d["vmax"] * 1.05)
             ax.tick_params(labelsize=7)
         else:
-            ax.bar(range(rate.shape[1]), np.nan_to_num(rate[c]), color="C0")
-            ax.set_xticks(
-                range(rate.shape[1]), space.state_names, rotation=60, ha="right", fontsize=7
-            )
+            idx = np.arange(len(m))
+            ax.bar(idx, np.nan_to_num(m), color="C0")
+            for i in idx[np.isnan(m)]:
+                ax.axvspan(i - 0.5, i + 0.5, color=d["unvisited_color"], lw=0, zorder=0)
+            ax.set_ylim(min(d["vmin"], 0.0), d["vmax"] * 1.05)
+            ax.set_xticks(idx, state_names, rotation=60, ha="right", fontsize=7)
             ax.tick_params(axis="y", labelsize=7)
+        if d["significant"][k]:
+            mark_significant(
+                ax, [0.93], [0.9], transform=ax.transAxes, clip_on=False, label="significant"
+            )
+    if last_im is not None:
+        fig.colorbar(last_im, ax=rate_axes, label=d["rate_label"], fraction=0.04, pad=0.02)
+    elif lay != "grid2d":
+        for ax in rate_axes[:1]:
+            ax.set_ylabel(d["rate_label"], fontsize=7)
+    paging = d["paging"]
+    if paging["n_pages"] > 1:
+        fig.suptitle(
+            f"cells page {paging['page'] + 1}/{paging['n_pages']} "
+            f"({paging['n_total']} cells, {paging['max_cells']} per page)",
+            fontsize=8,
+        )
+    if d["notes"]:
+        fig.supxlabel("\n".join(d["notes"]), fontsize=7, x=0.01, ha="left")
+    return fig
+
+
+def _grid_ticks(ax: Any, d: dict[str, Any]) -> None:
+    xe, ye = d["edges"]
+    ax.set_xticks([xe[0], xe[-1]])
+    ax.set_yticks([ye[0], ye[-1]])
+    ax.tick_params(labelsize=6)
+    ax.set_xlabel(d["axis_labels"][0], fontsize=7)
+    ax.set_ylabel(d["axis_labels"][1], fontsize=7)
+
+
+def _shade_nan(ax: Any, edges: np.ndarray, nan: np.ndarray, d: dict[str, Any]) -> None:
+    for i in np.flatnonzero(nan):
+        ax.axvspan(edges[i], edges[i + 1], color=d["unvisited_color"], lw=0, zorder=0)
+
+
+def _draw_occupancy(ax: Any, d: dict[str, Any], occ: np.ndarray, cm: Any) -> None:
+    ax.set_title(d["occupancy_label"], fontsize=8)
+    if d["layout"] == "grid2d":
+        xe, ye = d["edges"]
+        im = ax.imshow(
+            occ.T,
+            origin="lower",
+            cmap="Greys",
+            aspect="auto",
+            extent=(xe[0], xe[-1], ye[0], ye[-1]),
+        )
+        ax.figure.colorbar(im, ax=ax, fraction=0.05, pad=0.02)
+        _grid_ticks(ax, d)
+    elif d["layout"] == "grid1d":
+        ax.fill_between(d["centers"][0], occ, color="0.6", step="mid")
+        ax.tick_params(labelsize=7)
+    else:
+        ax.bar(range(len(occ)), occ, color="0.6")
+        ax.set_xticks(range(len(occ)), d["state_names"], rotation=60, ha="right", fontsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+
+
+# --------------------------------------------------------------------------- #
+# split-half maps
+# --------------------------------------------------------------------------- #
+
+
+def split_half_defaults(result: MetricResult, session: Any = None) -> dict[str, Any]:
+    """Registry ``defaults`` hook for :func:`plot_split_half_maps` (same cell choice as rate maps)."""
+    return {"cells": _ordered_cells(result)}
+
+
+def plot_split_half_maps_data(
+    session: Session,
+    result: MetricResult,
+    cells: Sequence[int] | None = None,
+    max_cells: int | None = 8,
+    page: int = 0,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_split_half_maps`.
+
+    Returns
+    -------
+    dict
+        Like :func:`plot_rate_maps_data` but with ``maps_a`` / ``maps_b`` (the two
+        halves, NaN = unvisited in that half), per-cell ``vmin`` / ``vmax`` arrays
+        (one colour scale per cell shared by both halves), and ``titles`` carrying
+        the split-half r and p.
+    """
+    session, result = order_session_first(session, result)
+    for key in ("rate_map_a", "rate_map_b"):
+        if key not in result.extras:
+            raise ValueError(
+                f"result for metric {result.metric!r} has no {key!r} in extras; "
+                f"available keys: {sorted(result.extras)}"
+            )
+    lay = _map_layout(session, result)
+    all_cells = _ordered_cells(result) if cells is None else [int(c) for c in cells]
+    shown, page, n_pages = _page(all_cells, max_cells, page)
+    a = _shape_maps(np.asarray(result.extras["rate_map_a"], float)[shown], lay)
+    b = _shape_maps(np.asarray(result.extras["rate_map_b"], float)[shown], lay)
+    both = np.concatenate([a, b], axis=-1).reshape(len(shown), -1)
+    with np.errstate(all="ignore"):
+        vmin = np.where(np.isfinite(both).any(1), np.nanmin(both, 1), 0.0) if len(shown) else both
+        vmax = np.where(np.isfinite(both).any(1), np.nanmax(both, 1), 1.0) if len(shown) else both
+    vmax = np.where(vmax <= vmin, vmin + 1.0, vmax)
+    values = np.asarray(result.values, float)
+    sh = result.shuffle
+    titles, floors = [], []
+    for c in shown:
+        t = f"{_cell_label(result, c)}  r={values[c]:.2f}"
+        floor = False
+        if sh is not None and np.ndim(sh.p_value) == 1:
+            txt, floor = _p_text(sh, c)
+            t += f", {txt}"
+        titles.append(t)
+        floors.append(floor)
+    notes = []
+    if np.isnan(a).any() or np.isnan(b).any():
+        notes.append(UNVISITED_NOTE)
+    if any(floors):
+        notes.append(FLOOR_NOTE)
+    return _base(
+        "split_half_maps",
+        metric=result.metric,
+        cells=np.asarray(shown, int),
+        cell_labels=[_cell_label(result, c) for c in shown],
+        maps_a=a,
+        maps_b=b,
+        half_labels=["half A", "half B"],
+        vmin=np.asarray(vmin, float),
+        vmax=np.asarray(vmax, float),
+        rate_label=_rate_label(session),
+        titles=titles,
+        unvisited_color=UNVISITED_COLOR,
+        notes=notes,
+        paging={
+            "page": page,
+            "n_pages": n_pages,
+            "max_cells": max_cells,
+            "n_total": len(all_cells),
+        },
+        **lay,
+    )
+
+
+@register_plot(
+    "split_half_maps",
+    data=plot_split_half_maps_data,
+    needs_session=True,
+    level="cell",
+    requires=("extras:rate_map_a",),
+    defaults=split_half_defaults,
+)
+def plot_split_half_maps(
+    session: Session,
+    result: MetricResult,
+    cells: Sequence[int] | None = None,
+    cmap: str = "viridis",
+    max_cells: int | None = 8,
+    page: int = 0,
+) -> Figure:
+    """The two half-session rate maps of ``split_half_stability``, side by side per cell.
+
+    ``session`` and ``result`` may be given in either order.  Look for: the same
+    field in both halves (high r) versus a field that moves or vanishes (low r);
+    on 2-D grids both halves share one colour scale per cell so brightness is
+    comparable; light grey bins were unvisited in that half.
+
+    Parameters
+    ----------
+    session : Session
+        Supplies the state space layout and activity kind.
+    result : MetricResult
+        ``split_half_stability`` result with ``extras["rate_map_a"]`` / ``["rate_map_b"]``.
+    cells : sequence of int, optional
+        Cells to draw; ``None`` picks significant cells first, by value.
+    cmap : str, default "viridis"
+        Colormap for 2-D maps.
+    max_cells : int, default 8
+        Cells per figure; ``page`` selects the block.
+    page : int, default 0
+        Which block of ``max_cells`` cells to draw.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        2-D grid: one row per cell, two images and a colourbar.  1-D: two lines per
+        cell panel.  Categorical: grouped bars per cell panel.
+    """
+    d = plot_split_half_maps_data(session, result, cells, max_cells=max_cells, page=page)
+    lay = d["layout"]
+    n = len(d["cells"])
+    cm = plt.get_cmap(cmap).with_extremes(bad=d["unvisited_color"])
+    if lay == "grid2d":
+        fig, axes = plt.subplots(
+            max(n, 1), 2, figsize=(5.2, 2.3 * max(n, 1) + 0.4), squeeze=False, layout="constrained"
+        )
+        xe, ye = d["edges"]
+        for k in range(n):
+            ims = []
+            for j, key in enumerate(("maps_a", "maps_b")):
+                ax = axes[k, j]
+                ims.append(
+                    ax.imshow(
+                        np.ma.masked_invalid(d[key][k].T),
+                        origin="lower",
+                        cmap=cm,
+                        aspect="auto",
+                        extent=(xe[0], xe[-1], ye[0], ye[-1]),
+                        vmin=d["vmin"][k],
+                        vmax=d["vmax"][k],
+                    )
+                )
+                _grid_ticks(ax, d)
+                ax.set_title(d["titles"][k] if j == 0 else d["half_labels"][1], fontsize=8)
+            axes[k, 0].set_title(f"{d['titles'][k]}\n{d['half_labels'][0]}", fontsize=8)
+            fig.colorbar(ims[-1], ax=list(axes[k]), label=d["rate_label"], fraction=0.05, pad=0.02)
+    else:
+        ncols = max(1, min(3, n))
+        nrows = int(np.ceil(max(n, 1) / ncols))
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(3.4 * ncols, 2.5 * nrows + 0.4),
+            squeeze=False,
+            layout="constrained",
+        )
+        for k, ax in enumerate(axes.ravel()):
+            if k >= n:
+                ax.axis("off")
+                continue
+            ax.set_title(d["titles"][k], fontsize=8)
+            ma, mb = d["maps_a"][k], d["maps_b"][k]
+            if lay == "grid1d":
+                x = d["centers"][0]
+                ax.plot(x, ma, color="C0", label=d["half_labels"][0])
+                ax.plot(x, mb, color="C1", label=d["half_labels"][1])
+                ax.set_xlabel(d["axis_labels"][0], fontsize=7)
+            else:
+                idx = np.arange(len(ma))
+                ax.bar(idx - 0.2, np.nan_to_num(ma), 0.4, color="C0", label=d["half_labels"][0])
+                ax.bar(idx + 0.2, np.nan_to_num(mb), 0.4, color="C1", label=d["half_labels"][1])
+                for i in idx[np.isnan(ma) | np.isnan(mb)]:
+                    ax.axvspan(i - 0.5, i + 0.5, color=d["unvisited_color"], lw=0, zorder=0)
+                ax.set_xticks(idx, d["state_names"], rotation=60, ha="right", fontsize=7)
+            ax.set_ylabel(d["rate_label"], fontsize=7)
+            ax.tick_params(labelsize=7)
+            if k == 0:
+                ax.legend(fontsize=7, frameon=False)
+    paging = d["paging"]
+    if paging["n_pages"] > 1:
+        fig.suptitle(f"cells page {paging['page'] + 1}/{paging['n_pages']}", fontsize=8)
+    if d["notes"]:
+        fig.supxlabel("\n".join(d["notes"]), fontsize=7, x=0.01, ha="left")
     return fig
 
 
@@ -294,6 +871,89 @@ def plot_rate_maps(
 # --------------------------------------------------------------------------- #
 
 
+def shuffle_distribution_defaults(result: MetricResult, session: Any = None) -> dict[str, Any]:
+    """Registry ``defaults`` hook: the most significant cell (and its best state when 2-D)."""
+    sh = result.shuffle
+    if sh is None:
+        return {"cell": 0}
+    p = np.asarray(sh.p_adj if sh.p_adj is not None and sh.correction != "none" else sh.p_value)
+    p = np.where(np.isfinite(p), p, np.inf)
+    if p.ndim == 1:
+        return {"cell": int(np.argmin(p))}
+    c, s = np.unravel_index(int(np.argmin(p.reshape(-1))), p.shape)[:2]
+    return {"cell": int(c), "state": int(s)}
+
+
+def plot_shuffle_distribution_data(
+    result: MetricResult,
+    cell: int,
+    state: int | str | None = None,
+    bins: int = 40,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_shuffle_distribution`.
+
+    Returns
+    -------
+    dict
+        ``null`` (finite surrogate values), ``observed``, ``null_lo``, ``null_hi``,
+        ``p_value``, ``p_text`` (with the floor flag), ``tail``, ``n_shuffles``,
+        ``bins``, ``xlabel`` and ``title``.
+
+    Raises
+    ------
+    ValueError
+        If the result has no shuffle, the null draws were dropped, or ``state`` is
+        missing for 2-D values.
+    """
+    sh = result.shuffle
+    if sh is None:
+        raise ValueError("result has no shuffle; run the analysis with a ShuffleConfig")
+    if sh.null is None:
+        raise ValueError(
+            "result's null draws were dropped (ShuffleConfig.keep_null='none'); "
+            "rerun with keep_null='full' to plot the null histogram"
+        )
+    cell = int(cell)
+    obs = np.asarray(sh.observed)
+    idx: tuple[int, ...] = (cell,)
+    suffix = ""
+    if obs.ndim == 2:
+        if state is None:
+            raise ValueError("result values are 2D; pass `state` (index or name)")
+        state_i = result.state_index(state)
+        idx = (cell, state_i)
+        names = result.state_names or [state_i]
+        suffix = f", state={state if isinstance(state, str) else names[state_i]}"
+    null = np.asarray(sh.null)[(slice(None), *idx)]
+    txt, floor = _p_text(sh, idx)
+    return _base(
+        "shuffle_distribution",
+        metric=result.metric,
+        cell=_cell_label(result, cell),
+        null=null[np.isfinite(null)],
+        observed=float(obs[idx]),
+        null_lo=float(np.asarray(sh.null_lo)[idx]),
+        null_hi=float(np.asarray(sh.null_hi)[idx]),
+        p_value=float(np.asarray(sh.p_value)[idx]),
+        p_text=txt,
+        p_floor=floor,
+        tail=sh.tail,
+        n_shuffles=int(sh.n_shuffles),
+        bins=int(bins),
+        xlabel=metric_label(result.metric, result.params),
+        ylabel="shuffles",
+        title=f"{result.metric}, cell {_cell_label(result, cell)}{suffix}\n{txt} ({sh.tail} tail)",
+        note=FLOOR_NOTE if floor else "",
+    )
+
+
+@register_plot(
+    "shuffle_distribution",
+    data=plot_shuffle_distribution_data,
+    level="cell",
+    requires=("null",),
+    defaults=shuffle_distribution_defaults,
+)
 def plot_shuffle_distribution(
     result: MetricResult,
     cell: int,
@@ -303,8 +963,9 @@ def plot_shuffle_distribution(
 ) -> Figure:
     """Histogram of the null for one cell (and state) with observed value.
 
-    Look for: the observed value (red line) outside the dashed null bounds means
-    significant; the title gives the p-value and tail.
+    Look for: the observed value (vermilion line) outside the dashed null bounds
+    means significant; the title gives the p-value (labelled "floor" when no
+    surrogate reached the observed value) and tail.
 
     Parameters
     ----------
@@ -329,38 +990,20 @@ def plot_shuffle_distribution(
         If the result has no shuffle, the null draws were dropped, or ``state`` is
         missing for 2-D values.
     """
-    sh = result.shuffle
-    if sh is None:
-        raise ValueError("result has no shuffle; run the analysis with a ShuffleConfig")
-    if sh.null is None:
-        raise ValueError(
-            "result's null draws were dropped (ShuffleConfig.keep_null='none'); "
-            "rerun with keep_null='full' to plot the null histogram"
-        )
+    d = plot_shuffle_distribution_data(result, cell, state, bins)
     fig, ax = _get_ax(ax)
-    cell = int(cell)
-    obs = np.asarray(sh.observed)
-    idx: tuple[int, ...] = (cell,)
-    suffix = ""
-    if obs.ndim == 2:
-        if state is None:
-            raise ValueError("result values are 2D; pass `state` (index or name)")
-        state_i = result.state_index(state)
-        idx = (cell, state_i)
-        suffix = f", state={state if isinstance(state, str) else (result.state_names or [state_i])[state_i]}"
-    null = np.asarray(sh.null)[(slice(None), *idx)]
-    ax.hist(null[np.isfinite(null)], bins=bins, color="0.7", edgecolor="white")
-    ax.axvline(float(obs[idx]), color="C3", lw=2, label="observed")
-    ax.axvline(float(np.asarray(sh.null_lo)[idx]), color="k", ls="--", lw=1, label="null bounds")
-    ax.axvline(float(np.asarray(sh.null_hi)[idx]), color="k", ls="--", lw=1)
-    ax.set_xlabel(result.metric)
-    ax.set_ylabel("shuffles")
-    ax.set_title(
-        f"{result.metric}, cell {_cell_label(result, cell)}{suffix}\n"
-        f"{_fmt_p(float(np.asarray(sh.p_value)[idx]))} ({sh.tail} tail)",
-        fontsize=10,
-    )
+    ax.hist(d["null"], bins=d["bins"], color=NULL_COLOR, edgecolor="white", label="null")
+    ax.axvline(d["observed"], color=OBSERVED_COLOR, lw=2, label="observed")
+    ax.axvline(d["null_lo"], color="k", ls="--", lw=1, label="null bounds")
+    ax.axvline(d["null_hi"], color="k", ls="--", lw=1)
+    ax.set_xlabel(d["xlabel"])
+    ax.set_ylabel(d["ylabel"])
+    ax.set_title(d["title"], fontsize=10)
     ax.legend(fontsize=8, frameon=False)
+    if d["note"]:
+        ax.annotate(
+            d["note"], (0, -0.28), xycoords="axes fraction", fontsize=6, annotation_clip=False
+        )
     return fig
 
 
@@ -369,6 +1012,75 @@ def plot_shuffle_distribution(
 # --------------------------------------------------------------------------- #
 
 
+def tuning_heatmap_defaults(result: MetricResult, session: Any = None) -> dict[str, Any]:
+    """Registry ``defaults`` hook: order cells by preferred state."""
+    return {"sort_by": "peak"}
+
+
+def plot_tuning_heatmap_data(result: MetricResult, sort_by: str | None = None) -> dict[str, Any]:
+    """Data behind :func:`plot_tuning_heatmap`.
+
+    Returns
+    -------
+    dict
+        ``values`` (rows already in display order, NaN = untested), ``order``,
+        ``cell_labels`` (display order), ``state_names``, ``significant`` (display
+        order, or ``None`` without a shuffle), ``vmin``/``vmax`` (``None`` =
+        autoscale), ``center`` (0.5 for AUROC), ``label`` and ``title``.
+
+    Raises
+    ------
+    ValueError
+        If values are not 2-D or ``sort_by`` is not ``"peak"`` or a state name.
+    """
+    vals = np.asarray(result.values, float)
+    if vals.ndim != 2:
+        raise ValueError(f"values must be 2D (n_cells, n_states), got shape {vals.shape}")
+    n_cells, n_states = vals.shape
+    names = ordered_names(result.state_names, n_states)
+    order = np.arange(n_cells)
+    if sort_by == "peak":
+        filled = np.where(np.isfinite(vals), vals, -np.inf)
+        order = np.lexsort((-filled.max(axis=1), filled.argmax(axis=1)))
+    elif sort_by is not None:
+        if sort_by not in names:
+            raise ValueError(f"sort_by {sort_by!r} is not 'peak' or one of {names}")
+        col = np.nan_to_num(vals[:, names.index(sort_by)], nan=-np.inf)
+        order = np.argsort(-col, kind="stable")
+    is_auroc = result.metric == "auroc"
+    vmin = vmax = None
+    if is_auroc:
+        finite = vals[np.isfinite(vals)]
+        half = max(float(np.abs(finite - 0.5).max()) if finite.size else 0.5, 0.05)
+        vmin, vmax = 0.5 - half, 0.5 + half
+    sig = _significant(result)
+    sig_o = sig[order] if sig is not None and sig.shape == vals.shape else None
+    return _base(
+        "tuning_heatmap",
+        metric=result.metric,
+        values=vals[order],
+        order=order.astype(int),
+        cell_labels=[_cell_label(result, int(c)) for c in order],
+        state_names=names,
+        significant=sig_o,
+        vmin=vmin,
+        vmax=vmax,
+        center=0.5 if is_auroc else None,
+        cmap="RdBu_r" if is_auroc else "viridis",
+        label=metric_label(result.metric, result.params),
+        title=result.metric,
+        sorted=sort_by is not None,
+        unvisited_color=UNVISITED_COLOR,
+    )
+
+
+@register_plot(
+    "tuning_heatmap",
+    data=plot_tuning_heatmap_data,
+    level="cell",
+    requires=("values:2d",),
+    defaults=tuning_heatmap_defaults,
+)
 def plot_tuning_heatmap(
     result: MetricResult,
     sort_by: str | None = None,
@@ -378,8 +1090,9 @@ def plot_tuning_heatmap(
     """Cells x states heatmap of ``result.values`` with significance markers.
 
     Look for: blocks of cells lit in one column (state-selective cells); white
-    dots mark cells significant under the stored shuffle.  AUROC is drawn on a
-    diverging map centred on 0.5.
+    dots mark cells significant under the stored shuffle (multiplicity-adjusted
+    when a correction was applied).  AUROC is drawn on a diverging map centred on
+    0.5; untested entries (NaN) are light grey.
 
     Parameters
     ----------
@@ -402,47 +1115,204 @@ def plot_tuning_heatmap(
     ValueError
         If values are not 2-D or ``sort_by`` is not ``"peak"`` or a state name.
     """
-    vals = np.asarray(result.values, float)
-    if vals.ndim != 2:
-        raise ValueError(f"values must be 2D (n_cells, n_states), got shape {vals.shape}")
+    d = plot_tuning_heatmap_data(result, sort_by)
+    vals = d["values"]
     n_cells, n_states = vals.shape
-    names = result.state_names or [str(i) for i in range(n_states)]
-    order = np.arange(n_cells)
-    if sort_by == "peak":
-        filled = np.where(np.isfinite(vals), vals, -np.inf)
-        order = np.lexsort((-filled.max(axis=1), filled.argmax(axis=1)))
-    elif sort_by is not None:
-        if sort_by not in names:
-            raise ValueError(f"sort_by {sort_by!r} is not 'peak' or one of {names}")
-        col = np.nan_to_num(vals[:, names.index(sort_by)], nan=-np.inf)
-        order = np.argsort(-col, kind="stable")
     fig, ax = _get_ax(ax, (max(4.0, 0.5 * n_states + 2.5), max(3.5, 0.06 * n_cells + 1.5)))
-    is_auroc = result.metric == "auroc"
-    kw: dict[str, Any] = {"cmap": cmap or ("RdBu_r" if is_auroc else "viridis")}
-    if is_auroc:
-        # Centre the diverging map on chance (0.5) and scale to the data so that
-        # modest but real effects (AUROC ~0.55-0.6) are visible.
-        finite = vals[np.isfinite(vals)]
-        half = max(float(np.abs(finite - 0.5).max()) if finite.size else 0.5, 0.05)
-        kw.update(vmin=0.5 - half, vmax=0.5 + half)
-    im = ax.imshow(vals[order], aspect="auto", interpolation="nearest", **kw)
-    sig = _significant(result)
-    if sig is not None and sig.shape == vals.shape:
-        ys, xs = np.nonzero(sig[order])
-        ax.scatter(
-            xs, ys, s=8, marker="o", c="white", edgecolors="k", linewidths=0.4, label="significant"
-        )
-    ax.set_xticks(range(n_states), names, rotation=45, ha="right")
+    cm = plt.get_cmap(cmap or d["cmap"]).with_extremes(bad=d["unvisited_color"])
+    kw: dict[str, Any] = {}
+    if d["vmin"] is not None:
+        kw.update(vmin=d["vmin"], vmax=d["vmax"])
+    im = ax.imshow(
+        np.ma.masked_invalid(vals), aspect="auto", interpolation="nearest", cmap=cm, **kw
+    )
+    sig = d["significant"]
+    if sig is not None and np.any(sig):
+        ys, xs = np.nonzero(sig)
+        mark_significant(ax, xs, ys, s=8, linewidths=0.4)
+        ax.legend(loc="upper left", bbox_to_anchor=(1.18, 1.0), fontsize=7, frameon=False)
+    ax.set_xticks(range(n_states), d["state_names"], rotation=45, ha="right")
+    if n_cells <= 40:
+        ax.set_yticks(range(n_cells), d["cell_labels"], fontsize=6)
     ax.set_xlabel("state")
-    ax.set_ylabel("cell (sorted)" if sort_by else "cell")
-    ax.set_title(result.metric)
-    ax.figure.colorbar(im, ax=ax, label=result.metric)
+    ax.set_ylabel("cell (sorted)" if d["sorted"] else "cell")
+    ax.set_title(d["title"])
+    ax.figure.colorbar(im, ax=ax, label=d["label"])
+    return fig
+
+
+# --------------------------------------------------------------------------- #
+# metric strip
+# --------------------------------------------------------------------------- #
+
+
+def plot_metric_strip_data(
+    result: MetricResult, *, sort: bool = True, max_cells: int | None = None
+) -> dict[str, Any]:
+    """Data behind :func:`plot_metric_strip`.
+
+    Returns
+    -------
+    dict
+        ``values`` (display order, NaN kept), ``cells`` (row indices), ``cell_labels``,
+        ``null_lo``/``null_hi`` (display order; ``None`` without a shuffle),
+        ``significant`` (adjusted when a correction was applied; all False without
+        a shuffle), ``show_ids`` (True for 40 cells or fewer), ``ylabel``, ``title``.
+
+    Raises
+    ------
+    ValueError
+        If ``result.values`` is not 1-D.
+    """
+    v = np.asarray(result.values, float)
+    if v.ndim != 1:
+        raise ValueError(f"metric_strip needs 1-D values (one per cell), got shape {v.shape}")
+    order = np.arange(v.size)
+    if sort:
+        order = np.argsort(-np.where(np.isfinite(v), v, -np.inf), kind="stable")
+    n_total = v.size
+    if max_cells:
+        order = order[: int(max_cells)]
+    sh = result.shuffle
+    sig = _significant(result)
+    sig_o = sig[order] if sig is not None else np.zeros(order.size, bool)
+    lo = np.asarray(sh.null_lo, float)[order] if sh is not None else None
+    hi = np.asarray(sh.null_hi, float)[order] if sh is not None else None
+    n_sig = int(sig_o.sum())
+    title = f"{result.name or result.metric}"
+    if sh is not None:
+        title += f": {n_sig}/{order.size} significant"
+        if sh.correction != "none":
+            title += f" ({sh.correction}-adjusted)"
+    return _base(
+        "metric_strip",
+        metric=result.metric,
+        values=v[order],
+        cells=order.astype(int),
+        cell_labels=[_cell_label(result, int(c)) for c in order],
+        null_lo=lo,
+        null_hi=hi,
+        significant=np.asarray(sig_o, bool),
+        show_ids=bool(order.size <= 40),
+        n_total=int(n_total),
+        sorted=bool(sort),
+        ylabel=metric_label(result.metric, result.params),
+        xlabel="cell (sorted by value)" if sort else "cell",
+        title=title,
+    )
+
+
+@register_plot("metric_strip", data=plot_metric_strip_data, level="cell", requires=("values:1d",))
+def plot_metric_strip(
+    result: MetricResult, *, sort: bool = True, max_cells: int | None = None, ax: Any = None
+) -> Figure:
+    """Per-cell values of a 1-D result, with the null band and significant cells marked.
+
+    Look for: values rising above the grey null band (what chance would give for
+    each cell) and white-dot markers on cells significant under the stored shuffle
+    (adjusted when a correction was applied); a long flat run inside the band means
+    most cells are not distinguishable from chance.
+
+    Parameters
+    ----------
+    result : MetricResult
+        Cell-level result with 1-D ``values``.
+    sort : bool, default True
+        Sort cells by descending value; ``False`` keeps the cell order.
+    max_cells : int, optional
+        Draw only the first ``max_cells`` cells (after sorting).
+    ax : matplotlib Axes, optional
+        Axes to draw into; a new figure is created if omitted.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Raises
+    ------
+    ValueError
+        If ``result.values`` is not 1-D.
+    """
+    d = plot_metric_strip_data(result, sort=sort, max_cells=max_cells)
+    n = len(d["values"])
+    fig, ax = _get_ax(ax, (max(5.0, min(0.25 * n + 2.0, 12.0)), 3.6))
+    x = np.arange(n)
+    if d["null_lo"] is not None:
+        ax.fill_between(
+            x, d["null_lo"], d["null_hi"], color=NULL_COLOR, alpha=0.6, lw=0, label="null band"
+        )
+    ax.plot(x, d["values"], color=OBSERVED_COLOR, marker=".", lw=0.8, label="observed")
+    if d["significant"].any():
+        mark_significant(ax, x[d["significant"]], d["values"][d["significant"]])
+    if d["show_ids"]:
+        ax.set_xticks(x, d["cell_labels"], rotation=90, fontsize=6)
+    ax.set_xlim(-0.5, max(n - 0.5, 0.5))
+    ax.set_xlabel(d["xlabel"])
+    ax.set_ylabel(d["ylabel"])
+    ax.set_title(d["title"], fontsize=10)
+    ax.legend(fontsize=8, frameon=False)
     return fig
 
 
 # --------------------------------------------------------------------------- #
 # metric scatter
 # --------------------------------------------------------------------------- #
+
+_SCATTER_COLORS = {"neither": "#BFBFBF", "x": "#E69F00", "y": "#009E73", "both": "#D55E00"}
+
+
+def plot_metric_scatter_data(
+    result_x: MetricResult,
+    result_y: MetricResult,
+    log_x: bool = False,
+    log_y: bool = False,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_metric_scatter`.
+
+    Returns
+    -------
+    dict
+        ``x``, ``y``, ``groups`` (list of ``{"label", "color", "index"}`` over
+        cells; a single grey group without shuffles), axis labels, log flags.
+
+    Raises
+    ------
+    ValueError
+        If either result is not 1-D or the shapes differ.
+    """
+    x = np.asarray(result_x.values, float)
+    y = np.asarray(result_y.values, float)
+    if x.ndim != 1 or y.ndim != 1:
+        raise ValueError("plot_metric_scatter needs 1D cell-level results")
+    if x.shape != y.shape:
+        raise ValueError(f"result shapes differ: {x.shape} vs {y.shape}")
+    sx, sy = _significant(result_x), _significant(result_y)
+    if sx is None and sy is None:
+        groups = [{"label": "cells", "color": "#666666", "index": np.arange(x.size)}]
+    else:
+        sx = np.zeros_like(x, bool) if sx is None else sx
+        sy = np.zeros_like(x, bool) if sy is None else sy
+        spec = [
+            ("neither", ~sx & ~sy, _SCATTER_COLORS["neither"]),
+            (f"{result_x.metric} only", sx & ~sy, _SCATTER_COLORS["x"]),
+            (f"{result_y.metric} only", ~sx & sy, _SCATTER_COLORS["y"]),
+            ("both", sx & sy, _SCATTER_COLORS["both"]),
+        ]
+        groups = [
+            {"label": f"{lab} ({int(m.sum())})", "color": col, "index": np.flatnonzero(m)}
+            for lab, m, col in spec
+        ]
+    return _base(
+        "metric_scatter",
+        x=x,
+        y=y,
+        groups=groups,
+        has_shuffle=bool(sx is not None or sy is not None),
+        xlabel=metric_label(result_x.metric, result_x.params),
+        ylabel=metric_label(result_y.metric, result_y.params),
+        log_x=bool(log_x),
+        log_y=bool(log_y),
+    )
 
 
 def plot_metric_scatter(
@@ -455,8 +1325,8 @@ def plot_metric_scatter(
     """Scatter of two cell-level metrics colored by joint significance.
 
     Look for: cells significant on only one metric (colored) versus both
-    (red), and whether the metrics are correlated.  Without shuffles all points
-    are grey.
+    (vermilion), and whether the metrics are correlated.  Without shuffles all
+    points are grey.
 
     Parameters
     ----------
@@ -476,34 +1346,19 @@ def plot_metric_scatter(
     ValueError
         If either result is not 1-D or the shapes differ.
     """
-    x = np.asarray(result_x.values, float)
-    y = np.asarray(result_y.values, float)
-    if x.ndim != 1 or y.ndim != 1:
-        raise ValueError("plot_metric_scatter needs 1D cell-level results")
-    if x.shape != y.shape:
-        raise ValueError(f"result shapes differ: {x.shape} vs {y.shape}")
+    d = plot_metric_scatter_data(result_x, result_y, log_x, log_y)
     fig, ax = _get_ax(ax, (4.8, 4.5))
-    sx, sy = _significant(result_x), _significant(result_y)
-    if sx is None and sy is None:
-        ax.scatter(x, y, s=14, color="0.4")
-    else:
-        sx = np.zeros_like(x, bool) if sx is None else sx
-        sy = np.zeros_like(x, bool) if sy is None else sy
-        groups = [
-            ("neither", ~sx & ~sy, "0.75"),
-            (f"{result_x.metric} only", sx & ~sy, "C1"),
-            (f"{result_y.metric} only", ~sx & sy, "C2"),
-            ("both", sx & sy, "C3"),
-        ]
-        for label, m, color in groups:
-            ax.scatter(x[m], y[m], s=16, color=color, label=f"{label} ({int(m.sum())})")
+    for g in d["groups"]:
+        i = np.asarray(g["index"], int)
+        ax.scatter(d["x"][i], d["y"][i], s=16, color=g["color"], label=g["label"])
+    if d["has_shuffle"]:
         ax.legend(fontsize=8, frameon=False)
-    if log_x:
+    if d["log_x"]:
         ax.set_xscale("log")
-    if log_y:
+    if d["log_y"]:
         ax.set_yscale("log")
-    ax.set_xlabel(result_x.metric)
-    ax.set_ylabel(result_y.metric)
+    ax.set_xlabel(d["xlabel"])
+    ax.set_ylabel(d["ylabel"])
     return fig
 
 
@@ -512,6 +1367,44 @@ def plot_metric_scatter(
 # --------------------------------------------------------------------------- #
 
 
+def plot_population_matrix_data(
+    result: MetricResult, vmin: float | None = None, vmax: float | None = None
+) -> dict[str, Any]:
+    """Data behind :func:`plot_population_matrix`.
+
+    Returns
+    -------
+    dict
+        ``matrix`` (NaN = under-sampled state), ``state_names``, ``vmin``, ``vmax``,
+        ``label`` and ``title``.
+
+    Raises
+    ------
+    ValueError
+        If ``values`` is not a square 2-D array.
+    """
+    m = np.asarray(result.values, float)
+    if m.ndim != 2 or m.shape[0] != m.shape[1]:
+        raise ValueError(f"values must be a 2D square matrix, got shape {m.shape}")
+    return _base(
+        "population_matrix",
+        metric=result.metric,
+        matrix=m,
+        state_names=ordered_names(result.state_names, m.shape[0]),
+        vmin=vmin,
+        vmax=vmax,
+        label=metric_label(result.metric, result.params),
+        title=result.metric,
+        unvisited_color=UNVISITED_COLOR,
+    )
+
+
+@register_plot(
+    "population_matrix",
+    data=plot_population_matrix_data,
+    level="population",
+    requires=("values:2d",),
+)
 def plot_population_matrix(
     result: MetricResult,
     ax: Any = None,
@@ -544,24 +1437,26 @@ def plot_population_matrix(
     ValueError
         If ``values`` is not a square 2-D array.
     """
-    m = np.asarray(result.values, float)
-    if m.ndim != 2 or m.shape[0] != m.shape[1]:
-        raise ValueError(f"values must be a 2D square matrix, got shape {m.shape}")
+    d = plot_population_matrix_data(result, vmin, vmax)
+    m = d["matrix"]
     n = m.shape[0]
-    names = result.state_names or [str(i) for i in range(n)]
     fig, ax = _get_ax(ax, (max(4.5, 0.4 * n + 2.5), max(4.0, 0.4 * n + 2.0)))
-    cm = plt.get_cmap(cmap).with_extremes(bad="lightgray")
-    im = ax.imshow(np.ma.masked_invalid(m), cmap=cm, vmin=vmin, vmax=vmax, interpolation="nearest")
-    ax.set_xticks(range(n), names, rotation=90, fontsize=8)
-    ax.set_yticks(range(n), names, fontsize=8)
-    ax.set_title(result.metric)
-    ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
+    cm = plt.get_cmap(cmap).with_extremes(bad=d["unvisited_color"])
+    im = ax.imshow(
+        np.ma.masked_invalid(m), cmap=cm, vmin=d["vmin"], vmax=d["vmax"], interpolation="nearest"
+    )
+    ax.set_xticks(range(n), d["state_names"], rotation=90, fontsize=8)
+    ax.set_yticks(range(n), d["state_names"], fontsize=8)
+    ax.set_title(d["title"])
+    ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.03, label=d["label"])
     return fig
 
 
 # --------------------------------------------------------------------------- #
 # ground truth recovery
 # --------------------------------------------------------------------------- #
+
+_POP_ORDER = ("place", "social", "syllable", "untuned")
 
 
 def _planted_populations(gt: dict[str, Any]) -> dict[str, list[int]]:
@@ -577,6 +1472,96 @@ def _planted_populations(gt: dict[str, Any]) -> dict[str, list[int]]:
     return pops
 
 
+def plot_ground_truth_recovery_data(
+    session: Session,
+    resultset: ResultSet | Sequence[MetricResult],
+    alpha: float = 0.05,
+    adjusted: bool | None = None,
+) -> dict[str, Any]:
+    """Data behind :func:`plot_ground_truth_recovery`.
+
+    Returns
+    -------
+    dict
+        ``results``, ``labels``, ``populations`` (present ones, canonical order),
+        ``colors`` per population, ``alpha`` and ``rows`` (columns ``result``,
+        ``population``, ``n``, ``fraction_significant``, ``raw_fraction``,
+        ``adjusted_fraction``; the last is NaN where no correction was applied).
+        ``bar_fraction`` is the ``(n_populations, n_results)`` height of the solid
+        bars (NaN = not available) and ``has_correction`` flags results with a
+        correction; the ``untuned`` bar then shows the raw rate and the adjusted
+        rate is overlaid hatched.
+    """
+    session, resultset = order_session_first(session, resultset)
+    gt = session.meta.get("ground_truth", {}) or {}
+    pops = _planted_populations(gt)
+    cols: dict[str, list[Any]] = {
+        k: []
+        for k in (
+            "result",
+            "label",
+            "population",
+            "n",
+            "fraction_significant",
+            "raw_fraction",
+            "adjusted_fraction",
+        )
+    }
+    corrected: dict[str, bool] = {}
+    for r in resultset:
+        if r.level != "cell" or r.shuffle is None:
+            continue
+        sh = r.shuffle
+        has_corr = sh.correction != "none" and sh.p_adj is not None
+        use_adj = (sh.correction != "none") if adjusted is None else adjusted
+        p_main = sh.p_adj if use_adj and sh.p_adj is not None else sh.p_value
+
+        def any_sig(p: Any) -> np.ndarray:
+            s = np.asarray(p) < alpha
+            return s.reshape(s.shape[0], -1).any(axis=1) if s.ndim > 1 else s
+
+        main, raw = any_sig(p_main), any_sig(sh.p_value)
+        adj = any_sig(sh.p_adj) if has_corr else None
+        name = r.name or f"{r.metric}[{r.target}]"
+        corrected[name] = has_corr
+        for pop, cells in pops.items():
+            cells = [c for c in cells if 0 <= c < main.shape[0]]
+            if not cells:
+                continue
+            cols["result"].append(name)
+            cols["label"].append(name.replace("[", "\n[", 1))
+            cols["population"].append(pop)
+            cols["n"].append(len(cells))
+            cols["fraction_significant"].append(float(main[cells].mean()))
+            cols["raw_fraction"].append(float(raw[cells].mean()))
+            cols["adjusted_fraction"].append(
+                float(adj[cells].mean()) if adj is not None else float("nan")
+            )
+    results = list(dict.fromkeys(cols["result"]))
+    labels = [cols["label"][cols["result"].index(r)] for r in results]
+    present = set(cols["population"])
+    populations = [p for p in _POP_ORDER if p in present]
+    bar = np.full((len(populations), len(results)), np.nan)
+    for i in range(len(cols["result"])):
+        pi = populations.index(cols["population"][i])
+        ri = results.index(cols["result"][i])
+        is_untuned_corr = cols["population"][i] == "untuned" and corrected[cols["result"][i]]
+        bar[pi, ri] = cols["raw_fraction" if is_untuned_corr else "fraction_significant"][i]
+    palette = state_colors(list(_POP_ORDER))
+    colors = {p: (_hex(NULL_COLOR) if p == "untuned" else _hex(palette[p])) for p in _POP_ORDER}
+    return _base(
+        "ground_truth_recovery",
+        results=results,
+        labels=labels,
+        populations=populations,
+        colors=colors,
+        alpha=float(alpha),
+        rows=cols,
+        bar_fraction=bar if bar.size else [],  # empty arrays do not round-trip
+        has_correction=[bool(corrected[r]) for r in results],
+    )
+
+
 def plot_ground_truth_recovery(
     session: Session,
     resultset: ResultSet | Sequence[MetricResult],
@@ -587,8 +1572,11 @@ def plot_ground_truth_recovery(
 
     The ``untuned`` population gives the false-positive rate.  The summary
     table is attached as ``fig.cabana_summary`` (columns ``result``,
-    ``population``, ``n``, ``fraction_significant``).  Look for: tall bars for
-    the planted populations, and ``untuned`` near the dashed alpha line.
+    ``population``, ``n``, ``fraction_significant``, ``adjusted_fraction``).
+    Look for: tall bars for the planted populations, and ``untuned`` near the
+    dashed alpha line; for results with a multiplicity correction the grey
+    ``untuned`` bar is the raw false-positive rate and the hatched bar over it the
+    adjusted rate (it should sit at or below alpha).
     ``session`` and ``resultset`` may be given in either order.
 
     Parameters
@@ -604,70 +1592,63 @@ def plot_ground_truth_recovery(
     adjusted : bool, optional
         ``None`` uses the multiplicity-adjusted ``p_adj`` for results whose
         ``correction`` is not "none" and the raw ``p_value`` otherwise; ``True``
-        forces ``p_adj`` (raw where absent), ``False`` forces ``p_value``.
+        forces ``p_adj`` (raw where absent), ``False`` forces ``p_value``.  Governs
+        ``fraction_significant``; ``adjusted_fraction`` is always the ``p_adj`` rate.
 
     Returns
     -------
     matplotlib.figure.Figure
         Grouped bars per result and planted population.
     """
-    session, resultset = order_session_first(session, resultset)
-    gt = session.meta.get("ground_truth", {}) or {}
-    pops = _planted_populations(gt)
-    rows: list[dict[str, Any]] = []
-    for r in resultset:
-        if r.level != "cell" or r.shuffle is None:
-            continue
-        sh = r.shuffle
-        use_adj = (sh.correction != "none") if adjusted is None else adjusted
-        p = sh.p_adj if use_adj and sh.p_adj is not None else sh.p_value
-        sig = np.asarray(p) < alpha
-        if sig.ndim > 1:
-            sig = sig.reshape(sig.shape[0], -1).any(axis=1)
-        name = r.name or f"{r.metric}[{r.target}]"
-        label = name.replace("[", "\n[", 1)
-        for pop, cells in pops.items():
-            cells = [c for c in cells if 0 <= c < sig.shape[0]]
-            if not cells:
-                continue
-            rows.append(
-                {
-                    "result": name,
-                    "_label": label,
-                    "population": pop,
-                    "n": len(cells),
-                    "fraction_significant": float(sig[cells].mean()),
-                }
+    d = plot_ground_truth_recovery_data(session, resultset, alpha, adjusted)
+    rows = d["rows"]
+    df = pd.DataFrame(
+        {
+            k: rows[k]
+            for k in (
+                "result",
+                "population",
+                "n",
+                "fraction_significant",
+                "adjusted_fraction",
             )
-    df = pd.DataFrame(rows, columns=["result", "_label", "population", "n", "fraction_significant"])
-    fig, ax = plt.subplots(
-        figsize=(max(5.0, 1.6 * df["result"].nunique() + 2), 4.0), layout="constrained"
+        }
     )
-    if df.empty:
+    results = d["results"]
+    fig, ax = plt.subplots(figsize=(max(5.0, 1.6 * len(results) + 2), 4.0), layout="constrained")
+    if not results:
         ax.axis("off")
         ax.text(
             0.5, 0.5, "No ground truth or no shuffled cell-level results", ha="center", va="center"
         )
     else:
-        results = list(dict.fromkeys(df["result"]))
-        labels = dict(zip(df["result"], df["_label"], strict=True))
-        order = [
-            p for p in ("place", "social", "syllable", "untuned") if p in set(df["population"])
-        ]
+        order = d["populations"]
         width = 0.8 / len(order)
+        xs = np.arange(len(results))
+        hatch_done = False
         for j, pop in enumerate(order):
-            sub = df[df["population"] == pop].set_index("result")
-            h = [sub["fraction_significant"].get(r, np.nan) for r in results]
-            color = "0.6" if pop == "untuned" else f"C{j}"
-            ax.bar(
-                np.arange(len(results)) + (j - (len(order) - 1) / 2) * width,
-                np.nan_to_num(h),
-                width,
-                label=pop,
-                color=color,
-            )
+            h = d["bar_fraction"][j]
+            xj = xs + (j - (len(order) - 1) / 2) * width
+            label = "untuned (raw)" if pop == "untuned" and any(d["has_correction"]) else pop
+            ax.bar(xj, np.nan_to_num(h), width, label=label, color=d["colors"][pop])
+            if pop == "untuned":
+                sub = df[df["population"] == "untuned"].set_index("result")["adjusted_fraction"]
+                adj = np.array([sub.get(r, np.nan) for r in results], float)
+                ok = np.isfinite(adj)
+                if ok.any():
+                    ax.bar(
+                        xj[ok],
+                        adj[ok],
+                        width,
+                        fill=False,
+                        hatch="////",
+                        edgecolor="k",
+                        linewidth=0.5,
+                        label="untuned (adjusted)",
+                    )
+                    hatch_done = True
         ax.axhline(alpha, color="k", ls="--", lw=1)
-        ax.set_xticks(range(len(results)), [labels[r] for r in results], fontsize=8)
+        ax.set_xticks(range(len(results)), d["labels"], fontsize=8)
         ax.set_ylim(0, 1.05)
         ax.set_ylabel("fraction significant")
         handles, labs = ax.get_legend_handles_labels()
@@ -676,6 +1657,6 @@ def plot_ground_truth_recovery(
         ax.legend(
             handles, labs, fontsize=8, frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1.0)
         )
-        ax.set_title("Ground-truth recovery")
-    fig.cabana_summary = df.drop(columns="_label").reset_index(drop=True)  # type: ignore[attr-defined]
+        ax.set_title("Ground-truth recovery" + (" (hatched: adjusted)" if hatch_done else ""))
+    fig.cabana_summary = df.reset_index(drop=True)  # type: ignore[attr-defined]
     return fig

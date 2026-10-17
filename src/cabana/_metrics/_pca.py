@@ -178,6 +178,7 @@ class PCAPopulation(Metric):
     name: ClassVar[str] = "pca_population"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
 
     n_components: int = Field(10, ge=1, description="Maximum number of principal components kept.")
     zscore: bool = Field(True, description="Z-score each cell over the masked frames before PCA.")
@@ -257,6 +258,7 @@ class PopulationDistance(Metric):
     name: ClassVar[str] = "population_distance"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
 
     zscore: bool = Field(True, description="Z-score each cell over the masked frames first.")
     distance: Literal["euclidean", "correlation"] = Field(

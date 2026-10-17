@@ -244,6 +244,7 @@ class GLMEncoding(Metric):
     level: ClassVar = "cell"
     input: ClassVar = "signal"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("tuning_heatmap", "shuffle_distribution")
 
     family: Literal["poisson", "gaussian", "auto"] = Field(
         "auto", description="'auto': Poisson if masked activity is non-negative, else Gaussian."

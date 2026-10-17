@@ -99,6 +99,11 @@ class MutualInformation(Metric):
 
     name: ClassVar[str] = "mutual_information"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = (
+        "joint_histogram",
+        "metric_strip",
+        "shuffle_distribution",
+    )
 
     n_levels: int = Field(5, ge=2, description="Number of activity levels (ignored for 'binary').")
     binning: Literal["quantile", "log", "linear", "binary"] = Field(

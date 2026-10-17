@@ -56,6 +56,7 @@ class MeanPerState(Metric):
     name: ClassVar[str] = "mean_per_state"
     level: ClassVar[Literal["cell", "population"]] = "cell"
     default_tail: ClassVar[Tail] = "two"
+    default_plots: ClassVar[tuple[str, ...]] = ("tuning_heatmap", "shuffle_distribution")
 
     statistic: Literal["mean", "difference"] = Field(
         "mean",

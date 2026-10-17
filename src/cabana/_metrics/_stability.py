@@ -68,6 +68,11 @@ class SplitHalfStability(Metric):
 
     name: ClassVar[str] = "split_half_stability"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = (
+        "split_half_maps",
+        "metric_strip",
+        "shuffle_distribution",
+    )
 
     n_blocks: int = Field(
         2, ge=2, description="Number of contiguous blocks; even blocks are half A, odd half B."

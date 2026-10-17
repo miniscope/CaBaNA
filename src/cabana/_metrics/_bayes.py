@@ -153,6 +153,7 @@ class BayesianDecoder(Metric):
     name: ClassVar[str] = "bayesian_decoder"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "lower"
+    default_plots: ClassVar[tuple[str, ...]] = ("decoded_trajectory", "population_matrix")
 
     likelihood: Literal["gaussian", "poisson", "empirical"] = Field(
         "gaussian", description="Observation model: gaussian (Shuman 2020), poisson, or empirical."

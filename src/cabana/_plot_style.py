@@ -37,6 +37,7 @@ __all__ = [
     "SIGNIFICANCE_MARKER",
     "axis_label",
     "fmt_p",
+    "heatmap_cmap",
     "mark_significant",
     "metric_label",
     "state_colors",
@@ -162,6 +163,16 @@ def state_colors(space_or_names: Any) -> dict[str, tuple[float, float, float, fl
     return dict(zip(key, _palette(key), strict=True))
 
 
+def heatmap_cmap(name: str = "viridis", bad: Any = UNVISITED_COLOR) -> Any:
+    """A colormap whose NaN ("bad") colour is :data:`UNVISITED_COLOR`.
+
+    Every image of binned data (rate maps, tuning matrices, confusion maps) uses
+    this so that bins with no data look the same everywhere and are never drawn
+    as zero.
+    """
+    return plt.get_cmap(name).with_extremes(bad=bad)
+
+
 def axis_label(quantity: str, units: str | None = None) -> str:
     """``"speed (cm/s)"`` from ``("speed", "cm/s")``; ``"speed"`` when units are empty."""
     return f"{quantity} ({units})" if units else quantity
@@ -176,8 +187,12 @@ def metric_label(metric: str, params: dict[str, Any] | None = None) -> str:
     """
     label, units = METRIC_LABELS.get(metric, (metric.replace("_", " "), None))
     params = params or {}
-    if metric == "information_content" and params.get("units") == "bits_per_second":
-        units = "bits/s"
+    if metric in ("information_content", "mutual_information"):
+        u = params.get("units")
+        if u == "bits_per_second":
+            units = "bits/s"
+        elif u == "bits_per_event":
+            units = "bits/event"
     if metric == "signal_tuning" and params.get("statistic"):
         label = f"tuning ({params['statistic']})"
     return axis_label(label, units)

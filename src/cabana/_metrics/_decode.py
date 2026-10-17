@@ -105,6 +105,7 @@ class DecodeStates(Metric):
     name: ClassVar[str] = "decode_states"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip",)
 
     classifier: Literal["linear_svm", "logistic"] = Field(
         "linear_svm", description="Linear SVM (LinearSVC) or logistic regression."

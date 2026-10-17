@@ -7,7 +7,17 @@ import pytest
 from scipy.stats import hypergeom
 from sklearn.metrics import adjusted_rand_score
 
-from cabana._plots_posthoc import plot_clusters, plot_overlap, plot_overlap_matrix
+from cabana._plot_data import check_plot_data
+from cabana._plots_posthoc import (
+    plot_classification,
+    plot_classification_data,
+    plot_clusters,
+    plot_clusters_data,
+    plot_overlap,
+    plot_overlap_data,
+    plot_overlap_matrix,
+    plot_overlap_matrix_data,
+)
 from cabana._posthoc import (
     overlap_matrix,
     overlap_vs_chance,
@@ -201,3 +211,33 @@ def test_clusters_empty_component_guard(monkeypatch):
     assert cr.to_dataframe()["n_cells"].tolist() == [40, 80, 0]
     cr2 = response_clusters(X, method="kmeans", k=3)
     assert cr2.sizes.sum() == len(X)
+
+
+def test_plot_data_contract():
+    from cabana._criteria import ClassificationResult
+
+    a, b = _sets(100, 20, 30, 12)
+    o = overlap_vs_chance(a, b)
+    d = plot_overlap_data(o, ("soc", "syl"))
+    check_plot_data(d, "overlap")
+    assert d["bar_values"][1] == o.n_both and d["labels"] == ["soc", "syl"]
+    df = overlap_matrix({"a": a, "b": b, "c": ~a})
+    dm = plot_overlap_matrix_data(df)
+    check_plot_data(dm, "overlap_matrix")
+    assert dm["names"] == ["a", "b", "c"] and np.asarray(dm["log2_odds_ratio"]).shape == (3, 3)
+    X, _ = _planted()
+    cr = response_clusters(X)
+    dc = plot_clusters_data(cr, [f"f{i}" for i in range(3)])
+    check_plot_data(dc, "clusters")
+    assert sum(dc["sizes"]) == len(cr.labels)
+    assert plot_clusters_data(cr, ["too", "few"])["feature_names"] is None
+    cl = ClassificationResult(
+        labels={"x": np.array([True, False, True]), "unclassified": np.array([False, True, False])},
+        cell_ids=["a", "b", "c"],
+        n_cells=3,
+        exclusive=True,
+    )
+    dk = plot_classification_data(cl)
+    check_plot_data(dk, "classification")
+    assert dk["counts"] == [2, 1] and dk["unclassified"] == [False, True]
+    plt.close(plot_classification(cl))

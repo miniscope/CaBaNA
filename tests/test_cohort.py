@@ -15,7 +15,14 @@ from cabana._cohort import (
     per_animal_summary,
 )
 from cabana._pipeline import AnalysisSpec
-from cabana._plots_cohort import plot_cohort_fractions, plot_hierarchical_bootstrap
+from cabana._plot_data import check_plot_data
+from cabana._plots_cohort import (
+    plot_cohort_fractions,
+    plot_cohort_fractions_data,
+    plot_cross_session_data,
+    plot_hierarchical_bootstrap,
+    plot_hierarchical_bootstrap_data,
+)
 from cabana._results import MetricResult, ResultSet, ShuffleResult
 
 
@@ -219,3 +226,53 @@ def test_cohort_adjusted_argument():
     assert s.loc["m1", "fraction_significant"] == 0.5
     with pytest.raises(ValueError):
         per_animal_summary(hand_table(), "m", "t", adjusted=True)
+
+
+def test_plot_data_contract():
+    rows = [
+        dict(animal=f"m{i}", state=s, fraction_significant=v + 0.01 * i)
+        for i in range(4)
+        for s, v in (("a", 0.4), ("b", 0.3), ("ctl", 0.05))
+    ]
+    d = plot_cohort_fractions_data(pd.DataFrame(rows), control_state="ctl")
+    check_plot_data(d, "cohort_fractions")
+    assert len(d["comparisons"]) == 2 and np.asarray(d["fractions"]).shape == (4, 3)
+    check_plot_data(plot_cohort_fractions_data(pd.DataFrame(rows)), "cohort_fractions")
+
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        [
+            dict(animal=f"m{k}", session=f"s{k}", cell=f"c{c}", value=k + rng.normal(0, 0.3))
+            for k in range(4)
+            for c in range(20)
+        ]
+    )
+    boot = hierarchical_bootstrap(df, lambda t: float(t["value"].mean()), n_boot=50, seed=1)
+    db = plot_hierarchical_bootstrap_data(boot)
+    check_plot_data(db, "hierarchical_bootstrap")
+    assert db["ci"][0] == list(boot.ci)
+
+
+def test_cross_session_plot_data():
+    from cabana._cohort_models import CellMatch
+    from cabana._cross_session import cross_session_map_correlation
+
+    rng = np.random.default_rng(0)
+    A = rng.random((10, 12))
+
+    def res(maps):
+        return MetricResult(
+            metric="information_content",
+            target="position",
+            level="cell",
+            values=np.zeros(maps.shape[0]),
+            extras={"rate_map": maps},
+            state_names=[f"s{i}" for i in range(12)],
+        )
+
+    match = CellMatch(session_a="a", session_b="b", pairs=np.c_[np.arange(10), np.arange(10)])
+    cs = cross_session_map_correlation(res(A), res(A), match, n_shuffles=50)
+    d = plot_cross_session_data(cs)
+    check_plot_data(d, "cross_session")
+    assert d["pair_kind"] == "map" and np.asarray(d["observed"]).shape == (10,)
+    assert int(np.sum(d["observed_counts"])) == 10

@@ -107,7 +107,11 @@ def _assert_same(a: Any, b: Any, path: str) -> None:
             _assert_same(v, b[str(k)], f"{path}.{k}")
     elif isinstance(a, np.ndarray):
         if a.dtype.kind in "biuf":
-            arr = np.asarray(b, float).reshape(a.shape) if a.size else np.asarray(b, float)
+            if a.size == 0:
+                if np.asarray(b, float).size != 0:
+                    raise AssertionError(f"{path}: empty array came back non-empty")
+                return
+            arr = np.asarray(b, float).reshape(a.shape)
             np.testing.assert_allclose(
                 arr, np.asarray(a, float), rtol=0, atol=0, equal_nan=True, err_msg=path
             )

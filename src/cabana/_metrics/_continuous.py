@@ -98,6 +98,7 @@ class SignalCorrelation(Metric):
     name: ClassVar[str] = "signal_correlation"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "two"
+    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip", "shuffle_distribution")
 
     method: Literal["pearson", "spearman"] = Field(
         "pearson", description="Pearson or Spearman (rank) correlation."
@@ -248,6 +249,7 @@ class SignalTuning(Metric):
     name: ClassVar[str] = "signal_tuning"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"
+    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip", "shuffle_distribution")
 
     n_bins: int = Field(20, ge=2, description="Number of equal-width signal bins.")
     extent: tuple[float, float] | None = Field(

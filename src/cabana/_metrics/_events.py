@@ -174,6 +174,7 @@ class PETH(Metric):
     name: ClassVar[str] = "peth"
     level: ClassVar[Literal["cell", "population"]] = "cell"
     default_tail: ClassVar[Tail] = "two"
+    default_plots: ClassVar[tuple[str, ...]] = ("peth", "event_raster")
 
     pre_s: float = Field(5.0, ge=0, description="Seconds before onset in each window.")
     post_s: float = Field(5.0, gt=0, description="Seconds after onset in each window.")

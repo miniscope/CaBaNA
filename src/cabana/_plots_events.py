@@ -1,4 +1,7 @@
-"""Plots for event-aligned (PETH) results.  Every function returns a ``Figure``."""
+"""Plots for event-aligned (PETH) results, and their matplotlib-free ``*_data`` companions.
+
+Each ``plot_x(...)`` calls ``plot_x_data(...)`` and draws from the returned dict only.
+"""
 
 from __future__ import annotations
 
@@ -11,10 +14,27 @@ from matplotlib.figure import Figure
 
 from ._metrics._events import PETH
 from ._models import Session
-from ._util import order_session_first
+from ._plot_data import PLOT_DATA_VERSION
+from ._plot_registry import register_plot
+from ._plot_style import (
+    BASELINE_SHADE,
+    RESPONSE_SHADE,
+    axis_label,
+    mark_significant,
+    metric_label,
+    ordered_names,
+)
 from ._results import MetricResult
+from ._util import order_session_first
 
-__all__ = ["plot_event_raster", "plot_peth"]
+__all__ = [
+    "plot_event_raster",
+    "plot_event_raster_data",
+    "plot_peth",
+    "plot_peth_data",
+]
+
+_SORTS = ("response", "peak", "latency")
 
 
 def _peth_from_params(result: MetricResult) -> PETH:
@@ -22,12 +42,187 @@ def _peth_from_params(result: MetricResult) -> PETH:
     return PETH(**params)
 
 
-def _shade(ax: Any, peth: PETH) -> None:
-    ax.axvspan(*peth.baseline_s, color="0.5", alpha=0.15, lw=0)
-    ax.axvspan(*peth.response_s, color="tab:orange", alpha=0.15, lw=0)
+def _windows(result: MetricResult) -> tuple[list[float], list[float]]:
+    p = _peth_from_params(result)
+    return [float(v) for v in p.baseline_s], [float(v) for v in p.response_s]
+
+
+def _response_label(result: MetricResult) -> str:
+    """``"response (a.u.)"``, or ``"z"`` when the params say the baseline is z-scored."""
+    if result.params.get("zscore") or result.params.get("baseline") == "zscore":
+        return axis_label("response", "z")
+    return metric_label("peth", result.params)
+
+
+def _shade(ax: Any, baseline: Sequence[float], response: Sequence[float]) -> None:
+    ax.axvspan(*baseline, color=BASELINE_SHADE, alpha=0.6, lw=0)
+    ax.axvspan(*response, color=RESPONSE_SHADE, alpha=0.2, lw=0)
     ax.axvline(0.0, color="k", lw=0.8, ls="--")
 
 
+def _two(a: Any, b: Any) -> tuple[Any, Any]:
+    """``(session_or_None, result)`` from two arguments in either order."""
+    if isinstance(a, MetricResult):
+        return b, a
+    return a, b
+
+
+def plot_peth_data(
+    result: MetricResult,
+    session: Session | None = None,
+    cells: Sequence[int] | None = None,
+    states: Sequence[int | str] | None = None,
+    sort_by: str = "response",
+) -> dict[str, Any]:
+    """Everything :func:`plot_peth` draws, as plain arrays.
+
+    Per-state arrays are stacked over the shown states, ``(n_states, n_cells, ...)``.
+    ``order[s]`` lists positions into ``cell_ids`` (the shown cells, in the order
+    given) from top row to bottom row; ``peth``, ``sem``, ``latency_s`` and
+    ``significant`` are already in that sorted order, and ``cell_ids_sorted[s]`` names
+    the rows.  Cells of a state with too few events are NaN (``valid[s]`` is False
+    when the whole state is).
+
+    ``mean`` / ``mean_sem`` are the mean over shown cells and its standard error
+    propagated from the per-cell event SEMs (``sqrt(sum sem_i^2) / n``, cells taken
+    as fixed); ``sig_mean`` / ``sig_mean_sem`` are the same over significant cells
+    (NaN when none).  The SEM arrays are ``None`` when the result has no
+    ``extras["peth_sem"]``.
+
+    Parameters
+    ----------
+    result : MetricResult
+        ``peth`` result with extras ``peth``, ``time_s`` and ``n_events``.
+    session : Session, optional
+        Fallback source of cell ids.
+    cells, states : sequence, optional
+        Cells (indices) and states (index or name) to show; ``None`` shows all.
+    sort_by : {"response", "peak", "latency"}, default "response"
+        ``"response"``: descending response value; ``"peak"``: time of the peak of the
+        trace over the whole window, ascending; ``"latency"``: time of the peak
+        absolute response within the response window, ascending.
+
+    Returns
+    -------
+    dict
+        ``kind="peth"``.  Look for: a block of cells whose latency rises
+        monotonically down the heatmap, and ``significant`` rows sitting at the top.
+
+    Raises
+    ------
+    ValueError
+        If ``sort_by`` is invalid or the result lacks PETH extras.
+    """
+    session, result = _two(session, result)
+    if sort_by not in _SORTS:
+        raise ValueError("sort_by must be 'response', 'peak' or 'latency'")
+    for k in ("peth", "time_s", "n_events"):
+        if k not in result.extras:
+            raise ValueError(f"result has no extras[{k!r}]; is it a PETH result?")
+    arr = np.asarray(result.extras["peth"], float)
+    t = np.asarray(result.extras["time_s"], float)
+    n_events = np.asarray(result.extras["n_events"])
+    sem_all = result.extras.get("peth_sem", result.extras.get("sem"))
+    sem_all = None if sem_all is None else np.asarray(sem_all, float)
+    n_cells, n_states, _ = arr.shape
+    cell_idx = np.arange(n_cells) if cells is None else np.asarray(list(cells), dtype=int)
+    names = ordered_names(result.state_names, n_states)
+    state_idx = list(range(n_states)) if states is None else [result.state_index(s) for s in states]
+    ids_all = result.cell_ids or (session.cell_ids if session is not None else None)
+    ids = [str(ids_all[c]) if ids_all else str(c) for c in cell_idx]
+    sig_all = None if result.shuffle is None else np.asarray(result.shuffle.significant, bool)
+    base, resp_w = _windows(result)
+    in_resp = (t >= resp_w[0]) & (t < resp_w[1])
+    if not in_resp.any():
+        in_resp = np.ones(t.size, bool)
+
+    S, C, T = len(state_idx), len(cell_idx), t.size
+    peth = np.full((S, C, T), np.nan)
+    sem = None if sem_all is None else np.full((S, C, T), np.nan)
+    order = np.tile(np.arange(C), (S, 1))
+    latency = np.full((S, C), np.nan)
+    sig = np.zeros((S, C), bool)
+    valid = np.zeros(S, bool)
+    mean = np.full((S, T), np.nan)
+    mean_sem = None if sem is None else np.full((S, T), np.nan)
+    sig_mean = np.full((S, T), np.nan)
+    sig_mean_sem = None if sem is None else np.full((S, T), np.nan)
+    for k, s in enumerate(state_idx):
+        d = arr[cell_idx, s]
+        valid[k] = bool(np.isfinite(d).any())
+        if not valid[k]:
+            continue
+        lat = np.full(C, np.nan)
+        ok = np.isfinite(d[:, in_resp]).any(axis=1)
+        if ok.any():
+            seg = np.abs(np.nan_to_num(d[:, in_resp], nan=-np.inf))
+            lat[ok] = t[in_resp][np.argmax(seg, axis=1)][ok]
+        if sort_by == "response":
+            key = -np.nan_to_num(np.asarray(result.values, float)[cell_idx, s], nan=-np.inf)
+        elif sort_by == "peak":
+            key = t[np.argmax(np.nan_to_num(d, nan=-np.inf), axis=1)].astype(float)
+            key[~np.isfinite(d).any(axis=1)] = np.inf
+        else:
+            key = np.where(np.isfinite(lat), lat, np.inf)
+        o = np.argsort(key, kind="stable")
+        order[k] = o
+        peth[k] = d[o]
+        latency[k] = lat[o]
+        if sig_all is not None:
+            sig[k] = sig_all[cell_idx, s][o]
+        if sem is not None:
+            sem[k] = sem_all[cell_idx, s][o]
+        mean[k] = np.nanmean(peth[k], axis=0)
+        if sem is not None:
+            n_ok = np.isfinite(sem[k]).sum(axis=0)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                mean_sem[k] = np.sqrt(np.nansum(sem[k] ** 2, axis=0)) / np.where(
+                    n_ok > 0, n_ok, np.nan
+                )
+        if sig[k].any():
+            sig_mean[k] = np.nanmean(peth[k][sig[k]], axis=0)
+            if sem is not None:
+                n_ok = np.isfinite(sem[k][sig[k]]).sum(axis=0)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    sig_mean_sem[k] = np.sqrt(np.nansum(sem[k][sig[k]] ** 2, axis=0)) / np.where(
+                        n_ok > 0, n_ok, np.nan
+                    )
+    finite = peth[np.isfinite(peth)]
+    lim = float(np.abs(finite).max()) if finite.size else 1.0
+    return {
+        "kind": "peth",
+        "version": PLOT_DATA_VERSION,
+        "time_s": t,
+        "state_names": [names[s] for s in state_idx],
+        "n_events": np.asarray([int(n_events[s]) for s in state_idx]),
+        "cell_ids": ids,
+        "order": order,
+        "cell_ids_sorted": [[ids[i] for i in o] for o in order],
+        "peth": peth,
+        "sem": sem,
+        "latency_s": latency,
+        "significant": sig,
+        "valid": valid,
+        "mean": mean,
+        "mean_sem": mean_sem,
+        "sig_mean": sig_mean,
+        "sig_mean_sem": sig_mean_sem,
+        "baseline_window_s": base,
+        "response_window_s": resp_w,
+        "sort_by": sort_by,
+        "vlim": lim if lim > 0 else 1.0,
+        "units": _response_label(result),
+        "time_label": "time from onset (s)",
+    }
+
+
+@register_plot(
+    "peth",
+    data=plot_peth_data,
+    needs_session=True,
+    level="cell",
+    requires=("extras:peth",),
+)
 def plot_peth(
     result: MetricResult,
     session: Session,
@@ -38,20 +233,23 @@ def plot_peth(
 ) -> Figure:
     """Cells x time heatmap of the event-averaged response per state, with a mean trace below.
 
-    Rows are sorted by response (descending) or by peak time (``sort_by="peak"``).
-    Cells significant under the shuffle test (if one was run) are marked with a
-    dot at the right edge of the heatmap; the lower panel shows the mean trace
-    over all shown cells (grey) and over significant cells (orange, if any).
-    Shaded bands: baseline (grey) and response (orange) windows.
-    ``result`` and ``session`` may be given in either order.  Look for: a clear
-    band of cells that rise (red) or fall (blue) after the dashed onset line, and
-    whether the significant cells (stars) are the ones with the strongest response.
+    Rows are sorted by response (descending), by peak time (``sort_by="peak"``) or by
+    response latency (``sort_by="latency"``: time of the peak absolute response inside
+    the response window, ascending).  The heatmap has a colourbar in response units.
+    Cells significant under the shuffle test (if one was run) carry the shared
+    significance marker at the right edge; the lower panel shows the mean trace over
+    all shown cells (grey) and over significant cells (orange), each with a +/- SEM
+    band when the result stores ``extras["peth_sem"]`` (see :func:`plot_peth_data` for
+    how the SEM is combined).  Shading: baseline (grey) and response (orange)
+    windows.  ``result`` and ``session`` may be given in either order.  Look for: a
+    band of cells that rise (red) or fall (blue) after the dashed onset line, a
+    latency staircase when sorted by latency, and whether significant cells are the
+    strongest responders.
 
     Parameters
     ----------
     result : MetricResult
-        ``peth`` result with ``extras`` ``peth``, ``time_s`` and ``n_events``; the
-        windows are rebuilt from ``result.params``.
+        ``peth`` result with ``extras`` ``peth``, ``time_s`` and ``n_events``.
     session : Session
         Source of fallback cell ids.
     cells : sequence of int, optional
@@ -60,8 +258,8 @@ def plot_peth(
         States to show (index or name); ``None`` shows all.
     ncols : int, default 4
         Maximum state panels per row.
-    sort_by : {"response", "peak"}, default "response"
-        Order cells by response (descending) or by time of peak activity.
+    sort_by : {"response", "peak", "latency"}, default "response"
+        Row order.
 
     Returns
     -------
@@ -74,83 +272,150 @@ def plot_peth(
         If ``sort_by`` is invalid or the result is not a PETH result.
     """
     session, result = order_session_first(session, result)
-    if sort_by not in ("response", "peak"):
-        raise ValueError("sort_by must be 'response' or 'peak'")
-    for k in ("peth", "time_s", "n_events"):
-        if k not in result.extras:
-            raise ValueError(f"result has no extras[{k!r}]; is it a PETH result?")
-    peth = _peth_from_params(result)
-    arr, t = result.extras["peth"], result.extras["time_s"]
-    n_events = result.extras["n_events"]
-    n_cells, n_states, _ = arr.shape
-    cell_idx = np.arange(n_cells) if cells is None else np.asarray(list(cells), dtype=int)
-    names = result.state_names or [str(i) for i in range(n_states)]
-    state_idx = list(range(n_states)) if states is None else [result.state_index(s) for s in states]
-    sig = None if result.shuffle is None else np.asarray(result.shuffle.significant, bool)
-    ids = result.cell_ids or session.cell_ids
-
-    ncols = max(1, min(ncols, len(state_idx)))
-    nrows = int(np.ceil(len(state_idx) / ncols))
-    fig = plt.figure(figsize=(3.6 * ncols, 5.2 * nrows), layout="constrained")
+    d = plot_peth_data(result, session, cells=cells, states=states, sort_by=sort_by)
+    t = d["time_s"]
+    n_show = len(d["state_names"])
+    ncols = max(1, min(ncols, n_show))
+    nrows = int(np.ceil(n_show / ncols))
+    fig = plt.figure(figsize=(3.6 * ncols + 0.6, 5.2 * nrows), layout="constrained")
     outer = fig.add_gridspec(nrows, ncols)
-    for k, s in enumerate(state_idx):
+    dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
+    lim = d["vlim"]
+    im = None
+    heat_axes = []
+    for k in range(n_show):
         sub = outer[k // ncols, k % ncols].subgridspec(2, 1, height_ratios=[3, 1.3])
         ax = fig.add_subplot(sub[0])
         ax_m = fig.add_subplot(sub[1], sharex=ax)
-        data = arr[cell_idx, s]
-        ax.set_title(f"{names[s]} (n={int(n_events[s])})", fontsize=9)
-        if not np.isfinite(data).any():
+        ax.set_title(f"{d['state_names'][k]} (n={int(d['n_events'][k])})", fontsize=9)
+        if not d["valid"][k]:
             for a in (ax, ax_m):
                 a.text(0.5, 0.5, "too few events", ha="center", va="center", transform=a.transAxes)
             continue
-        resp = np.nan_to_num(result.values[cell_idx, s], nan=-np.inf)
-        if sort_by == "response":
-            order = np.argsort(-resp, kind="stable")
-        else:
-            order = np.argsort(
-                np.nanargmax(np.nan_to_num(data, nan=-np.inf), axis=1), kind="stable"
-            )
-        data = data[order]
-        lim = np.nanmax(np.abs(data)) or 1.0
-        dt = np.median(np.diff(t)) if t.size > 1 else 1.0
-        ax.imshow(
+        heat_axes.append(ax)
+        data = d["peth"][k]
+        n_rows = data.shape[0]
+        im = ax.imshow(
             data,
             aspect="auto",
             cmap="RdBu_r",
             vmin=-lim,
             vmax=lim,
             interpolation="nearest",
-            extent=(t[0] - dt / 2, t[-1] + dt / 2, len(order) - 0.5, -0.5),
+            extent=(t[0] - dt / 2, t[-1] + dt / 2, n_rows - 0.5, -0.5),
         )
         ax.axvline(0.0, color="k", lw=0.8, ls="--")
         ax.set_ylabel("cell" if k % ncols == 0 else "")
-        if len(order) <= 40:
-            ax.set_yticks(range(len(order)))
-            ax.set_yticklabels(
-                [str(ids[cell_idx[o]]) if ids else str(cell_idx[o]) for o in order], fontsize=6
-            )
+        if n_rows <= 40:
+            ax.set_yticks(range(n_rows))
+            ax.set_yticklabels(d["cell_ids_sorted"][k], fontsize=6)
         plt.setp(ax.get_xticklabels(), visible=False)
-        s_sig = None if sig is None else sig[cell_idx, s][order]
-        if s_sig is not None and s_sig.any():
-            ax.scatter(
-                np.full(int(s_sig.sum()), t[-1] + dt),
-                np.flatnonzero(s_sig),
-                marker="*",
-                s=14,
-                color="k",
-                clip_on=False,
+        s_sig = d["significant"][k]
+        if s_sig.any():
+            mark_significant(
+                ax, np.full(int(s_sig.sum()), t[-1] + dt), np.flatnonzero(s_sig), clip_on=False
             )
-        _shade(ax_m, peth)
-        ax_m.plot(t, np.nanmean(data, axis=0), color="0.3", lw=1.2, label="all")
-        if s_sig is not None and s_sig.any():
-            ax_m.plot(t, np.nanmean(data[s_sig], axis=0), color="tab:orange", lw=1.2, label="sig.")
+        _shade(ax_m, d["baseline_window_s"], d["response_window_s"])
+        ax_m.plot(t, d["mean"][k], color="0.3", lw=1.2, label="all")
+        if d["mean_sem"] is not None:
+            ax_m.fill_between(
+                t,
+                d["mean"][k] - d["mean_sem"][k],
+                d["mean"][k] + d["mean_sem"][k],
+                color="0.3",
+                alpha=0.2,
+                lw=0,
+            )
+        if s_sig.any():
+            ax_m.plot(t, d["sig_mean"][k], color=RESPONSE_SHADE, lw=1.2, label="significant")
+            if d["sig_mean_sem"] is not None:
+                ax_m.fill_between(
+                    t,
+                    d["sig_mean"][k] - d["sig_mean_sem"][k],
+                    d["sig_mean"][k] + d["sig_mean_sem"][k],
+                    color=RESPONSE_SHADE,
+                    alpha=0.25,
+                    lw=0,
+                )
             if k == 0:
                 ax_m.legend(fontsize=6, frameon=False)
-        ax_m.set_xlabel("time from onset (s)")
-        ax_m.set_ylabel("activity" if k % ncols == 0 else "")
+        ax_m.set_xlabel(d["time_label"])
+        ax_m.set_ylabel(d["units"] if k % ncols == 0 else "")
+    if im is not None:
+        fig.colorbar(im, ax=heat_axes, label=d["units"], fraction=0.03, pad=0.02)
     return fig
 
 
+def _raster_defaults(result: MetricResult, session: Any) -> dict[str, Any]:
+    """Most significant cell (lowest p, else largest response) and its best state."""
+    vals = np.asarray(result.values, float)
+    if result.shuffle is not None:
+        score = -np.nan_to_num(np.asarray(result.shuffle.p_value, float), nan=np.inf)
+        tie = np.nan_to_num(vals, nan=-np.inf)
+        flat = np.lexsort((tie.ravel(), score.ravel()))[-1]
+    else:
+        flat = int(np.argmax(np.nan_to_num(vals, nan=-np.inf)))
+    c, s = np.unravel_index(int(flat), vals.shape)
+    return {"cell": int(c), "state": int(s)}
+
+
+def plot_event_raster_data(
+    session: Session,
+    result: MetricResult,
+    cell: int,
+    state: int | str,
+    mask: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """Everything :func:`plot_event_raster` draws: per-event windows and their mean +/- SEM.
+
+    Events are recomputed from ``session.activity`` and ``session.states[result.target]``
+    with the PETH parameters in ``result.params``.  Keys: ``time_s``, ``windows``
+    ``(n_events, n_time)``, ``mean``, ``sem`` (zeros for one event), ``n_events``,
+    ``cell_id``, ``state_name``, ``baseline_window_s``, ``response_window_s``,
+    ``units``.  ``kind="event_raster"``.
+    """
+    session, result = order_session_first(session, result)
+    peth = _peth_from_params(result)
+    s = result.state_index(state)
+    sp = session.states[result.target]
+    m = session.valid_mask() if mask is None else np.asarray(mask, bool)
+    ons = peth.valid_onsets(sp, m, session.fs)[s]
+    pre, post, _, _ = peth._geometry(session.fs)
+    t = np.arange(-pre, post) / session.fs
+    names = ordered_names(result.state_names, sp.onehot.shape[1])
+    label = str(result.cell_ids[cell]) if result.cell_ids else str(cell)
+    base, resp_w = _windows(result)
+    if ons.size:
+        win = np.asarray(peth.event_windows(session.activity[[cell]], ons, session.fs)[0], float)
+        mean = win.mean(axis=0)
+        sem = win.std(axis=0, ddof=1) / np.sqrt(ons.size) if ons.size > 1 else np.zeros_like(mean)
+    else:
+        win, mean, sem = np.zeros((0, t.size)), np.full(t.size, np.nan), np.full(t.size, np.nan)
+    return {
+        "kind": "event_raster",
+        "version": PLOT_DATA_VERSION,
+        "time_s": t,
+        "windows": win,
+        "mean": mean,
+        "sem": sem,
+        "n_events": int(ons.size),
+        "cell_id": label,
+        "state_name": names[s],
+        "baseline_window_s": base,
+        "response_window_s": resp_w,
+        "units": "activity (a.u.)",
+        "time_label": "time from onset (s)",
+    }
+
+
+@register_plot(
+    "event_raster",
+    data=plot_event_raster_data,
+    needs_session=True,
+    level="cell",
+    requires=("extras:peth",),
+    defaults=_raster_defaults,
+)
 def plot_event_raster(
     session: Session,
     result: MetricResult,
@@ -185,38 +450,29 @@ def plot_event_raster(
     matplotlib.figure.Figure
         Events-by-time image above the mean +/- SEM trace.
     """
-    session, result = order_session_first(session, result)
-    peth = _peth_from_params(result)
-    s = result.state_index(state)
-    states = session.states[result.target]
-    m = session.valid_mask() if mask is None else np.asarray(mask, bool)
-    ons = peth.valid_onsets(states, m, session.fs)[s]
-    pre, post, _, _ = peth._geometry(session.fs)
-    t = np.arange(-pre, post) / session.fs
+    d = plot_event_raster_data(session, result, cell, state, mask)
+    t = d["time_s"]
     fig, (ax, ax_m) = plt.subplots(
         2, 1, figsize=(5.5, 5.5), sharex=True, height_ratios=[3, 1.3], layout="constrained"
     )
-    names = result.state_names or [str(i) for i in range(states.onehot.shape[1])]
-    label = result.cell_ids[cell] if result.cell_ids else str(cell)
-    ax.set_title(f"cell {label}, {names[s]} (n={ons.size} events)", fontsize=9)
-    if ons.size == 0:
+    ax.set_title(f"cell {d['cell_id']}, {d['state_name']} (n={d['n_events']} events)", fontsize=9)
+    if d["n_events"] == 0:
         ax.text(0.5, 0.5, "no events", ha="center", va="center", transform=ax.transAxes)
         return fig
-    win = peth.event_windows(session.activity[[cell]], ons, session.fs)[0]
-    ax.imshow(
-        win,
+    dt = float(np.median(np.diff(t))) if t.size > 1 else 1.0
+    im = ax.imshow(
+        d["windows"],
         aspect="auto",
         cmap="viridis",
         interpolation="nearest",
-        extent=(t[0], t[-1] + 1 / session.fs, ons.size + 0.5, 0.5),
+        extent=(t[0], t[-1] + dt, d["n_events"] + 0.5, 0.5),
     )
     ax.axvline(0.0, color="w", lw=0.8, ls="--")
     ax.set_ylabel("event")
-    _shade(ax_m, peth)
-    mean = win.mean(axis=0)
-    sem = win.std(axis=0, ddof=1) / np.sqrt(ons.size) if ons.size > 1 else np.zeros_like(mean)
-    ax_m.plot(t, mean, color="0.2", lw=1.2)
-    ax_m.fill_between(t, mean - sem, mean + sem, color="0.2", alpha=0.25, lw=0)
-    ax_m.set_xlabel("time from onset (s)")
-    ax_m.set_ylabel("activity")
+    fig.colorbar(im, ax=[ax, ax_m], label=d["units"], fraction=0.04, pad=0.02)
+    _shade(ax_m, d["baseline_window_s"], d["response_window_s"])
+    ax_m.plot(t, d["mean"], color="0.2", lw=1.2)
+    ax_m.fill_between(t, d["mean"] - d["sem"], d["mean"] + d["sem"], color="0.2", alpha=0.25, lw=0)
+    ax_m.set_xlabel(d["time_label"])
+    ax_m.set_ylabel(d["units"])
     return fig
