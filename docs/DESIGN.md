@@ -518,6 +518,7 @@ Targets that are signals have no support. `Session.rebin` carries support along
 `session.meta["transforms"]` / `["preprocess"]` (kind changes to
 `["activity_kind_history"]`), so a saved session says how it was built. Masks carry
 their origin in `meta["mask_info"][name] = {source, n_true, n_frames}` (`Session.with_mask(..., source=)`).
+Provenance also holds `selections`: the `Selection` records (see STATISTICS.md "Recording how a value was chosen") of `Pipeline.selections` that apply to the analysis (all transform/preprocess ones, plus those whose path names this analysis or `*`), so a result says how its parameters were chosen.
 Provenance also holds `effective_seed` (the per-analysis seed derived from the base
 `seed` and the analysis name, see STATISTICS.md "Seeding"), `mask_info`, `preprocess`,
 `transforms`, `env` (python and package versions, platform), `pipeline_sha256` (canonical
@@ -643,3 +644,23 @@ loaders).
 ### Golden regression suite (`tests/golden/`, `tests/test_golden.py`)
 
 `scripts/generate_golden.py` builds three small seeded simulated sessions (2-D grid with a speed mask and `rebin_time`, social bouts with a design-matrix signal, categorical syllables) and runs a pipeline covering every registered metric with 50 shuffles (`circular_shift`, plus one `label_shuffle`, one `bout_shuffle`, `max_stat` and `keep_null="none"` analysis). It stores each case as `<case>.session.zip`, `<case>.pipeline.yaml` and `<case>.results.zip` with a `MANIFEST.json`. The test reloads the session, rebuilds the pipeline with `Pipeline.from_yaml`, reruns it and compares every value, null summary, shift, extra and stable provenance key with `rtol=1e-9` (exact for ints, bools and shifts). A failure means the numbers changed: if intentional (new seeding, a corrected metric), run `.venv/bin/pytest tests/test_golden.py --update-golden` (or `python scripts/generate_golden.py`) and review the diff. `tests/test_properties.py` adds Hypothesis properties (dense equals label path, cell-permutation invariance, shift 0 equals observed, p-value bounds, adjustment monotonicity, save/load with non-finite values).
+
+## Kernels (`src/cabana/_kernels/`)
+
+The numerical cores live in `cabana._kernels` as pure functions over plain arrays, so they can be ported one-to-one to Rust/WASM, cross-tested against golden vectors, and called by a fast interactive sweep without the pydantic/pipeline glue. The metric classes (`compute`, `compute_shifted`) and the old module-level helpers (`cabana._shuffle.shifted_sums`, `cabana._statesums.shifted_state_sums`, `rate_maps_from_sums`, `smooth_over_grid`, `_si`, `level_edges`, `joint_counts`, `mutual_information_from_counts`, ...) are thin wrappers or re-exports over them.
+
+| Module | Kernels |
+|---|---|
+| `_sums.py` | `shifted_sums` (dense matmul path), `shifted_label_sums` (bincount path), `masked_counts` (labels), `masked_counts_onehot` |
+| `_ratemap.py` | `valid_states`, `rate_map`, `skaggs_information`, `contiguous_folds`, `split_half_masks` |
+| `_smooth.py` | `smooth_grid` (edge-normalised Gaussian over a grid) |
+| `_levels.py` | `level_edges`, `activity_levels`, `level_indicator`, `joint_counts`, `mutual_information_from_counts` |
+| `_rank.py` | `average_ranks`, `dense_ranks`, `masked_rank_sums_one_shift`, `auroc_from_rank_sums` |
+
+**Import allow-list.** Only `numpy` (plus `__future__`, `typing` and sibling kernel modules). The single exception is `scipy.ndimage.gaussian_filter` inside `_smooth.py`, whose exact semantics (truncate 4.0, `mode="constant"`, edge normalisation by the smoothed valid indicator) are documented in the module header. `tests/test_kernels.py::test_kernels_import_only_numpy` parses every module with `ast` and enforces this.
+
+**Canonical state input.** `labels: int32 (n_time,)` with `-1` for "no state" (or masked out) plus `n_states: int`, valid for exclusive state spaces. A dense `onehot (n_time, n_states)` entry point exists only where non-exclusive spaces need it (`shifted_sums` with a float indicator matrix, `masked_counts_onehot`). Both paths return the same values, including NaN propagation (a cell with any non-finite sample is NaN in every state and shift).
+
+**Explicit shifts.** Kernels never draw randomness: shifts are an input `int64 (n_shifts,)` (any integer, negative or larger than `n_time` allowed; `roll(x, k)[t] = x[(t - k) mod n_time]`). The RNG is a boundary: the null plan (`draw_shifts`) lives outside, and a Rust port must consume the same explicit shifts to reproduce a null bit-for-bit.
+
+**Golden vectors.** `scripts/generate_kernel_golden.py` writes `tests/golden/kernels/{sums,ratemap,levels,rank}.npz` (5 cells x 400 frames, 7 states, 6 explicit shifts, a 6x5 grid, 3 levels; includes a masked-frame case, a silent cell and a NaN cell) with `in_*` inputs and `out_*` expected outputs; `tests/test_kernels.py` compares at rtol 1e-12 with NaN equal. These are separate from the pipeline-level goldens in `tests/golden/`. AUROC's per-shift thread pool stays in the metric; only the per-series and per-shift pieces are kernels.

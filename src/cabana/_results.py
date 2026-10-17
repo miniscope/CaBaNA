@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -553,6 +554,19 @@ class ResultSet(BaseModel):
         from ._io import load_results
 
         return load_results(path)
+
+    @property
+    def selections(self) -> list[dict[str, Any]]:
+        """De-duplicated ``provenance["selections"]`` records across all results (JSON dicts)."""
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        for r in self.results:
+            for s in r.provenance.get("selections") or []:
+                key = json.dumps(s, sort_keys=True, default=str)
+                if key not in seen:
+                    seen.add(key)
+                    out.append(s)
+        return out
 
     def to_dataframe(self) -> pd.DataFrame:
         """Tidy table over cell-level results and per-state population results.

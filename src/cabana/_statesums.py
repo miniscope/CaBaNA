@@ -27,6 +27,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ._kernels import masked_counts as _label_counts
+from ._kernels import masked_counts_onehot, shifted_label_sums, shifted_sums
 from ._models import StateSpace
 
 # Below this many states the BLAS matmul with a dense indicator is faster than
@@ -48,70 +50,19 @@ def state_labels(states: StateSpace, mask: np.ndarray | None = None) -> np.ndarr
 def shifted_state_sums(
     x: np.ndarray, labels: np.ndarray, n_states: int, shifts: np.ndarray
 ) -> np.ndarray:
-    """Per-state sums of ``x`` after each circular shift, from integer labels.
-
-    Parameters
-    ----------
-    x : (n_cells, n_time) float
-    labels : (n_time,) int
-        State index per frame, ``-1`` for frames to skip (see :func:`state_labels`).
-    n_states : int
-    shifts : (n_shifts,) int
-        Frame offsets (any integer, negative and larger than ``n_time`` allowed).
-
-    Returns
-    -------
-    (n_shifts, n_cells, n_states) float64
-        ``out[i, c, s] = sum_{t: labels[t] == s} roll(x[c], shifts[i])[t]``;
-        identical to ``shifted_sums(x, onehot_masked, shifts)``, including NaN
-    handling: a cell with any non-finite value in ``x`` is NaN in every state
-    and shift.
-
-    Notes
-    -----
-    One ``np.bincount`` per (shift, cell) over the labelled frames, so the
-    cost is ``O(n_cells * n_labelled)`` per shift independent of ``n_states``
-    and the only allocation beyond the output is one ``n_labelled`` vector.
-    (Benchmarked against a sort + ``np.add.reduceat`` variant and a single
-    combined bincount: the per-cell bincount is fastest and leanest from about
-    400 states upward.)
-    """
-    x = np.asarray(x, dtype=np.float64)
-    labels = np.asarray(labels)
-    shifts = np.asarray(shifts, dtype=np.int64)
-    n_cells, n_time = x.shape
-    if labels.shape != (n_time,):
-        raise ValueError(f"labels has shape {labels.shape} but x has {n_time} frames")
-    out = np.zeros((shifts.size, n_cells, n_states), dtype=np.float64)
-    # Same NaN semantics as the dense matmul: one non-finite frame (even a masked-out
-    # one) poisons the cell's whole row, since 0 * nan = nan in the product.
-    bad = ~np.isfinite(x).all(axis=1)
-    idx = np.flatnonzero(labels >= 0)
-    if idx.size == 0 or n_cells == 0:
-        out[:, bad, :] = np.nan
-        return out
-    lab = labels[idx].astype(np.intp)
-    for i, k in enumerate(shifts):
-        src = (idx - int(k)) % n_time
-        for c in range(n_cells):
-            if not bad[c]:
-                out[i, c] = np.bincount(lab, weights=x[c, src], minlength=n_states)
-    out[:, bad, :] = np.nan
-    return out
+    """Alias of :func:`cabana._kernels.shifted_label_sums` (kept for existing imports)."""
+    return shifted_label_sums(x, labels, n_states, shifts)
 
 
 def masked_counts(states: StateSpace, mask: np.ndarray) -> np.ndarray:
     """Masked frames per state, float64 ``(n_states,)`` (no dense float copy)."""
     mask = np.asarray(mask, dtype=bool)
     if states.exclusive and states.n_states > DENSE_MAX_STATES:
-        lab = state_labels(states, mask)
-        return np.bincount(lab[lab >= 0], minlength=states.n_states).astype(np.float64)
-    return states.onehot[mask].sum(axis=0, dtype=np.float64)
+        return _label_counts(state_labels(states, mask), states.n_states, mask)
+    return masked_counts_onehot(states.onehot, mask)
 
 
 def _dense_multi(x, states, masks, shifts, extra_columns, keep):
-    from ._shuffle import shifted_sums
-
     cols = [states.masked(np.asarray(m, dtype=bool)) for m in masks]
     if keep is not None:
         cols = [c[:, keep] for c in cols]
@@ -154,10 +105,8 @@ def shifted_sums_multi(
         lab = state_labels(states, np.asarray(m, dtype=bool))
         if remap is not None:
             lab = np.where(lab >= 0, remap[np.maximum(lab, 0)], -1)
-        out.append(shifted_state_sums(x, lab, n_out, shifts))
+        out.append(shifted_label_sums(x, lab, n_out, shifts))
     if extra_columns is not None:
-        from ._shuffle import shifted_sums
-
         out.append(shifted_sums(x, extra_columns, shifts))
     return out
 

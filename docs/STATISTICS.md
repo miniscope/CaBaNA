@@ -252,3 +252,83 @@ p-value is calibrated; the raw bits are not comparable across cells with
 different amounts of data or across different `n_levels`. The optional
 Miller–Madow correction (`mutual_information`) is off by default for that reason
 [104]. Spatial information has analogous issues [102, 103].
+
+## Where the defaults come from
+
+Every free parameter below has a default that someone chose. The table says
+where it lives, what the default is, where the number came from, how much the
+conclusions depend on it (H/M/L) and how it should be chosen for real data.
+"Demo" is `examples/demo.py`. "Tuned" means tuned on the simulator, which is not
+a substitute for tuning on real data.
+
+| Parameter | Module | Default | Origin | Sensitivity | Recommended selection |
+|---|---|---|---|---|---|
+| `bin_size` | `_transform.BinGrid` | none (give `bin_size` or `n_bins`); demo 20 mm | arbitrary | H | physical units; automatic rule (at most a quarter of the expected field width) or a reported sweep |
+| `smooth_sigma_bins` | information, split-half, signal tuning, Bayesian decoder | 0 (demo 1.0) | convention | H | automatic held-out rule (`auto_cv`) plus a reported sweep |
+| `min_occupancy_s` | information, MI, population metrics, split-half | 0.05 s; 0.1 s in `signal_tuning` | arbitrary | M | fixed default, with the occupancy diagnostic shown |
+| speed `min_speed` | `_preprocess.SpeedThreshold` | required; demo 20 mm/s | none | H | user pick on the speed histogram |
+| speed `window_s` | `_transform.Speed` | 0.25 s | arbitrary | L | fixed default |
+| `n_levels` / `binning` | `mutual_information`, Bayesian decoder (empirical) | 5, `quantile` | tuned | M-H | reported sweep |
+| `pseudocount` | Bayesian decoder (empirical) | 0.1 | tuned | H for the empirical decoder | cross-validated |
+| decoder `window_s` | `bayesian_decoder` | 0.25 s; demo 1.0 s | arbitrary | M | cross-validated |
+| `n_folds` | `decode_states`, `glm_encoding`, `bayesian_decoder` | 5 (all three) | convention | L | fixed default |
+| `n_blocks` | `split_half_stability`, `population_vector_stability` | 2 | convention | M | fixed default; report with 4 as a check |
+| SVM `C` | `decode_states` | 1.0 | scikit-learn default | L-M | fixed default, or cross-validated |
+| ridge `alpha` | `glm_encoding` | 1.0 | arbitrary | M-H | cross-validated |
+| `min_frames` | `mean_per_state`/`auroc` 20, `pca_population` 20, `signal_tuning` 50, `glm_encoding` 100 | as listed | arbitrary | L | fixed default |
+| PETH `baseline_s` / `response_s` | `peth` | (-5, -2) s / (0, 2) s | arbitrary | H | pre-registered before looking at results |
+| temporal `sigma_s` | `_preprocess.SmoothActivity` | required | none | H | user pick, stated in the methods |
+| `n_shuffles` | `ShuffleConfig` | 1000 | convention | L (sets the p floor, see above) | fixed default |
+| `min_shift_s` | `ShuffleConfig`, `circular_shift` | 20 s | arbitrary | M | should exceed the autocorrelation time; automatic rule planned |
+| `block_s` | `label_shuffle` null | 1.0 s | arbitrary | M | automatic rule planned |
+| `refractory_s` | `bout_shuffle` null | 2.0 s | arbitrary | L-M | fixed default |
+| `alpha` / `correction` / `tail` | `ShuffleConfig` | 0.05 / `none` / the metric's default | convention | H for conclusions | pre-registered; see the correction section |
+| `n_components` | `pca_population` | 10 | arbitrary | L | fixed default |
+| cluster `k` | `response_clusters` | chosen by silhouette / BIC over a range | data-driven | M | automatic rule |
+
+**Why smoothing defaults to 0.** The library applies no spatial smoothing unless
+the user chooses it or an automatic rule selects it, because any non-zero value
+is a scientific choice that changes which cells pass (6-11% of cells changed
+classification between neighbouring reasonable settings on the simulator). The
+demo sets `smooth_sigma_bins` to 1.0 explicitly. A default of 0 means the
+library never smooths behind your back; it does not mean 0 is a good value.
+
+### Recording how a value was chosen
+
+Each chosen value can carry a `Selection` record (`cabana.Selection`): the
+parameter `path`, the `value`, a `method` (`literature_default`,
+`fixed_apriori`, `auto_cv`, `auto_rule`, `sweep_stability` or `user_pick`), the
+`criterion` and the `candidates` with their `scores`, a description of the data
+`split` used, `informed_by_significance` and a `note`. Rules, sweeps and manual
+picks all write the same record.
+
+A parameter path addresses one field of the pipeline:
+`transforms.<key>.<field>`, `preprocess.<key>.<field>`,
+`analyses.<key>.metric.<field>`, `analyses.<key>.shuffle.<field>` or
+`analyses.<key>.<field>` (for example `masks`). `<key>` is an integer index, a
+transform's `output` name (or a preprocess step's `name`), a resolved analysis
+name (`Pipeline.resolved_names()`), or `*` for every element that has the field.
+
+```python
+pipe2 = pipe.set_param(
+    "analyses.*.metric.smooth_sigma_bins", 1.0,
+    method="user_pick", criterion="heldout_poisson_loglik", note="looked at the sweep",
+)
+pipe2.get_param("analyses.*.metric.smooth_sigma_bins")
+```
+
+`set_param` returns a modified copy, re-validates the plugin, and appends the
+`Selection` to `Pipeline.selections`. Selections are saved with the pipeline
+(`to_dict` / `to_yaml`) and copied into each result's
+`provenance["selections"]` (pipeline-level ones to every result, analysis-level
+ones to the analysis they name); `ResultSet.selections` lists them without
+duplicates.
+
+**A selection criterion must never be a p-value or a count of significant
+cells.** Choosing a parameter by how many cells it makes significant biases the
+null test in favour of the chosen value. Use a held-out score (cross-validated
+likelihood, decoding accuracy on held-out folds) or a data-quality measure that
+does not see the null. If a value was picked after looking at p-values anyway,
+set `informed_by_significance=True` so the record says so. The planned
+`cabana.sweep` facility (roadmap B1) and the automatic smoothing step (B3, B4)
+will enforce this and write the same record.

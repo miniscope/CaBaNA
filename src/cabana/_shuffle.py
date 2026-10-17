@@ -41,6 +41,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from scipy.stats import false_discovery_control, rankdata
 
+from ._kernels import shifted_sums
 from ._nulls import CircularShift, draw_shifts
 from ._registry import Metric, Null, Target, build
 from ._results import ShuffleResult, Tail
@@ -199,49 +200,6 @@ class ShuffleConfig(BaseModel):
         d = super().model_dump(**kw)
         d["null"] = None if self.null is None else self.null.to_dict()
         return d
-
-
-def shifted_sums(
-    x: np.ndarray,
-    columns: np.ndarray,
-    shifts: np.ndarray,
-) -> np.ndarray:
-    """Per-column sums of ``x`` after each circular shift.
-
-    Parameters
-    ----------
-    x : (n_cells, n_time) float
-        Per-cell time series (activity, ranks, ...).
-    columns : (n_time, n_cols) float
-        Indicator / weight matrix, typically ``states.masked(mask)`` or a
-        concatenation of such matrices (e.g. first-half and second-half
-        indicators side by side).  Frames outside the mask must already be
-        zero here.
-    shifts : (n_shifts,) int
-        Frame offsets; ``0`` reproduces the unshifted sums.
-
-    Returns
-    -------
-    (n_shifts, n_cells, n_cols) float
-        ``out[i, c, j] = sum_t roll(x[c], shifts[i])[t] * columns[t, j]``.
-
-    Notes
-    -----
-    Implemented as one ``(n_cells, n_time) @ (n_time, n_cols)`` product per
-    shift.  Rolling the (small) column matrix the opposite way is equivalent
-    to rolling every row of ``x`` and is cheaper when ``n_cols < n_cells``.
-    """
-    x = np.asarray(x, dtype=np.float64)
-    columns = np.asarray(columns, dtype=np.float64)
-    shifts = np.asarray(shifts, dtype=np.int64)
-    n_cells, n_time = x.shape
-    if columns.shape[0] != n_time:
-        raise ValueError(f"columns has {columns.shape[0]} rows but x has {n_time} frames")
-    out = np.empty((shifts.size, n_cells, columns.shape[1]), dtype=np.float64)
-    for i, k in enumerate(shifts):
-        # roll(x, k)[t] = x[t - k]  ==>  sum_t x[t-k] M[t] = sum_u x[u] M[u+k] = x @ roll(M, -k)
-        out[i] = x @ np.roll(columns, -int(k), axis=0)
-    return out
 
 
 def _p_values(observed: np.ndarray, null: np.ndarray, tail: Tail) -> np.ndarray:

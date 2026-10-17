@@ -27,6 +27,7 @@ from . import _transform as _transform  # noqa: F401  (registers plugins)
 from ._models import Session
 from ._registry import _REGISTRY, Metric, PreprocessStep, Transform, build
 from ._results import MetricResult, ResultSet, RunError, RunWarning
+from ._selection import Selection
 from ._shuffle import RunCancelled, ShuffleConfig, resolve_n_jobs, shuffle_test
 
 try:  # optional
@@ -288,6 +289,9 @@ class Pipeline(BaseModel):
             ],
         )
 
+    ``selections`` records how parameter values were chosen (:meth:`set_param`); each
+    result's provenance copies the relevant ones.
+
     Each result's ``provenance`` records version, seed, null, masks used, frames
     used, sampling rate, activity kind, transform parameters and a timestamp.
     """
@@ -297,6 +301,10 @@ class Pipeline(BaseModel):
     transforms: list[Transform] = Field(default_factory=list, description="Applied first.")
     preprocess: list[PreprocessStep] = Field(default_factory=list, description="Applied second.")
     analyses: list[AnalysisSpec] = Field(default_factory=list, description="Run last.")
+    selections: list[Selection] = Field(
+        default_factory=list,
+        description="How parameter values were chosen (see Pipeline.set_param); copied to provenance.",
+    )
 
     @field_validator("transforms", mode="before")
     @classmethod
@@ -307,6 +315,205 @@ class Pipeline(BaseModel):
     @classmethod
     def _p(cls, v: Any) -> Any:
         return _build_list("preprocess", v)
+
+    def resolved_names(self) -> list[str]:
+        """Result names of the analyses, in order, exactly as a run will assign them.
+
+        Raises
+        ------
+        ValueError
+            If two analyses share an explicit ``name``.
+        """
+        reserved = {a.name for a in self.analyses if a.name is not None}
+        if len(reserved) != sum(a.name is not None for a in self.analyses):
+            raise ValueError("duplicate AnalysisSpec.name in pipeline")
+        used: set[str] = set()
+        out: list[str] = []
+        for spec in self.analyses:
+            if spec.name is not None:
+                name = spec.name
+            else:
+                base = f"{spec.metric.name}[{spec.target}]"
+                cands = [base]
+                if spec.shuffle is not None:
+                    cands.append(f"{base}#{spec.shuffle.resolved_null().name}")
+                name = next((c for c in cands if c not in used and c not in reserved), "")
+                if not name:
+                    n = 2
+                    while f"{base}#{n}" in used or f"{base}#{n}" in reserved:
+                        n += 1
+                    name = f"{base}#{n}"
+            used.add(name)
+            out.append(name)
+        return out
+
+    # ---- parameter addressing -------------------------------------------------
+
+    def _resolve_key(self, section: str, key: str) -> list[int]:
+        """Indices in ``section`` selected by ``key`` (index, ``*``, or a name)."""
+        items = getattr(self, section)
+        if key == "*":
+            return list(range(len(items)))
+        if key.lstrip("-").isdigit():
+            i = int(key)
+            if not -len(items) <= i < len(items):
+                raise KeyError(f"{section}[{i}] out of range (have {len(items)})")
+            return [i % len(items)]
+        if section == "analyses":
+            names = self.resolved_names()
+            if key in names:
+                return [names.index(key)]
+            raise KeyError(f"no analysis named {key!r}; available: {names}")
+        attrs = ("output", "name") if section == "transforms" else ("name", "output")
+        for attr in attrs:
+            hits = [i for i, x in enumerate(items) if getattr(x, attr, None) == key]
+            if len(hits) == 1:
+                return hits
+            if len(hits) > 1:
+                raise KeyError(
+                    f"{section} key {key!r} is ambiguous ({len(hits)} elements have "
+                    f"{attr}={key!r}); use an integer index"
+                )
+        avail = [getattr(x, "output", None) or x.name for x in items]
+        raise KeyError(f"no {section} element {key!r}; available: {avail}")
+
+    def _parse_path(self, path: str) -> tuple[str, list[int], str | None, str, bool]:
+        """Return ``(section, indices, sub, field, wildcard)`` with only valid, existing targets."""
+        parts = path.split(".")
+        if len(parts) < 3 or parts[0] not in ("transforms", "preprocess", "analyses"):
+            raise ValueError(
+                f"bad parameter path {path!r}: expected transforms.<key>.<field>, "
+                "preprocess.<key>.<field>, analyses.<key>.metric.<field>, "
+                "analyses.<key>.shuffle.<field> or analyses.<key>.<field>"
+            )
+        section, key, rest = parts[0], parts[1], parts[2:]
+        sub: str | None = None
+        if section == "analyses" and rest[0] in ("metric", "shuffle"):
+            if len(rest) != 2:
+                raise ValueError(
+                    f"bad parameter path {path!r}: expected analyses.<key>.{rest[0]}.<field>"
+                )
+            sub = rest[0]
+        elif len(rest) != 1:
+            raise ValueError(f"bad parameter path {path!r}: too many components")
+        field = rest[-1]
+        wildcard = key == "*"
+        idxs = self._resolve_key(section, key)
+        keep: list[int] = []
+        for i in idxs:
+            obj: Any = getattr(self, section)[i]
+            if sub is not None:
+                obj = getattr(obj, sub)
+                if obj is None:
+                    continue
+            if field in type(obj).model_fields:
+                keep.append(i)
+        if not keep:
+            what = "any element" if wildcard else "the element"
+            raise ValueError(f"{what} addressed by {path!r} has no field {field!r}")
+        return section, keep, sub, field, wildcard
+
+    def get_param(self, path: str) -> Any:
+        """Value at a dotted parameter path; a list (one per element) for a ``*`` key.
+
+        Path grammar: ``transforms.<key>.<field>``, ``preprocess.<key>.<field>``,
+        ``analyses.<key>.metric.<field>``, ``analyses.<key>.shuffle.<field>`` and
+        ``analyses.<key>.<field>`` (e.g. ``masks``).  ``<key>`` is an integer index,
+        the ``output`` name (transforms; also preprocess) or ``name`` (preprocess;
+        also transforms), the resolved analysis name (see :meth:`resolved_names`),
+        or ``*`` for every element that has the field.  Keys cannot contain dots.
+
+        Raises
+        ------
+        ValueError
+            For a malformed path or a field that does not exist.
+        KeyError
+            For an unknown or ambiguous key.
+        """
+        section, idxs, sub, field, wildcard = self._parse_path(path)
+        vals = []
+        for i in idxs:
+            obj: Any = getattr(self, section)[i]
+            if sub is not None:
+                obj = getattr(obj, sub)
+            vals.append(getattr(obj, field))
+        return vals if wildcard else vals[0]
+
+    def set_param(
+        self,
+        path: str,
+        value: Any,
+        *,
+        selection: Selection | None = None,
+        method: str | None = None,
+        criterion: str | None = None,
+        candidates: list[Any] | None = None,
+        scores: list[float] | None = None,
+        split: str | None = None,
+        informed_by_significance: bool = False,
+        note: str | None = None,
+    ) -> Pipeline:
+        """Return a copy with ``value`` set at ``path`` (this pipeline is not modified).
+
+        The plugin or spec is re-validated with the new value, so invalid values
+        raise ``pydantic.ValidationError``.  Give ``selection`` (a
+        :class:`Selection` whose ``path`` equals ``path``) or ``method=`` (plus
+        optional ``criterion``, ``candidates``, ``scores``, ``split``,
+        ``informed_by_significance``, ``note``) to append a record to
+        ``selections``.  See :meth:`get_param` for the path grammar.
+        """
+        if selection is not None and method is not None:
+            raise ValueError("pass selection= or method=, not both")
+        if selection is not None and selection.path != path:
+            raise ValueError(f"selection.path {selection.path!r} != path {path!r}")
+        section, idxs, sub, field, _ = self._parse_path(path)
+
+        def revalidate(obj: Any) -> Any:
+            data = {k: getattr(obj, k) for k in type(obj).model_fields}
+            data[field] = value
+            return type(obj).model_validate(data)
+
+        items = list(getattr(self, section))
+        for i in idxs:
+            if sub is None:
+                items[i] = revalidate(items[i])
+            else:
+                spec = items[i]
+                data = {k: getattr(spec, k) for k in type(spec).model_fields}
+                data[sub] = revalidate(getattr(spec, sub))
+                items[i] = type(spec).model_validate(data)
+        update: dict[str, Any] = {section: items}
+        if method is not None:
+            selection = Selection(
+                path=path,
+                value=value,
+                method=method,  # type: ignore[arg-type]
+                criterion=criterion,
+                candidates=candidates,
+                scores=scores,
+                split=split,
+                informed_by_significance=informed_by_significance,
+                note=note,
+            )
+        if selection is not None:
+            update["selections"] = [*self.selections, selection]
+        return self.model_copy(update=update)
+
+    def _selections_for(self, name: str) -> list[dict[str, Any]]:
+        """Selections relevant to the analysis ``name`` (pipeline-level plus its own)."""
+        try:
+            idx = self.resolved_names().index(name)
+        except ValueError:
+            idx = -1
+        own = {name, "*", str(idx)}
+        out = []
+        for s in self.selections:
+            head = s.path.split(".")
+            if head[0] in ("transforms", "preprocess") or (
+                head[0] == "analyses" and len(head) > 1 and head[1] in own
+            ):
+                out.append(s.model_dump(mode="json"))
+        return out
 
     def run(
         self,
@@ -425,25 +632,7 @@ class Pipeline(BaseModel):
             if ctx.should_cancel is not None and ctx.should_cancel():
                 raise RunCancelled("cancelled")
 
-        reserved = {a.name for a in self.analyses if a.name is not None}
-        if len(reserved) != sum(a.name is not None for a in self.analyses):
-            raise ValueError("duplicate AnalysisSpec.name in pipeline")
-        used: set[str] = set()
-
-        def unique_name(spec: AnalysisSpec) -> str:
-            if spec.name is not None:
-                return spec.name
-            base = f"{spec.metric.name}[{spec.target}]"
-            cands = [base]
-            if spec.shuffle is not None:
-                cands.append(f"{base}#{spec.shuffle.resolved_null().name}")
-            n = 2
-            for c in cands:
-                if c not in used and c not in reserved:
-                    return c
-            while f"{base}#{n}" in used or f"{base}#{n}" in reserved:
-                n += 1
-            return f"{base}#{n}"
+        all_names = self.resolved_names()
 
         frac = 0.0
         try:
@@ -484,8 +673,7 @@ class Pipeline(BaseModel):
                 w = weights[ai]
                 base_frac = pre_slice + (1 - pre_slice) * done_w / wtot
                 check_cancel()
-                name = unique_name(spec)
-                used.add(name)
+                name = all_names[ai]
                 say(f"[analyze] {name}")
                 emit("analysis", name, ai, n_a, base_frac, message="start")
                 frac = base_frac
@@ -674,6 +862,7 @@ class Pipeline(BaseModel):
             "n_cells": session.n_cells,
             "target_kind": metric.input,
             "target_params": _target_params(session, spec.target),
+            "selections": self._selections_for(name),
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         }
         return MetricResult(
@@ -693,11 +882,14 @@ class Pipeline(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Plain-dict form (``{"transforms": [...], "preprocess": [...], "analyses": [...]}``)."""
-        return {
+        d: dict[str, Any] = {
             "transforms": [t.to_dict() for t in self.transforms],
             "preprocess": [p.to_dict() for p in self.preprocess],
             "analyses": [a.to_dict() for a in self.analyses],
         }
+        if self.selections:  # omitted when empty so pipelines without selections hash as before
+            d["selections"] = [s.model_dump(mode="json") for s in self.selections]
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Pipeline:
@@ -706,6 +898,7 @@ class Pipeline(BaseModel):
             transforms=d.get("transforms", []),
             preprocess=d.get("preprocess", []),
             analyses=d.get("analyses", []),
+            selections=d.get("selections", []),
         )
 
     def to_yaml(self, path: str | Path | None = None) -> str:
@@ -1104,7 +1297,7 @@ def describe() -> dict[str, Any]:
     -------
     dict
         ``{"version", "plugins": {kind: {name: {"schema", ...}}}, "schemas":
-        {"ShuffleConfig", "AnalysisSpec", "Pipeline"}}``.  Metric entries also
+        {"ShuffleConfig", "AnalysisSpec", "Pipeline", "Selection"}}``.  Metric entries also
         carry ``level``, ``input``, ``default_tail`` and ``requires_topology``.
     """
     from . import __version__
@@ -1133,6 +1326,7 @@ def describe() -> dict[str, Any]:
             "ShuffleConfig": schema(ShuffleConfig),
             "AnalysisSpec": schema(AnalysisSpec),
             "Pipeline": schema(Pipeline),
+            "Selection": schema(Selection),
         },
     }
 
@@ -1146,6 +1340,7 @@ __all__ = [
     "RunError",
     "RunSetResult",
     "RunWarning",
+    "Selection",
     "describe",
     "run_set",
 ]

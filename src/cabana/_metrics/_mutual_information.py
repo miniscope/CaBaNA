@@ -7,6 +7,7 @@ from typing import ClassVar, Literal
 import numpy as np
 from pydantic import Field
 
+from .._kernels import mutual_information_from_counts
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
@@ -20,42 +21,6 @@ from ._discretize import (
 from ._ratemap import valid_states
 
 _LN2 = float(np.log(2.0))
-
-
-def mutual_information_from_counts(
-    counts: np.ndarray, bias_correction: Literal["none", "miller_madow"] = "none"
-) -> np.ndarray:
-    """Plug-in mutual information (bits) over the last two axes.
-
-    Parameters
-    ----------
-    counts : (..., n_states, n_levels) float
-        Joint counts ``n(s, l)``.
-    bias_correction : {"none", "miller_madow"}
-        ``"miller_madow"`` adds ``[(Ks - 1) + (Kl - 1) - (Kj - 1)] / (2 N ln 2)``
-        where ``Ks``, ``Kl``, ``Kj`` are the numbers of non-empty state, level and
-        joint cells (the Miller-Madow entropy correction applied to
-        ``H(S) + H(L) - H(S, L)``); it lowers the estimate.
-
-    Returns
-    -------
-    (...) float
-        ``sum p(s,l) log2[p(s,l) / (p(s) p(l))]`` with ``0 log 0 = 0``; NaN
-        where the total count is zero.
-    """
-    n = np.asarray(counts, dtype=np.float64)
-    total = n.sum(axis=(-2, -1))
-    ns = n.sum(axis=-1, keepdims=True)
-    nl = n.sum(axis=-2, keepdims=True)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio = n * total[..., None, None] / (ns * nl)
-        mi = np.where(n > 0, n * np.log2(ratio), 0.0).sum(axis=(-2, -1)) / total
-        if bias_correction == "miller_madow":
-            ks = (ns[..., 0] > 0).sum(axis=-1)
-            kl = (nl[..., 0, :] > 0).sum(axis=-1)
-            kj = (n > 0).sum(axis=(-2, -1))
-            mi = mi + (ks + kl - kj - 1) / (2.0 * total * _LN2)
-    return np.where(total > 0, mi, np.nan)
 
 
 @register("metric")

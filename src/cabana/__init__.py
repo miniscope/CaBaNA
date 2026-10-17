@@ -69,6 +69,7 @@ from ._pipeline import (
     describe,
     run_set,
 )
+from ._selection import Selection
 from ._posthoc import (
     ClusterResult,
     OverlapResult,
@@ -198,6 +199,7 @@ __all__ = [
     "RunContext",
     "RunError",
     "RunSetResult",
+    "Selection",
     "RunWarning",
     "describe",
     "run_set",

@@ -89,7 +89,7 @@ class BayesianDecoder(Metric):
         space with a ``GridTopology``.  For gaussian/poisson it smooths rate
         maps; for empirical it smooths the joint (state, level) counts per level
         and the occupancy prior (edge-normalised) before the pseudocount.
-    n_folds : int, default 4
+    n_folds : int, default 5
         Number of contiguous time blocks used as cross-validation folds (>= 2).
     n_trial_blocks : int, default 10
         Gaussian likelihood only: number of contiguous training blocks standing
@@ -162,7 +162,7 @@ class BayesianDecoder(Metric):
     )
     window_s: float = Field(0.25, ge=0, description="Total width of the test-time boxcar (s).")
     smooth_sigma_bins: float = Field(0.0, ge=0, description="Gaussian map smoothing (grid only).")
-    n_folds: int = Field(4, ge=2, description="Number of contiguous time-block CV folds.")
+    n_folds: int = Field(5, ge=2, description="Number of contiguous time-block CV folds.")
     n_trial_blocks: int = Field(10, ge=1, description="Training blocks standing in for trials.")
     sigma: Literal["per_state", "pooled"] = Field(
         "per_state",

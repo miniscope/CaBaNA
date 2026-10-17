@@ -7,35 +7,12 @@ from typing import ClassVar, Literal
 import numpy as np
 from pydantic import Field
 
+from .._kernels import skaggs_information as _si
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
 from .._statesums import masked_counts, shifted_sums_for, state_sums
 from ._ratemap import rate_maps_from_sums
-
-
-def _si(
-    rate: np.ndarray, occ_frames: np.ndarray, valid: np.ndarray, per_second: bool
-) -> np.ndarray:
-    """Skaggs information over the last axis of ``rate`` (NaN where invalid)."""
-    occ = np.where(valid, occ_frames, 0.0).astype(np.float64)
-    total = occ.sum()
-    if total <= 0 or not valid.any():
-        return np.full(rate.shape[:-1], np.nan)
-    p = occ / total
-    lam = np.where(valid, rate, 0.0)
-    mean = (lam * p).sum(axis=-1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        # in-place steps keep the temporaries to two arrays the size of ``rate``
-        rel = lam / mean[..., None]
-        term = np.log2(rel, out=np.zeros_like(rel), where=lam > 0)  # 0 where lam <= 0
-        term *= rel
-        term *= p
-    si = term.sum(axis=-1)
-    si = np.where(mean > 0, si, np.nan)  # a silent cell carries no information: undefined
-    if per_second:
-        si = si * mean
-    return si
 
 
 @register("metric")
