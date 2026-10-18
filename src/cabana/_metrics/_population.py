@@ -82,6 +82,9 @@ class PopulationVectorOverlap(Metric):
     """
 
     name: ClassVar[str] = "population_vector_overlap"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map": ("cell", "state"),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
@@ -176,6 +179,11 @@ class PopulationVectorStability(Metric):
     """
 
     name: ClassVar[str] = "pv_stability"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map_a": ("cell", "state"),
+        "rate_map_b": ("cell", "state"),
+        "valid_states": ("state",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("metric_strip",)

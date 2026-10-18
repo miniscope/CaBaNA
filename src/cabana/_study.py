@@ -107,6 +107,26 @@ class StudySpec(BaseModel):
 
     _base_dir: Path | None = PrivateAttr(default=None)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _default_criteria_names(cls, data: Any) -> Any:
+        crit = data.get("criteria") if isinstance(data, dict) else None
+        if crit is None:
+            return data
+        if not isinstance(crit, dict):
+            raise ValueError("criteria must be a mapping of class name -> criteria")
+        fixed: dict[str, Any] = {}
+        for k, c in crit.items():
+            if isinstance(c, dict):
+                c = {"name": k, **c}
+            elif not isinstance(c, str | Criteria):
+                raise ValueError(
+                    f"criteria {k!r}: expected an inline mapping or a path to a criteria YAML, "
+                    f"got {type(c).__name__}"
+                )
+            fixed[k] = c
+        return {**data, "criteria": fixed}
+
     @model_validator(mode="after")
     def _check(self) -> StudySpec:
         if not self.sessions:
@@ -318,16 +338,31 @@ def save_cancelled(run: RunSetResult, out_dir: str | Path) -> list[Path]:
     """Write the partial results of cancelled sessions as ``<sid>.results.cancelled.zip``.
 
     ``run_set`` does not write cancelled sessions; the distinct name keeps ``resume``
-    from mistaking a partial result for a finished one.
+    from mistaking a partial result for a finished one.  A stale cancelled zip of a
+    session that has since completed into ``out_dir`` is deleted, and the cancelled
+    sessions get a ``"file"`` entry in ``run_set.json`` (other keys are kept).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths = []
     for sid, rs in run.results.items():
+        f = out / f"{sid}.results.cancelled.zip"
         if rs.cancelled:
-            f = out / f"{sid}.results.cancelled.zip"
             rs.save(f)
             paths.append(f)
+        elif run.status.get(sid) in ("ok", "partial"):
+            f.unlink(missing_ok=True)
+    meta_path = out / "run_set.json"
+    if paths and meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        sessions = meta.get("sessions", {})
+        for f in paths:
+            sid = f.name.removesuffix(".results.cancelled.zip")
+            if isinstance(sessions.get(sid), dict):
+                sessions[sid]["file"] = f.name
+        tmp = out / "run_set.json.tmp"
+        tmp.write_text(json.dumps(meta, indent=2))
+        tmp.replace(meta_path)
     return paths
 
 
@@ -358,7 +393,9 @@ def run_study(
     Raises
     ------
     ValueError
-        If a session cannot be loaded (the message names the session id).
+        If a session cannot be loaded (the message names the session id), or the
+        criteria cannot be evaluated on a finished session (result zips and
+        ``study.json`` with ``classification_errors`` are written first).
     """
     from . import __version__
     from ._cohort_models import SessionSet
@@ -389,6 +426,7 @@ def run_study(
 
     classifications: dict[str, ClassificationResult] = {}
     cls_errors: dict[str, str] = {}
+    fatal: tuple[str, Exception] | None = None
     if criteria:
         for sid, rs in run.results.items():
             if run.status.get(sid) not in ("ok", "partial"):
@@ -396,8 +434,8 @@ def run_study(
             try:
                 classifications[sid] = classify(rs, criteria)
             except Exception as e:
-                if run.status[sid] == "ok":
-                    raise
+                if run.status[sid] == "ok" and fatal is None:
+                    fatal = (sid, e)
                 cls_errors[sid] = f"{type(e).__name__}: {e}"
     if run.cancelled:
         status = "cancelled"
@@ -416,10 +454,26 @@ def run_study(
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "elapsed_s": round(time.perf_counter() - t0, 3),
             "animal": animal,
-            "sessions": {sid: {"status": run.status.get(sid, "not_run")} for sid in sessions},
+            "sessions": {
+                sid: {
+                    "status": run.status.get(sid, "not_run"),
+                    **(
+                        {"file": f"{sid}.results.cancelled.zip"}
+                        if run.status.get(sid) == "cancelled"
+                        else {}
+                    ),
+                }
+                for sid in sessions
+            },
             "classification_counts": {sid: c.counts() for sid, c in classifications.items()},
             "classification_errors": cls_errors,
         }
         Path(out).mkdir(parents=True, exist_ok=True)
         (Path(out) / "study.json").write_text(json.dumps(doc, indent=2, default=str))
+    if fatal is not None:
+        sid, e = fatal
+        where = f"result zips were saved in {out}" if out is not None else "results were not saved"
+        raise ValueError(
+            f"session {sid!r}: criteria could not be evaluated ({type(e).__name__}: {e}); {where}"
+        ) from e
     return result

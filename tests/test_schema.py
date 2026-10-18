@@ -252,24 +252,130 @@ def test_array_meta_shuffle_and_extras():
     }
     assert _array_meta(r, "sh_shifts", np.zeros(7, np.int32))["axes"] == ["shuffle"]
     assert _array_meta(r, "sh_p_value", np.zeros((5, 3)))["axes"] == ["cell", "state"]
-    assert _array_meta(r, "extra_0", np.zeros((5, 3)))["axes"] == ["cell", "state"]
+    # extras of an unregistered metric: no size matching beyond a leading cell axis
+    assert _array_meta(r, "extra_0", np.zeros((5, 3)))["axes"] == ["cell", None]
     assert _array_meta(r, "extra_1", np.zeros(3, bool)) == {
         "shape": [3],
         "dtype": "bool",
-        "axes": ["state"],
+        "axes": [None],
     }
-    assert _array_meta(r, "extra_2", np.zeros((5, 3, 11)))["axes"] == ["cell", "state", None]
+    assert _array_meta(r, "extra_2", np.zeros((5, 3, 11)))["axes"] == ["cell", None, None]
     assert _array_meta(r, "extra_3", np.zeros(()))["axes"] == []
+    assert _array_meta(r, "extra_4", np.zeros(200))["axes"] == [None]  # no "shuffle" guess
 
 
 def test_array_meta_grid():
-    r = _res("cell", np.zeros((5, 6)), cell_ids=list("abcde"), state_names=None, provenance={})
-    ax = _array_meta(r, "extra_0", np.zeros((5, 2, 3)))["axes"]
-    assert ax == ["cell", "bin", "bin"]
-    ax = _array_meta(r, "extra_0", np.zeros((5, 2, 3)), grid_shape=(2, 3))["axes"]
+    r = _res("cell", np.zeros((5, 2, 3)), cell_ids=list("abcde"), state_names=None, provenance={})
+    ax = _array_meta(r, "values", r.values, grid_shape=(2, 3))["axes"]
     assert ax == ["cell", "bin", "bin"]
     r.provenance = {"target_params": {"shape": [2, 3]}}
-    assert _array_meta(r, "extra_0", np.zeros((5, 2, 3)))["axes"] == ["cell", "bin", "bin"]
+    assert _array_meta(r, "values", r.values)["axes"] == ["cell", "bin", "bin"]
+
+
+def _named(metric, level, values, n_cells, state_names=None, **kw):
+    return MetricResult.model_construct(
+        metric=metric,
+        target="t",
+        level=level,
+        values=np.asarray(values),
+        extras={},
+        cell_ids=[str(i) for i in range(n_cells)] if level == "cell" else None,
+        state_names=state_names,
+        provenance=kw.pop("provenance", {"n_cells": n_cells}),
+        **kw,
+    )
+
+
+def test_declared_values_axes_for_cell_by_cell_matrix():
+    # pairwise_correlation labels its state axis with cell ids: the matrix is cell x cell
+    sh = ShuffleResult.model_construct(n_shuffles=50)
+    r = _named(
+        "pairwise_correlation",
+        "population",
+        np.zeros((6, 6)),
+        6,
+        shuffle=sh,
+        state_names=[str(i) for i in range(6)],
+    )
+    assert _array_meta(r, "values", r.values)["axes"] == ["cell", "cell"]
+    assert _array_meta(r, "sh_null", np.zeros((50, 6, 6)))["axes"] == ["shuffle", "cell", "cell"]
+    assert _array_meta(r, "sh_p_value", np.zeros((6, 6)))["axes"] == ["cell", "cell"]
+
+
+def test_declared_axes_beat_size_coincidences():
+    # signal_tuning: 20 cells and 20 bins
+    r = _named("signal_tuning", "cell", np.zeros(20), 20)
+    assert _array_meta(r, "extra_0", np.zeros((20, 20)), extra_name="tuning_curve")["axes"] == [
+        "cell",
+        "bin",
+    ]
+    for name in ("bin_centers", "occupancy_s", "valid_bins"):
+        assert _array_meta(r, "extra_0", np.zeros(20), extra_name=name)["axes"] == ["bin"]
+    # peth with n_shuffles == n_time_bins == 200
+    sh = ShuffleResult.model_construct(n_shuffles=200)
+    r = _named("peth", "cell", np.zeros((20, 4)), 20, shuffle=sh, state_names=list("abcd"))
+    assert _array_meta(r, "extra_0", np.zeros(200), extra_name="time_s")["axes"] == ["time"]
+    pe = _array_meta(r, "extra_1", np.zeros((20, 4, 200)), extra_name="peth_sem")["axes"]
+    assert pe == ["cell", "state", "time"]
+    # n_cells == n_states
+    r = _named(
+        "information_content", "cell", np.zeros(16), 16, state_names=[str(i) for i in range(16)]
+    )
+    ax = _array_meta(r, "extra_0", np.zeros((16, 16)), extra_name="rate_map")["axes"]
+    assert ax == ["cell", "state"]
+    assert _array_meta(r, "extra_1", np.zeros(16), extra_name="occupancy_s")["axes"] == ["state"]
+    r = _named("pv_stability", "population", np.zeros((16, 16)), 16, [str(i) for i in range(16)])
+    ax = _array_meta(r, "extra_0", np.zeros((16, 16)), extra_name="rate_map_a")["axes"]
+    assert ax == ["cell", "state"]
+    r = _named("participation_ratio", "population", np.zeros(1), 8)
+    ax = _array_meta(r, "extra_0", np.zeros(8), extra_name="eigenvalues")["axes"]
+    assert ax == ["component"]
+
+
+def test_declaration_ndim_mismatch_falls_back():
+    r = _named("information_content", "cell", np.zeros(5), 5)
+    ax = _array_meta(r, "extra_0", np.zeros((5, 3, 2)), extra_name="rate_map")["axes"]
+    assert ax == ["cell", None, None]
+
+
+def test_every_axis_label_is_in_vocabulary():
+    from cabana._io import AXIS_LABELS
+    from cabana._registry import _REGISTRY
+
+    for name, cls in _REGISTRY["metric"].items():
+        for k, axes in cls.extras_axes.items():
+            assert all(a is None or a in AXIS_LABELS for a in axes), (name, k)
+    assert set(AXIS_LABELS) == set(
+        cabana.resultset_schema()["$defs"]["array_meta"]["properties"]["axes"]["items"]["enum"]
+    ) - {None}
+
+
+def test_probe_matches_saved_manifest(tmp_path):
+    from cabana._describe import _probe_session
+
+    session = _probe_session()
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(name="ds", metric={"name": "decode_signal"}, signal="x"),
+            AnalysisSpec(name="au", metric={"name": "auroc"}, states="position"),
+        ]
+    )
+    rs = pipe.run(session, progress=False)[1]
+    save_results(rs, tmp_path / "r.zip")
+    man = _manifest(tmp_path / "r.zip")
+    d = cabana.describe(probe=True)["plugins"]["metric"]
+    for e in man["results"]:
+        probed = d[e["metric"]]["outputs"]["extras"]
+        assert probed
+        for j, name in e["extras"].items():
+            assert probed[name] == e["arrays"][j], (e["metric"], name)
+    ds = next(e for e in man["results"] if e["metric"] == "decode_signal")
+    assert ds["arrays"][next(j for j, n in ds["extras"].items() if n == "r2")]["axes"] == [
+        "channel"
+    ]
+    assert ds["state_names"] == ["x"]
+    probe_gn = d["decode_signal"]["outputs"]["extras"]["group_names"]
+    assert probe_gn["dtype"].startswith("str")
 
 
 def test_schema_dispatch():
@@ -284,3 +390,46 @@ def test_schema_dispatch():
             assert n in str(exc)
     with pytest.raises(KeyError, match="resultset"):
         cabana.schema("nope")
+
+
+def _validates(name, doc):
+    sch = cabana.schema(name)
+    return validate(doc, sch, sch)
+
+
+def test_pipeline_yaml_validates_against_schema():
+    import yaml
+
+    files = sorted((ROOT / "tests" / "golden").glob("*.pipeline.yaml"))
+    assert files
+    for f in files:
+        doc = yaml.safe_load(f.read_text())
+        assert not _validates("pipeline", doc), f.name
+    doc = yaml.safe_load(files[0].read_text())
+    bad = copy.deepcopy(doc)
+    bad["transforms"][0]["name"] = "no_such_transform"
+    assert _validates("pipeline", bad)
+    bad = copy.deepcopy(doc)
+    bad["transforms"][0]["bogus_field"] = 1
+    assert _validates("pipeline", bad)
+
+
+def test_study_yaml_validates_against_schema():
+    import yaml
+
+    text = (ROOT / "docs" / "CLI.md").read_text()
+    m = re.search(r"```yaml\n(kind: cabana\.Study.*?)```", text, re.S)
+    assert m
+    doc = yaml.safe_load(m.group(1))
+    assert doc["kind"] == "cabana.Study"
+    assert not _validates("study", doc)
+    assert cabana.schema("study")["properties"]["kind"]["const"] == "cabana.Study"
+    doc["kind"] = "other"
+    assert _validates("study", doc)
+
+
+def test_provenance_target_shape_known():
+    props = cabana.resultset_schema()["$defs"]["entry"]["properties"]["provenance"]["properties"]
+    assert "target_shape" in props
+    desc = cabana.resultset_schema()["properties"]["schema_version"]["description"]
+    assert "absent" not in desc

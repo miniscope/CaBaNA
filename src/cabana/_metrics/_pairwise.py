@@ -141,6 +141,14 @@ class PairwiseCorrelation(Metric):
     """
 
     name: ClassVar[str] = "pairwise_correlation"
+    values_axes: ClassVar[tuple[str | None, ...] | None] = ("cell", "cell")
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "n_frames": (),
+        "mean_offdiag": (),
+        "state_means": ("cell", "state"),
+        "per_state": ("state", "cell", "cell"),
+        "group_names": ("cell",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "two"
     default_plots: ClassVar[tuple[str, ...]] = ("pairwise_matrix", "population_matrix")
@@ -300,6 +308,12 @@ class ParticipationRatio(Metric):
     """
 
     name: ClassVar[str] = "participation_ratio"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "eigenvalues": ("component",),
+        "variance_explained": ("component",),
+        "n_frames": (),
+        "group_names": ("group",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "two"
     default_plots: ClassVar[tuple[str, ...]] = ("participation_ratio", "metric_strip")

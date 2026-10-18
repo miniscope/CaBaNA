@@ -114,6 +114,16 @@ class DecodeSignal(Metric):
     """
 
     name: ClassVar[str] = "decode_signal"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "prediction": ("time", "channel"),
+        "r2": ("channel",),
+        "corr": ("channel",),
+        "mae": ("channel",),
+        "chance_mae": ("channel",),
+        "fold_scores": ("fold", "channel"),
+        "n_frames": (None,),
+        "group_names": ("channel",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"

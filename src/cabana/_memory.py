@@ -4,7 +4,12 @@ The dominant allocation of a shuffle test is the null, ``(n_shuffles, *output)``
 float64: a 6400-state grid with 200 cells and 1000 shuffles needs 10 GB.
 :func:`memory_estimate` reports, per analysis, the null, the ``compute_shifted``
 batch intermediate and the dense indicator, applies the same chunking rule as
-:func:`cabana.shuffle_test` (``keep_null="none"``), and suggests remedies.
+:func:`cabana.shuffle_test` (:func:`cabana._shuffle.plan_chunks`), adds the summary
+temporaries and suggests remedies.
+
+The summary step (finite mask, tie comparisons, percentiles, median/mean/std, ``max_stat``
+ranks) allocates temporaries of a few times the held null; :data:`SUMMARY_FACTOR` (3x) is the
+measured allowance, so the estimate lands within a factor of 2 of a ``tracemalloc`` peak.
 
 Output sizes follow the metric's ``level`` and the target's number of states;
 the shape table :data:`_PER_STATE_CELL` / :data:`_POPULATION_SHAPES` covers the built-in metrics
@@ -18,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._shuffle import plan_chunks
 from ._statesums import DENSE_MAX_STATES
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -36,6 +42,10 @@ _POPULATION_SHAPES: dict[str, str] = {
     "decode_states": "states",
     "pv_stability": "states",
 }
+
+
+#: Temporaries of the summary step as a multiple of the null held at once.
+SUMMARY_FACTOR = 3
 
 
 def shuffle_memory_bytes(n_shuffles: int, shape: tuple[int, ...], dtype: Any = "float64") -> int:
@@ -73,13 +83,16 @@ class AnalysisMemory:
     """Memory footprint of one analysis (bytes).
 
     ``null_bytes`` is the null actually held at once (one chunk when ``chunked``);
-    ``null_bytes_full`` the whole ``(n_shuffles, *output)`` array.
+    ``null_bytes_full`` the whole ``(n_shuffles, *output)`` array; ``summary_bytes`` the
+    temporaries of the p-value / bounds / moments step (``SUMMARY_FACTOR`` times the held
+    null).
     """
 
     null_bytes: int = 0
     null_bytes_full: int = 0
     batch_bytes: int = 0
     indicator_bytes: int = 0
+    summary_bytes: int = 0
     extras_bytes_estimate: int = 0
     chunked: bool = False
     n_chunks: int = 1
@@ -88,7 +101,11 @@ class AnalysisMemory:
     @property
     def total_bytes(self) -> int:
         return (
-            self.null_bytes + self.batch_bytes + self.indicator_bytes + self.extras_bytes_estimate
+            self.null_bytes
+            + self.summary_bytes
+            + self.batch_bytes
+            + self.indicator_bytes
+            + self.extras_bytes_estimate
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -131,22 +148,22 @@ class MemoryEstimate:
         return "\n".join(lines)
 
 
-def _chunking(config: Any, metric: Any, shape: tuple[int, ...]) -> tuple[int, int]:
-    """``(cells per chunk, n_chunks)``; mirrors the rule in ``shuffle_test``."""
-    n_cells = shape[0]
-    null = config.resolved_null()
-    full = config.n_shuffles * int(np.prod(shape, dtype=np.int64)) * 8
-    if (
-        config.keep_null == "none"
-        and metric.level == "cell"
-        and metric.cell_separable
-        and null.cell_separable
-        and full > config.max_null_bytes
-    ):
-        per_cell = max(1, int(np.prod(shape[1:], dtype=np.int64)))
-        chunk = max(1, config.max_null_bytes // (config.n_shuffles * per_cell * 8))
-        return chunk, max(1, -(-n_cells // chunk))
-    return n_cells, 1
+def _glm_groups(metric: Any, session: Session, signal: str | None) -> tuple[int, str | None]:
+    """``(n_groups, note)`` of ``glm_encoding`` from the design columns, without running it."""
+    from ._metrics._glm import _group_keys
+
+    cols = session.meta.get("design_columns", {})
+    names: list[str] | None = None
+    if signal is not None and signal in cols:
+        names = list(cols[signal])
+    elif metric.regressor_names is not None:
+        names = list(metric.regressor_names)
+    elif signal is not None and signal in session.signals:
+        x = np.asarray(session.signals[signal])
+        names = [f"x{i}" for i in range(1 if x.ndim == 1 else x.shape[1])]
+    if names is None:
+        return 1, "design columns not found; glm_encoding output assumed to have one group"
+    return len(set(_group_keys(names, metric.groups))), None
 
 
 def memory_estimate(pipeline: Pipeline, session: Session) -> MemoryEstimate:
@@ -190,6 +207,11 @@ def memory_estimate(pipeline: Pipeline, session: Session) -> MemoryEstimate:
             )
             continue
         shape = output_shape(metric, n_cells, n_states)
+        if metric.name == "glm_encoding":
+            n_groups, note = _glm_groups(metric, session, spec.signal)
+            shape = (n_cells, n_groups)
+            if note:
+                est.suggestions.append(f"analysis {name}: {note}")
         out_bytes = int(np.prod(shape, dtype=np.int64)) * 8
         mem = AnalysisMemory(output_shape=shape, extras_bytes_estimate=2 * out_bytes)
         if n_states is not None and n_states <= DENSE_MAX_STATES:
@@ -197,17 +219,12 @@ def memory_estimate(pipeline: Pipeline, session: Session) -> MemoryEstimate:
         cfg = spec.shuffle
         cells = shape[0]
         if cfg is not None:
-            itemsize = np.dtype(cfg.null_dtype).itemsize if cfg.keep_null == "full" else 8
-            mem.null_bytes_full = shuffle_memory_bytes(cfg.n_shuffles, shape, f"f{itemsize}")
-            chunk, mem.n_chunks = _chunking(cfg, metric, shape)
+            mem.n_chunks, chunk, mem.null_bytes_full, mem.null_bytes = plan_chunks(
+                metric, cfg.resolved_null(), shape, cfg
+            )
             mem.chunked = mem.n_chunks > 1
             cells = chunk if mem.chunked else n_cells
-            if mem.chunked:
-                mem.null_bytes = shuffle_memory_bytes(
-                    cfg.n_shuffles, (chunk, *shape[1:]), "float64"
-                )
-            else:
-                mem.null_bytes = mem.null_bytes_full
+            mem.summary_bytes = SUMMARY_FACTOR * mem.null_bytes
             mem.batch_bytes = cfg.batch_size * cells * (n_states or 1) * 8
             if mem.null_bytes_full > cfg.max_null_bytes:
                 if cfg.keep_null == "full":
@@ -242,6 +259,7 @@ def memory_estimate(pipeline: Pipeline, session: Session) -> MemoryEstimate:
 
 
 __all__ = [
+    "SUMMARY_FACTOR",
     "AnalysisMemory",
     "MemoryEstimate",
     "human_bytes",

@@ -16,7 +16,7 @@ spot-checked against the code by the coordinator.
 | C: real data in | done except C8 layers | `3d01847`, `3a3b22b`, `bd70127` | cell metadata and QC, activity conditioning, mask composition, behaviour transforms, alignment, Miniscope-format loaders, `load_calab`, `load_session_dir`, three-chamber fixture, `PLUGINS.md` + `check_plugin`. Deferred: `Session.layers` (multiple activity representations side by side); "preprocess before transforms" resolved by writing Transforms instead |
 | D: evidence-first presentation | done (2026-10-17) | `ab98aed`, `76cd2c2`, `ae4116a` | `_data` companion for every plot (versioned contract, strict JSON), plot registry with `default_plots`, `result.plot` / `plot_all`, shared style, per-cell evidence cards, raster / population tuning / session QA / analysis agreement views, and the D6 figure fixes; guide in `docs/PLOTS.md` |
 | E: metrics and nulls | done (2026-10-17), except `rsa` / `cross_decode` | `4a72905`, `6c871be`, `9de64cd` | speed-matched, per-cell and within-state nulls; `place_fields`, `tuning_selectivity`, `circular_tuning`, `decode_signal`, `pairwise_correlation`, `participation_ratio`; `null_std`, `z_score`, `bias_corrected`, `null_info`; PETH null band and latency; five new figures. Deferred: `rsa`, `cross_decode` |
-| F: CaLab integration | F1 done; F2–F6 open | | licence decision still pending |
+| F: CaLab integration | done | `c63ecd9`, `49e15a6` | F2–F6 landed 2026-10-17 (schema, CLI + StudySpec, tuning export, `analyze()` front door, memory); licence decision still pending; interactive `tune()` waits for the CaLab slider |
 
 Open decisions: licence (AGPL-3.0 vs CaLab's MIT); `auto_null_timescale` floor (5 s) vs the 20–30 s convention.
 
@@ -116,8 +116,8 @@ subagents). Phases are ordered by dependency, not importance.
 
 ### Phase F: CaLab integration
 
-| # | Item | Effort | Source |
-|---|---|---|---|
+| # | Item | Effort | Source | Status |
+|---|---|---|---|---|
 | F1 | `cabana/_kernels/`: pure-numpy `shifted_sums`, `state_label_sums`, `rate_map(sums, occ, …, sigma)`, `skaggs_info`, `joint_counts`, `auroc_ranks`; canonical input `labels: int32 (n_time,)` + `n_states`; lint that `_kernels` imports only numpy; golden vectors with explicit shifts (RNG becomes a boundary: null plan is a first-class array) | M–L | CaLab |
 | F2 | Results JSON Schema (`schemas/resultset-v1.json`, semver `schema_version`, per-array shape/dtype/axes), `describe()` gains output metadata and `ui` hints (`group`, `sweepable`, `unit`); test every plugin yields strict JSON schema with descriptions | M | CaLab, Infra |
 | F3 | Headless CLI: `cabana run spec.yaml --session s.zip --out dir/ --progress jsonl`, `cabana describe`, `cabana schema`; `ProgressEvent.to_dict()` mapped to the bridge progress payload; SIGINT → `should_cancel`; `StudySpec` (sessions, loaders, animal map, pipeline, criteria, out_dir) | M | CaLab, Infra |

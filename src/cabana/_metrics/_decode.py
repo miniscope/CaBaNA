@@ -103,6 +103,12 @@ class DecodeStates(Metric):
     """
 
     name: ClassVar[str] = "decode_states"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "confusion": ("state", None, None),
+        "accuracy_overall": (None,),
+        "n_frames": ("state",),
+        "chance": ("state",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("metric_strip",)

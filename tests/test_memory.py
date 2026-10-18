@@ -141,9 +141,9 @@ def test_progress_monotone_and_ends_at_total(small_session):
     n_chunks = r.null_info["chunks"]
     assert n_chunks == 4
     done = [d for d, _ in calls]
-    assert done == sorted(done) and len(set(done)) == len(done)
-    assert {t for _, t in calls} == {12 * n_chunks}
-    assert calls[-1] == (12 * n_chunks, 12 * n_chunks)
+    assert done == sorted(done)  # non-decreasing, in true shuffle units
+    assert {t for _, t in calls} == {12}
+    assert calls[-1] == (12, 12)
 
 
 def test_cancel_inside_chunk(small_session):
@@ -334,3 +334,203 @@ def test_cell_separable_check_flags_cross_cell_metric(small_session):
     assert any(n == "cell_separable" for n, ok, _ in rep.failed())
     assert "cell_separable = False" in dict((n, m) for n, _, m in rep.checks)["cell_separable"]
     assert isinstance(Metric.cell_separable, bool)
+
+
+# -- review fixes ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tail", ["upper", "lower", "two"])
+def test_float32_exact_ties_stay_ties(tail):
+    from cabana._shuffle import _p_values
+
+    obs = np.array([0.7, 0.1])
+    null64 = np.full((50, 2), 0.7)
+    null64[:, 1] = 0.1
+    p64 = _p_values(obs, null64, tail)
+    p32 = _p_values(obs, null64.astype(np.float32), tail)
+    np.testing.assert_array_equal(p32, p64)
+    if tail != "two":
+        assert p32[0] == 1.0
+
+
+def test_float32_max_stat_ties():
+    from cabana._shuffle import _max_stat_p
+
+    obs = np.full((1, 3), 0.7)
+    null = np.full((40, 1, 3), 0.7)
+    for tail in ("upper", "lower"):
+        p = np.ones((1, 3))
+        a64 = _max_stat_p(obs, null, tail, p)
+        a32 = _max_stat_p(obs, null.astype(np.float32), tail, p)
+        np.testing.assert_array_equal(a32, a64)
+
+
+def test_float32_pipeline_ties(small_session):
+    m, target, mask = _setup(small_session, "information_content")
+    act = np.asarray(small_session.activity, float)
+    cfg = dict(n_shuffles=30, seed=1, min_shift_s=5.0, null_dtype="float32")
+    r = shuffle_test(m, act, target, mask, ShuffleConfig(**cfg), small_session.fs)
+    # observed equal to every draw must give p == 1 (here: force it)
+    r.null[:] = np.float32(r.observed.flat[0]) if r.observed.size else 0
+    from cabana._shuffle import _p_values
+
+    p = _p_values(np.full(r.observed.shape, r.observed.flat[0]), r.null, "upper")
+    assert np.all(p == 1.0)
+
+
+def test_memory_estimate_glm_shape():
+    from cabana import AnalysisSpec
+    from cabana._design import design_columns
+
+    sess = cabana.simulate_session(duration_s=120, n_cells=12)
+    tr = [
+        {"name": "resample_signal", "source": "position"},
+        {"name": "speed", "signals": ["x", "y"]},
+        {"name": "bouts_to_states", "source": "social", "add_rest": False},
+        {"name": "design_matrix", "states": ["social"], "signals": ["speed"]},
+    ]
+    prepared, _ = Pipeline(transforms=tr, preprocess=[{"name": "rebin_time", "bin_s": 0.5}]).run(
+        sess
+    )
+    names = design_columns(prepared)
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "glm_encoding", "regressor_names": names},
+                signal="design",
+                masks=["social_scored"],
+                shuffle={"n_shuffles": 10, "keep_null": "none", "min_shift_s": 5.0},
+            )
+        ]
+    )
+    a = next(iter(memory_estimate(pipe, prepared).per_analysis.values()))
+    _, res = pipe.run(prepared)
+    real = res.get("glm_encoding", "design").values
+    assert real.ndim == 2 and real.shape[1] > 1
+    assert a.output_shape == real.shape
+    # without metadata and names: falls back to the signal's width
+    pipe2 = Pipeline(analyses=[AnalysisSpec(metric={"name": "glm_encoding"}, signal="design")])
+    prepared.meta.pop("design_columns", None)
+    b = next(iter(memory_estimate(pipe2, prepared).per_analysis.values()))
+    assert b.output_shape == (real.shape[0], prepared.signals["design"].shape[1])
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_estimate_within_factor_two_of_tracemalloc(chunked):
+    import tracemalloc
+
+    rng = np.random.default_rng(0)
+    n_time, ns = 3000, 100
+    lab = rng.integers(0, ns, n_time)
+    oh = np.zeros((n_time, ns), bool)
+    oh[np.arange(n_time), lab] = True
+    sp = cabana.StateSpace(
+        name="g",
+        onehot=oh,
+        state_names=[str(i) for i in range(ns)],
+        kind="categorical",
+        exclusive=True,
+    )
+    sess = cabana.Session(
+        activity=rng.random((30, n_time)), t=np.arange(n_time) / 10.0, fs=10.0, states={"g": sp}
+    )
+    kw = {"keep_null": "none", "max_null_bytes": 300 * 10 * ns * 8} if chunked else {}
+    pipe = Pipeline(
+        analyses=[
+            {
+                "metric": {"name": "auroc"},
+                "states": "g",
+                "shuffle": ShuffleConfig(n_shuffles=300, batch_size=50, min_shift_s=5.0, **kw),
+            }
+        ]
+    )
+    a = next(iter(memory_estimate(pipe, sess).per_analysis.values()))
+    assert a.chunked == chunked and a.summary_bytes == 3 * a.null_bytes
+    tracemalloc.start()
+    tracemalloc.reset_peak()
+    try:
+        pipe.run(sess)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert 0.5 <= peak / a.total_bytes <= 2.0, (peak, a.total_bytes)
+
+
+def test_plan_chunks_matches_engine(small_session):
+    from cabana._shuffle import plan_chunks
+
+    m, target, mask = _setup(small_session, "information_content")
+    cfg = ShuffleConfig(
+        n_shuffles=12, batch_size=5, keep_null="none", max_null_bytes=12 * 8 * 5, min_shift_s=5.0
+    )
+    obs = np.asarray(m.compute(np.asarray(small_session.activity, float), target, mask, 100.0))
+    n, cells, full, held = plan_chunks(m, cfg.resolved_null(), obs.shape, cfg)
+    r = shuffle_test(
+        m, np.asarray(small_session.activity, float), target, mask, cfg, small_session.fs
+    )
+    assert n == r.null_info["chunks"] and held <= cfg.max_null_bytes < full
+    assert cells * n >= obs.shape[0]
+
+
+def test_chunked_warnings_once(small_session):
+    m, target, mask = _setup(small_session, "information_content")
+    act = np.asarray(small_session.activity, float)
+    kw = dict(
+        n_shuffles=10,
+        batch_size=5,
+        seed=3,
+        keep_null="none",
+        null={"name": "within_state_shuffle", "block_s": 60.0},
+    )
+    try:
+        with warnings.catch_warnings(record=True) as w_full:
+            warnings.simplefilter("always")
+            shuffle_test(m, act, target, mask, ShuffleConfig(**kw), small_session.fs)
+        with warnings.catch_warnings(record=True) as w_ch:
+            warnings.simplefilter("always")
+            r = shuffle_test(
+                m, act, target, mask, ShuffleConfig(max_null_bytes=1, **kw), small_session.fs
+            )
+    except (ValueError, TypeError):
+        pytest.skip("null not applicable")
+    keys = [(x.category, str(x.message)) for x in w_ch]
+    assert r.null_info["chunks"] > 1
+    assert len(keys) == len(set(keys))
+    assert set(keys) == {(x.category, str(x.message)) for x in w_full}
+
+
+def test_statespace_pickle_drops_cache(small_session):
+    import pickle
+
+    sp = small_session.states["position"].model_copy()
+    sp.labels(np.ones(sp.n_time, bool))
+    assert sp._cache
+    sp2 = pickle.loads(pickle.dumps(sp))
+    assert sp2._cache == {}
+    assert sp._cache  # source untouched
+    np.testing.assert_array_equal(sp2.onehot, sp.onehot)
+
+
+def test_statespace_cache_invalidation(small_session):
+    import copy
+
+    sp = small_session.states["position"].model_copy()
+    mask = np.ones(sp.n_time, bool)
+    sp.labels(mask)
+    c = copy.copy(sp)
+    assert c._cache == {} and sp._cache
+    c.labels(mask)
+    assert c._cache is not sp._cache
+    for name, value in (
+        ("onehot", sp.onehot.copy()),
+        ("support", None),
+        ("exclusive", sp.exclusive),
+        ("state_names", list(sp.state_names)),
+    ):
+        sp.labels(mask)
+        assert sp._cache
+        setattr(sp, name, value)
+        assert sp._cache == {}
+    sp.labels(mask)
+    sp.name = "other"  # unrelated fields keep the cache
+    assert sp._cache

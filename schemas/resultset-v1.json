@@ -10,13 +10,18 @@
             "enum": [
               "cell",
               "state",
+              "bin",
               "shuffle",
               "time",
-              "bin",
               "group",
               "lag",
               "fold",
               "channel",
+              "component",
+              "level",
+              "event",
+              "half",
+              "pair",
               null
             ]
           },
@@ -268,6 +273,20 @@
               ],
               "description": "Parameters of the transform producing the target."
             },
+            "target_shape": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Grid shape of a state-space target (null for a signal or ungridded target)."
+            },
             "timestamp": {
               "description": "ISO 8601 UTC time of the run.",
               "type": "string"
@@ -480,7 +499,7 @@
     },
     "schema_version": {
       "const": "1.0.0",
-      "description": "Semver of this manifest schema (absent in old files)."
+      "description": "Semver of this manifest schema.  Required: files written before the field existed are upgraded on load (see cabana._io), not validated against this schema."
     },
     "status": {
       "description": "How the run ended.",

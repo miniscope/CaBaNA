@@ -67,6 +67,11 @@ class SplitHalfStability(Metric):
     """
 
     name: ClassVar[str] = "split_half_stability"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map_a": ("cell", "state"),
+        "rate_map_b": ("cell", "state"),
+        "valid_states": ("state",),
+    }
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = (
         "split_half_maps",

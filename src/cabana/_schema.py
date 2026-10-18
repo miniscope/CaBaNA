@@ -21,7 +21,22 @@ _SCHEMA_ID = "https://miniscope.github.io/CaBaNA/schemas/resultset-v1.json"
 #: dtypes the on-disk contract allows (see ``cabana._io``): float64/float32, bool, int32
 #: (int64 when a value exceeds int32), and narrower integer types kept as they are.
 _DTYPES = ["float64", "float32", "bool", "int32", "int64", "int8", "int16", "uint8", "uint16"]
-_AXES = ["cell", "state", "shuffle", "time", "bin", "group", "lag", "fold", "channel"]
+_AXES = [
+    "cell",
+    "state",
+    "bin",
+    "shuffle",
+    "time",
+    "group",
+    "lag",
+    "fold",
+    "channel",
+    "component",
+    "level",
+    "event",
+    "half",
+    "pair",
+]
 
 _NAMES = [
     "resultset",
@@ -138,6 +153,10 @@ def resultset_schema() -> dict[str, Any]:
             "target_params": _p(
                 _nullable({"type": "object"}), "Parameters of the transform producing the target."
             ),
+            "target_shape": _p(
+                _nullable({"type": "array", "items": {"type": "integer"}}),
+                "Grid shape of a state-space target (null for a signal or ungridded target).",
+            ),
             "selections": _p({"type": "array"}, "Auto-selected parameter values applied."),
             "timestamp": _p({"type": "string"}, "ISO 8601 UTC time of the run."),
         },
@@ -199,7 +218,9 @@ def resultset_schema() -> dict[str, Any]:
         "properties": {
             "format": _p({"type": "integer", "minimum": 1}, "Container format number."),
             "schema_version": _p(
-                {"const": SCHEMA_VERSION}, "Semver of this manifest schema (absent in old files)."
+                {"const": SCHEMA_VERSION},
+                "Semver of this manifest schema.  Required: files written before the field "
+                "existed are upgraded on load (see cabana._io), not validated against this schema.",
             ),
             "kind": _p({"const": "cabana.ResultSet"}, "File kind."),
             "status": _p({"enum": ["ok", "cancelled", "partial"]}, "How the run ended."),
@@ -247,6 +268,50 @@ def _model_schema(cls: Any) -> dict[str, Any]:
         return out
 
 
+#: ``$defs`` name of each plugin base class in the config-model schemas -> registry kind.
+_PLUGIN_BASES = {
+    "Metric": "metric",
+    "Null": "null",
+    "PreprocessStep": "preprocess",
+    "Selector": "selector",
+    "Transform": "transform",
+}
+
+
+def _with_plugins(sch: dict[str, Any]) -> dict[str, Any]:
+    """Replace each plugin base-class definition by a ``oneOf`` over the registered plugins.
+
+    A pipeline YAML lists plugins as ``{name: ..., **params}``; the base class schema has no
+    ``name`` and forbids extra keys, so every real document would fail.  Each registered
+    plugin becomes a definition ``<kind>:<name>`` (its fields plus a required ``name``
+    constant) and the base-class definition becomes the ``oneOf`` of them.
+    """
+    from ._registry import _REGISTRY
+
+    defs = sch.setdefault("$defs", {})
+    for base, kind in _PLUGIN_BASES.items():
+        if base not in defs:
+            continue
+        options = []
+        for pname, cls in sorted(_REGISTRY.get(kind, {}).items()):
+            one = _model_schema(cls)
+            for k, v in one.pop("$defs", {}).items():
+                defs.setdefault(k, v)
+            props = {"name": {"const": pname, "description": f"Registry name ({kind})."}}
+            props.update(one.get("properties", {}))
+            one["properties"] = props
+            one["required"] = ["name", *one.get("required", [])]
+            one.setdefault("additionalProperties", False)
+            key = f"{kind}:{pname}"
+            defs[key] = one
+            options.append({"$ref": f"#/$defs/{key}"})
+        defs[base] = {
+            "description": f"Any registered {kind} plugin, as {{name: ..., **params}}.",
+            "oneOf": options,
+        }
+    return sch
+
+
 def schema(name: str) -> dict[str, Any]:
     """Schema by name.
 
@@ -276,11 +341,11 @@ def schema(name: str) -> dict[str, Any]:
     if name in ("pipeline", "analysis_spec"):
         from ._pipeline import AnalysisSpec, Pipeline
 
-        return _model_schema(Pipeline if name == "pipeline" else AnalysisSpec)
+        return _with_plugins(_model_schema(Pipeline if name == "pipeline" else AnalysisSpec))
     if name == "shuffle_config":
         from ._shuffle import ShuffleConfig
 
-        return _model_schema(ShuffleConfig)
+        return _with_plugins(_model_schema(ShuffleConfig))
     if name == "selection":
         from ._selection import Selection
 
@@ -293,5 +358,14 @@ def schema(name: str) -> dict[str, Any]:
                 from ._tuning import TuningExport as cls
         except ImportError as exc:
             raise KeyError(f"schema {name!r} is unavailable in this installation: {exc}") from exc
-        return _model_schema(cls)
+        out = _model_schema(cls)
+        if name == "study":  # ``kind`` is written by to_dict() but is not a model field
+            from ._study import STUDY_KIND
+
+            out.setdefault("properties", {})["kind"] = {
+                "const": STUDY_KIND,
+                "description": "File kind; optional when the mapping has a sessions key.",
+            }
+            out = _with_plugins(out)
+        return out
     raise KeyError(f"unknown schema {name!r}; valid names: {', '.join(_NAMES)}")

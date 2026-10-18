@@ -26,16 +26,26 @@ from ._registry import _REGISTRY
 __all__ = ["describe"]
 
 UI_GROUPS = ("time", "binning", "thresholds", "compute", "method", "other")
-_NOT_SWEEPABLE = frozenset({"seed", "n_jobs", "batch_size", "n_shuffles"})
+_NOT_SWEEPABLE = frozenset({"seed", "n_jobs", "batch_size", "n_shuffles", "n_null"})
 _UNIT_SUFFIXES = (
     ("_s", "s"),
     ("_hz", "Hz"),
     ("_mm", "mm"),
     ("_cm", "cm"),
+    ("_deg", "deg"),
     ("_bins", "bins"),
     ("_frames", "frames"),
     ("_fraction", "fraction"),
 )
+#: Units of parameters whose name carries no suffix (positions follow the session's units).
+_UNIT_NAMES = {
+    "fs_target": "Hz",
+    "percentile": "%",
+    "min_speed": "position units/s",
+    "max_speed": "position units/s",
+    "bin_size": "position units",
+    "max_distance": "position units",
+}
 
 
 def _strict(x: Any) -> Any:
@@ -90,18 +100,27 @@ def _json_types(ann: Any) -> list[str]:
     return out
 
 
-def _infer_group(name: str) -> str:
+def _is_bool(ann: Any) -> bool:
+    members = [m for m in _union_members(ann) if m is not type(None)]
+    return bool(members) and all(m is bool for m in members)
+
+
+def _infer_group(name: str, ann: Any = None) -> str:
     n = name.lower()
-    if n.endswith(("_s", "_hz")) or any(w in n for w in ("time", "lag", "shift", "block")):
+    if _is_bool(ann):
+        return "other"
+    if n.endswith(("_s", "_hz", "_frames")) or n in ("lag", "time"):
         return "time"
-    if n.startswith(("smooth", "bin")) or n == "sigma" or "sigma" in n:
+    if n.startswith(("smooth", "bin")) or "sigma" in n:
         return "binning"
-    if n.startswith(("min_", "max_", "threshold")) or n in ("alpha", "tolerance"):
-        return "thresholds"
-    if n.startswith(("n_", "batch")) or n in ("seed", "n_jobs"):
+    if n.startswith(("n_", "batch")) or n in ("seed", "n_jobs", "max_iter"):
         return "compute"
-    if n in ("statistic", "method", "units", "likelihood", "rule", "tail") or n.startswith(
-        "correction"
+    if n.startswith(("min_", "max_", "threshold")) or n == "tolerance":
+        return "thresholds"
+    if (
+        n in ("statistic", "method", "units", "likelihood", "rule", "tail", "alpha")
+        or n.endswith("_rule")
+        or n.startswith("correction")
     ):
         return "method"
     return "other"
@@ -109,14 +128,16 @@ def _infer_group(name: str) -> str:
 
 def _infer_unit(name: str) -> str | None:
     n = name.lower()
+    if n in _UNIT_NAMES:
+        return _UNIT_NAMES[n]
     for suffix, unit in _UNIT_SUFFIXES:
         if n.endswith(suffix):
             return unit
-    return "fraction" if n.endswith("fraction") else None
+    return None
 
 
 def _sweepable(name: str, ann: Any) -> bool:
-    if name in _NOT_SWEEPABLE:
+    if name in _NOT_SWEEPABLE or name.endswith("_seed"):
         return False
     members = [m for m in _union_members(ann) if m is not type(None)]
     return bool(members) and all(m in (int, float) for m in members)
@@ -124,7 +145,7 @@ def _sweepable(name: str, ann: Any) -> bool:
 
 def _ui(name: str, info: FieldInfo) -> dict[str, Any]:
     ui = {
-        "group": _infer_group(name),
+        "group": _infer_group(name, info.annotation),
         "sweepable": _sweepable(name, info.annotation),
         "unit": _infer_unit(name),
     }
@@ -165,7 +186,10 @@ def _params(cls: Any) -> dict[str, Any]:
 
 def _output_axes(cls: Any) -> dict[str, Any]:
     level = getattr(cls, "level", "cell")
-    if level == "cell":
+    declared = getattr(cls, "values_axes", None)
+    if declared is not None:
+        values = {"axes": list(declared), "per_state": "state" in declared}
+    elif level == "cell":
         values = {"axes": ["cell", "state?"], "per_state": "maybe"}
     else:
         values = {"axes": None, "per_state": "maybe", "note": "population shape varies"}
@@ -174,6 +198,7 @@ def _output_axes(cls: Any) -> dict[str, Any]:
         "input": getattr(cls, "input", None),
         "values": values,
         "extras": None,
+        "extras_axes": {k: list(v) for k, v in getattr(cls, "extras_axes", {}).items()},
     }
 
 
@@ -192,9 +217,16 @@ def _probe_session() -> Any:
     return s
 
 
-def _probe_metric(cls: Any, session: Any) -> dict[str, Any]:
-    """Run ``cls()`` once on ``session``; return its extras' ``{shape, dtype, axes}``."""
-    from ._io import _array_meta
+def _probe_metric(cls: Any, session: Any) -> tuple[dict[str, Any], str | None]:
+    """Run ``cls()`` once on ``session``.
+
+    Returns
+    -------
+    tuple
+        ``(extras, error)``: the extras' ``{shape, dtype, axes}`` (dtype as saved) and
+        ``None``, or ``({}, message)`` when the metric cannot run on the probe.
+    """
+    from ._io import _array_meta, _canon_array
     from ._results import MetricResult
 
     metric = cls()
@@ -213,7 +245,7 @@ def _probe_metric(cls: Any, session: Any) -> dict[str, Any]:
             metric.configure(session, name)
             values = np.asarray(metric.compute(activity, target, mask, session.fs))
             extras = {
-                k: np.asarray(v)
+                k: _canon_array(v)
                 for k, v in metric.extras(activity, target, mask, session.fs).items()
             }
         except Exception as exc:
@@ -221,6 +253,13 @@ def _probe_metric(cls: Any, session: Any) -> dict[str, Any]:
             continue
         topo = getattr(target, "topology", None)
         grid = tuple(topo.shape) if topo is not None else None
+        state_names = (
+            [str(n) for n in target.state_names] if hasattr(target, "state_names") else None
+        )
+        if "group_names" in extras and (
+            values.ndim == 2 or (metric.level == "population" and values.ndim == 1)
+        ):  # as Pipeline._analyze: group names label the state axis of signal targets
+            state_names = [str(g) for g in extras["group_names"]]
         res = MetricResult.model_construct(
             metric=metric.name,
             target=name,
@@ -228,19 +267,14 @@ def _probe_metric(cls: Any, session: Any) -> dict[str, Any]:
             values=values,
             extras=extras,
             cell_ids=[str(i) for i in range(activity.shape[0])] if metric.level == "cell" else None,
-            state_names=[str(n) for n in target.state_names]
-            if hasattr(target, "state_names")
-            else None,
+            state_names=state_names if (values.ndim >= 2 or metric.level == "population") else None,
             provenance={"n_cells": activity.shape[0]},
         )
-        out = {}
-        for k, v in extras.items():
-            if v.dtype.kind in "US":
-                out[k] = {"shape": list(v.shape), "dtype": "str", "axes": [None] * v.ndim}
-            else:
-                out[k] = _array_meta(res, k, v, grid_shape=grid)
-        return out
-    return {"error": f"{type(last).__name__}: {last}" if last else "no probe target available"}
+        return {
+            k: _array_meta(res, "extra_0", v, grid_shape=grid, extra_name=k)
+            for k, v in extras.items()
+        }, None
+    return {}, f"{type(last).__name__}: {last}" if last else "no probe target available"
 
 
 def describe(*, probe: bool = False, **kw: Any) -> dict[str, Any]:
@@ -250,8 +284,9 @@ def describe(*, probe: bool = False, **kw: Any) -> dict[str, Any]:
     ----------
     probe : bool, default False
         Run every metric once on a tiny simulated session and fill
-        ``outputs["extras"]`` with ``{key: {"shape", "dtype", "axes"}}`` (or
-        ``{"error": ...}`` for a metric that cannot run on the probe).  Takes seconds.
+        ``outputs["extras"]`` with ``{key: {"shape", "dtype", "axes"}}`` (arrays only);
+        ``outputs["probe_error"]`` is ``None`` or the error message of a metric that
+        cannot run on the probe.  Takes seconds.
 
     Returns
     -------
@@ -298,11 +333,16 @@ def describe(*, probe: bool = False, **kw: Any) -> dict[str, Any]:
                 e["default_plots"] = list(getattr(cls, "default_plots", ()))
                 e["outputs"] = _output_axes(cls)
                 if probe:
-                    if session is None:
-                        session = _probe_session()
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        e["outputs"]["extras"] = _probe_metric(cls, session)
+                    try:
+                        if session is None:
+                            session = _probe_session()
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            ex, err = _probe_metric(cls, session)
+                    except Exception as exc:  # required fields, probe session failure, ...
+                        ex, err = {}, f"{type(exc).__name__}: {exc}"
+                    e["outputs"]["extras"] = ex
+                    e["outputs"]["probe_error"] = err
             elif kind == "null":
                 e["perturbs"] = getattr(cls, "perturbs", None)
                 e["cell_separable"] = getattr(cls, "cell_separable", None)

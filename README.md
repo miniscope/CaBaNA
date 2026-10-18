@@ -124,12 +124,17 @@ session, social = cabana.analyze(session, "social", states="social", out_dir="ou
 ```
 
 `analyze` fills the recipe, runs `pipeline.validate(session)` first (it refuses to start when
-a state space is missing or `n_shuffles` cannot reach `alpha`, and reports a time and memory
-estimate), shows a tqdm bar if tqdm is installed (otherwise log lines on the `"cabana"`
-logger), and with `out_dir=` saves `results.zip`, `pipeline.yaml` and `summary.csv`. Recipes:
-`cabana.recipes()`; see [`docs/RECIPES.md`](docs/RECIPES.md). Every parameter is still
-reachable, e.g. `analyze(session, "place_cell", states="position", n_shuffles=200,
-**{"analyses.*.metric.min_occupancy_s": 0.1})`.
+a state space is missing or `n_shuffles` cannot reach `alpha`; validation warnings are issued as
+`UserWarning`s), prints one line with the estimated time, peak memory and size of the run, shows a
+tqdm bar if tqdm is installed (otherwise stage lines on stdout; `progress=False` is silent), and
+with `out_dir=` saves `results.zip`, `pipeline.yaml` and `summary.csv`. An analysis that fails is
+recorded in `results.errors` (`on_error="raise"` stops instead) and a single warning names every
+failure after the run. A shortcut that matches nothing in the recipe (say `n_shuffles=` on
+`event_response`) raises instead of being ignored. Recipes: `cabana.recipes()`; see
+[`docs/RECIPES.md`](docs/RECIPES.md). Every parameter is still reachable, e.g.
+`analyze(session, "place_cell", states="position", n_shuffles=200,
+**{"analyses.*.metric.min_occupancy_s": 0.1})`; a value you pass this way always beats the
+data-driven selectors.
 
 ## Quick look
 

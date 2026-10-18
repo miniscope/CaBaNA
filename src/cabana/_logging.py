@@ -9,6 +9,7 @@ a run through the logger or a tqdm bar; :func:`merge_context` combines two conte
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
@@ -20,12 +21,35 @@ logger.addHandler(logging.NullHandler())
 _BAR_UNITS = 1000
 
 
+def _line_context(info: Callable[[str], None], debug: Callable[[str], None]) -> RunContext:
+    """Context whose stage lines and analysis end lines go to ``info`` (shuffles to ``debug``)."""
+
+    def on_progress(ev: ProgressEvent) -> None:
+        if ev.stage == "shuffle":
+            debug(
+                f"{ev.name}: shuffle {ev.shuffles_done}/{ev.shuffles_total} "
+                f"({100 * ev.fraction:.0f}% overall)"
+            )
+        elif ev.stage == "analysis":
+            if ev.message == "start":  # the "[analyze] name" stage line already says so
+                return
+            what = {"finished": "finished", "failed": "FAILED"}.get(ev.message, ev.message)
+            info(
+                f"analysis {ev.index + 1}/{ev.total} {ev.name} {what} "
+                f"({100 * ev.fraction:.0f}%, {ev.elapsed_s:.1f} s)"
+            )
+        elif ev.stage == "done":
+            info(f"run {ev.message or 'done'} in {ev.elapsed_s:.1f} s")
+
+    return RunContext(on_progress=on_progress, log=info)
+
+
 def log_context(level: int = logging.INFO) -> RunContext:
     """A :class:`RunContext` that reports to the ``"cabana"`` logger.
 
     Stage lines (``[transform] ...``, ``[analyze] ...``) go to ``logger`` at ``level``;
-    ``on_progress`` logs the start and end of every analysis at ``level`` and every shuffle
-    batch at DEBUG.
+    ``on_progress`` logs the end of every analysis at ``level`` (the start is the stage line)
+    and every shuffle batch at DEBUG.
 
     Parameters
     ----------
@@ -36,37 +60,19 @@ def log_context(level: int = logging.INFO) -> RunContext:
     -------
     RunContext
     """
+    return _line_context(lambda m: logger.log(level, "%s", m), lambda m: logger.debug("%s", m))
 
-    def log(msg: str) -> None:
-        logger.log(level, "%s", msg)
 
-    def on_progress(ev: ProgressEvent) -> None:
-        if ev.stage == "shuffle":
-            logger.debug(
-                "%s: shuffle %s/%s (%.0f%% overall)",
-                ev.name,
-                ev.shuffles_done,
-                ev.shuffles_total,
-                100 * ev.fraction,
-            )
-        elif ev.stage == "analysis":
-            what = {"start": "started", "finished": "finished", "failed": "FAILED"}.get(
-                ev.message, ev.message
-            )
-            logger.log(
-                level,
-                "analysis %d/%d %s %s (%.0f%%, %.1f s)",
-                ev.index + 1,
-                ev.total,
-                ev.name,
-                what,
-                100 * ev.fraction,
-                ev.elapsed_s,
-            )
-        elif ev.stage == "done":
-            logger.log(level, "run %s in %.1f s", ev.message or "done", ev.elapsed_s)
+def print_context() -> RunContext:
+    """Like :func:`log_context` but printing to stdout (what ``Pipeline.run(progress=True)`` does).
 
-    return RunContext(on_progress=on_progress, log=log)
+    Shuffle batches are not printed.
+
+    Returns
+    -------
+    RunContext
+    """
+    return _line_context(lambda m: print(m, flush=True), lambda m: None)
 
 
 def tqdm_context(
@@ -120,15 +126,18 @@ def tqdm_context(
     def on_progress(ev: ProgressEvent) -> None:
         if state["closed"]:
             return
-        frac = 1.0 if ev.stage == "done" and ev.message != "cancelled" else ev.fraction
-        target = min(units, max(state["n"], int(round(frac * units))))
-        if target > state["n"]:
-            bar.update(target - state["n"])
-            state["n"] = target
-        if ev.stage != "done":
-            bar.set_postfix_str(f"{ev.stage}:{ev.name}" if ev.name else ev.stage, refresh=False)
-        else:
-            close()
+        try:
+            frac = 1.0 if ev.stage == "done" and ev.message != "cancelled" else ev.fraction
+            target = min(units, max(state["n"], int(round(frac * units))))
+            if target > state["n"]:
+                bar.update(target - state["n"])
+                state["n"] = target
+            if ev.stage != "done":
+                label = f"{ev.stage}:{ev.name}" if ev.name else ev.stage
+                bar.set_postfix_str(label, refresh=False)
+        finally:
+            if ev.stage == "done":
+                close()
 
     on_progress.close = close  # type: ignore[attr-defined]
     return RunContext(on_progress=on_progress)
@@ -141,8 +150,10 @@ def _both(fa: Any, fb: Any) -> Any:
         return fa
 
     def call(*args: Any) -> None:
-        fa(*args)
-        fb(*args)
+        try:
+            fa(*args)
+        finally:  # the second callback runs (and a bar closes) even when the first raises
+            fb(*args)
 
     for attr in ("close",):
         closers = [c for c in (getattr(fa, attr, None), getattr(fb, attr, None)) if c]

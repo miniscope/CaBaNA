@@ -225,3 +225,120 @@ def test_entry_point_subprocess():
         pytest.skip("cabana entry point not installed")
     r = subprocess.run([str(exe), "version"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and r.stdout.strip() == cabana.__version__
+
+
+def test_jsonl_stderr_is_pure_json_with_warning(tmp_path, zip_a, capsys, monkeypatch):
+    import warnings
+
+    p = tmp_path / "w.yaml"
+    p.write_text(PIPE_YAML)
+    orig = cabana.Pipeline.from_yaml
+
+    def noisy(*a, **k):
+        warnings.warn("synthetic library warning", UserWarning, stacklevel=1)
+        return orig(*a, **k)
+
+    monkeypatch.setattr(cabana.Pipeline, "from_yaml", staticmethod(noisy))
+    assert main(["run", str(p), "--session", str(zip_a), "--progress", "jsonl"]) == 0
+    lines = [json.loads(x) for x in capsys.readouterr().err.splitlines()]
+    assert lines[-1]["event"] == "done"
+    warn = [x for x in lines if x["event"] == "warning"]
+    assert warn and warn[0]["category"] == "UserWarning" and "synthetic" in warn[0]["message"]
+
+
+def test_jsonl_error_event_before_done(tmp_path, zip_a, capsys):
+    code = main(
+        ["run", str(tmp_path / "nope.yaml"), "--session", str(zip_a), "--progress", "jsonl"]
+    )
+    assert code == 1
+    lines = [json.loads(x) for x in capsys.readouterr().err.splitlines()]
+    assert [x["event"] for x in lines] == ["error", "done"]
+    assert lines[0]["type"] == "FileNotFoundError" and lines[1]["status"] == "error"
+
+
+def test_sigint_notice_is_log_event_in_jsonl(capsys):
+    from cabana._cli import _Progress
+
+    pr = _Progress("jsonl", None)
+    c = _cli._Canceller(notify=pr.log)
+    c.handler(signal.SIGINT, None)
+    ev = json.loads(capsys.readouterr().err)
+    assert ev["event"] == "log" and "cancelling" in ev["message"]
+
+
+def test_progress_file_implies_jsonl(tmp_path, pipe_yaml, zip_a, capsys):
+    f = tmp_path / "p.jsonl"
+    code = main(["run", str(pipe_yaml), "--session", str(zip_a), "--progress-file", str(f)])
+    assert code == 0
+    lines = [json.loads(x) for x in f.read_text().splitlines()]
+    assert lines[-1]["event"] == "done"
+
+
+def test_broken_process_pool_exits_cancelled(tmp_path, pipe_yaml, zip_a, monkeypatch, capsys):
+    from concurrent.futures.process import BrokenProcessPool
+
+    def boom(*a, **k):
+        raise BrokenProcessPool("dead")
+
+    monkeypatch.setattr(_cli, "run_set", boom)
+    assert main(["run", str(pipe_yaml), "--session", str(zip_a), "--n-jobs", "2"]) == 3
+    assert "workers interrupted" in capsys.readouterr().err
+
+
+def test_cancelled_without_out_notes_not_saved(pipe_yaml, zip_a, capsys, monkeypatch):
+    monkeypatch.setattr(_cli, "_status_code", lambda s: 3)
+    orig = _cli.run_set
+
+    def cancelled_run(*a, **k):
+        k["context"].should_cancel = lambda: True
+        return orig(*a, **k)
+
+    monkeypatch.setattr(_cli, "run_set", cancelled_run)
+    assert main(["run", str(pipe_yaml), "--session", str(zip_a)]) == 3
+    assert "--out was not given" in capsys.readouterr().err
+
+
+def test_cancelled_zip_removed_when_session_completes(tmp_path, pipe_yaml, zip_a, capsys):
+    out = tmp_path / "out"
+    out.mkdir()
+    stale = out / "sa.results.cancelled.zip"
+    stale.write_bytes(b"x")
+    assert main(["run", str(pipe_yaml), "--session", str(zip_a), "--out", str(out)]) == 0
+    assert not stale.exists()
+
+
+def test_cancelled_zip_listed_in_run_set_json(tmp_path, pipe_yaml, zip_a, monkeypatch, capsys):
+    orig = _cli.run_set
+
+    def cancelled_run(*a, **k):
+        n = {"k": 0}
+
+        def cancel():
+            n["k"] += 1
+            return n["k"] > 3
+
+        k["context"].should_cancel = cancel
+        return orig(*a, **k)
+
+    monkeypatch.setattr(_cli, "run_set", cancelled_run)
+    out = tmp_path / "out"
+    assert main(["run", str(pipe_yaml), "--session", str(zip_a), "--out", str(out)]) == 3
+    meta = json.loads((out / "run_set.json").read_text())
+    assert meta["sessions"]["sa"]["file"] == "sa.results.cancelled.zip"
+    assert "pipeline_sha256" in meta
+
+
+def test_schema_sorted_matches_snapshot(capsys):
+    assert main(["schema", "resultset"]) == 0
+    root = Path(__file__).resolve().parent.parent
+    assert capsys.readouterr().out == (root / "schemas" / "resultset-v1.json").read_text()
+
+
+def test_broken_pipe_exit_0(monkeypatch, capsys):
+    def pipe(args):
+        raise BrokenPipeError
+
+    monkeypatch.setattr(_cli, "_cmd_version", pipe)
+    p = _cli._build_parser()
+    monkeypatch.setattr(_cli, "_build_parser", lambda: p)
+    assert main(["version"]) == 0

@@ -93,6 +93,17 @@ class PlaceFields(Metric):
     """
 
     name: ClassVar[str] = "place_fields"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map": ("cell", "state"),
+        "field_labels": ("cell", "state"),
+        "n_fields": ("cell",),
+        "field_area": ("cell",),
+        "centroid": ("cell", None),
+        "peak_rate": ("cell",),
+        "in_out_ratio": ("cell",),
+        "valid_states": ("state",),
+        "bin_area": ("state",),
+    }
     level: ClassVar = "cell"
     input: ClassVar = "states"
     requires_topology: ClassVar[bool] = True
@@ -111,7 +122,12 @@ class PlaceFields(Metric):
         "peak_fraction", description="How `threshold` is interpreted."
     )
     min_field_bins: int = Field(2, ge=1, description="Smallest component counted as a field.")
-    connectivity: int = Field(1, ge=1, description="1 = faces, 2 = also diagonals.")
+    connectivity: int = Field(
+        1,
+        ge=1,
+        description="1 = faces, 2 = also diagonals.",
+        json_schema_extra={"ui": {"sweepable": False}},
+    )
     statistic: Literal["in_out_ratio", "n_fields", "field_area", "peak_rate"] = Field(
         "in_out_ratio", description="Statistic returned by compute and tested by the shuffle."
     )
@@ -313,6 +329,14 @@ class TuningSelectivity(Metric):
     """
 
     name: ClassVar[str] = "tuning_selectivity"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map": ("cell", "state"),
+        "preferred_state": ("cell",),
+        "valid_states": ("state",),
+        "selectivity_index": ("cell",),
+        "sparseness": ("cell",),
+        "depth": ("cell",),
+    }
     level: ClassVar = "cell"
     input: ClassVar = "states"
     default_tail: ClassVar[Tail] = "upper"

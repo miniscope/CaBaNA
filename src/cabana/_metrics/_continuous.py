@@ -96,6 +96,12 @@ class SignalCorrelation(Metric):
     """
 
     name: ClassVar[str] = "signal_correlation"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "n_frames": (),
+        "xcorr": ("cell", "lag"),
+        "lags_s": ("lag",),
+        "best_lag_s": ("cell",),
+    }
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "two"
     default_plots: ClassVar[tuple[str, ...]] = ("metric_strip", "shuffle_distribution")
@@ -247,6 +253,12 @@ class SignalTuning(Metric):
     """
 
     name: ClassVar[str] = "signal_tuning"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "tuning_curve": ("cell", "bin"),
+        "bin_centers": ("bin",),
+        "occupancy_s": ("bin",),
+        "valid_bins": ("bin",),
+    }
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("metric_strip", "shuffle_distribution")

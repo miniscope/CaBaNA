@@ -151,6 +151,16 @@ class BayesianDecoder(Metric):
     """
 
     name: ClassVar[str] = "bayesian_decoder"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "confusion": ("state", "state"),
+        "decoded": ("time",),
+        "error": ("time",),
+        "error_overall": (None,),
+        "accuracy_overall": (None,),
+        "chance_error": (None,),
+        "n_frames": ("state",),
+        "posterior_mean_confidence": (None,),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "lower"
     default_plots: ClassVar[tuple[str, ...]] = ("decoded_trajectory", "metric_strip")

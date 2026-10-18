@@ -4,7 +4,7 @@ recipe:
   description: >-
     Spatial tuning on a grid state space: Skaggs information, split-half map stability and
     place-field detection, each tested against a circular-shift null, restricted to moving
-    frames. Smoothing is chosen from held-out data and the null timescale from the
+    frames (the speed gate is 20 mm/s or 2 cm/s, read from the session's position units). Smoothing is chosen from held-out data and the null timescale from the
     autocorrelation of activity and behavior, so no p-value picks a parameter.
   targets:
     states: a StateSpace with a grid topology (e.g. built by the bin_grid transform)
@@ -17,7 +17,8 @@ recipe:
     speed:
       name: speed_threshold
       signal: speed
-      min_speed: 5.0
+      min_speed: 2.0  # used only when the position unit is unknown (then analyze() warns)
+      min_speed_by_unit: {mm: 20.0, cm: 2.0, m: 0.02}
       output: speed
 pipeline:
   selectors:

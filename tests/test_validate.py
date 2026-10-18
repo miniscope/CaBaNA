@@ -188,3 +188,119 @@ def test_estimate_grows_with_n_shuffles(sim_session):
     lo, hi = total(100), total(1000)
     assert hi["memory_bytes"] > lo["memory_bytes"]
     assert hi["time_s"] > lo["time_s"]
+
+
+# ---------------------------------------------------------------- review fixes
+
+
+def _within():
+    return ShuffleConfig(n_shuffles=100, null={"name": "within_state_shuffle"})
+
+
+def test_within_state_degenerate_list_is_complete(sim_session):
+    degenerate = {
+        "mutual_information": "syllables",
+        "place_fields": "position",
+        "population_vector_overlap": "syllables",
+        "population_distance": "syllables",
+        "pairwise_correlation": "syllables",
+        "participation_ratio": "syllables",
+        "pca_population": "syllables",
+        "information_content": "syllables",
+    }
+    for metric, states in degenerate.items():
+        rep = _one({"name": metric}, states=states, shuffle=_within()).validate(
+            sim_session, time_budget_s=0.0
+        )
+        assert "degenerate_null" in _codes(rep), metric
+    informative = ["split_half_stability", "pv_stability", "decode_states"]
+    for metric in informative:
+        states = "position" if metric == "split_half_stability" else "syllables"
+        rep = _one({"name": metric}, states=states, shuffle=_within()).validate(
+            sim_session, time_budget_s=0.0
+        )
+        assert "degenerate_null" not in _codes(rep), metric
+
+
+def test_degenerate_list_matches_measured_null(sim_session):
+    """The null of a listed metric under within_state_shuffle really has no spread."""
+    import numpy as np
+
+    pipe = _one(
+        {"name": "participation_ratio"},
+        states="syllables",
+        shuffle=ShuffleConfig(n_shuffles=20, null={"name": "within_state_shuffle"}),
+    )
+    _, res = pipe.run(sim_session)
+    null = np.asarray(res["a"].shuffle.null)
+    assert np.nanstd(null) < 1e-9 * max(1.0, abs(float(np.nanmean(null))))
+
+
+def test_budget_exhausted_still_checks_later_analyses(sim_session):
+    shuf = ShuffleConfig(n_shuffles=50)
+    ghost = ShuffleConfig(
+        n_shuffles=50, null={"name": "covariate_matched_shift", "covariate": "ghost"}
+    )
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(name="a", metric={"name": "auroc"}, states="social", shuffle=shuf),
+            AnalysisSpec(name="b", metric={"name": "auroc"}, states="social", shuffle=ghost),
+            AnalysisSpec(
+                name="c",
+                metric={"name": "auroc"},
+                states="social",
+                shuffle=ShuffleConfig(n_shuffles=50, correction="none"),
+            ),
+        ]
+    )
+    rep = pipe.validate(sim_session, time_budget_s=0.0)
+    assert rep.estimates["b"]["time_s"] is None and rep.estimates["c"]["time_s"] is None
+    assert any(i.analysis == "b" and i.code == "null_config" for i in rep.issues)
+    assert any(i.analysis == "c" and i.code == "no_correction" for i in rep.issues)
+    assert rep.time_is_lower_bound and rep.to_dict()["time_is_lower_bound"] is True
+    assert "Total time >=" in str(rep)
+    full = _one({"name": "auroc"}, shuffle=shuf).validate(sim_session, time_budget_s=60.0)
+    assert not full.time_is_lower_bound and "Total time ~" in str(full)
+
+
+def test_prefer_cell_shift_messages_are_metric_specific(sim_session):
+    def msg(metric):
+        rep = _one({"name": metric}, states="syllables", shuffle=ShuffleConfig(n_shuffles=100))
+        return [
+            i.message for i in rep.validate(sim_session).issues if i.code == "prefer_cell_shift"
+        ]
+
+    pr = msg("participation_ratio")
+    assert pr and "unchanged" in pr[0]
+    for metric in ("pv_stability", "population_vector_overlap"):
+        m = msg(metric)
+        assert m and "unchanged" not in m[0] and "alignment" in m[0]
+
+
+def test_no_correction_only_for_cell_level_state_axis(sim_session):
+    plain = ShuffleConfig(n_shuffles=100, correction="none")
+    for metric in ("pv_stability", "decode_states"):
+        rep = _one({"name": metric}, states="syllables", shuffle=plain).validate(sim_session)
+        assert "no_correction" not in _codes(rep, "info"), metric
+    rep = _one({"name": "auroc"}, states="syllables", shuffle=plain).validate(sim_session)
+    assert "no_correction" in _codes(rep, "info")
+
+
+def test_correction_floor_uses_the_real_family(sim_session):
+    n_cells = sim_session.n_cells
+    n_states = sim_session.states["syllables"].n_states
+
+    def floor_msgs(metric, **cfg):
+        shuf = ShuffleConfig(n_shuffles=100, correction="bonferroni", **cfg)
+        rep = _one({"name": metric}, states="syllables", shuffle=shuf).validate(sim_session)
+        return [i.message for i in rep.issues if i.code == "correction_floor"]
+
+    # 1-D per-cell result: the family is the cells, whatever the number of states
+    one_d = floor_msgs("information_content")
+    assert one_d and f"over {n_cells} cells" in one_d[0]
+    # cell-by-state result, default scope: the family is the states of one cell
+    by_state = floor_msgs("auroc")
+    assert by_state and f"over {n_states} states" in by_state[0]
+    # scope cells: the family is the cells
+    by_cell = floor_msgs("auroc", correction_scope="cells")
+    assert by_cell and f"over {n_cells} cells" in by_cell[0]

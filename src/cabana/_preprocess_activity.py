@@ -213,7 +213,13 @@ class BandpassActivity(PreprocessStep):
         None, gt=0, description="High-pass edge (Hz); None = no high-pass."
     )
     high_hz: float | None = Field(None, gt=0, description="Low-pass edge (Hz); None = no low-pass.")
-    order: int = Field(2, ge=1, le=8, description="Butterworth order (per filtfilt pass).")
+    order: int = Field(
+        2,
+        ge=1,
+        le=8,
+        description="Butterworth order (per filtfilt pass).",
+        json_schema_extra={"ui": {"sweepable": False}},
+    )
 
     @model_validator(mode="after")
     def _check(self) -> BandpassActivity:

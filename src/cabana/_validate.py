@@ -24,18 +24,27 @@ _log = logging.getLogger("cabana")
 _MIN_SECONDS = 60.0
 _N_TIMING_SHIFTS = 5
 _SHIFT_NULLS = ("circular_shift", "covariate_matched_shift")
+# Metrics that depend only on the multiset of activity values in each state (or on per-state
+# sums): within_state_shuffle leaves them unchanged (null std ~ 1e-15).  Order-dependent
+# metrics (split_half_stability, pv_stability, decode_states, bayesian_decoder, peth,
+# signal_correlation, decode_signal) are informative under it and are not listed.
 _WITHIN_STATE_DEGENERATE = (
     "mean_per_state",
     "auroc",
     "information_content",
     "tuning_selectivity",
-)
-_POPULATION_NEEDS_CELL_SHIFT = (
+    "mutual_information",
+    "place_fields",
+    "population_vector_overlap",
+    "population_distance",
     "pairwise_correlation",
     "participation_ratio",
-    "pv_stability",
-    "population_vector_overlap",
+    "pca_population",
 )
+# Population statistics that a common circular shift cannot change at all.
+_UNCHANGED_BY_COMMON_SHIFT = ("pairwise_correlation", "participation_ratio")
+# Population statistics that a common shift does change, but only tests alignment with the state.
+_ALIGNMENT_ONLY_UNDER_COMMON_SHIFT = ("pv_stability", "population_vector_overlap")
 
 
 @dataclass
@@ -81,6 +90,9 @@ class ValidationReport:
         when it could not be estimated (e.g. the time budget ran out).
     total_time_s : float or None
         Sum of the known per-analysis time estimates (shuffle test included).
+    time_is_lower_bound : bool
+        True when the time budget ran out and some analyses were not timed, so
+        ``total_time_s`` under-reports the run.
     peak_memory_bytes : int or None
         Session arrays plus the largest single analysis (analyses run one at a time).
     """
@@ -88,6 +100,7 @@ class ValidationReport:
     issues: list[Issue] = field(default_factory=list)
     estimates: dict[str, dict[str, Any]] = field(default_factory=dict)
     total_time_s: float | None = None
+    time_is_lower_bound: bool = False
     peak_memory_bytes: int | None = None
 
     @property
@@ -109,6 +122,7 @@ class ValidationReport:
             "issues": [i.to_dict() for i in self.issues],
             "estimates": {k: dict(v) for k, v in self.estimates.items()},
             "total_time_s": self.total_time_s,
+            "time_is_lower_bound": self.time_is_lower_bound,
             "peak_memory_bytes": self.peak_memory_bytes,
         }
 
@@ -130,7 +144,12 @@ class ValidationReport:
                 n = e.get("n_frames_used")
                 lines.append(f"  {name}: {t}, {m}, {'?' if n is None else n} frames")
         if self.total_time_s is not None:
-            lines.append(f"Total time ~ {self.total_time_s:.1f} s")
+            if self.time_is_lower_bound:
+                lines.append(
+                    f"Total time >= {self.total_time_s:.1f} s (some analyses were not timed)"
+                )
+            else:
+                lines.append(f"Total time ~ {self.total_time_s:.1f} s")
         if self.peak_memory_bytes is not None:
             lines.append(f"Peak memory ~ {human_bytes(self.peak_memory_bytes)}")
         return "\n".join(lines)
@@ -211,7 +230,8 @@ def validate_pipeline(
         Session holding the raw inputs.
     time_budget_s : float, default 2.0
         Wall-clock budget for the timing probes.  Once spent, the remaining analyses are not
-        timed (their ``time_s`` estimate is ``None``); the first analysis is always timed.
+        timed (their ``time_s`` estimate is ``None`` and the report's ``time_is_lower_bound``
+        is True) but every other check still runs; the first analysis is always timed.
 
     Returns
     -------
@@ -470,63 +490,94 @@ def _check_analysis(
                 "cell_shift_cell_level",
                 "cell_shift is identical to circular_shift per cell for a cell-level metric",
             )
-        if (
-            metric.level == "population"
-            and metric.name in _POPULATION_NEEDS_CELL_SHIFT
-            and null.name == "circular_shift"
-        ):
-            add(
-                "info",
-                "prefer_cell_shift",
-                f"a common circular shift leaves {metric.name} unchanged; consider "
-                "null={'name': 'cell_shift'}",
-            )
+        if metric.level == "population" and null.name == "circular_shift":
+            if metric.name in _UNCHANGED_BY_COMMON_SHIFT:
+                add(
+                    "info",
+                    "prefer_cell_shift",
+                    f"a common circular shift leaves {metric.name} unchanged; consider "
+                    "null={'name': 'cell_shift'}",
+                )
+            elif metric.name in _ALIGNMENT_ONLY_UNDER_COMMON_SHIFT:
+                add(
+                    "info",
+                    "prefer_cell_shift",
+                    f"a common circular shift keeps cell-to-cell coordination and only tests "
+                    f"the alignment with the states, so it cannot say whether {metric.name} "
+                    "reflects population structure; consider null={'name': 'cell_shift'}",
+                )
         if ok:
             try:
                 null.check_target(metric, target)
             except Exception as exc:
                 add("error", "null_incompatible", str(exc))
                 ok = False
-        if cfg.correction == "bonferroni" and is_states and target.n_states > 1:
-            m = target.n_states
-            if floor * m >= cfg.alpha:
-                add(
-                    "warning",
-                    "correction_floor",
-                    f"bonferroni over {m} states multiplies the p-value floor to "
-                    f"{floor * m:.3g}, above alpha={cfg.alpha}",
-                )
 
     if not ok or any(i.analysis == name and i.level == "error" for i in issues):
         return
-    if over_budget:
-        return
-
-    # timing probe (also reveals the output shape)
-    metric.configure(session, spec.target)
+    # null configuration is checked even when the time budget is spent; the timing probe
+    # (which also reveals the output shape) is the only thing skipped then
+    if not over_budget:
+        metric.configure(session, spec.target)
     if cfg is not None and null is not None:
         try:
             null = null.configure(session, spec)
         except Exception as exc:
             add("error", "null_config", f"{type(exc).__name__}: {exc}")
             return
-    t, values = _time_analysis(metric, spec, session, target, mask, cfg.n_jobs if cfg else 1)
-    est["time_s"] = float(t)
-    if (
-        cfg is not None
-        and cfg.correction == "none"
-        and is_states
-        and target.n_states > 1
-        and (
-            (metric.level == "cell" and values.ndim >= 2)
-            or (
-                metric.level == "population" and values.ndim == 1 and values.size == target.n_states
+    if over_budget:
+        shape = _expected_shape(metric, session, target if is_states else None)
+        report.time_is_lower_bound = True
+    else:
+        t, values = _time_analysis(metric, spec, session, target, mask, cfg.n_jobs if cfg else 1)
+        est["time_s"] = float(t)
+        shape = tuple(np.shape(values))
+    if cfg is None or shape is None:
+        return
+    n_states = target.n_states if is_states else 1
+    if cfg.correction == "bonferroni":
+        m = _family_size(shape, cfg.correction_scope)
+        if m > 1 and floor * m >= cfg.alpha:
+            add(
+                "warning",
+                "correction_floor",
+                f"bonferroni over {m} {_family_noun(shape, cfg.correction_scope, metric.level)} multiplies the "
+                f"p-value floor to {floor * m:.3g}, above alpha={cfg.alpha}",
             )
-        )
+    if (
+        cfg.correction == "none"
+        and is_states
+        and n_states > 1
+        and metric.level == "cell"
+        and len(shape) >= 2
     ):
         add(
             "info",
             "no_correction",
-            f"{target.n_states} states are tested without a multiple-comparison correction; "
+            f"{n_states} states are tested without a multiple-comparison correction; "
             "consider correction='max_stat'",
         )
+
+
+def _expected_shape(metric: Any, session: Session, target: Any) -> tuple[int, ...] | None:
+    """Output shape without computing (from the metric's name and level); None if unknown."""
+    try:
+        from ._memory import output_shape
+
+        n_states = None if target is None else target.n_states
+        return tuple(output_shape(metric, session.n_cells, n_states))
+    except Exception:  # pragma: no cover - estimator unavailable
+        return None
+
+
+def _family_size(shape: tuple[int, ...], scope: str) -> int:
+    """Number of tests corrected together for a result of ``shape`` (as ``_correct`` does)."""
+    if scope == "all" or len(shape) < 2:
+        return int(np.prod(shape)) if len(shape) else 1
+    return int(shape[1] if scope == "states" else shape[0])
+
+
+def _family_noun(shape: tuple[int, ...], scope: str, level: str) -> str:
+    if scope == "all" or len(shape) < 2:
+        return "cells" if (level == "cell" and scope != "all") else "tests"
+    return "states" if scope == "states" else "cells"

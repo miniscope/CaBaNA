@@ -13,6 +13,7 @@ import pytest
 from cabana import (
     Metric,
     Pipeline,
+    ResultSet,
     RunCancelled,
     RunContext,
     RunSetResult,
@@ -261,3 +262,22 @@ def test_run_set_processes(small_session, tmp_path):
         a, b = serial.results[sid].results[0], par.results[sid].results[0]
         assert np.array_equal(a.shuffle.null, b.shuffle.null)
     assert (tmp_path / "a.results.zip").exists() and events[-1].stage == "done"
+
+
+def test_run_set_resume_skips_partial_and_empty(small_session, tmp_path):
+    out = tmp_path / "run"
+    # an empty, "partial" result set on disk must not be mistaken for a finished run
+    rs = ResultSet(status="partial")
+    out.mkdir()
+    rs.save(out / "a.results.zip")
+    with pytest.warns(UserWarning, match="holds no results"):
+        r = run_set(_pipe(), {"a": small_session}, out_dir=out)
+    assert r.status["a"] == "ok" and len(r.results["a"]) > 0
+    # a saved partial run of the same pipeline is recomputed too
+    full = ResultSet.load(out / "a.results.zip")
+    full.status = "partial"
+    full.save(out / "a.results.zip")
+    with pytest.warns(UserWarning, match="status 'partial'"):
+        r = run_set(_pipe(), {"a": small_session}, out_dir=out)
+    assert r.status["a"] == "ok"
+    assert json.loads((out / "run_set.json").read_text())["sessions"]["a"]["source"] == "computed"

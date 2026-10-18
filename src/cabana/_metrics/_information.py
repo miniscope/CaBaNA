@@ -67,6 +67,11 @@ class InformationContent(Metric):
     """
 
     name: ClassVar[str] = "information_content"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "rate_map": ("cell", "state"),
+        "occupancy_s": ("state",),
+        "valid_states": ("state",),
+    }
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("rate_maps", "metric_strip", "shuffle_distribution")
 

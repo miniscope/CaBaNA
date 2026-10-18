@@ -114,6 +114,9 @@ class AUROC(Metric):
     """
 
     name: ClassVar[str] = "auroc"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "n_in_state": ("state",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "cell"
     default_tail: ClassVar[Tail] = "two"
     default_plots: ClassVar[tuple[str, ...]] = ("tuning_heatmap", "shuffle_distribution")

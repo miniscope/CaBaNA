@@ -33,6 +33,36 @@ def _cabana_version() -> str:
     return __version__
 
 
+def tuning_sha(pipeline: Pipeline, swept: dict[str, Any] | None = None) -> str:
+    """Hash of ``pipeline`` that a tuning export is keyed to.
+
+    Two things that change when tuned values are applied are left out, so a second export
+    from the same sweep still applies to an already-tuned pipeline: ``selections`` (how
+    values were chosen) and the values at the swept paths.
+
+    Parameters
+    ----------
+    pipeline : Pipeline
+        Pipeline to hash.
+    swept : dict[str, Any], optional
+        Path to a fixed stand-in value (conventionally the first candidate); each path is
+        set to it before hashing.  ``None`` hashes the values as they are.
+
+    Returns
+    -------
+    str
+        Hex SHA-256 of the plain-dict form without ``selections``.
+    """
+    from ._pipeline import _sha_json
+
+    p = pipeline
+    for path, value in (swept or {}).items():
+        p = p.set_param(path, value)
+    d = p.to_dict()
+    d.pop("selections", None)
+    return _sha_json(d)
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -53,7 +83,8 @@ class TuningExport(BaseModel):
     session_hash : str, optional
         Hash of the session activity the sweep ran on (``None`` if unknown).
     pipeline_sha256 : str
-        Hash of the base pipeline (``Pipeline.to_dict()``) the values apply to.
+        Hash of the base pipeline the values apply to (``Pipeline.to_dict()`` without
+        ``selections`` and with the swept values masked, see :func:`tuning_sha`).
     chosen : dict[str, Any]
         Parameter path (``Pipeline.set_param`` grammar) to chosen value.
     swept : dict[str, list]
@@ -87,7 +118,7 @@ class TuningExport(BaseModel):
         default=None, description="Hash of the session activity the sweep ran on, if known."
     )
     pipeline_sha256: str = Field(
-        description="SHA-256 of the base pipeline dict the chosen values apply to."
+        description="SHA-256 of the base pipeline dict (no selections, swept values masked)."
     )
     chosen: dict[str, Any] = Field(
         default_factory=dict,
@@ -227,12 +258,16 @@ def apply_tuning(
     Parameters
     ----------
     pipeline : Pipeline
-        Pipeline to tune; should be the one the export was made for.
+        Pipeline to tune; should be the one the export was made for.  Its ``selections`` and the
+        values at the swept paths are not part of the check, so several exports from one sweep
+        can be applied in turn.
     export : TuningExport
         Tuned values.
     session : Session, optional
         When given and ``export.session_hash`` is set and different, a
-        ``UserWarning`` says the values came from another session.
+        ``UserWarning`` says the values came from another session.  The hash is of the raw
+        activity, so pass the session that was given to :func:`tune` / ``sweep``: a processed
+        one (after ``rebin_time``, say) warns although it is the same recording.
     strict : bool, default True
         Raise ``ValueError`` when ``export.pipeline_sha256`` differs from the hash of
         ``pipeline``; ``False`` warns instead.
@@ -243,9 +278,9 @@ def apply_tuning(
         On a pipeline hash mismatch (``strict``).  A path that does not exist raises
         the ``set_param`` error unchanged.
     """
-    from ._pipeline import _session_sha, _sha_json
+    from ._pipeline import _session_sha
 
-    sha = _sha_json(pipeline.to_dict())
+    sha = tuning_sha(pipeline, {p: v[0] for p, v in export.swept.items() if v})
     if sha != export.pipeline_sha256:
         msg = (
             "the TuningExport was made for a different pipeline "
@@ -292,7 +327,7 @@ def tune(
     pipeline: Pipeline,
     over: dict[str, list[Any]],
     *,
-    criterion: str = "median_value",
+    criterion: str,
     rule: str = "one_se",
     analysis: str | None = None,
     shuffle: bool = False,
@@ -315,7 +350,15 @@ def tune(
     ----------
     session, pipeline, over, shuffle, context, n_jobs
         As for :func:`cabana.sweep` (``shuffle=False`` by default: observed values only).
-    criterion, rule, analysis, allow_significance
+    criterion : str
+        Required, as for :meth:`SweepResult.pick` (e.g. ``"median_value"``).  There is no
+        default on purpose: the criterion decides what the tuned value means.  Warning:
+        ``criterion="median_value"`` on a *smoothing* sweep rewards the least smoothed value
+        (one reviewer run measured median information 1.12, 0.11 and 0.029 for sigma 0, 1
+        and 2, so it picks 0), because smoothing always lowers the in-sample statistic.  For
+        smoothing use a held-out criterion: the ``auto_smooth_sigma`` selector (split-half
+        prediction) is the recommended way to choose it.
+    rule, analysis, allow_significance
         As for :meth:`SweepResult.pick`.  A p-value or significance criterion is
         refused unless ``allow_significance=True``.
     open_browser, app_url, timeout

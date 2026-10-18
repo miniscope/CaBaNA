@@ -58,3 +58,31 @@ def test_selector_progress_stage(small_session):
     ctx = cabana.RunContext(on_progress=lambda e: stages.append(e.stage))
     _pipeline().run(small_session, context=ctx)
     assert "select" in stages
+
+
+def test_user_pick_is_not_overridden_by_selector(small_session):
+    from cabana import RunContext, Selection
+
+    p = _pipeline().set_param(
+        "analyses.*.metric.smooth_sigma_bins",
+        2.5,
+        selection=Selection(
+            path="analyses.*.metric.smooth_sigma_bins", value=2.5, method="user_pick"
+        ),
+    )
+    logs: list[str] = []
+    _, rs = p.run(small_session, context=RunContext(log=logs.append))
+    r = rs.results[0]
+    assert r.params["smooth_sigma_bins"] == 2.5  # the user's value survived the selector
+    methods = [s["method"] for s in r.provenance["selections"]]
+    assert methods == ["user_pick"]  # the selector's choice was not recorded
+    assert any("kept the user's value 2.5" in line for line in logs)
+    # a literature default does not pin the value: the selector still acts
+    q = _pipeline().set_param(
+        "analyses.*.metric.smooth_sigma_bins",
+        2.5,
+        selection=Selection(
+            path="analyses.*.metric.smooth_sigma_bins", value=2.5, method="literature_default"
+        ),
+    )
+    assert q.run(small_session)[1].results[0].params["smooth_sigma_bins"] == 1.5

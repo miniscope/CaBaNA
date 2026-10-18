@@ -97,7 +97,12 @@ class SelectCells(PreprocessStep):
     min_fraction_finite: float | None = Field(
         None, ge=0, le=1, description="Keep cells whose fraction of finite frames is >= this."
     )
-    keep_at_least: int = Field(1, ge=0, description="Raise if fewer cells remain.")
+    keep_at_least: int = Field(
+        1,
+        ge=0,
+        description="Raise if fewer cells remain.",
+        json_schema_extra={"ui": {"sweepable": False}},
+    )
 
     def apply(self, session: Session) -> Session:
         n = session.n_cells

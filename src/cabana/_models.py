@@ -239,6 +239,9 @@ class GridTopology(_ArrayModel):
         return [0.5 * (e[1:] + e[:-1]) for e in self.edges]
 
 
+_CACHE_FIELDS = frozenset({"onehot", "support", "exclusive", "state_names"})
+
+
 class StateSpace(_ArrayModel):
     """Which behavioral state(s) the animal occupies on every neural frame.
 
@@ -276,7 +279,9 @@ class StateSpace(_ArrayModel):
     ``labels(mask)`` and ``cabana._statesums.masked_counts`` are cached on the
     instance (at most 8 entries each, keyed by a hash of the mask) and returned as
     read-only arrays.  The cache assumes ``onehot`` is not mutated after
-    construction; build a new ``StateSpace`` instead of editing it in place.
+    construction (in-place array edits are not seen); assigning ``onehot``, ``support``,
+    ``exclusive`` or ``state_names`` clears it, ``copy.copy`` / ``model_copy`` start with an
+    empty one and pickling drops it.
 
     Examples
     --------
@@ -303,6 +308,28 @@ class StateSpace(_ArrayModel):
         new = super().model_copy(update=update, deep=deep)
         new._cache = {}
         return new
+
+    def __copy__(self) -> StateSpace:
+        """Shallow copy with a fresh label cache."""
+        new = super().__copy__()
+        new._cache = {}
+        return new
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Pickle without the label cache (rebuilt on demand in the worker)."""
+        state = super().__getstate__()
+        private = state.get("__pydantic_private__")
+        if private and "_cache" in private:
+            state["__pydantic_private__"] = {**private, "_cache": {}}
+        return state
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Assigning a field the cached labels / counts derive from drops the cache."""
+        super().__setattr__(name, value)
+        if name in _CACHE_FIELDS:
+            private = getattr(self, "__pydantic_private__", None)
+            if private and "_cache" in private:
+                private["_cache"].clear()
 
     def _cached(self, kind: str, mask: np.ndarray | None, build: Any) -> np.ndarray:
         """Per-instance FIFO cache (8 entries) of read-only arrays keyed by (kind, mask hash)."""

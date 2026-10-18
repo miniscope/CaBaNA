@@ -176,6 +176,12 @@ class PCAPopulation(Metric):
     """
 
     name: ClassVar[str] = "pca_population"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "variance_explained": ("component",),
+        "loadings": ("cell", "component"),
+        "state_means": ("state", "component"),
+        "n_frames": ("state",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
@@ -256,6 +262,10 @@ class PopulationDistance(Metric):
     """
 
     name: ClassVar[str] = "population_distance"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "state_means": ("state", "cell"),
+        "n_frames": ("state",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)

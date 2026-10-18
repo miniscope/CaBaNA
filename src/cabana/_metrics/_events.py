@@ -197,6 +197,17 @@ class PETH(Metric):
     """
 
     name: ClassVar[str] = "peth"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "peth": ("cell", "state", "time"),
+        "peth_sem": ("cell", "state", "time"),
+        "time_s": ("time",),
+        "n_events": ("state",),
+        "p_prepost": ("cell", "state"),
+        "peth_null_lo": ("cell", "state", "time"),
+        "peth_null_hi": ("cell", "state", "time"),
+        "peth_null_mean": ("cell", "state", "time"),
+        "latency_s": ("cell", "state"),
+    }
     level: ClassVar[Literal["cell", "population"]] = "cell"
     default_tail: ClassVar[Tail] = "two"
     default_plots: ClassVar[tuple[str, ...]] = ("peth", "event_raster")

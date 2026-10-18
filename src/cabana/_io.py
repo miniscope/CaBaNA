@@ -158,7 +158,22 @@ def _npz_load(data: bytes) -> dict[str, np.ndarray]:
 
 
 #: Axis labels used in ``manifest["results"][i]["arrays"][key]["axes"]`` (``None`` = unknown).
-AXIS_LABELS = ("cell", "state", "shuffle", "time", "bin", "group", "lag", "fold", "channel")
+AXIS_LABELS = (
+    "cell",
+    "state",
+    "bin",
+    "shuffle",
+    "time",
+    "group",
+    "lag",
+    "fold",
+    "channel",
+    "component",
+    "level",
+    "event",
+    "half",
+    "pair",
+)
 
 
 def _match_axes(
@@ -201,11 +216,50 @@ def _match_axes(
     return axes
 
 
+def _declared_axes(result: MetricResult, name: str) -> tuple[str | None, ...] | None:
+    """``extras_axes[name]`` of the registered metric behind ``result`` (None if unknown)."""
+    from ._registry import _REGISTRY
+
+    cls = _REGISTRY.get("metric", {}).get(result.metric)
+    decl = getattr(cls, "extras_axes", None) or {}
+    axes = decl.get(name)
+    return None if axes is None else tuple(axes)
+
+
+def _declared_values_axes(result: MetricResult) -> tuple[str | None, ...] | None:
+    """``values_axes`` of the registered metric behind ``result`` (None = structural rule)."""
+    from ._registry import _REGISTRY
+
+    cls = _REGISTRY.get("metric", {}).get(result.metric)
+    axes = getattr(cls, "values_axes", None)
+    return None if axes is None else tuple(axes)
+
+
+def _extras_axes(
+    result: MetricResult, name: str, arr: np.ndarray, n_cells: Any
+) -> list[str | None]:
+    """Axis labels of one extras array: the metric's declaration, else a minimal guess.
+
+    The label is never guessed from sizes (a length that equals ``n_cells`` says nothing
+    about what the axis is).  Without a declaration only a leading ``cell`` axis of a
+    cell-level result whose length is ``n_cells`` is labelled.  A declaration whose length
+    differs from ``arr.ndim`` is ignored.
+    """
+    decl = _declared_axes(result, name)
+    if decl is not None and len(decl) == arr.ndim:
+        return list(decl)
+    axes: list[str | None] = [None] * arr.ndim
+    if result.level == "cell" and arr.ndim and isinstance(n_cells, int) and arr.shape[0] == n_cells:
+        axes[0] = "cell"
+    return axes
+
+
 def _array_meta(
     result: MetricResult,
     key: str,
     arr: np.ndarray,
     grid_shape: tuple[int, ...] | None = None,
+    extra_name: str | None = None,
 ) -> dict[str, Any]:
     """Shape, dtype and axis labels of one array stored for ``result``.
 
@@ -220,6 +274,9 @@ def _array_meta(
         The array as saved (after the dtype contract was applied).
     grid_shape : tuple[int, ...], optional
         Grid shape of the target; default ``provenance["target_params"]["shape"]`` if present.
+    extra_name : str, optional
+        For an ``extra_<j>`` array, the extras key it holds (looks up the metric's
+        ``extras_axes`` declaration); defaults to ``key``.
 
     Returns
     -------
@@ -251,11 +308,14 @@ def _array_meta(
         sizes["cell"] = n_cells
     if isinstance(n_states, int):
         sizes["state"] = n_states
-    if isinstance(n_shuf, int) and key != "values":
+    if isinstance(n_shuf, int) and key.startswith("sh_"):
         sizes["shuffle"] = n_shuf
 
     def values_axes() -> list[str | None]:
         v = vals.shape
+        declared = _declared_values_axes(result)
+        if declared is not None and len(declared) == len(v):
+            return list(declared)
         if result.level == "cell":
             if len(v) == 1:
                 return ["cell"]
@@ -284,10 +344,7 @@ def _array_meta(
         else:
             axes = _match_axes(arr.shape, sizes, grid_shape=grid_shape)
     else:
-        first = "cell" if result.level == "cell" and arr.ndim and "cell" in sizes else None
-        if first and arr.shape[0] != sizes["cell"]:
-            first = None
-        axes = _match_axes(arr.shape, sizes, first=first, grid_shape=grid_shape)
+        axes = _extras_axes(result, extra_name or key, arr, n_cells)
     return {"shape": [int(n) for n in arr.shape], "dtype": arr.dtype.name, "axes": axes}
 
 
@@ -471,7 +528,10 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
             }
         fname = f"results/{i:03d}.npz"
         files[fname] = _npz_bytes(arrays)
-        arrays_meta = {k: _array_meta(r, k, _canon_array(v)) for k, v in arrays.items()}
+        arrays_meta = {
+            k: _array_meta(r, k, _canon_array(v), extra_name=extra_keys.get(k))
+            for k, v in arrays.items()
+        }
         entries.append(
             {
                 "file": fname,

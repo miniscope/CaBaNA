@@ -147,3 +147,43 @@ def test_session_dir_loader():
     assert load_session_source(root, "session_dir").n_cells == s.n_cells
     with pytest.raises(ValueError):
         load_session_source(root.parent)  # directory with neither marker
+
+
+def test_inline_criteria_name_defaults_from_key():
+    d = _spec().to_dict()
+    inline = {k: v for k, v in CRIT.to_dict().items() if k != "name"}
+    d["criteria"] = {"place": inline}
+    assert StudySpec.from_dict(d).resolved_criteria()["place"].name == "place"
+    d["criteria"] = {"place": 3}
+    with pytest.raises(ValueError, match="inline mapping or a path"):
+        StudySpec.from_dict(d)
+
+
+def test_classification_error_writes_study_json(study_dir, monkeypatch):
+    from cabana import _study
+
+    def bad(rs, crit):
+        raise KeyError("missing_metric")
+
+    monkeypatch.setattr(_study, "classify", bad)
+    with pytest.raises(ValueError, match="result zips were saved"):
+        run_study(_spec(), base_dir=study_dir)
+    out = study_dir / "out"
+    assert (out / "a.results.zip").exists()
+    doc = json.loads((out / "study.json").read_text())
+    assert "KeyError" in doc["classification_errors"]["a"]
+
+
+def test_cancelled_zip_listed_in_study_json(study_dir):
+    n = {"k": 0}
+
+    def cancel():
+        n["k"] += 1
+        return n["k"] > 3
+
+    run_study(_spec(), base_dir=study_dir, context=RunContext(should_cancel=cancel))
+    doc = json.loads((study_dir / "out" / "study.json").read_text())
+    files = [v["file"] for v in doc["sessions"].values() if "file" in v]
+    assert files and all(f.endswith(".results.cancelled.zip") for f in files)
+    run_study(_spec(), base_dir=study_dir)  # completes: stale cancelled zips go away
+    assert not list((study_dir / "out").glob("*.results.cancelled.zip"))

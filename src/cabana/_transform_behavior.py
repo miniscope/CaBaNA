@@ -183,7 +183,12 @@ class SmoothSignal(_SignalFilter):
 
     method: Literal["median", "gaussian", "savgol"] = Field("median", description="Filter.")
     window_s: float = Field(0.25, gt=0, description="Window width, seconds.")
-    polyorder: int = Field(2, ge=0, description="Polynomial order (savgol only).")
+    polyorder: int = Field(
+        2,
+        ge=0,
+        description="Polynomial order (savgol only).",
+        json_schema_extra={"ui": {"sweepable": False}},
+    )
 
     def _fn(self, v: np.ndarray, session: Session) -> tuple[np.ndarray, int]:
         w = _odd_frames(self.window_s, session.fs)

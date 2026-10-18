@@ -31,6 +31,15 @@ _COLUMNS = [
 ]
 
 
+def _oriented_z(z: np.ndarray, tail: str) -> np.ndarray:
+    """z oriented toward the tested tail: ``|z|`` (two), ``-z`` (lower), ``z`` (upper)."""
+    if tail == "two":
+        return np.abs(z)
+    if tail == "lower":
+        return -z
+    return z
+
+
 def _tests(arr: np.ndarray | None, per_cell_any: bool) -> np.ndarray | None:
     """Reduce an array over the state axis to one entry per test (cells for 'any state')."""
     if arr is None:
@@ -55,6 +64,10 @@ def _stats(
         if a is None:
             return None
         a = np.asarray(a)
+        if r.level == "population" and a.ndim == 2 and a.shape[0] == a.shape[1]:
+            # a square population matrix (state x state, cell x cell) is symmetric with a
+            # trivial diagonal: count each pair once
+            return a[np.triu_indices(a.shape[0], k=1)]
         return a[(slice(None), sl)] if (a.ndim >= 2 and not isinstance(sl, slice)) else a
 
     vals = pick(values)
@@ -82,6 +95,8 @@ def _stats(
             sig = p < alpha
             sig_adj = padj < alpha
     z = _tests(pick(sh.z_score), cell_any)
+    if z is not None:
+        z = _oriented_z(z, sh.tail)
     assert p is not None and sig is not None and sig_adj is not None and z is not None
     tested = np.isfinite(p).any(axis=1)
     n = int(tested.sum())
@@ -129,7 +144,7 @@ def _population_state_stats(r: MetricResult, j: int, alpha: float | None) -> dic
         sig_adj = bool(np.asarray(sh.significant_adj)[j])
     else:
         sig_adj = sig
-    z = float(np.asarray(sh.z_score)[j])
+    z = float(_oriented_z(np.asarray(sh.z_score)[j], sh.tail))
     out.update(
         n_tested=int(ok),
         n_significant=int(ok and sig),
@@ -182,6 +197,17 @@ def summarize(
         states.  Without a shuffle the test columns are NaN.  ``median_value`` is the median of
         all finite observed values.  Failed analyses (``results.errors``) appear as rows with
         NaN counts and the message in ``error``.
+
+        Sign convention: ``median_z`` / ``max_z`` are oriented toward the tail each result was
+        tested on, so a large value always means "extreme in the tested direction":
+        ``|z|`` for two-tailed tests (inhibited cells count as much as excited ones), ``-z``
+        for lower-tail tests, ``z`` for upper-tail tests.  A square population matrix
+        (state-by-state or cell-by-cell) counts each pair once: the upper triangle without
+        the diagonal, so a 64x64 matrix has ``n_tested = 2016``, not 4096.
+
+        When any result used a multiple-comparison correction, the adjusted columns
+        (``n_significant_adj``, ``frac_significant_adj``) come before the raw ones, because
+        those are the counts to report.
 
     Raises
     ------
@@ -237,6 +263,11 @@ def summarize(
                 **_stats_empty(np.nan),
             }
         )
+    if any(r.shuffle is not None and r.shuffle.correction != "none" for r in results.results):
+        for c in ("n_significant_adj", "frac_significant_adj"):
+            cols.remove(c)
+        at = cols.index("n_significant")
+        cols[at:at] = ["n_significant_adj", "frac_significant_adj"]
     return pd.DataFrame(rows, columns=cols)
 
 

@@ -21,9 +21,10 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 import pandas as pd
 
-from ._pipeline import Pipeline, ProgressEvent, RunContext, _session_sha, _sha_json
+from ._pipeline import Pipeline, ProgressEvent, RunContext, _session_sha
 from ._results import ResultSet
 from ._selection import Selection, _jsonable
+from ._tuning import tuning_sha
 
 __all__ = ["StabilityReport", "SweepResult", "sweep"]
 
@@ -685,7 +686,7 @@ def sweep(
     grid = list(itertools.product(*(cand[p] for p in params)))
     total = len(grid)
     result = SweepResult(params=params, over=cand, shuffle=shuffle)
-    result.pipeline_sha256 = _sha_json(pipeline.to_dict())
+    result.pipeline_sha256 = tuning_sha(pipeline, {p: cand[p][0] for p in params})
     try:
         result.session_hash = _session_sha(session)
         result.session_meta = {

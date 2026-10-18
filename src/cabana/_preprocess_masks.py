@@ -257,7 +257,12 @@ class MaskFromSignal(PreprocessStep):
     signal: str = Field(..., description="Name of the signal in session.signals.")
     min: float | None = Field(None, description="Lower bound (inclusive); None = none.")
     max: float | None = Field(None, description="Upper bound (inclusive); None = none.")
-    channel: int = Field(0, ge=0, description="Column of a 2-D signal to use.")
+    channel: int = Field(
+        0,
+        ge=0,
+        description="Column of a 2-D signal to use.",
+        json_schema_extra={"ui": {"sweepable": False}},
+    )
     nan_is: bool = Field(False, description="Mask value assigned to NaN frames.")
     output: str = Field(..., description="Name of the mask written.")
 

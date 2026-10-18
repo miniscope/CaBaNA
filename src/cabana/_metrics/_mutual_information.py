@@ -98,6 +98,13 @@ class MutualInformation(Metric):
     """
 
     name: ClassVar[str] = "mutual_information"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "joint": ("cell", "state", "level"),
+        "conditional": ("cell", "state", "level"),
+        "edges": ("cell", None),
+        "occupancy_s": ("state",),
+        "valid": ("state",),
+    }
     default_tail: ClassVar[Tail] = "upper"
     default_plots: ClassVar[tuple[str, ...]] = (
         "joint_histogram",

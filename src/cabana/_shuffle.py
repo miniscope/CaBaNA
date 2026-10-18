@@ -122,13 +122,15 @@ class ShuffleConfig(BaseModel):
         With ``keep_null="none"``, a cell-level, cell-separable metric under a
         cell-separable null whose full null (``n_shuffles * output size * 8`` bytes)
         would exceed this is evaluated in chunks of cells, each chunk's null fitting
-        the budget.  Results are identical to the unchunked path;
+        the budget.  Results are identical to the unchunked path up to floating-point
+        round-off (exact for p-values except at ties within one ulp);
         ``ShuffleResult.null_info["chunks"]`` records the number of chunks.  Cost:
         per-surrogate nulls redraw their surrogates once per chunk.
     null_dtype : {"float64", "float32"}, default "float64"
         Storage dtype of the null draws when ``keep_null="full"``.  ``"float32"``
-        halves memory, but p-values are then computed from rounded draws, which
-        can change ties.
+        halves memory; the observed value is rounded to float32 too, so p-values and
+        ``max_stat`` correction decide ties in float32 precision (exact ties stay
+        ties, near-ties within float32 round-off become ties).
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -176,14 +178,16 @@ class ShuffleConfig(BaseModel):
         ge=1,
         description=(
             "When keep_null='none', a cell-level, cell-separable metric whose full null would "
-            "exceed this is evaluated in chunks of cells; results are identical."
+            "exceed this is evaluated in chunks of cells; results are identical up to "
+            "floating-point round-off (exact for p-values except at ties within one ulp)."
         ),
     )
     null_dtype: Literal["float64", "float32"] = Field(
         "float64",
         description=(
-            "dtype of the stored null draws when keep_null='full'; float32 halves memory but "
-            "p-values are then computed from rounded draws, which can change ties."
+            "dtype of the stored null draws when keep_null='full'; float32 halves memory. The "
+            "observed value is rounded to float32 as well, so ties (p-values, max_stat) are "
+            "decided in float32 precision."
         ),
     )
     correction: Literal["none", "bh", "bonferroni", "max_stat"] = Field(
@@ -228,6 +232,20 @@ class ShuffleConfig(BaseModel):
         return d
 
 
+def _like_null(observed: np.ndarray, null: np.ndarray) -> np.ndarray:
+    """``observed`` in the null's float32 precision (ties are decided in the null's dtype)."""
+    if null.dtype == np.float32:
+        with np.errstate(over="ignore"):
+            return observed.astype(np.float32)
+    return observed
+
+
+def _count(cmp: np.ndarray, finite: np.ndarray) -> np.ndarray:
+    """Per-column count of ``cmp & finite`` over the shuffle axis, in place on ``cmp``."""
+    cmp &= finite
+    return np.count_nonzero(cmp, axis=0)
+
+
 def _p_values(observed: np.ndarray, null: np.ndarray, tail: Tail) -> np.ndarray:
     """Permutation p-values; NaN where the observed value or the whole null is undefined.
 
@@ -236,9 +254,10 @@ def _p_values(observed: np.ndarray, null: np.ndarray, tail: Tail) -> np.ndarray:
     draws where it was defined.
     """
     finite = np.isfinite(null)
-    n_valid = finite.sum(axis=0)
-    ge = (np.where(finite, null, -np.inf) >= observed[None]).sum(axis=0)
-    le = (np.where(finite, null, np.inf) <= observed[None]).sum(axis=0)
+    n_valid = np.count_nonzero(finite, axis=0)
+    obs = _like_null(observed, null)[None]
+    ge = _count(null >= obs, finite)
+    le = _count(null <= obs, finite)
     with np.errstate(invalid="ignore", divide="ignore"):
         if tail == "upper":
             p = (ge + 1) / (n_valid + 1)
@@ -333,7 +352,7 @@ def _max_stat_p(
         x = null[:, sl]
         obs = observed[sl]
         finite = np.isfinite(x)
-        n_valid = finite.sum(axis=0)  # (cells, states, ...)
+        n_valid = np.count_nonzero(finite, axis=0)  # (cells, states, ...)
         xf = np.where(finite, x, np.nan)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -345,8 +364,9 @@ def _max_stat_p(
         fam_valid = np.isfinite(minp)
         n_fam = fam_valid.sum(axis=0)  # (cells, ...)
         minp = np.where(fam_valid, minp, np.inf)
-        ge = (np.where(finite, x, -np.inf) >= obs[None]).sum(axis=0)
-        le = (np.where(finite, x, np.inf) <= obs[None]).sum(axis=0)
+        obs_c = _like_null(obs, x)[None]
+        ge = _count(x >= obs_c, finite)
+        le = _count(x <= obs_c, finite)
         p_obs = _tail_p(ge + 1, le + 1, n_valid + 1, tail)  # (cells, states, ...)
         cnt = (minp[:, :, None] <= p_obs[None]).sum(axis=0)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -496,6 +516,56 @@ def _reissue(caught: list[warnings.WarningMessage]) -> None:
         warnings.warn(wm.message, wm.category, stacklevel=4)
 
 
+def plan_chunks(
+    metric: Metric,
+    null_plugin: Null,
+    observed_shape: tuple[int, ...],
+    config: ShuffleConfig,
+) -> tuple[int, int, int, int]:
+    """Chunking rule shared by :func:`shuffle_test` and ``memory_estimate``.
+
+    Parameters
+    ----------
+    metric : Metric
+    null_plugin : Null
+        ``config.resolved_null()``.
+    observed_shape : tuple of int
+        Shape of ``metric.compute`` (cells first for cell-level metrics).
+    config : ShuffleConfig
+
+    Returns
+    -------
+    n_chunks : int
+        1 when the null is evaluated whole.
+    chunk_cells : int
+        Cells per chunk (all cells when ``n_chunks == 1``).
+    full_bytes : int
+        Bytes of the whole ``(n_shuffles, *observed_shape)`` null (``null_dtype`` when
+        ``keep_null="full"``, else float64).
+    held_bytes : int
+        Bytes of the null held at once (one chunk when chunked).
+    """
+    n_cells = int(observed_shape[0]) if observed_shape else 1
+    itemsize = np.dtype(config.null_dtype).itemsize if config.keep_null == "full" else 8
+    size = int(np.prod(observed_shape, dtype=np.int64))
+    full_bytes = config.n_shuffles * size * itemsize
+    if (
+        config.keep_null == "none"
+        and metric.level == "cell"
+        and len(observed_shape) >= 1
+        and metric.cell_separable
+        and null_plugin.cell_separable
+        and (isinstance(null_plugin, CircularShift) or null_plugin.has_surrogate)
+        and full_bytes > config.max_null_bytes
+    ):
+        per_cell = max(1, int(np.prod(observed_shape[1:], dtype=np.int64)))
+        chunk_cells = max(1, config.max_null_bytes // (config.n_shuffles * per_cell * 8))
+        n_chunks = max(1, -(-n_cells // chunk_cells))
+        if n_chunks > 1:
+            return n_chunks, chunk_cells, full_bytes, config.n_shuffles * chunk_cells * per_cell * 8
+    return 1, n_cells, full_bytes, full_bytes
+
+
 def shuffle_test(
     metric: Metric,
     activity: np.ndarray,
@@ -570,23 +640,7 @@ def shuffle_test(
         if should_cancel is not None and should_cancel():
             raise RunCancelled("cancelled during shuffle test")
 
-    # chunked evaluation: only when the full null is not kept and cells are independent
-    n_chunks = 1
-    chunk_cells = observed.shape[0] if observed.ndim else 1
-    if (
-        config.keep_null == "none"
-        and metric.level == "cell"
-        and observed.ndim >= 1
-        and metric.cell_separable
-        and null_plugin.cell_separable
-        and (is_shift or null_plugin.has_surrogate)
-        and total * observed.size * 8 > config.max_null_bytes
-    ):
-        per_cell = max(1, int(np.prod(observed.shape[1:])))
-        chunk_cells = max(1, config.max_null_bytes // (total * per_cell * 8))
-        n_chunks = -(-observed.shape[0] // chunk_cells)
-        if n_chunks <= 1:
-            n_chunks = 1
+    n_chunks, chunk_cells, _, _ = plan_chunks(metric, null_plugin, observed.shape, config)
 
     if is_shift:
         shifts = null_plugin.draw(activity.shape[1], fs, config.n_shuffles, rng)
@@ -666,24 +720,32 @@ def shuffle_test(
         parts: list[dict[str, np.ndarray]] = []
         adj_parts: list[np.ndarray] = []
         note = None
-        for ci in range(n_chunks):
-            rows = slice(ci * chunk_cells, min((ci + 1) * chunk_cells, observed.shape[0]))
-            obs_c = observed[rows]
+        caught_chunks: list[warnings.WarningMessage] = []
+        with warnings.catch_warnings(record=True) as rec_chunks:
+            warnings.simplefilter("always")
+            try:
+                for ci in range(n_chunks):
+                    rows = slice(ci * chunk_cells, min((ci + 1) * chunk_cells, observed.shape[0]))
+                    obs_c = observed[rows]
 
-            def tick(done: int, ci: int = ci) -> None:
-                if on_batch is not None:
-                    on_batch(ci * total + done, n_chunks * total)
+                    def tick(done: int, ci: int = ci) -> None:
+                        if on_batch is not None:
+                            # true shuffle units, monotone, ends at (total, total)
+                            on_batch((ci * total + done) // n_chunks, total)
 
-            null = np.empty((total, *obs_c.shape), dtype=np.float64)
-            fill(activity[rows], null, tick)
-            st_c = summarize(null, obs_c)
-            parts.append(st_c)
-            if config.correction == "max_stat":
-                adj_c, note = _correct(
-                    st_c["p"], obs_c, null, tail, config.correction, config.correction_scope
-                )
-                adj_parts.append(adj_c)
-            del null
+                    null = np.empty((total, *obs_c.shape), dtype=np.float64)
+                    fill(activity[rows], null, tick)
+                    st_c = summarize(null, obs_c)
+                    parts.append(st_c)
+                    if config.correction == "max_stat":
+                        adj_c, note = _correct(
+                            st_c["p"], obs_c, null, tail, config.correction, config.correction_scope
+                        )
+                        adj_parts.append(adj_c)
+                    del null
+            finally:
+                caught_chunks = list(rec_chunks)
+        _reissue(caught_chunks)  # once per run, not once per chunk
         st = {k: np.concatenate([q[k] for q in parts], axis=0) for k in parts[0]}
         p = st["p"]
         if config.correction == "max_stat":
@@ -729,6 +791,7 @@ __all__ = [
     "Tail",
     "adjust_p_values",
     "draw_shifts",
+    "plan_chunks",
     "shifted_sums",
     "shuffle_test",
 ]

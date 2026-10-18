@@ -45,7 +45,11 @@ COLS = [
 
 def test_summary_columns_and_hand_counts(run20):
     df = cabana.summarize(run20)
-    assert list(df.columns) == COLS and list(df["analysis"]) == ["info", "auc", "plain"]
+    # run20 has a max_stat correction, so the adjusted columns come first
+    adj_first = [c for c in COLS if c not in ("n_significant_adj", "frac_significant_adj")]
+    at = adj_first.index("n_significant")
+    adj_first[at:at] = ["n_significant_adj", "frac_significant_adj"]
+    assert list(df.columns) == adj_first and list(df["analysis"]) == ["info", "auc", "plain"]
     r = run20["info"]
     p = r.shuffle.p_value
     row = df.iloc[0]
@@ -67,7 +71,9 @@ def test_summary_any_state_per_cell(run20):
     assert row.n_tested == np.isfinite(p).any(axis=1).sum()
     assert row.n_significant == sig.any(axis=1).sum()
     assert row.n_significant_adj == r.shuffle.significant_adj.any(axis=1).sum()
-    zc = np.nanmax(np.where(np.isfinite(r.shuffle.z_score), r.shuffle.z_score, -np.inf), axis=1)
+    z = r.shuffle.z_score
+    z = np.abs(z) if r.shuffle.tail == "two" else (-z if r.shuffle.tail == "lower" else z)
+    zc = np.nanmax(np.where(np.isfinite(z), z, -np.inf), axis=1)
     assert row.median_z == pytest.approx(np.median(zc[np.isfinite(zc)]))
     # alpha recomputes significance from the p-values
     strict = cabana.summarize(run20, alpha=0.001).iloc[1]
@@ -139,7 +145,8 @@ def test_log_context_records(caplog, sim_session):
     for r in caplog.records:
         by_level.setdefault(r.levelno, []).append(r.getMessage())
     info = " ".join(by_level[logging.INFO])
-    assert "[analyze] speedcorr" in info and "started" in info and "finished" in info
+    assert "[analyze] speedcorr" in info and "finished" in info
+    assert "started" not in info  # the stage line already says it: no second start line
     assert any("shuffle 20/40" in m for m in by_level[logging.DEBUG])
     assert not any("shuffle" in m for m in by_level[logging.INFO])
 
@@ -148,7 +155,8 @@ def test_log_context_level(caplog):
     ctx = cabana.log_context(logging.WARNING)
     with caplog.at_level(logging.INFO, logger="cabana"):
         ctx.log("hello")
-        ctx.on_progress(_ev("analysis", message="start"))
+        ctx.on_progress(_ev("analysis", message="finished"))
+        ctx.on_progress(_ev("analysis", message="start"))  # not logged (stage line has it)
     assert [r.levelno for r in caplog.records] == [logging.WARNING, logging.WARNING]
 
 
@@ -230,3 +238,111 @@ def test_merge_context():
         RunContext(should_cancel=lambda: False), RunContext(should_cancel=lambda: False)
     )
     assert neither.should_cancel() is False
+
+
+# ---- review fixes -------------------------------------------------------------
+
+
+def test_z_columns_are_oriented_to_the_tail(run20, monkeypatch):
+    from cabana._results import ShuffleResult
+
+    def expected(z):
+        zc = np.nanmax(np.where(np.isfinite(z), z, -np.inf), axis=1)
+        return float(np.median(zc[np.isfinite(zc)])), float(zc[np.isfinite(zc)].max())
+
+    base = cabana.summarize(run20).iloc[1]
+    flipped = run20.model_copy(deep=True)
+    sh = flipped["auc"].shuffle
+    assert sh.tail == "two"
+    orig = ShuffleResult.z_score.fget
+    monkeypatch.setattr(ShuffleResult, "z_score", property(lambda self: -orig(self)))
+    z = np.asarray(sh.z_score)  # every cell's z negated: a population of inhibited cells
+    # two-tailed: inhibited cells count as much as excited ones (|z|)
+    row = cabana.summarize(flipped).iloc[1]
+    assert row.median_z == pytest.approx(base.median_z) and row.max_z == pytest.approx(base.max_z)
+    assert row.max_z > 0
+    # lower tail: -z, so strongly negative z is a large value
+    sh.tail = "lower"
+    low = cabana.summarize(flipped).iloc[1]
+    assert (low.median_z, low.max_z) == pytest.approx(expected(-z))
+    # upper tail keeps the signed z
+    sh.tail = "upper"
+    up = cabana.summarize(flipped).iloc[1]
+    assert (up.median_z, up.max_z) == pytest.approx(expected(z))
+
+
+def test_population_matrix_counts_upper_triangle(sim_session):
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                name="pvo",
+                metric={"name": "population_vector_overlap"},
+                states="syllables",
+                shuffle=ShuffleConfig(n_shuffles=20, null={"name": "cell_shift"}),
+            )
+        ]
+    )
+    _, res = pipe.run(sim_session)
+    k = res["pvo"].shuffle.p_value.shape[0]
+    assert res["pvo"].shuffle.p_value.shape == (k, k)
+    row = cabana.summarize(res).iloc[0]
+    assert row.n_tested == k * (k - 1) // 2  # not k * k
+    iu = np.triu_indices(k, 1)
+    assert row.n_significant == int((res["pvo"].shuffle.p_value[iu] < 0.05).sum())
+    vals = np.asarray(res["pvo"].values)[iu]
+    assert row.median_value == pytest.approx(np.nanmedian(vals))
+
+
+def test_adjusted_columns_first_only_with_a_correction(run20):
+    assert list(cabana.summarize(run20).columns)[8:10] == [
+        "n_significant_adj",
+        "frac_significant_adj",
+    ]
+    only_none = run20.model_copy(deep=True)
+    only_none.results = [r for r in only_none.results if r.name == "info"]
+    cols = list(cabana.summarize(only_none).columns)
+    assert cols[8:10] == ["n_significant", "frac_significant"]
+
+
+def test_tqdm_closes_when_a_user_callback_raises(monkeypatch):
+    _Bar.made = []
+    monkeypatch.setitem(sys.modules, "tqdm", types.SimpleNamespace(tqdm=_Bar))
+    seen = []
+
+    def boom(ev):
+        seen.append(ev.stage)
+        raise RuntimeError("user callback failed")
+
+    ctx = cabana.merge_context(cabana.tqdm_context(), RunContext(on_progress=boom))
+    with pytest.raises(RuntimeError, match="user callback"):
+        ctx.on_progress(_ev("done", "", frac=1.0, message="done"))
+    assert _Bar.made[-1].closed and seen == ["done"]
+    # the other order: a raising first callback must not skip the second one
+    calls = []
+
+    def first(ev):
+        raise ValueError("first")
+
+    both = cabana.merge_context(
+        RunContext(on_progress=first), RunContext(on_progress=lambda e: calls.append("second"))
+    )
+    with pytest.raises(ValueError):
+        both.on_progress(_ev("shuffle"))
+    assert calls == ["second"]
+
+
+def test_log_context_logs_each_analysis_start_once(caplog, sim_session):
+    pipe = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                name="speedcorr",
+                metric={"name": "signal_correlation"},
+                signal="speed",
+                shuffle=ShuffleConfig(n_shuffles=40),
+            )
+        ]
+    )
+    with caplog.at_level(logging.INFO, logger="cabana"):
+        pipe.run(sim_session, context=cabana.log_context())
+    starts = [r.getMessage() for r in caplog.records if "speedcorr" in r.getMessage()]
+    assert len([m for m in starts if "finished" not in m]) == 1

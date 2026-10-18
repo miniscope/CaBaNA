@@ -123,7 +123,7 @@ from ._registry import (
     build,
     register,
 )
-from ._logging import log_context, logger, merge_context, tqdm_context
+from ._logging import log_context, logger, merge_context, print_context, tqdm_context
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
@@ -144,6 +144,7 @@ __all__ = [
     "analyze",
     "format_summary",
     "log_context",
+    "print_context",
     "logger",
     "merge_context",
     "recipe",

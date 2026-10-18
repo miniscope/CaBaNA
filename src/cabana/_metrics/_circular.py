@@ -88,6 +88,14 @@ class CircularTuning(Metric):
     """
 
     name: ClassVar[str] = "circular_tuning"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "tuning_curve": ("cell", "bin"),
+        "bin_centers": ("bin",),
+        "preferred_direction": ("cell",),
+        "mvl": ("cell",),
+        "occupancy_s": ("bin",),
+        "valid_bins": ("bin",),
+    }
     level: ClassVar[Literal["cell", "population"]] = "cell"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"

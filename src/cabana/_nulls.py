@@ -294,7 +294,9 @@ class CovariateMatchedShift(CircularShift):
 
     covariate: str = Field("speed", description="Name of the signal in session.signals to match.")
     channel: int | None = Field(
-        None, description="Column of the covariate when it is 2-D (required then)."
+        None,
+        description="Column of the covariate when it is 2-D (required then).",
+        json_schema_extra={"ui": {"sweepable": False}},
     )
     statistic: Literal["ks", "mean"] = Field(
         "ks", description="Balance statistic: KS distance or |d mean| / pooled std."

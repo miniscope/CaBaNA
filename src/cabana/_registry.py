@@ -149,6 +149,19 @@ class Metric(_Plugin):
     #: fit in memory (``ShuffleConfig.keep_null="none"``).  Set False for a
     #: cell-level metric that normalises or ranks across cells.
     cell_separable: ClassVar[bool] = True
+    #: Axis labels for each array ``extras()`` returns, keyed by extras name.  One
+    #: entry per array axis, drawn from the vocabulary ``cell, state, bin, shuffle,
+    #: time, group, lag, fold, channel, component, level, event, half, pair`` or
+    #: ``None`` for an axis with no name (scalars and fixed-size feature axes).  The
+    #: length must equal the array's ndim exactly (no ``"..."``).  Used by
+    #: ``describe()`` and the results manifest; a metric that emits an undeclared extra
+    #: gets unlabelled axes (except a leading ``cell`` axis for cell-level metrics).
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {}
+    #: Axis labels of ``values`` (same vocabulary) when the structural rule (cell-level:
+    #: ``cell`` then ``state``; population: ``state`` axes from ``state_names``) would
+    #: be wrong, e.g. ``("cell", "cell")`` for a cell-by-cell matrix whose labels are
+    #: cell ids.  ``None`` keeps the structural rule.
+    values_axes: ClassVar[tuple[str | None, ...] | None] = None
 
     @abstractmethod
     def compute(

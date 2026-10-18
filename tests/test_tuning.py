@@ -21,7 +21,7 @@ def _pipe() -> Pipeline:
 
 @pytest.fixture(scope="module")
 def export(small_session):
-    return tune(small_session, _pipe(), {SIGMA: [0, 1, 2]})
+    return tune(small_session, _pipe(), {SIGMA: [0, 1, 2]}, criterion="median_value")
 
 
 def test_tune_export_contents(export, small_session):
@@ -70,12 +70,45 @@ def test_apply_tuning_user_pick_when_no_selection(export):
 
 
 def test_hash_mismatch(export):
-    other = _pipe().set_param(SIGMA, 3)
+    other = Pipeline(
+        analyses=[{"name": "info", "metric": {"name": "information_content"}, "states": "social"}]
+    )
     with pytest.raises(ValueError, match="different pipeline"):
         apply_tuning(other, export)
     with pytest.warns(UserWarning, match="different pipeline"):
         out = apply_tuning(other, export, strict=False)
     assert out.get_param(SIGMA) == [export.chosen[SIGMA]]
+
+
+def test_export_applies_to_an_already_tuned_pipeline(export):
+    """The hash ignores `selections` and the swept values, so applying twice is fine."""
+    once = apply_tuning(_pipe(), export)
+    assert once.selections  # the hash used to include them
+    twice = apply_tuning(once, export)  # strict: must not raise
+    assert twice.get_param(SIGMA) == once.get_param(SIGMA)
+    assert [s.path for s in twice.selections] == [SIGMA, SIGMA]
+    # a user value on the swept path (and a selection) is not a "different pipeline" either
+    other_value = _pipe().set_param(SIGMA, 3, method="user_pick")
+    assert apply_tuning(other_value, export).get_param(SIGMA) == once.get_param(SIGMA)
+
+
+def test_sweep_hash_matches_tuning_sha(small_session):
+    sw = sweep(small_session, _pipe(), {SIGMA: [0, 1]}, shuffle=False)
+    assert sw.pipeline_sha256 == cabana._tuning.tuning_sha(_pipe(), {SIGMA: 0})
+    assert cabana._tuning.tuning_sha(_pipe(), {SIGMA: 0}) == cabana._tuning.tuning_sha(
+        _pipe().set_param(SIGMA, 2, method="user_pick"), {SIGMA: 0}
+    )
+
+
+def test_tune_requires_a_criterion(small_session):
+    with pytest.raises(TypeError, match="criterion"):
+        tune(small_session, _pipe(), {SIGMA: [0, 1]})
+    doc = tune.__doc__ or ""
+    assert "least smoothed" in doc and "auto_smooth_sigma" in doc
+
+
+def test_processed_session_hash_is_documented():
+    assert "rebin_time" in (apply_tuning.__doc__ or "")
 
 
 def test_session_hash_mismatch_warns(export, small_session, sim_session):
@@ -99,9 +132,9 @@ def test_significance_refused(small_session):
 
 def test_interactive_not_available(small_session):
     with pytest.raises(NotImplementedError, match="not available yet"):
-        tune(small_session, _pipe(), {SIGMA: [0, 1]}, open_browser=True)
+        tune(small_session, _pipe(), {SIGMA: [0, 1]}, criterion="median_value", open_browser=True)
     with pytest.raises(NotImplementedError):
-        tune(small_session, _pipe(), {SIGMA: [0, 1]}, app_url="http://x")
+        tune(small_session, _pipe(), {SIGMA: [0, 1]}, criterion="median_value", app_url="http://x")
 
 
 def test_user_pick_export_without_criterion(small_session):

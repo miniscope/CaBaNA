@@ -91,7 +91,7 @@ class ProgressEvent:
         else:
             phase_progress = float(self.fraction)
         return {
-            "iteration": int(self.index) + 1,
+            "iteration": min(int(self.index) + 1, int(self.total)) if self.total else 0,
             "max_iterations": int(self.total),
             "phase": f"{self.stage}:{self.name}" if self.name else self.stage,
             "phase_progress": phase_progress,
@@ -346,7 +346,10 @@ class Pipeline(BaseModel):
         )
 
     ``selections`` records how parameter values were chosen (:meth:`set_param`); each
-    result's provenance copies the relevant ones.
+    result's provenance copies the relevant ones.  A value the user fixed explicitly
+    (a ``user_pick`` or ``fixed_apriori`` Selection, e.g. from ``set_param(...,
+    selection=...)`` or an ``analyze()`` override) is never overwritten by a
+    selector: the selector's choice for that path is skipped and logged.
 
     Each result's ``provenance`` records version, seed, null, masks used, frames
     used, sampling rate, activity kind, transform parameters and a timestamp.
@@ -477,6 +480,23 @@ class Pipeline(BaseModel):
             what = "any element" if wildcard else "the element"
             raise ValueError(f"{what} addressed by {path!r} has no field {field!r}")
         return section, keep, sub, field, wildcard
+
+    def _targets(self, path: str) -> set[tuple[str, int, str | None, str]]:
+        """The concrete ``(section, index, sub, field)`` slots a parameter path addresses."""
+        try:
+            section, idxs, sub, field, _ = self._parse_path(path)
+        except ValueError:
+            return set()
+        return {(section, i, sub, field) for i in idxs}
+
+    def _pinned_targets(self) -> set[tuple[str, int, str | None, str]]:
+        """Slots whose value the user fixed explicitly (``user_pick`` / ``fixed_apriori``
+        Selections); a selector never overrides these."""
+        out: set[tuple[str, int, str | None, str]] = set()
+        for s in self.selections:
+            if s.method in ("user_pick", "fixed_apriori"):
+                out |= self._targets(s.path)
+        return out
 
     def get_param(self, path: str) -> Any:
         """Value at a dotted parameter path; a list (one per element) for a ``*`` key.
@@ -733,7 +753,14 @@ class Pipeline(BaseModel):
                 check_cancel()
                 say(f"[select] {sel.name}")
                 emit("select", sel.name, i, n_s, pre_slice)
+                pinned = active._pinned_targets()
                 for s in sel.select(session, active):
+                    if pinned and active._targets(s.path) & pinned:
+                        kept = active.get_param(s.path)
+                        if isinstance(kept, list) and len(set(map(repr, kept))) == 1:
+                            kept = kept[0]
+                        say(f"  {s.path}: kept the user's value {kept!r} ({sel.name} skipped)")
+                        continue
                     active = active.set_param(s.path, s.value, selection=s)
                     say(f"  {s.path} = {s.value!r} ({s.method})")
             frac = pre_slice
@@ -1171,6 +1198,15 @@ def _write_run_set_json(
     tmp.replace(out / "run_set.json")
 
 
+def _worker_ignore_sigint() -> None:
+    """Pool initializer: a terminal Ctrl-C reaches the whole process group; only the
+    parent should act on it (it polls ``should_cancel``), so workers ignore SIGINT and
+    finish their session instead of dying with ``BrokenProcessPool``."""
+    import signal
+
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def _run_one(
     pipeline: Pipeline,
     sid: str,
@@ -1221,7 +1257,9 @@ def run_set(
     resume : bool, default True
         With ``out_dir``, a session whose zip exists is loaded instead of run
         (null draws come back float32), unless it was written by a different
-        pipeline (``pipeline_sha256`` mismatch), in which case it is rerun.
+        pipeline (``pipeline_sha256`` mismatch), holds no results, or has a
+        status other than ``"ok"`` (``partial`` / ``cancelled``), in which case
+        it is rerun with a warning.
 
     Returns
     -------
@@ -1276,13 +1314,18 @@ def run_set(
         if resume and f is not None and f.exists():
             loaded = ResultSet.load(f)
             shas = {r.provenance.get("pipeline_sha256") for r in loaded}
-            if shas <= {pipe_sha}:  # same pipeline (or nothing to compare)
+            why = None
+            if len(loaded) == 0:
+                why = "holds no results"
+            elif loaded.status != "ok":
+                why = f"has status {loaded.status!r}"
+            elif shas != {pipe_sha}:
+                why = "was written by a different pipeline"
+            if why is None:
                 res[sid], status[sid] = loaded, loaded.status
                 info[sid] = {"status": loaded.status, "source": "resumed", "file": f.name}
                 continue
-            warnings.warn(
-                f"{f.name} was written by a different pipeline; recomputing {sid!r}", stacklevel=2
-            )
+            warnings.warn(f"{f.name} {why}; recomputing {sid!r}", stacklevel=2)
         todo.append(sid)
     flush()
 
@@ -1346,7 +1389,9 @@ def run_set(
         queue = list(todo)
         pending: dict[Any, tuple[str, float]] = {}
         with ProcessPoolExecutor(
-            min(workers, len(queue)), mp_context=mp.get_context("spawn")
+            min(workers, len(queue)),
+            mp_context=mp.get_context("spawn"),
+            initializer=_worker_ignore_sigint,
         ) as ex:
             try:
                 while queue or pending:

@@ -241,6 +241,14 @@ class GLMEncoding(Metric):
     """
 
     name: ClassVar[str] = "glm_encoding"
+    extras_axes: ClassVar[dict[str, tuple[str | None, ...]]] = {
+        "group_names": ("group",),
+        "deviance_explained": ("cell",),
+        "weights": ("cell", None),
+        "kernels": ("cell", "group", "lag"),
+        "kernel_lags_s": ("lag",),
+        "kernel_group_names": ("group",),
+    }
     level: ClassVar = "cell"
     input: ClassVar = "signal"
     default_tail: ClassVar[Tail] = "upper"

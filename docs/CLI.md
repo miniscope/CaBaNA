@@ -21,7 +21,7 @@ cabana version
 | 0 | ok |
 | 1 | error (message on stderr) |
 | 2 | usage error (bad arguments, unknown schema name) |
-| 3 | cancelled (Ctrl-C / SIGINT); partial results are saved |
+| 3 | cancelled (Ctrl-C / SIGINT, or workers killed by a terminal Ctrl-C); partial results are saved only with `--out` (otherwise a note says they were not) |
 | 4 | completed, but `--on-error record` stored failed analyses (`status == "partial"`) |
 
 ## `cabana run`
@@ -38,18 +38,32 @@ writes `<session_id>.results.zip` and `run_set.json` (per-session status).  With
 Study YAML: `--session` is not allowed; `--out` overrides the study's `out_dir`.
 
 Rerunning with the same `--out` reuses finished sessions (`--no-resume` recomputes).
-`--n-jobs N` processes sessions in parallel.
+`--n-jobs N` processes sessions in parallel.  A study loads every session up front, so
+memory scales with the number of sessions even with `--n-jobs 1`.
 
 ### Cancellation
 
 The first Ctrl-C stops after the current step; results so far are kept as
-`<session_id>.results.cancelled.zip` (status `cancelled`; never reused by resume) and
-the exit code is 3.  A second Ctrl-C raises `KeyboardInterrupt` immediately.
+`<session_id>.results.cancelled.zip` (status `cancelled`; never reused by resume; listed
+as `"file"` in `run_set.json` / `study.json`; deleted when the session later completes into
+the same `--out`) and the exit code is 3.  Without `--out` nothing is saved.  A second Ctrl-C raises `KeyboardInterrupt` immediately.
 
 ### Progress
 
 `--progress text` prints the human stage lines to stderr.  `--progress jsonl` writes one
-JSON object per line to stderr, or to `--progress-file`.
+JSON object per line to stderr, or to `--progress-file` (which implies `--progress jsonl`).
+In jsonl mode every message is a JSON line with an `"event"` key:
+
+| event | fields |
+|-------|--------|
+| `progress` | `ProgressEvent.to_dict()` (below) |
+| `log` | `message` (e.g. the Ctrl-C notice, "results were not saved ...") |
+| `warning` | `category`, `message` (Python warnings raised in the CLI process) |
+| `error` | `type`, `message` (fatal error; followed by `done` with status `error`) |
+| `done` | `status`, `elapsed_s` (always the last line) |
+
+Warnings raised inside `--n-jobs` worker processes bypass this stream, so a consumer
+should still defensively skip lines that are not JSON.
 
 Progress line (`ProgressEvent.to_dict()` plus `"event": "progress"`):
 
@@ -78,8 +92,8 @@ to a parsed jsonl line with `ProgressEvent(**{k: v for k, v in line.items() if k
 
 ## `cabana describe`, `schema`, `validate`
 
-`describe` prints `cabana.describe(probe=...)` as strict JSON (`--probe` also checks
-optional dependencies).  `schema NAME` prints a JSON Schema: `resultset`, `pipeline`,
+`describe` prints `cabana.describe(probe=...)` as strict JSON (`--probe` also runs every
+metric once on a tiny simulated session to report their output arrays).  `schema NAME` prints a JSON Schema: `resultset`, `pipeline`,
 `analysis_spec`, `shuffle_config`, `selection`, `study`, `tuning_export`, `describe`
 (unknown name: exit 2).  `validate SPEC --session PATH` runs `Pipeline.validate` on the
 session and exits 1 when the report is not ok.
@@ -123,10 +137,10 @@ proc = subprocess.Popen(
      "--progress", "jsonl"],
     stderr=subprocess.PIPE, text=True)
 for line in proc.stderr:
-    msg = json.loads(line)       # event == "progress" or "done"
+    msg = json.loads(line)       # event: progress, log, warning, error or done
 proc.wait()                      # 0 ok, 3 cancelled, 4 partial, 1 error
 ```
 
 Cancel by sending `SIGINT` to the process (once for a graceful stop with partial
-results), then read the results zips from `out`.  Use `--progress-file` instead when
-stderr is needed for warnings.
+results), then read the results zips from `out`.  Use `--progress-file` to keep the
+event stream apart from other stderr output.

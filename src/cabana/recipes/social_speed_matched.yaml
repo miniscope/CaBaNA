@@ -5,7 +5,10 @@ recipe:
     Variant of the social recipe for behaviors that ride on locomotion: the null keeps only
     circular shifts under which the speed distribution within every behavior matches the
     observed one (covariate_matched_shift). It raises when no shift can be matched, which is
-    the right answer when the states are defined by speed. Needs a speed signal in the session.
+    the right answer when a state is itself defined by speed (syllables are); validate cannot
+    predict that, so the run records the failure in results.errors. There is no
+    auto_null_timescale selector (it only acts on circular_shift and label_shuffle), so
+    min_shift_s (default 20 s) stays as given. Needs a speed signal in the session.
   targets:
     states: a bout StateSpace, one state per behavior (e.g. built by bouts_to_states)
   defaults:
@@ -13,8 +16,6 @@ recipe:
     seed: 0
     min_shift_s: 20.0
 pipeline:
-  selectors:
-  - name: auto_null_timescale
   analyses:
   - name: auroc
     metric: {name: auroc}

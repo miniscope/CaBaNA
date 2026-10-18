@@ -6,12 +6,17 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 cancelled, 4 completed with recorded error
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import signal
 import sys
 import threading
 import time
 import traceback
+import warnings
+from collections.abc import Iterator
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -35,8 +40,9 @@ SCHEMA_NAMES = (
 class _Canceller:
     """SIGINT handler: the first Ctrl-C sets a flag (``__call__``), the second raises."""
 
-    def __init__(self) -> None:
+    def __init__(self, notify: Any = None) -> None:
         self.requested = False
+        self._notify = notify
         self._previous: Any = None
         self._installed = False
 
@@ -47,7 +53,11 @@ class _Canceller:
         if self.requested:
             raise KeyboardInterrupt
         self.requested = True
-        print("cabana: cancelling after the current step (Ctrl-C again to abort)", file=sys.stderr)
+        msg = "cabana: cancelling after the current step (Ctrl-C again to abort)"
+        if self._notify is not None:
+            self._notify(msg)
+        else:
+            print(msg, file=sys.stderr)
 
     def __enter__(self) -> _Canceller:
         if threading.current_thread() is threading.main_thread():
@@ -62,7 +72,11 @@ class _Canceller:
 
 
 class _Progress:
-    """Builds the RunContext callbacks for ``--progress`` and writes the final line."""
+    """Builds the RunContext callbacks for ``--progress`` and owns the stderr/jsonl stream.
+
+    In ``jsonl`` mode every message (progress, log lines, warnings, the fatal error and
+    the final ``done``) is one JSON object per line with an ``"event"`` key.
+    """
 
     def __init__(self, mode: str, path: str | None) -> None:
         self.mode = mode
@@ -72,16 +86,64 @@ class _Progress:
             self._own = open(path, "w", buffering=1)  # noqa: SIM115
             self.stream = self._own
         self.t0 = time.perf_counter()
+        self.error_reported = False
+
+    @property
+    def jsonl(self) -> bool:
+        return self.mode == "jsonl"
 
     def _line(self, obj: dict[str, Any]) -> None:
-        self.stream.write(json.dumps(obj, allow_nan=False) + "\n")
+        self.stream.write(json.dumps(obj, allow_nan=False, default=str) + "\n")
         self.stream.flush()
 
     def on_progress(self, ev: ProgressEvent) -> None:
         self._line({"event": "progress", **ev.to_dict()})
 
     def log(self, msg: str) -> None:
-        print(msg, file=sys.stderr, flush=True)
+        """A free-text message: ``log`` event in jsonl mode, a plain stderr line otherwise."""
+        if self.jsonl:
+            self._line({"event": "log", "message": msg})
+        else:
+            print(msg, file=sys.stderr, flush=True)
+
+    def warn(self, message: Any, category: Any) -> None:
+        if self.jsonl:
+            self._line(
+                {
+                    "event": "warning",
+                    "category": getattr(category, "__name__", str(category)),
+                    "message": str(message),
+                }
+            )
+
+    def error(self, exc: BaseException, tb: str | None = None) -> None:
+        """Record a fatal error as an ``error`` event (jsonl mode only)."""
+        if self.jsonl:
+            obj: dict[str, Any] = {
+                "event": "error",
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            if tb:
+                obj["traceback"] = tb
+            self._line(obj)
+            self.error_reported = True
+
+    @contextlib.contextmanager
+    def capture_warnings(self) -> Iterator[None]:
+        """Route Python warnings into the jsonl stream for the duration of the run."""
+        if not self.jsonl:
+            yield
+            return
+
+        def hook(
+            message: Any, category: Any, filename: Any, lineno: Any, *a: Any, **k: Any
+        ) -> None:
+            self.warn(message, category)
+
+        with warnings.catch_warnings():
+            warnings.showwarning = hook
+            yield
 
     def apply(self, ctx: RunContext) -> RunContext:
         if self.mode == "jsonl":
@@ -123,72 +185,86 @@ def _session_id(session: Any, path: str) -> str:
 def _cmd_run(args: argparse.Namespace) -> int:
     from ._study import StudySpec, is_study_mapping, load_session_source, run_study, save_cancelled
 
-    spec_path = Path(args.spec)
-    if not spec_path.is_file():
-        raise FileNotFoundError(f"spec not found: {spec_path}")
-    doc = _load_yaml_mapping(args.spec)
-    study = is_study_mapping(doc)
-    if study and args.session:
-        print("cabana run: --session is not used with a study YAML", file=sys.stderr)
-        return EXIT_USAGE
-    if not study and not args.session:
-        print("cabana run: a pipeline YAML needs at least one --session", file=sys.stderr)
-        return EXIT_USAGE
-
-    canceller = _Canceller()
-    progress = _Progress(args.progress, args.progress_file)
+    mode = "jsonl" if args.progress_file else args.progress  # --progress-file implies jsonl
+    progress = _Progress(mode, args.progress_file)
+    canceller = _Canceller(notify=progress.log)
     ctx = progress.apply(RunContext(should_cancel=canceller, on_error=args.on_error))
     status = "error"
     try:
-        with canceller:
-            if study:
-                spec = StudySpec.from_yaml(spec_path)
-                if args.n_jobs is not None:
-                    spec.n_jobs = args.n_jobs
-                if args.no_resume:
-                    spec.resume = False
-                result = run_study(spec, context=ctx, out_dir=args.out)
-                run, status = result.run, result.status
-                out = args.out or spec.resolved_out_dir()
-                for sid, st in run.status.items():
-                    print(f"{sid}: {st}")
-                if result.classifications:
-                    for sid, c in result.classifications.items():
-                        print(f"{sid}: {c.counts()}")
-            else:
-                pipeline = Pipeline.from_yaml(spec_path)
-                sessions: dict[str, Any] = {}
-                for p in args.session:
-                    s = load_session_source(p)
-                    sid = _session_id(s, p)
-                    if sid in sessions:
-                        raise ValueError(f"duplicate session id {sid!r} ({p})")
-                    sessions[sid] = s
-                out = args.out
-                run = run_set(
-                    pipeline,
-                    sessions,
-                    context=ctx,
-                    n_jobs=args.n_jobs or 1,
-                    out_dir=out,
-                    resume=not args.no_resume,
-                )
-                if out is not None:
-                    save_cancelled(run, out)
-                if run.cancelled:
-                    status = "cancelled"
-                elif any(v == "partial" for v in run.status.values()):
-                    status = "partial"
-                else:
-                    status = "ok"
-                if out is None:
-                    _print_results(run)
-                else:
+        with progress.capture_warnings(), canceller:
+            spec_path = Path(args.spec)
+            if not spec_path.is_file():
+                raise FileNotFoundError(f"spec not found: {spec_path}")
+            doc = _load_yaml_mapping(args.spec)
+            study = is_study_mapping(doc)
+            if study and args.session:
+                progress.log("cabana run: --session is not used with a study YAML")
+                return EXIT_USAGE
+            if not study and not args.session:
+                progress.log("cabana run: a pipeline YAML needs at least one --session")
+                return EXIT_USAGE
+            try:
+                if study:
+                    spec = StudySpec.from_yaml(spec_path)
+                    if args.n_jobs is not None:
+                        spec.n_jobs = args.n_jobs
+                    if args.no_resume:
+                        spec.resume = False
+                    result = run_study(spec, context=ctx, out_dir=args.out)
+                    run, status = result.run, result.status
+                    out = args.out or spec.resolved_out_dir()
                     for sid, st in run.status.items():
                         print(f"{sid}: {st}")
+                    for sid, c in (result.classifications or {}).items():
+                        print(f"{sid}: {c.counts()}")
+                else:
+                    pipeline = Pipeline.from_yaml(spec_path)
+                    sessions: dict[str, Any] = {}
+                    for p in args.session:
+                        s = load_session_source(p)
+                        sid = _session_id(s, p)
+                        if sid in sessions:
+                            raise ValueError(f"duplicate session id {sid!r} ({p})")
+                        sessions[sid] = s
+                    out = args.out
+                    run = run_set(
+                        pipeline,
+                        sessions,
+                        context=ctx,
+                        n_jobs=args.n_jobs or 1,
+                        out_dir=out,
+                        resume=not args.no_resume,
+                    )
+                    if out is not None:
+                        save_cancelled(run, out)
+                    if run.cancelled:
+                        status = "cancelled"
+                    elif any(v == "partial" for v in run.status.values()):
+                        status = "partial"
+                    else:
+                        status = "ok"
+                    if out is None:
+                        _print_results(run)
+                    else:
+                        for sid, st in run.status.items():
+                            print(f"{sid}: {st}")
+            except BrokenProcessPool:
+                status = "cancelled"
+                progress.log(
+                    "cabana: workers interrupted; partial results were not written for "
+                    "sessions that were running"
+                )
+                return EXIT_CANCELLED
             if out is not None:
                 print(f"results written to {out}")
+            elif status == "cancelled":
+                progress.log("cabana: results were not saved because --out was not given")
         return _status_code(status)
+    except Exception as e:
+        progress.error(e, traceback.format_exc() if getattr(args, "debug", False) else None)
+        if progress.error_reported and progress.stream is sys.stderr:
+            e._cabana_reported = True  # type: ignore[attr-defined]
+        raise
     finally:
         progress.done(status)
         progress.close()
@@ -223,7 +299,7 @@ def _cmd_schema(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_USAGE
-    print(json.dumps(sch, indent=args.indent, allow_nan=False))
+    print(json.dumps(sch, indent=args.indent, allow_nan=False, sort_keys=True))
     return EXIT_OK
 
 
@@ -278,7 +354,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="none",
         help="progress on stderr: stage lines or one JSON object per line",
     )
-    r.add_argument("--progress-file", metavar="PATH", help="write jsonl progress here, not stderr")
+    r.add_argument(
+        "--progress-file",
+        metavar="PATH",
+        help="write the jsonl event stream here instead of stderr (implies --progress jsonl)",
+    )
     r.add_argument("--n-jobs", type=int, default=None, help="sessions in parallel (-1 = all cores)")
     r.add_argument("--no-resume", action="store_true", help="recompute sessions already in --out")
     r.add_argument(
@@ -290,7 +370,11 @@ def _build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=_cmd_run)
 
     d = sub.add_parser("describe", parents=[common], help="print the capability description (JSON)")
-    d.add_argument("--probe", action="store_true", help="also probe optional dependencies")
+    d.add_argument(
+        "--probe",
+        action="store_true",
+        help="also run every metric once on a tiny simulated session to report its output arrays",
+    )
     d.add_argument("--indent", type=int, default=2)
     d.set_defaults(func=_cmd_describe)
 
@@ -333,8 +417,14 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except KeyboardInterrupt:
         raise
+    except BrokenPipeError:  # e.g. `cabana describe | head`
+        with contextlib.suppress(Exception):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return EXIT_OK
     except Exception as e:
-        if debug:
+        if getattr(e, "_cabana_reported", False):
+            pass
+        elif debug:
             traceback.print_exc()
         else:
             print(f"cabana: error: {type(e).__name__}: {e}", file=sys.stderr)
