@@ -1,0 +1,37 @@
+recipe:
+  name: social_speed_matched
+  title: Social behavior bouts, speed-matched null
+  description: >-
+    Variant of the social recipe for behaviors that ride on locomotion: the null keeps only
+    circular shifts under which the speed distribution within every behavior matches the
+    observed one (covariate_matched_shift). It raises when no shift can be matched, which is
+    the right answer when the states are defined by speed. Needs a speed signal in the session.
+  targets:
+    states: a bout StateSpace, one state per behavior (e.g. built by bouts_to_states)
+  defaults:
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  selectors:
+  - name: auto_null_timescale
+  analyses:
+  - name: auroc
+    metric: {name: auroc}
+    states: ${states}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      'null':
+        name: covariate_matched_shift
+        covariate: speed
+        statistic: mean
+        tolerance: 0.5
+        min_frames: 100
+        max_tries: 100
+        min_shift_s: ${min_shift_s}
+      seed: ${seed}
+      correction: max_stat
+  - name: mean_difference
+    metric: {name: mean_per_state, statistic: difference}
+    states: ${states}
+    shuffle: *shuffle

@@ -118,6 +118,17 @@ class ShuffleConfig(BaseModel):
         ``ShuffleResult.null`` (needed by plots that draw the null).  ``"none"``
         sets ``null=None`` once p-values, bounds, ``null_median`` and
         ``null_mean`` are computed, saving memory and disk for large runs.
+    max_null_bytes : int, default 2**30
+        With ``keep_null="none"``, a cell-level, cell-separable metric under a
+        cell-separable null whose full null (``n_shuffles * output size * 8`` bytes)
+        would exceed this is evaluated in chunks of cells, each chunk's null fitting
+        the budget.  Results are identical to the unchunked path;
+        ``ShuffleResult.null_info["chunks"]`` records the number of chunks.  Cost:
+        per-surrogate nulls redraw their surrogates once per chunk.
+    null_dtype : {"float64", "float32"}, default "float64"
+        Storage dtype of the null draws when ``keep_null="full"``.  ``"float32"``
+        halves memory, but p-values are then computed from rounded draws, which
+        can change ties.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -159,6 +170,21 @@ class ShuffleConfig(BaseModel):
     keep_null: Literal["full", "none"] = Field(
         "full",
         description="'full' keeps ShuffleResult.null draws; 'none' drops them (null=None).",
+    )
+    max_null_bytes: int = Field(
+        1 << 30,
+        ge=1,
+        description=(
+            "When keep_null='none', a cell-level, cell-separable metric whose full null would "
+            "exceed this is evaluated in chunks of cells; results are identical."
+        ),
+    )
+    null_dtype: Literal["float64", "float32"] = Field(
+        "float64",
+        description=(
+            "dtype of the stored null draws when keep_null='full'; float32 halves memory but "
+            "p-values are then computed from rounded draws, which can change ties."
+        ),
     )
     correction: Literal["none", "bh", "bonferroni", "max_stat"] = Field(
         "none",
@@ -532,79 +558,154 @@ def shuffle_test(
     tail: Tail = config.tail if config.tail is not None else metric.resolve_tail(target)
 
     observed = np.asarray(metric.compute(activity, target, mask, fs), dtype=np.float64)
-    null = np.empty((config.n_shuffles, *observed.shape), dtype=np.float64)
     shifts: np.ndarray | None = None
-
     total = config.n_shuffles
-
-    def tick(done: int) -> None:
-        if on_batch is not None:
-            on_batch(done, total)
+    n_jobs = resolve_n_jobs(config.n_jobs)
+    bs = config.batch_size
+    starts = list(range(0, total, bs))
+    is_shift = isinstance(null_plugin, CircularShift)
 
     def check_cancel() -> None:
         # checked BEFORE computing a batch, so a finished shuffle is never discarded
         if should_cancel is not None and should_cancel():
             raise RunCancelled("cancelled during shuffle test")
 
-    n_jobs = resolve_n_jobs(config.n_jobs)
-    bs = config.batch_size
-    starts = list(range(0, total, bs))
+    # chunked evaluation: only when the full null is not kept and cells are independent
+    n_chunks = 1
+    chunk_cells = observed.shape[0] if observed.ndim else 1
+    if (
+        config.keep_null == "none"
+        and metric.level == "cell"
+        and observed.ndim >= 1
+        and metric.cell_separable
+        and null_plugin.cell_separable
+        and (is_shift or null_plugin.has_surrogate)
+        and total * observed.size * 8 > config.max_null_bytes
+    ):
+        per_cell = max(1, int(np.prod(observed.shape[1:])))
+        chunk_cells = max(1, config.max_null_bytes // (total * per_cell * 8))
+        n_chunks = -(-observed.shape[0] // chunk_cells)
+        if n_chunks <= 1:
+            n_chunks = 1
 
-    if isinstance(null_plugin, CircularShift):
+    if is_shift:
         shifts = null_plugin.draw(activity.shape[1], fs, config.n_shuffles, rng)
-
-        def work(start: int) -> int:
-            batch = shifts[start : start + bs]
-            fast = metric.compute_shifted(activity, target, mask, fs, batch)
-            if fast is not None:
-                null[start : start + batch.size] = fast
-            else:
-                for i, k in enumerate(batch):
-                    null[start + i] = metric.compute(
-                        np.roll(activity, int(k), axis=1), target, mask, fs
-                    )
-            return batch.size
-
-        _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=n_jobs > 1)
+        children = None
     elif null_plugin.has_surrogate:
         # one independent child stream per surrogate: the draw does not depend on batching or n_jobs
         children = np.random.SeedSequence(config.seed).spawn(total)
-
-        def work(start: int) -> int:
-            stop = min(start + bs, total)
-            for i in range(start, stop):
-                act_s, target_s = null_plugin.surrogate(
-                    activity, target, mask, fs, np.random.default_rng(children[i])
-                )
-                null[i] = metric.compute(act_s, target_s, mask, fs)
-            return stop - start
-
-        _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=True)
     else:  # legacy plugin implementing only ``surrogates``: one shared generator, serial
-        surrogates = null_plugin.surrogates(activity, target, mask, fs, config.n_shuffles, rng)
-        for i, (act_s, target_s) in enumerate(surrogates):
-            if i % bs == 0:
-                check_cancel()
-            null[i] = metric.compute(act_s, target_s, mask, fs)
-            if (i + 1) % bs == 0 or i + 1 == total:
-                tick(i + 1)
+        children = None
 
-    p = _p_values(observed, null, tail)
-    p_adj, note = _correct(p, observed, null, tail, config.correction, config.correction_scope)
-    lo, hi = _null_bounds(null, config.alpha, tail)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        null_median = np.nanmedian(null, axis=0)
-        null_mean = np.nanmean(null, axis=0)
-        null_std = np.nanstd(null, axis=0, ddof=1) if total > 1 else np.full(observed.shape, np.nan)
+    def fill(act: np.ndarray, null: np.ndarray, tick: Callable[[int], None]) -> None:
+        """Fill ``null`` (n_shuffles, *metric output on ``act``) with the surrogate draws."""
+        if is_shift:
+
+            def work(start: int) -> int:
+                batch = shifts[start : start + bs]
+                fast = metric.compute_shifted(act, target, mask, fs, batch)
+                if fast is not None:
+                    null[start : start + batch.size] = fast
+                else:
+                    for i, k in enumerate(batch):
+                        null[start + i] = metric.compute(
+                            np.roll(act, int(k), axis=1), target, mask, fs
+                        )
+                return batch.size
+
+            _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=n_jobs > 1)
+        elif children is not None:
+
+            def work(start: int) -> int:
+                stop = min(start + bs, total)
+                for i in range(start, stop):
+                    act_s, target_s = null_plugin.surrogate(
+                        act, target, mask, fs, np.random.default_rng(children[i])
+                    )
+                    null[i] = metric.compute(act_s, target_s, mask, fs)
+                return stop - start
+
+            _run_batches(work, starts, n_jobs, tick, check_cancel, dedupe_warnings=True)
+        else:
+            surrogates = null_plugin.surrogates(act, target, mask, fs, config.n_shuffles, rng)
+            for i, (act_s, target_s) in enumerate(surrogates):
+                if i % bs == 0:
+                    check_cancel()
+                null[i] = metric.compute(act_s, target_s, mask, fs)
+                if (i + 1) % bs == 0 or i + 1 == total:
+                    tick(i + 1)
+
+    def summarize(null: np.ndarray, obs: np.ndarray) -> dict[str, np.ndarray]:
+        out: dict[str, np.ndarray] = {"p": _p_values(obs, null, tail)}
+        out["lo"], out["hi"] = _null_bounds(null, config.alpha, tail)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            out["median"] = np.nanmedian(null, axis=0)
+            out["mean"] = np.nanmean(null, axis=0)
+            out["std"] = (
+                np.nanstd(null, axis=0, ddof=1) if total > 1 else np.full(obs.shape, np.nan)
+            )
+        return out
+
+    note: str | None
+    null_out: np.ndarray | None
+    if n_chunks == 1:
+
+        def tick(done: int) -> None:
+            if on_batch is not None:
+                on_batch(done, total)
+
+        dtype = np.dtype(config.null_dtype) if config.keep_null == "full" else np.float64
+        null = np.empty((config.n_shuffles, *observed.shape), dtype=dtype)
+        fill(activity, null, tick)
+        st = summarize(null, observed)
+        p = st["p"]
+        p_adj, note = _correct(p, observed, null, tail, config.correction, config.correction_scope)
+        null_out = null if config.keep_null == "full" else None
+    else:
+        parts: list[dict[str, np.ndarray]] = []
+        adj_parts: list[np.ndarray] = []
+        note = None
+        for ci in range(n_chunks):
+            rows = slice(ci * chunk_cells, min((ci + 1) * chunk_cells, observed.shape[0]))
+            obs_c = observed[rows]
+
+            def tick(done: int, ci: int = ci) -> None:
+                if on_batch is not None:
+                    on_batch(ci * total + done, n_chunks * total)
+
+            null = np.empty((total, *obs_c.shape), dtype=np.float64)
+            fill(activity[rows], null, tick)
+            st_c = summarize(null, obs_c)
+            parts.append(st_c)
+            if config.correction == "max_stat":
+                adj_c, note = _correct(
+                    st_c["p"], obs_c, null, tail, config.correction, config.correction_scope
+                )
+                adj_parts.append(adj_c)
+            del null
+        st = {k: np.concatenate([q[k] for q in parts], axis=0) for k in parts[0]}
+        p = st["p"]
+        if config.correction == "max_stat":
+            p_adj = np.concatenate(adj_parts, axis=0)
+        else:
+            p_adj, note = _correct(
+                p, observed, np.empty((0,)), tail, config.correction, config.correction_scope
+            )
+        null_out = None
+    lo, hi = st["lo"], st["hi"]
+    null_median, null_mean, null_std = st["median"], st["mean"], st["std"]
     info = null_plugin.diagnostics(activity, target, mask, fs, shifts)
+    info = dict(info or {})
+    if n_chunks > 1:
+        info["chunks"] = n_chunks
     return ShuffleResult(
         observed=observed,
-        null=null if config.keep_null == "full" else None,
+        null=null_out,
         null_median=null_median,
         null_mean=null_mean,
         null_std=null_std,
-        null_info=dict(info or {}),
+        null_info=info,
         shifts=shifts,
         p_value=p,
         null_lo=lo,

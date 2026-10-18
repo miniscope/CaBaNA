@@ -1,0 +1,41 @@
+recipe:
+  name: population
+  title: Population structure
+  description: >-
+    Population-level analyses on a state space: population-vector stability and overlap,
+    state decoding and the participation ratio. The null is cell_shift (every cell rolled by
+    its own offset), which breaks cell-to-cell coordination; a common circular shift would
+    leave these statistics unchanged. Activity is re-binned to 0.5 s first (population
+    decoding at the full frame rate is slow); override with preprocess.rebin_time.bin_s.
+  targets:
+    states: a StateSpace to characterize (grid bins, syllables or behaviors)
+  defaults:
+    n_shuffles: 200
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  preprocess:
+  - name: rebin_time
+    bin_s: 0.5
+  analyses:
+  - name: pv_stability
+    metric: {name: pv_stability}
+    states: ${states}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      'null':
+        name: cell_shift
+        min_shift_s: ${min_shift_s}
+      seed: ${seed}
+  - name: pv_overlap
+    metric: {name: population_vector_overlap}
+    states: ${states}
+    shuffle: *shuffle
+  - name: decoding
+    metric: {name: decode_states}
+    states: ${states}
+    shuffle: *shuffle
+  - name: participation_ratio
+    metric: {name: participation_ratio}
+    states: ${states}
+    shuffle: *shuffle

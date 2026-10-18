@@ -23,6 +23,7 @@ import warnings
 from typing import Any, ClassVar, Literal
 
 import numpy as np
+from pydantic import Field
 
 from ._registry import Selector, register
 from ._selection import Selection
@@ -223,15 +224,27 @@ class AutoNullTimescale(Selector):
 
     name: ClassVar[str] = "auto_null_timescale"
 
-    analyses: str | list[str] = "*"
-    multiple: float = 3.0
-    min_shift_floor_s: float = 5.0
-    max_fraction: float = 0.25
-    block_rule: Literal["autocorr", "mean_bout"] = "autocorr"
-    block_floor_s: float = 0.25
-    max_lag_s: float = 60.0
-    set_min_shift: bool = True
-    set_block: bool = True
+    analyses: str | list[str] = Field(
+        "*", description="Analysis names (or '*') whose null settings are set."
+    )
+    multiple: float = Field(
+        3.0, description="Minimum shift as this multiple of the activity autocorrelation time."
+    )
+    min_shift_floor_s: float = Field(
+        5.0, description="Lower bound (s) on the chosen minimum circular shift."
+    )
+    max_fraction: float = Field(
+        0.25, description="Upper bound on the minimum shift as a fraction of the recording."
+    )
+    block_rule: Literal["autocorr", "mean_bout"] = Field(
+        "autocorr", description="How the block length of block-based nulls is chosen."
+    )
+    block_floor_s: float = Field(0.25, description="Lower bound (s) on the chosen block length.")
+    max_lag_s: float = Field(
+        60.0, description="Longest lag (s) searched when estimating autocorrelation."
+    )
+    set_min_shift: bool = Field(True, description="Write the chosen min_shift_s selections.")
+    set_block: bool = Field(True, description="Write the chosen block-length selections.")
 
     def _matches(self, i: int, name: str) -> bool:
         pats = [self.analyses] if isinstance(self.analyses, str) else list(self.analyses)

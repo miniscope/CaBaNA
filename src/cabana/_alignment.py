@@ -84,7 +84,9 @@ class TimingCheck(PreprocessStep):
 
     name: ClassVar[str] = "timing_check"
 
-    max_dropped_fraction: float = Field(0.01, ge=0, le=1)
+    max_dropped_fraction: float = Field(
+        0.01, ge=0, le=1, description="Warn when the dropped-frame fraction exceeds this."
+    )
     max_jitter_s: float | None = Field(None, gt=0, description="Default: 0.25 / fs_median.")
 
     def apply(self, session: Session) -> Session:

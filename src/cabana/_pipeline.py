@@ -259,6 +259,19 @@ def _target_params(session: Session, target: str) -> dict[str, Any] | None:
     return None
 
 
+def _target_shape(target: Any) -> list[int] | None:
+    """Grid shape of a state space with a grid topology (``[n_y, n_x]``), else None.
+
+    Written to ``provenance["target_shape"]`` so a saved result (and its JSON
+    ``arrays`` metadata) can lay flattened per-bin arrays back on the grid.
+    """
+    topo = getattr(target, "topology", None)
+    shape = getattr(topo, "shape", None)
+    if shape is None:
+        return None
+    return [int(v) for v in shape]
+
+
 def derive_seed(base: int, name: str) -> int:
     """Per-analysis seed: ``SeedSequence([base, crc32(name)])`` state word (stable across machines)."""
     ss = np.random.SeedSequence([int(base), zlib.crc32(name.encode())])
@@ -934,6 +947,7 @@ class Pipeline(BaseModel):
             "n_cells": session.n_cells,
             "target_kind": metric.input,
             "target_params": _target_params(session, spec.target),
+            "target_shape": _target_shape(target),
             "selections": self._selections_for(name),
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         }

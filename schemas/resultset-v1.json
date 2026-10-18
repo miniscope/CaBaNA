@@ -1,0 +1,534 @@
+{
+  "$defs": {
+    "array_meta": {
+      "additionalProperties": false,
+      "description": "Shape, dtype and axis labels of one array in the result's npz file.",
+      "properties": {
+        "axes": {
+          "description": "One label per axis; null where the axis could not be named.",
+          "items": {
+            "enum": [
+              "cell",
+              "state",
+              "shuffle",
+              "time",
+              "bin",
+              "group",
+              "lag",
+              "fold",
+              "channel",
+              null
+            ]
+          },
+          "type": "array"
+        },
+        "dtype": {
+          "anyOf": [
+            {
+              "enum": [
+                "float64",
+                "float32",
+                "bool",
+                "int32",
+                "int64",
+                "int8",
+                "int16",
+                "uint8",
+                "uint16"
+              ]
+            },
+            {
+              "pattern": "^str[0-9]+$",
+              "type": "string"
+            }
+          ],
+          "description": "numpy dtype name as saved (the dtype contract); fixed-width unicode extras (e.g. group names) are 'str<N>'."
+        },
+        "shape": {
+          "description": "Shape.",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "shape",
+        "dtype",
+        "axes"
+      ],
+      "type": "object"
+    },
+    "entry": {
+      "additionalProperties": true,
+      "description": "One MetricResult and the npz file that holds its arrays.",
+      "properties": {
+        "arrays": {
+          "additionalProperties": {
+            "$ref": "#/$defs/array_meta"
+          },
+          "description": "Per npz key (values, extra_<j>, sh_*): shape, dtype and axis labels.",
+          "type": "object"
+        },
+        "cell_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Row labels of cell-level results."
+        },
+        "extras": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Maps the npz key extra_<j> to the metric's extra name.",
+          "type": "object"
+        },
+        "file": {
+          "description": "Path of the npz file inside the container.",
+          "type": "string"
+        },
+        "level": {
+          "description": "Whether axis 0 of values is cells.",
+          "enum": [
+            "cell",
+            "population"
+          ]
+        },
+        "metric": {
+          "description": "Registry name of the metric.",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Unique analysis name."
+        },
+        "params": {
+          "description": "metric.to_dict() for provenance.",
+          "type": "object"
+        },
+        "provenance": {
+          "additionalProperties": true,
+          "description": "How the result was produced (filled by Pipeline.run; empty by hand).",
+          "properties": {
+            "activity_kind": {
+              "description": "Kind of the activity matrix.",
+              "type": "string"
+            },
+            "alpha": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Significance level."
+            },
+            "cabana_version": {
+              "description": "Library version that produced it.",
+              "type": "string"
+            },
+            "effective_seed": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Per-analysis seed derived from the base seed."
+            },
+            "fs": {
+              "$ref": "#/$defs/number",
+              "description": "Sampling rate in Hz."
+            },
+            "mask_info": {
+              "description": "Per-mask metadata.",
+              "type": "object"
+            },
+            "masks": {
+              "description": "Names of the masks listed in the analysis spec.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "n_cells": {
+              "description": "Number of cells.",
+              "type": "integer"
+            },
+            "n_frames_used": {
+              "description": "Frames that passed the mask.",
+              "type": "integer"
+            },
+            "n_jobs": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Worker count actually used."
+            },
+            "n_shuffles": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of shuffles."
+            },
+            "null": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Null name used by the shuffle test."
+            },
+            "preprocess": {
+              "description": "Preprocess steps applied (to_dict).",
+              "type": "array"
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Base shuffle seed."
+            },
+            "selections": {
+              "description": "Auto-selected parameter values applied.",
+              "type": "array"
+            },
+            "support_used": {
+              "description": "Whether a support mask restricted frames.",
+              "type": "boolean"
+            },
+            "tail": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "upper",
+                    "lower",
+                    "two"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Tail of the test."
+            },
+            "target_kind": {
+              "description": "Kind of the target.",
+              "enum": [
+                "states",
+                "signal"
+              ]
+            },
+            "target_params": {
+              "anyOf": [
+                {
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Parameters of the transform producing the target."
+            },
+            "timestamp": {
+              "description": "ISO 8601 UTC time of the run.",
+              "type": "string"
+            },
+            "transforms": {
+              "description": "Transforms applied (to_dict).",
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "shuffle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/shuffle"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Shuffle test settings; null if not run."
+        },
+        "state_names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Labels of the state axis."
+        },
+        "target": {
+          "description": "State space or signal analysed.",
+          "type": "string"
+        },
+        "target_kind": {
+          "description": "Kind of the target.",
+          "enum": [
+            "states",
+            "signal"
+          ]
+        }
+      },
+      "required": [
+        "file",
+        "metric",
+        "target"
+      ],
+      "type": "object"
+    },
+    "number": {
+      "description": "A JSON number, or the sentinel for a non-finite float.",
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "__float__": {
+              "description": "Which float.",
+              "enum": [
+                "nan",
+                "inf",
+                "-inf"
+              ]
+            }
+          },
+          "required": [
+            "__float__"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "shuffle": {
+      "additionalProperties": false,
+      "description": "Settings of the shuffle test; its arrays are the sh_* npz keys.",
+      "properties": {
+        "alpha": {
+          "$ref": "#/$defs/number",
+          "description": "Significance level."
+        },
+        "correction": {
+          "description": "Multiplicity correction.",
+          "enum": [
+            "none",
+            "bh",
+            "bonferroni",
+            "max_stat"
+          ]
+        },
+        "correction_note": {
+          "description": "Non-empty when the correction was a no-op.",
+          "type": "string"
+        },
+        "correction_scope": {
+          "description": "Family the correction ran over.",
+          "enum": [
+            "states",
+            "cells",
+            "all"
+          ]
+        },
+        "n_shuffles": {
+          "description": "Surrogates drawn.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "null_info": {
+          "description": "Null.diagnostics() output.",
+          "type": "object"
+        },
+        "null_name": {
+          "description": "Registry name of the null.",
+          "type": "string"
+        },
+        "tail": {
+          "description": "Tail defining 'extreme'.",
+          "enum": [
+            "upper",
+            "lower",
+            "two"
+          ]
+        }
+      },
+      "required": [
+        "alpha",
+        "tail",
+        "n_shuffles",
+        "null_name"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://miniscope.github.io/CaBaNA/schemas/resultset-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "manifest.json of a ResultSet saved by cabana.ResultSet.save().",
+  "properties": {
+    "completed": {
+      "description": "Names of the analyses that completed.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "errors": {
+      "description": "Analyses that failed.",
+      "items": {
+        "description": "An analysis that failed during a run with ``on_error=\"record\"``.",
+        "properties": {
+          "analysis": {
+            "description": "Name of the analysis that failed.",
+            "type": "string"
+          },
+          "error_type": {
+            "description": "Exception class name.",
+            "type": "string"
+          },
+          "message": {
+            "description": "Exception message.",
+            "type": "string"
+          },
+          "metric": {
+            "description": "Registry name of its metric.",
+            "type": "string"
+          },
+          "target": {
+            "description": "State space or signal it was run on.",
+            "type": "string"
+          },
+          "traceback": {
+            "default": "",
+            "description": "Formatted traceback.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysis",
+          "metric",
+          "target",
+          "error_type",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "format": {
+      "description": "Container format number.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "kind": {
+      "const": "cabana.ResultSet",
+      "description": "File kind."
+    },
+    "results": {
+      "description": "One entry per result.",
+      "items": {
+        "$ref": "#/$defs/entry"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Semver of this manifest schema (absent in old files)."
+    },
+    "status": {
+      "description": "How the run ended.",
+      "enum": [
+        "ok",
+        "cancelled",
+        "partial"
+      ]
+    },
+    "warnings": {
+      "description": "Warnings raised.",
+      "items": {
+        "description": "A warning raised while an analysis ran (``capture_warnings=True``).",
+        "properties": {
+          "analysis": {
+            "description": "Name of the analysis that raised the warning.",
+            "type": "string"
+          },
+          "category": {
+            "description": "Warning category name.",
+            "type": "string"
+          },
+          "count": {
+            "default": 1,
+            "description": "Times this (category, message) was raised during the analysis.",
+            "type": "integer"
+          },
+          "message": {
+            "description": "Warning text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysis",
+          "category",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "kind",
+    "results"
+  ],
+  "title": "cabana.ResultSet manifest",
+  "type": "object"
+}

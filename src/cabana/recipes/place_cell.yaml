@@ -1,0 +1,46 @@
+recipe:
+  name: place_cell
+  title: Place cells
+  description: >-
+    Spatial tuning on a grid state space: Skaggs information, split-half map stability and
+    place-field detection, each tested against a circular-shift null, restricted to moving
+    frames. Smoothing is chosen from held-out data and the null timescale from the
+    autocorrelation of activity and behavior, so no p-value picks a parameter.
+  targets:
+    states: a StateSpace with a grid topology (e.g. built by the bin_grid transform)
+  defaults:
+    masks: [speed]
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+  ensure_masks:
+    speed:
+      name: speed_threshold
+      signal: speed
+      min_speed: 5.0
+      output: speed
+pipeline:
+  selectors:
+  - name: auto_smooth_sigma
+    states: ${states}
+  - name: auto_null_timescale
+  analyses:
+  - name: information
+    metric: {name: information_content}
+    states: ${states}
+    masks: ${masks}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+      correction: none
+  - name: stability
+    metric: {name: split_half_stability}
+    states: ${states}
+    masks: ${masks}
+    shuffle: *shuffle
+  - name: fields
+    metric: {name: place_fields}
+    states: ${states}
+    masks: ${masks}
+    shuffle: *shuffle

@@ -1,0 +1,19 @@
+recipe:
+  name: event_response
+  title: Event-triggered response
+  description: >-
+    Peri-event time histogram around the onsets of each state, with the descriptive null band
+    and response latency (no significance test). Use it to look at the shape of a response; add
+    a shuffle with n_shuffles-style overrides if you need p-values.
+  targets:
+    states: a StateSpace whose state onsets are the events (e.g. bouts of a behavior)
+  defaults:
+    seed: 0
+pipeline:
+  analyses:
+  - name: peth
+    metric:
+      name: peth
+      null_band: true
+      null_seed: ${seed}
+    states: ${states}

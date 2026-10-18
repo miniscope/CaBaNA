@@ -32,6 +32,9 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+cabana = "cabana._cli:main"
+
 [project.optional-dependencies]
 notebook = ["jupyter", "ipywidgets"]
 minian = ["xarray", "zarr"]

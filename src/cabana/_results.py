@@ -183,7 +183,8 @@ class MetricResult(BaseModel):
         ``tail`` (None without a shuffle), ``masks`` (names listed in the spec),
         ``support_used`` (bool), ``n_frames_used``, ``fs``, ``activity_kind``,
         ``n_cells``, ``target_kind``, ``target_params`` (parameters of the
-        transform that produced the target, or None) and ``timestamp`` (ISO
+        transform that produced the target, or None), ``target_shape`` (grid
+        shape of a grid-topology target, else None) and ``timestamp`` (ISO
         8601, UTC).  Empty for results built by hand.
     """
 

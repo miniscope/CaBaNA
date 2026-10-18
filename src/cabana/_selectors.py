@@ -170,16 +170,30 @@ class AutoSmoothSigma(Selector):
 
     name: ClassVar[str] = "auto_smooth_sigma"
 
-    states: str = "position"
-    analyses: str | list[str] = "*"
-    candidates_mm: list[float] | None = None
-    candidates_bins: list[float] | None = None
-    n_folds: int = Field(5, ge=2)
-    likelihood: Literal["poisson", "gaussian"] = "poisson"
-    one_se: bool = True
-    min_occupancy_s: float = Field(0.05, ge=0)
-    masks: list[str] | None = None
-    pool: Literal["population", "per_cell"] = "population"
+    states: str = Field("position", description="Name of the grid state space to tune on.")
+    analyses: str | list[str] = Field(
+        "*", description="Analysis names (or '*') whose smoothing is set."
+    )
+    candidates_mm: list[float] | None = Field(
+        None, description="Candidate sigmas in mm (converted to bins); None uses the default grid."
+    )
+    candidates_bins: list[float] | None = Field(
+        None, description="Candidate sigmas in bins; overrides candidates_mm when given."
+    )
+    n_folds: int = Field(5, ge=2, description="Number of contiguous cross-validation folds.")
+    likelihood: Literal["poisson", "gaussian"] = Field(
+        "poisson", description="Held-out likelihood used to score each sigma."
+    )
+    one_se: bool = Field(
+        True, description="Pick the smoothest sigma within one standard error of the best."
+    )
+    min_occupancy_s: float = Field(
+        0.05, ge=0, description="Bins with less occupancy (s) are excluded from scoring."
+    )
+    masks: list[str] | None = Field(None, description="Session masks restricting frames used.")
+    pool: Literal["population", "per_cell"] = Field(
+        "population", description="Choose one sigma for the population or one per cell."
+    )
 
     @model_validator(mode="after")
     def _check(self) -> AutoSmoothSigma:

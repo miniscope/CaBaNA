@@ -41,10 +41,9 @@ DENSE_MAX_STATES = 256
 def state_labels(states: StateSpace, mask: np.ndarray | None = None) -> np.ndarray:
     """State index per frame as int32; ``-1`` where no state is active or ``mask`` is False.
 
-    Only meaningful for exclusive state spaces.
+    Only meaningful for exclusive state spaces.  Cached per mask, read-only.
     """
-    lab = states.labels(mask).astype(np.int32, copy=False)
-    return lab
+    return states._cached("labels32", mask, lambda: states.labels(mask).astype(np.int32, copy=True))
 
 
 def shifted_state_sums(
@@ -55,11 +54,18 @@ def shifted_state_sums(
 
 
 def masked_counts(states: StateSpace, mask: np.ndarray) -> np.ndarray:
-    """Masked frames per state, float64 ``(n_states,)`` (no dense float copy)."""
+    """Masked frames per state, float64 ``(n_states,)`` (no dense float copy).
+
+    Cached on ``states`` per mask; the returned array is read-only.
+    """
     mask = np.asarray(mask, dtype=bool)
-    if states.exclusive and states.n_states > DENSE_MAX_STATES:
-        return _label_counts(state_labels(states, mask), states.n_states, mask)
-    return masked_counts_onehot(states.onehot, mask)
+
+    def build() -> np.ndarray:
+        if states.exclusive and states.n_states > DENSE_MAX_STATES:
+            return np.array(_label_counts(state_labels(states, mask), states.n_states, mask))
+        return np.array(masked_counts_onehot(states.onehot, mask))
+
+    return states._cached("counts", mask, build)
 
 
 def _dense_multi(x, states, masks, shifts, extra_columns, keep):

@@ -339,6 +339,52 @@ def _check_metric(
 
         run("cell_permutation", perm)
 
+    if m.level == "cell" and m.cell_separable:
+
+        def separable() -> str:
+            n_cells = session.n_cells
+            hint = "; set `cell_separable = False` on the metric class"
+            if n_cells < 2:
+                return "skipped (needs at least 2 cells)"
+            idx = np.sort(
+                np.random.default_rng(1).choice(n_cells, size=max(1, n_cells // 2), replace=False)
+            )
+            close = dict(equal_nan=True, rtol=1e-9, atol=1e-12)
+            _ensure(
+                np.allclose(m.compute(act[idx], target, mask, fs), out[idx], **close),
+                "compute(activity[idx]) != compute(activity)[idx]: cells are not separable" + hint,
+            )
+            if type(m).compute_shifted is not Metric.compute_shifted:
+                n = session.n_time
+                ks = np.array([n // 7, n // 3 + 1, -(n // 5)], dtype=np.int64)
+                full = m.compute_shifted(act, target, mask, fs, ks)
+                if full is not None:
+                    sub = m.compute_shifted(act[idx], target, mask, fs, ks)
+                    _ensure(
+                        sub is not None
+                        and np.allclose(np.asarray(sub), np.asarray(full)[:, idx], **close),
+                        "compute_shifted(activity[idx]) != compute_shifted(activity)[:, idx]"
+                        + hint,
+                    )
+            e_full, e_sub = m.extras(act, target, mask, fs), m.extras(act[idx], target, mask, fs)
+            for k, v in e_full.items():
+                v = np.asarray(v)
+                w = np.asarray(e_sub.get(k))
+                # first axis equal to n_cells by coincidence (e.g. bin centres) is not per cell
+                if v.ndim >= 1 and v.shape[0] == n_cells and w.shape != v.shape:
+                    _ensure(
+                        w.shape == v[idx].shape
+                        and (
+                            np.allclose(w, v[idx], **close)
+                            if v.dtype.kind in "fiub"
+                            else bool((w == v[idx]).all())
+                        ),
+                        f"extras[{k!r}] on a cell subset != the matching rows" + hint,
+                    )
+            return "compute, compute_shifted and extras agree on a random cell subset"
+
+        run("cell_separable", separable)
+
     def shifted() -> str:
         if type(m).compute_shifted is Metric.compute_shifted:
             return "not implemented (engine loops over compute)"

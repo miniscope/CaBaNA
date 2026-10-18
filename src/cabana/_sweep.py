@@ -21,7 +21,7 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 import pandas as pd
 
-from ._pipeline import Pipeline, ProgressEvent, RunContext
+from ._pipeline import Pipeline, ProgressEvent, RunContext, _session_sha, _sha_json
 from ._results import ResultSet
 from ._selection import Selection, _jsonable
 
@@ -95,6 +95,13 @@ class SweepResult:
         The ``shuffle`` mode the sweep was run with.
     last_picks : list[Selection]
         Result of the most recent :meth:`pick` (used by :meth:`apply`).
+    pipeline_sha256 : str, optional
+        Hash of the base pipeline the sweep ran on (``None`` for sweeps saved
+        before this field existed).
+    session_hash : str, optional
+        Hash of the session activity the sweep ran on (``None`` when unknown).
+    session_meta : dict
+        ``n_cells``, ``n_time``, ``fs`` and ``session_id`` of that session.
     """
 
     params: list[str]
@@ -104,6 +111,9 @@ class SweepResult:
     status: Literal["ok", "cancelled"] = "ok"
     shuffle: bool | None = None
     last_picks: list[Selection] = field(default_factory=list)
+    pipeline_sha256: str | None = None
+    session_hash: str | None = None
+    session_meta: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ grid
     @property
@@ -449,6 +459,48 @@ class SweepResult:
             pipeline = pipeline.set_param(s.path, s.value, selection=s)
         return pipeline
 
+    # --------------------------------------------------------------- export
+    def to_tuning_export(
+        self,
+        selections: list[Selection] | None = None,
+        *,
+        criterion: str | None = None,
+        rule: str | None = None,
+        analysis: str | None = None,
+        **pick_kw: Any,
+    ) -> Any:
+        """Package a pick of this sweep as a :class:`cabana.TuningExport`.
+
+        Parameters
+        ----------
+        selections : list[Selection], optional
+            Choices to export (for example user picks).  ``None`` calls
+            :meth:`pick` with ``criterion``, ``rule``, ``analysis`` and ``pick_kw``
+            (``criterion`` is then required).
+        criterion, rule, analysis
+            Passed to :meth:`pick`; recorded on the export.
+        **pick_kw
+            More :meth:`pick` arguments (``allow_significance``, ``higher_is_better``).
+
+        Returns
+        -------
+        TuningExport
+            ``swept`` is this sweep's ``over``; ``metadata["sweep_summary"]`` holds the
+            per-candidate scores of the criterion.
+        """
+        from ._tuning import _build_export
+
+        if selections is None:
+            if criterion is None:
+                raise ValueError("pass selections= or a criterion to pick by")
+            kw = dict(pick_kw)
+            if rule is not None:
+                kw["rule"] = rule
+            selections = self.pick(criterion, analysis=analysis, **kw)
+        return _build_export(
+            self, list(selections), criterion=criterion, rule=rule, analysis=analysis
+        )
+
     # ------------------------------------------------------------------ I/O
     def save(self, path: str | Path) -> None:
         """Write a directory: ``index.json`` plus one ResultSet ``.zip`` per grid point."""
@@ -469,6 +521,9 @@ class SweepResult:
             "points": entries,
             "layouts": _jsonable(self.layouts),
             "last_picks": [s.model_dump(mode="json") for s in self.last_picks],
+            "pipeline_sha256": self.pipeline_sha256,
+            "session_hash": self.session_hash,
+            "session_meta": _jsonable(self.session_meta),
         }
         (d / "index.json").write_text(json.dumps(index, indent=1, allow_nan=False))
 
@@ -493,6 +548,9 @@ class SweepResult:
             status=idx.get("status", "ok"),
             shuffle=idx.get("shuffle"),
             last_picks=[Selection.model_validate(s) for s in idx.get("last_picks", [])],
+            pipeline_sha256=idx.get("pipeline_sha256"),
+            session_hash=idx.get("session_hash"),
+            session_meta=dict(idx.get("session_meta") or {}),
         )
 
 
@@ -627,6 +685,17 @@ def sweep(
     grid = list(itertools.product(*(cand[p] for p in params)))
     total = len(grid)
     result = SweepResult(params=params, over=cand, shuffle=shuffle)
+    result.pipeline_sha256 = _sha_json(pipeline.to_dict())
+    try:
+        result.session_hash = _session_sha(session)
+        result.session_meta = {
+            "n_cells": int(session.n_cells),
+            "n_time": int(session.n_time),
+            "fs": float(session.fs),
+            "session_id": getattr(getattr(session, "info", None), "session_id", None),
+        }
+    except Exception:  # not a Session-like object: leave unknown
+        pass
 
     def emit(stage: str, name: str, k: int, msg: str = "") -> None:
         if ctx.on_progress is not None:

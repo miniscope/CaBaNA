@@ -445,3 +445,10 @@ def test_skip_and_type_errors(small_session):
     assert "surrogate_shapes" not in failed_names(rep)
     with pytest.raises(TypeError):
         check_plugin(object(), small_session)  # type: ignore[arg-type]
+
+
+def test_cell_separable_check_runs_for_cell_metrics(small_session):
+    rep = check_plugin(build("metric", {"name": "information_content"}), small_session)
+    assert any(n == "cell_separable" and ok for n, ok, _ in rep.checks)
+    rep = check_plugin(build("metric", {"name": "pairwise_correlation"}), small_session)
+    assert not any(n == "cell_separable" for n, _, _ in rep.checks)

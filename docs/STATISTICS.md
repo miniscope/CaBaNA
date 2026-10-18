@@ -159,6 +159,17 @@ change the tested statistic, which is still response minus baseline. Use it to
 see when a response departs from chance and to sort cells by latency; use the
 shuffle p-value for the claim.
 
+### Memory
+
+The null is an `(n_shuffles, *output)` float64 array: 1000 shuffles of a 200-cell,
+6400-state `auroc` is 10 GB.  Three levers, none of which changes a p-value except the
+last: `keep_null="none"` evaluates a cell-level metric in chunks of cells (budget
+`max_null_bytes`, default 1 GiB; results are identical to the unchunked run, the number
+of chunks is in `null_info["chunks"]`); fewer states or shuffles; and
+`null_dtype="float32"` for a kept null, which halves it but computes p-values from
+rounded draws (ties can change).  `cabana.memory_estimate(pipeline, session)` reports the
+sizes beforehand.  Population-level metrics and the `cell_shift` null are not chunked.
+
 ## Reading a result
 
 Each cell/state row carries:
@@ -575,3 +586,5 @@ A sweep runs the same pipeline at every point of a grid of parameter values and 
 *Guard rail.* `pick(criterion, ...)` chooses one value per swept path, but it refuses to choose by `p_value`, `p_adj`, `significant`, `significant_adj`, `n_significant`, `frac_significant`, or any column containing `sig` or starting with `p_`, and raises `ValueError`. Picking the setting that makes the most cells significant lets the data choose the analysis that favours the hypothesis (a researcher degree of freedom) and invalidates the null test for that choice. Use a value-based or reliability criterion (`median_value`, a split-half `r`, a held-out log-likelihood extra). Remember that raw reliability and information tend to rise monotonically with smoothing, so prefer a held-out score. `allow_significance=True` overrides the refusal and sets `informed_by_significance=True` on the record.
 
 *From a pick to a Selection.* `rule="max"` or `"min"` takes the best score (`method="auto_rule"`); `"one_se"` takes the first candidate within one standard error of the best, and `"plateau"` the middle of the longest run of neighbours within one standard error (both `method="sweep_stability"`). Each pick is a `Selection` with `criterion`, the `candidates` and their `scores`, and the rule in `note`; `SweepResult.apply(pipeline)` writes them with `set_param`, so they appear in `Pipeline.selections` and in each result's provenance. Sweeps can be saved with `SweepResult.save(dir)` and reloaded with `SweepResult.load(dir)`.
+
+*Tuning export.* `SweepResult.to_tuning_export()` (or `cabana.tune(session, pipeline, over)`, which runs the sweep and the pick in one call) packages the choice as a `TuningExport`, a strict-JSON document in the layout of CaLab's CaTune export: `schema_version`, `cabana_version`, `export_date`, `chosen` (path to value), `swept` (path to candidates), `criterion`, `rule`, one `Selection` per path, and `metadata` with the per-candidate scores and standard errors. It also stores the hash of the base pipeline and of the session the sweep ran on. `pipeline.apply_tuning(export)` writes every value with `set_param` and the export's `Selection`, so provenance records how each value was chosen. A different pipeline hash raises (`strict=False` warns), and a different session hash warns, because values tuned on one dataset should be checked before they are reused on another. The significance guard rail applies unchanged: `tune` refuses a p-value criterion unless `allow_significance=True`, and the export then carries `informed_by_significance=True`.

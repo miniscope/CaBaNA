@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
@@ -94,6 +94,11 @@ def test_dense_equals_label_path(p, data):
 @given(problem(max_states=6, min_cells=3, min_time=100), st.randoms(use_true_random=False))
 def test_cell_permutation_invariance(metric_name, p, rnd):
     act, labels, n_states = p
+    # a (near-)constant activity makes observed == null up to summation order, and
+    # BLAS sums rows in a position-dependent order, so exact p-value ties are not
+    # invariant under permutation; that is a property of float arithmetic, not of
+    # the engine
+    assume(float(np.std(act)) > 1e-6 * (float(np.abs(act).max()) + 1e-300))
     sp = _states(labels, n_states)
     mask = np.ones(act.shape[1], dtype=bool)
     perm = np.arange(act.shape[0])

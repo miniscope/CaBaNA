@@ -7,6 +7,7 @@ A pipeline for asking how neural activity relates to behavioral states.  See
 from __future__ import annotations
 
 from . import loaders, plots
+from ._analyze import analyze, recipe, recipe_pipeline, recipes
 from ._cohort import (
     BootstrapResult,
     cohort_table,
@@ -58,6 +59,7 @@ from ._metrics import (
     event_onsets,
     mutual_information_from_counts,
 )
+from ._memory import MemoryEstimate, memory_estimate
 from ._models import (
     BoutTable,
     ContinuousSignal,
@@ -76,10 +78,15 @@ from ._pipeline import (
     describe,
     run_set,
 )
+from ._schema import SCHEMA_VERSION, resultset_schema, schema
 from ._selection import Selection
+from ._summary import format_summary, summarize
+from ._validate import Issue, ValidationReport, validate_pipeline
+from ._study import StudySpec, run_study
 from ._preprocess_cells import SelectCells, cell_qc_table
 from ._selectors import grid_bin_size, heldout_smoothing_scores
 from ._sweep import StabilityReport, SweepResult, sweep
+from ._tuning import TuningExport, apply_tuning, tune
 from ._posthoc import (
     ClusterResult,
     OverlapResult,
@@ -116,6 +123,7 @@ from ._registry import (
     build,
     register,
 )
+from ._logging import log_context, logger, merge_context, tqdm_context
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
@@ -130,7 +138,24 @@ except PackageNotFoundError:  # pragma: no cover - not installed
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    # front door: recipes, summaries, preflight, logging
+    "Issue",
+    "ValidationReport",
+    "analyze",
+    "format_summary",
+    "log_context",
+    "logger",
+    "merge_context",
+    "recipe",
+    "recipe_pipeline",
+    "recipes",
+    "summarize",
+    "tqdm_context",
+    "validate_pipeline",
     "states_to_bouts",
+    # study / CLI
+    "StudySpec",
+    "run_study",
     # cell classification
     "ClassificationResult",
     "Clause",
@@ -159,6 +184,8 @@ __all__ = [
     "available",
     "build",
     "check_plugin",
+    "MemoryEstimate",
+    "memory_estimate",
     "register",
     # transforms
     "BinGrid",
@@ -245,13 +272,19 @@ __all__ = [
     "Selection",
     "StabilityReport",
     "SweepResult",
+    "TuningExport",
+    "apply_tuning",
+    "tune",
     "cell_qc_table",
     "grid_bin_size",
     "heldout_smoothing_scores",
     "sweep",
     "RunWarning",
+    "SCHEMA_VERSION",
     "describe",
+    "resultset_schema",
     "run_set",
+    "schema",
     "ShuffleResult",
     # simulation & plots
     "SimulationConfig",

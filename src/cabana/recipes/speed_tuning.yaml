@@ -1,0 +1,27 @@
+recipe:
+  name: speed_tuning
+  title: Tuning to a continuous signal
+  description: >-
+    Cell responses to a continuous signal such as speed: cross-correlation (zero lag by
+    default) and binned tuning information, each against a circular-shift null.
+  targets:
+    signal: a per-frame signal in session.signals (e.g. speed or x)
+  defaults:
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  selectors:
+  - name: auto_null_timescale
+  analyses:
+  - name: correlation
+    metric: {name: signal_correlation}
+    signal: ${signal}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+  - name: tuning
+    metric: {name: signal_tuning}
+    signal: ${signal}
+    shuffle: *shuffle

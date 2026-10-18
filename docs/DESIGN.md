@@ -745,6 +745,24 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 
 **Golden vectors.** `scripts/generate_kernel_golden.py` writes `tests/golden/kernels/{sums,ratemap,levels,rank}.npz` (5 cells x 400 frames, 7 states, 6 explicit shifts, a 6x5 grid, 3 levels; includes a masked-frame case, a silent cell and a NaN cell) with `in_*` inputs and `out_*` expected outputs; `tests/test_kernels.py` compares at rtol 1e-12 with NaN equal. These are separate from the pipeline-level goldens in `tests/golden/`. AUROC's per-shift thread pool stays in the metric; only the per-series and per-shift pieces are kernels.
 
+### Memory (F6)
+
+`shuffle_test` allocates `(n_shuffles, *output)` float64.  With `keep_null="none"`, a
+cell-level metric whose `cell_separable` flag (and the null's) is true, and a full null
+above `ShuffleConfig.max_null_bytes`, is evaluated in chunks of cells: the shifts (or the
+per-surrogate child seeds) are drawn once up front, each chunk runs the usual batch
+machinery on `activity[rows]`, and p-values, bounds, median, mean and std are computed
+per chunk and concatenated.  `bh`/`bonferroni` correction runs once on the joined
+p-values; `max_stat` is per cell, so it runs per chunk.  `on_batch(done, total)` reports
+`chunk * n_shuffles + done` of `n_chunks * n_shuffles`.  `cell_separable` is a `ClassVar`
+on `Metric` and `Null` (False for `cell_shift`, whose draw depends on `n_cells`) and is
+checked by `check_plugin`.  `null_dtype` sets the storage dtype of a kept null.
+
+`StateSpace.labels(mask)`, `state_labels` and `masked_counts` are cached per instance
+(8 entries, FIFO, keyed by a hash of the mask) and returned read-only; `onehot` must not
+be mutated after construction.  `cabana._memory.memory_estimate` is a static estimate
+(null, `compute_shifted` batch, dense indicator, chunking) that never runs a metric.
+
 ## Automatic null timescales (`_selectors_null.py`)
 
 `AutoNullTimescale` is a `Selector` that sets `min_shift_s` and `block_s` from the 1/e autocorrelation time of the activity and the behaviour (`autocorrelation_time`, `state_autocorrelation_time`); it works only on the data, writes `Selection(method="auto_rule")` records, and never imports the shuffle engine. See STATISTICS.md, "Automatic null timescales".
@@ -758,6 +776,10 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 `cabana.sweep` sits above `Pipeline`: it needs only `set_param`, `iter_run`/`run` and `RunContext`. When no swept path touches `transforms.` or `preprocess.`, it consumes `iter_run`'s `("session", ...)` and `("pipeline", effective)` events once (transforms, preprocess and selectors run; the generator is closed before any analysis), then runs an analyses-only copy of the effective pipeline per grid point on that prepared session, so a sigma sweep never repeats the transforms. A swept path overrides whatever a selector chose for it; the selector's `Selection` stays in provenance. A transform sweep reruns the full pipeline per point and records each point's state-space layout (`SweepResult.layouts`) so plots can lay out rate maps whose grid changes. `SweepResult` is a plain dataclass (picklable); `save` writes `index.json` plus one `ResultSet` zip per point. `pick` is the only place a sweep becomes a `Selection`, and it refuses significance-based criteria unless told otherwise (STATISTICS.md, "Sweeps").
 
 The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_sweep_stability_data` and `plot_sweep_data` return plain dicts of arrays and labels without importing matplotlib types into their results, and `plot_sweep_gallery`, `plot_sweep_stability` and `plot_sweep` only render those dicts. These were the first pieces of the plot-data layer (roadmap D1), now general; `plot_level_sweep` is now a thin wrapper over `plot_sweep`.
+
+### Tuning export (F4)
+
+`_tuning.py` holds `TuningExport` (pydantic, `extra="forbid"`, `schema_version` "1.0.0", `kind` "cabana.TuningExport"), `apply_tuning` and `tune`. The layout mirrors CaLab's CaTune export (`schema_version`, tool version, `export_date`, parameters, `metadata`) so a future CaLab slider app can post the same document back; `calab.tune()` is the model for `cabana.tune()`, which today is headless (sweep, then `pick`) and raises `NotImplementedError` for `open_browser=True` or `app_url`. `chosen` is keyed by `Pipeline.set_param` paths, so applying it needs no new vocabulary. `SweepResult` gained `pipeline_sha256`, `session_hash` and `session_meta` (set in `sweep()`, stored in `index.json`; an older index loads them as empty, and `to_tuning_export` then asks for a rerun). `to_json` encodes non-finite floats with `_encode_floats`, so the file is strict JSON.
 
 ## Behaviour signal transforms (`src/cabana/_transform_behavior.py`)
 
@@ -774,3 +796,9 @@ Alignment happens before resampling, on the raw behavior times: `fit_clock` (lea
 ## Session folders and geometry-derived investigation (`_loaders/_session_dir.py`, `_transform_behavior.py`)
 
 `load_session_dir` replaces the hand assembly in `tests/test_three_chamber.py`: a typed pydantic config (`SessionDirConfig`, unknown keys rejected) names the activity file and its orientation, the two timestamps files, the position / head-orientation / epoch tables and the arena, and the loader composes the existing pieces (`load_miniscope_timestamps`, `timing_report`, `load_position_csv`, `load_head_orientation`, `load_epochs_csv`, `apply_clock`, and the registered `resample_signal`, `head_direction`, `bouts_to_states` transforms) rather than adding new readers. Validation is the lab's own spec (position frames a subset of the stamps, one head row per neural frame, strictly increasing time, stop at or after start, frame counts matching) with errors that name the field and file. The arena is stored in the layout `zone_occupancy` already reads, plus `meta["enclosures"]`, `meta["subjects"]` and per-clock `meta["timing"]`. `investigation_from_geometry` derives investigation states from position, heading and enclosure geometry (edge distance and bearing, then the `bouts_to_states` cleanup); on the three-chamber fixture it reproduces the annotations (about 99.9 % frame agreement, all bouts within 0.5 s), so the lab's scoring rule is testable rather than assumed.
+
+### Results schema and describe() (`_schema.py`, `_describe.py`, `schemas/resultset-v1.json`)
+
+`save_results` stamps `manifest["schema_version"]` (semver, `cabana.SCHEMA_VERSION`, currently `1.0.0`) and, per result, an `arrays` map `{npz key: {shape, dtype, axes}}` for `values`, every `extra_<j>` and every `sh_*` array (`_io._array_meta`). Both are additive, so the container `format` stays 2 and older files load unchanged. Axis labels (`cell`, `state`, `shuffle`, `time`, `bin`, `group`, `lag`, `fold`, `channel`, or `null`) are inferred from the result's level, `cell_ids`, `state_names`, shuffle count and, when known, the target's grid shape; a dimension that cannot be matched is `null`, never guessed. Extras are stored as the metric returns them, so a rate map over a grid is `["cell", "state"]` (flattened) unless the array really has one axis per grid dimension. Bump the minor version for new optional keys and the major version (new `resultset-v2.json`) for anything that breaks a reader. `cabana.resultset_schema()` builds the JSON Schema (draft 2020-12; non-finite floats are the `{"__float__": ...}` sentinel, allowed wherever a number is); `schemas/resultset-v1.json` is its published snapshot, kept identical by a test (`scripts/export_schema.py` regenerates it). `cabana.schema(name)` returns it or the pydantic schema of the config models (`pipeline`, `analysis_spec`, `shuffle_config`, `selection`, `study`, `tuning_export`) or `describe`.
+
+`describe()` gives each plugin a flat `params` table (`type`, `default`, `description`, `ui: {group, sweepable, unit}`); a field overrides the inferred hints with `json_schema_extra={"ui": {...}}`. Metric entries add `outputs` (level, input, statically known `values` axes) and, with `describe(probe=True)`, the extras each metric produces (shape, dtype, axes) from one run on a tiny simulated session. Every plugin field must carry a `description` (enforced by `tests/test_describe.py`); the output passes `json.dumps(allow_nan=False)`.

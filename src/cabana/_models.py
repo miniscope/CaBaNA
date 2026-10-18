@@ -18,13 +18,14 @@ produce ``StateSpace`` objects and per-frame ``signals``.
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import warnings
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 from numpydantic import NDArray, Shape
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 #: ``binary`` = 0/1 event indicator (summed by ``rebin`` like counts); ``denoised`` =
 #: a model-denoised fluorescence trace (Minian/CaImAn ``C``), averaged like ``dff``.
@@ -270,6 +271,13 @@ class StateSpace(_ArrayModel):
         means "defined, but in none of the states"; outside ``support`` it means
         "unknown".
 
+    Notes
+    -----
+    ``labels(mask)`` and ``cabana._statesums.masked_counts`` are cached on the
+    instance (at most 8 entries each, keyed by a hash of the mask) and returned as
+    read-only arrays.  The cache assumes ``onehot`` is not mutated after
+    construction; build a new ``StateSpace`` instead of editing it in place.
+
     Examples
     --------
     Three frames, two states; frame 2 is unscored (all-False row, outside
@@ -287,6 +295,32 @@ class StateSpace(_ArrayModel):
     exclusive: bool
     topology: GridTopology | None = None
     support: NDArray[Shape["* time"], bool] | None = None
+
+    _cache: dict[Any, np.ndarray] = PrivateAttr(default_factory=dict)
+
+    def model_copy(self, *, update: Any = None, deep: bool = False) -> StateSpace:
+        """Copy with a fresh label cache (pydantic would share the private dict)."""
+        new = super().model_copy(update=update, deep=deep)
+        new._cache = {}
+        return new
+
+    def _cached(self, kind: str, mask: np.ndarray | None, build: Any) -> np.ndarray:
+        """Per-instance FIFO cache (8 entries) of read-only arrays keyed by (kind, mask hash)."""
+        if mask is None:
+            key: Any = (kind, None)
+        else:
+            m = np.ascontiguousarray(mask, dtype=bool)
+            key = (kind, m.shape, hashlib.blake2b(m.tobytes(), digest_size=16).digest())
+        hit = self._cache.get(key)
+        if hit is not None:
+            return hit
+        arr = build()
+        arr.setflags(write=False)
+        same = [k for k in self._cache if k[0] == kind]
+        if len(same) >= 8:
+            del self._cache[same[0]]
+        self._cache[key] = arr
+        return arr
 
     @model_validator(mode="after")
     def _check(self) -> StateSpace:
@@ -321,9 +355,14 @@ class StateSpace(_ArrayModel):
         processed by metrics as these integer labels (bucketed sums, see
         ``cabana._statesums``) instead of a dense float ``(n_time, n_states)``
         matrix, which keeps fine grids (thousands of states) cheap.
+
+        The result is cached per mask and read-only; copy it before modifying.
         """
         if not self.exclusive:
             raise ValueError("labels() requires an exclusive StateSpace; use onehot instead")
+        return self._cached("labels", mask, lambda: self._labels(mask))
+
+    def _labels(self, mask: np.ndarray | None) -> np.ndarray:
         lab = np.full(self.n_time, -1, dtype=np.int64)
         has = self.onehot.any(axis=1)
         if mask is not None:

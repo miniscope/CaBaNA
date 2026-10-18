@@ -50,6 +50,7 @@ from ._models import (
     SessionInfo,
     StateSpace,
 )
+from ._schema import SCHEMA_VERSION
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 
 _FORMAT = 2
@@ -154,6 +155,140 @@ def _npz_bytes(arrays: dict[str, np.ndarray]) -> bytes:
 def _npz_load(data: bytes) -> dict[str, np.ndarray]:
     with np.load(io.BytesIO(data), allow_pickle=False) as z:
         return {k: z[k] for k in z.files}
+
+
+#: Axis labels used in ``manifest["results"][i]["arrays"][key]["axes"]`` (``None`` = unknown).
+AXIS_LABELS = ("cell", "state", "shuffle", "time", "bin", "group", "lag", "fold", "channel")
+
+
+def _match_axes(
+    shape: tuple[int, ...],
+    sizes: dict[str, int],
+    *,
+    first: str | None = None,
+    grid_shape: tuple[int, ...] | None = None,
+) -> list[str | None]:
+    """Name each axis of ``shape`` by matching its length against known sizes.
+
+    ``sizes`` maps a label to the length it would have (``cell``, ``state``,
+    ``shuffle``).  A trailing run of two or more axes whose product is the number of
+    states (or that equals ``grid_shape``) is a grid: one ``"bin"`` per axis.  An axis
+    matching several labels takes ``first`` when it is axis 0, else ``state``.
+    """
+    axes: list[str | None] = [None] * len(shape)
+    n_states = sizes.get("state")
+    start = 0
+    if first is not None and shape:
+        axes[0] = first
+        start = 1
+    rest = shape[start:]
+    if len(rest) >= 2 and (
+        (grid_shape is not None and tuple(rest[-len(grid_shape) :]) == tuple(grid_shape))
+        or (n_states is not None and int(np.prod(rest)) == n_states)
+    ):
+        k = len(grid_shape) if grid_shape is not None and len(grid_shape) <= len(rest) else None
+        n_grid = k if k is not None else len(rest)
+        for i in range(len(shape) - n_grid, len(shape)):
+            axes[i] = "bin"
+    for i in range(start, len(shape)):
+        if axes[i] is not None:
+            continue
+        hits = [lab for lab, n in sizes.items() if n == shape[i]]
+        if len(hits) == 1:
+            axes[i] = hits[0]
+        elif len(hits) > 1:
+            axes[i] = "state" if "state" in hits else hits[0]
+    return axes
+
+
+def _array_meta(
+    result: MetricResult,
+    key: str,
+    arr: np.ndarray,
+    grid_shape: tuple[int, ...] | None = None,
+) -> dict[str, Any]:
+    """Shape, dtype and axis labels of one array stored for ``result``.
+
+    Parameters
+    ----------
+    result : MetricResult
+        The result the array belongs to (its ``level``, ``values``, ``state_names``,
+        ``cell_ids``, ``shuffle`` and ``provenance`` give the axis sizes).
+    key : str
+        npz key: ``values``, ``extra_<j>`` or ``sh_*``.
+    arr : ndarray
+        The array as saved (after the dtype contract was applied).
+    grid_shape : tuple[int, ...], optional
+        Grid shape of the target; default ``provenance["target_params"]["shape"]`` if present.
+
+    Returns
+    -------
+    dict
+        ``{"shape": [...], "dtype": str, "axes": [label or None, ...]}``.
+    """
+    arr = np.asarray(arr)
+    vals = np.asarray(result.values)
+    prov = result.provenance or {}
+    if grid_shape is None:
+        tp = prov.get("target_params")
+        shp = prov.get("target_shape")
+        if shp is None and isinstance(tp, dict):
+            shp = tp.get("shape")
+        if isinstance(shp, (list, tuple)) and shp and all(isinstance(v, int) for v in shp):
+            grid_shape = tuple(shp)
+    n_cells = len(result.cell_ids) if result.cell_ids is not None else prov.get("n_cells")
+    if n_cells is None and result.level == "cell" and vals.ndim:
+        n_cells = vals.shape[0]
+    sn = result.state_names
+    n_states = len(sn) if sn is not None else None
+    if n_states is None and result.level == "cell" and vals.ndim >= 2:
+        n_states = vals.shape[1]
+    if n_states is None and grid_shape is not None:
+        n_states = int(np.prod(grid_shape))  # flattened grid bins are the states
+    n_shuf = result.shuffle.n_shuffles if result.shuffle is not None else prov.get("n_shuffles")
+    sizes: dict[str, int] = {}
+    if isinstance(n_cells, int):
+        sizes["cell"] = n_cells
+    if isinstance(n_states, int):
+        sizes["state"] = n_states
+    if isinstance(n_shuf, int) and key != "values":
+        sizes["shuffle"] = n_shuf
+
+    def values_axes() -> list[str | None]:
+        v = vals.shape
+        if result.level == "cell":
+            if len(v) == 1:
+                return ["cell"]
+            if len(v) == 2:
+                return ["cell", "state"]
+            return _match_axes(v, sizes, first="cell", grid_shape=grid_shape)
+        if sn is not None:
+            if len(v) == 1:
+                return ["state"]
+            if len(v) == 2 and v[0] == v[1]:
+                return ["state", "state"]
+        elif len(v) == 2 and v[0] == v[1] and v[0] == n_cells:
+            return ["cell", "cell"]
+        return _match_axes(v, {k: n for k, n in sizes.items() if k != "shuffle"})
+
+    if key == "values":
+        axes = values_axes()
+    elif key == "sh_shifts":
+        axes = ["shuffle"]
+    elif key.startswith("sh_"):
+        va = values_axes()
+        if key == "sh_null" and arr.ndim == len(va) + 1:
+            axes = ["shuffle", *va]
+        elif arr.shape == vals.shape:
+            axes = va
+        else:
+            axes = _match_axes(arr.shape, sizes, grid_shape=grid_shape)
+    else:
+        first = "cell" if result.level == "cell" and arr.ndim and "cell" in sizes else None
+        if first and arr.shape[0] != sizes["cell"]:
+            first = None
+        axes = _match_axes(arr.shape, sizes, first=first, grid_shape=grid_shape)
+    return {"shape": [int(n) for n in arr.shape], "dtype": arr.dtype.name, "axes": axes}
 
 
 def _jsonable(x: Any, store: dict[str, np.ndarray] | None = None) -> Any:
@@ -283,7 +418,9 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
     """Write a ``ResultSet`` (backs :meth:`ResultSet.save`).
 
     Layout: ``manifest.json`` (``format``, ``kind="cabana.ResultSet"`` and one
-    entry per result with names, params, provenance and shuffle settings) plus
+    entry per result with names, params, provenance, shuffle settings and an ``arrays``
+    map of shape / dtype / axis labels per stored array; ``schema_version`` is the semver
+    of ``schemas/resultset-v1.json``) plus
     ``results/NNN.npz`` per result holding ``values``, the extras
     and the shuffle arrays (null draws as float32).  ``cell_ids`` and ``state_names``
     are lists of ``str`` in the manifest entry.  See the module docstring for the
@@ -334,6 +471,7 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
             }
         fname = f"results/{i:03d}.npz"
         files[fname] = _npz_bytes(arrays)
+        arrays_meta = {k: _array_meta(r, k, _canon_array(v)) for k, v in arrays.items()}
         entries.append(
             {
                 "file": fname,
@@ -347,12 +485,14 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
                 "state_names": None if r.state_names is None else _str_list(r.state_names),
                 "cell_ids": None if r.cell_ids is None else _str_list(r.cell_ids),
                 "extras": extra_keys,
+                "arrays": arrays_meta,
                 "shuffle": sh_meta,
             }
         )
     files["manifest.json"] = _dump(
         {
             "format": _FORMAT,
+            "schema_version": SCHEMA_VERSION,
             "kind": "cabana.ResultSet",
             "results": entries,
             "status": rs.status,

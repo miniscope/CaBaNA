@@ -513,6 +513,7 @@ class CellShift(Null):
 
     name: ClassVar[str] = "cell_shift"
     perturbs: ClassVar[Literal["activity", "target"]] = "activity"
+    cell_separable: ClassVar[bool] = False  # the per-cell shifts are drawn jointly
 
     min_shift_s: float = Field(
         20.0,

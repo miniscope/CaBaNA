@@ -273,3 +273,15 @@ def test_nan_frame_semantics_match_dense(monkeypatch, masked_out):
         shifted_sums(x, st.masked(mask), np.zeros(1, int))[0],
         equal_nan=True,
     )
+
+
+def test_state_labels_and_counts_cached_read_only():
+    rng = np.random.default_rng(0)
+    sp = make_states(rng.integers(0, 5, 300), 5)
+    mask = rng.random(300) > 0.4
+    lab = state_labels(sp, mask)
+    assert state_labels(sp, mask.copy()) is lab and lab.dtype == np.int32
+    assert not lab.flags.writeable
+    assert state_labels(sp, ~mask) is not lab
+    c = masked_counts(sp, mask)
+    assert masked_counts(sp, mask.copy()) is c and not c.flags.writeable

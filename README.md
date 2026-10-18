@@ -100,6 +100,37 @@ loader extras (`cabana[minian]`, `cabana[caiman]`, or `cabana[loaders]` for all)
 pip install "cabana[loaders] @ git+https://github.com/miniscope/CaBaNA.git@framework-demo"
 ```
 
+## Quick start
+
+```python
+import cabana
+
+session = cabana.simulate_session()  # your own data: see docs/BRING_YOUR_OWN_DATA.md
+
+# once: turn raw behavior into state spaces (grid bins, bouts, syllables)
+session, _ = cabana.Pipeline(
+    transforms=[
+        {"name": "resample_signal", "source": "position"},
+        {"name": "speed"},
+        {"name": "bin_grid", "signals": ["x", "y"], "bin_size": 20.0, "output": "position"},
+        {"name": "bouts_to_states", "source": "social", "output": "social"},
+    ]
+).run(session)
+
+# one call per question: a recipe is a validated pipeline with sensible defaults
+session, results = cabana.analyze(session, "place_cell", states="position")
+print(results.summary())            # cells tested, significant fraction, median z per analysis
+session, social = cabana.analyze(session, "social", states="social", out_dir="out/social")
+```
+
+`analyze` fills the recipe, runs `pipeline.validate(session)` first (it refuses to start when
+a state space is missing or `n_shuffles` cannot reach `alpha`, and reports a time and memory
+estimate), shows a tqdm bar if tqdm is installed (otherwise log lines on the `"cabana"`
+logger), and with `out_dir=` saves `results.zip`, `pipeline.yaml` and `summary.csv`. Recipes:
+`cabana.recipes()`; see [`docs/RECIPES.md`](docs/RECIPES.md). Every parameter is still
+reachable, e.g. `analyze(session, "place_cell", states="position", n_shuffles=200,
+**{"analyses.*.metric.min_occupancy_s": 0.1})`.
+
 ## Quick look
 
 ```python
@@ -191,8 +222,16 @@ walks through BORIS bouts, DeepLabCut position, labels, grids with an explicit
 loading, several sessions and animals, and writing a custom metric. Every code
 block in it runs.
 
+## Command line
+
+`cabana run pipeline.yaml --session s.zip --out results/ --progress jsonl` runs a saved
+pipeline headlessly; `cabana run study.yaml` runs a whole study; `cabana describe`,
+`cabana schema NAME` and `cabana validate` print machine-readable information.
+See [docs/CLI.md](docs/CLI.md).
+
 ## Documentation
 
+- [`docs/RECIPES.md`](docs/RECIPES.md): the bundled recipes behind `cabana.analyze`, their placeholders, and how to write your own.
 - [`docs/BRING_YOUR_OWN_DATA.md`](docs/BRING_YOUR_OWN_DATA.md): from your arrays to a `Session`, a pipeline and results; classifying cells.
 - [`docs/PLOTS.md`](docs/PLOTS.md): what each figure shows and what to look for, `plot_all`, cell cards, the plot-data layer, adding a plot for your metric.
 - [`docs/PLUGINS.md`](docs/PLUGINS.md): writing your own transform, preprocess step, metric, null or selector, and `check_plugin`.
