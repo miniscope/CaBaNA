@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ._criteria import ClassificationResult, Criteria, classification_table, classify
-from ._pipeline import Pipeline, RunContext, RunSetResult, _plain, _sha_json, run_set
+from ._pipeline import Pipeline, RunContext, RunSetResult, _check_sid, _plain, _sha_json, run_set
 
 try:  # optional
     import yaml
@@ -131,6 +131,8 @@ class StudySpec(BaseModel):
     def _check(self) -> StudySpec:
         if not self.sessions:
             raise ValueError("a study needs at least one session")
+        for sid in self.sessions:  # ids become file names under out_dir
+            _check_sid(sid)
         extra = [s for s in (self.animal or {}) if s not in self.sessions]
         if extra:
             raise ValueError(f"animal given for unknown sessions: {extra}")
@@ -346,6 +348,7 @@ def save_cancelled(run: RunSetResult, out_dir: str | Path) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     paths = []
     for sid, rs in run.results.items():
+        _check_sid(sid)
         f = out / f"{sid}.results.cancelled.zip"
         if rs.cancelled:
             rs.save(f)

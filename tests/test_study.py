@@ -187,3 +187,17 @@ def test_cancelled_zip_listed_in_study_json(study_dir):
     assert files and all(f.endswith(".results.cancelled.zip") for f in files)
     run_study(_spec(), base_dir=study_dir)  # completes: stale cancelled zips go away
     assert not list((study_dir / "out").glob("*.results.cancelled.zip"))
+
+
+def test_session_ids_must_be_file_name_safe(tmp_path):
+    import pytest
+
+    from cabana import StudySpec
+
+    for bad in ("../escape", "a/b", ".hidden", ""):
+        with pytest.raises(ValueError, match="file name"):
+            StudySpec(
+                name="s",
+                sessions={bad: {"path": str(tmp_path / "x.zip")}},
+                pipeline={"analyses": []},
+            )
