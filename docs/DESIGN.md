@@ -74,8 +74,9 @@ plugin points. The middle is shared.
    `ResultSet.plot_all`). Modules: `_plot_style.py`, `_plot_data.py`,
    `_plot_registry.py`, and the renderers in `_plots.py`, `_plots_events.py`,
    `_plots_information.py`, `_plots_posthoc.py`, `_plots_cohort.py`,
-   `_plots_sweep.py`, `_plots_views.py` and `_plots_card.py`, all behind the
-   `cabana.plots` facade (`len(cabana.plots.__all__)` is 82 names: the renderers
+   `_plots_sweep.py`, `_plots_views.py`, `_plots_card.py` and
+   `_plots_metrics.py`, all behind the
+   `cabana.plots` facade (`len(cabana.plots.__all__)` is 92 names: the renderers
    and their `_data` companions plus the registry and style helpers).
 
 ## Core objects (`src/cabana/_models.py`)
@@ -303,6 +304,12 @@ Skaggs convention), then divided. Smoothing with no topology raises.
 | `auroc` | cell | `(n_cells, n_states)` | Mann–Whitney AUROC of activity in state vs. out of state among masked frames: `(R1 − n1(n1+1)/2) / (n1 n0)` with `R1` = rank sum (average ties) in state. `min_frames=20` per side else NaN. Shifted: rank the rolled activity over masked frames (`scipy.stats.rankdata(axis=1)` on the batch), then `shifted_sums`-style matmul; when `mask.all()` rank once. Extras: `n_in_state`. | two |
 | `population_vector_overlap` | population | `(n_states, n_states)` | Rate maps `(n_cells, n_states)`; `similarity="cosine"` (default) or `"pearson"` between every pair of state population vectors; `normalize_cells=True` divides each cell's map by its max first; invalid states NaN. Extras: `rate_map`. No `compute_shifted` (a common shift does not break cell–cell structure in a useful way here). | upper |
 | `pv_stability` | population | `(n_states,)` | Per state: Pearson r across cells between half-A and half-B population vectors (same halves as `split_half_stability`). Shifted via `[M_A \| M_B]` — a common shift keeps cell–cell structure and breaks the behavior link, which is the right null for "is the population code for this state stable". | upper |
+| `place_fields` | cell | `(n_cells,)` | Threshold the occupancy-normalised rate map (fraction of peak, absolute, or mean + k sd), label connected components with `_label.py`, drop those under `min_field_bins`. Value is `in_out_ratio` (default), `n_fields`, `field_area` or `peak_rate`; extras hold `field_labels`, `centroid`, the other statistics. Grid targets only. Shifted path via batched rate maps | upper |
+| `tuning_selectivity` | cell | `(n_cells,)` | From per-state mean rates: `selectivity_index = (r_max - r_mean)/(r_max + r_mean)`, `sparseness` (1 minus the Rolls-Tovee ratio) or `depth`. Needs non-negative activity | upper |
+| `circular_tuning` | cell | `(n_cells,)` | Mean vector length of the occupancy-normalised tuning curve over `n_bins` angle bins (`rayleigh_z` optional); extras `tuning_curve`, `preferred_direction`. Signal target (angle). Exact shifted path | upper |
+| `decode_signal` | population | `(d,)` | Cross-validated ridge (closed form, batched over shifts) or kNN regression of a continuous signal from the population; `r2`, `corr` or `mae`; contiguous folds, scaler fit on training only; `lag_s` aligns activity to the signal | upper (lower for `mae`) |
+| `pairwise_correlation` | population | `(n_cells, n_cells)` | `kind="total"`, `"signal"` (similarity of per-state mean vectors) or `"noise"` (after subtracting state means); Pearson or Spearman, NaN diagonal. Test with `cell_shift` | two |
+| `participation_ratio` | population | `(1,)` or `(n_states,)` | `(sum lambda)^2 / sum lambda^2` of the cell covariance spectrum; extras `eigenvalues`, `variance_explained`. Test with `cell_shift` | two |
 
 ### Plots (`_plot_*.py`, `_plots*.py`)
 
@@ -395,7 +402,17 @@ modules. Contract changes:
   `bout_shuffle` (re-places bouts inside the mask, preserving count,
   durations and exclusivity; warns when the space is too dense to avoid
   overlap). Nulls
-  that perturb the target loop over `metric.compute`.
+  that perturb the target loop over `metric.compute`. Phase E added three more
+  (six in all, `len(cabana.available("null"))`; 21 metrics,
+  `len(cabana.available("metric"))`): `covariate_matched_shift`, `cell_shift`
+  and `within_state_shuffle`. Two optional hooks on `Null` let them work:
+  `configure(session, spec)` is called by the pipeline before the shuffle test
+  and returns a bound copy, so a null can read data it cannot get from
+  `(activity, target, mask)` (the matched shift reads `session.signals[covariate]`
+  and the target's membership); `diagnostics(activity, target, mask, fs,
+  shifts)` runs once after the draw and returns a JSON-safe dict stored as
+  `ShuffleResult.null_info` (acceptance rate and balance of the matched null).
+  A shift-type null that stays a roll of the activity keeps the fast path.
 - **Re-binning.** `Session.rebin(bin_s)` resamples every per-frame object
   together (activity summed or averaged by kind, masks and states by
   occupancy fraction). `rebin_time` is the preprocess step. Population
@@ -592,7 +609,7 @@ Results from before per-analysis seeding differ because shifts are now per-analy
 `manifest.json` (parameters, names, provenance, string fields) plus `.npz` files
 (arrays). Nulls are stored as float32; `ShuffleConfig.keep_null="none"` skips
 storing and holding the full null matrix (`ShuffleResult.null` is then `None`,
-while `null_lo`, `null_hi`, `null_median` and `null_mean` remain), which matters
+while `null_lo`, `null_hi`, `null_median`, `null_mean` and `null_std` remain; `z_score` and `bias_corrected` derive from the last two, and `null_info` is saved with the result), which matters
 for decoders and 400-state grids over thousands of shuffles. `Pipeline.to_yaml(path)`
 writes when given a path and `from_yaml` takes text, a `Path` or a path string.
 Pickling is not the supported format. Custom plugins must be registered in the
@@ -718,6 +735,7 @@ The numerical cores live in `cabana._kernels` as pure functions over plain array
 | `_smooth.py` | `smooth_grid` (edge-normalised Gaussian over a grid) |
 | `_levels.py` | `level_edges`, `activity_levels`, `level_indicator`, `joint_counts`, `mutual_information_from_counts` |
 | `_rank.py` | `average_ranks`, `dense_ranks`, `masked_rank_sums_one_shift`, `auroc_from_rank_sums` |
+| `_label.py` | `label_components` (connected components of a boolean N-D mask, face or full connectivity), `component_stats` (size, centroid and weighted statistics per component); used by `place_fields` |
 
 **Import allow-list.** Only `numpy` (plus `__future__`, `typing` and sibling kernel modules). The single exception is `scipy.ndimage.gaussian_filter` inside `_smooth.py`, whose exact semantics (truncate 4.0, `mode="constant"`, edge normalisation by the smoothed valid indicator) are documented in the module header. `tests/test_kernels.py::test_kernels_import_only_numpy` parses every module with `ast` and enforces this.
 

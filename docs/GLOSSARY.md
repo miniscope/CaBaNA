@@ -24,7 +24,7 @@
 - **provenance**: the dict on each `MetricResult` recording how it was made (version, seed, null, number of shuffles, alpha, tail, masks, frames used, fs, activity kind, target parameters, timestamp).
 - **metric**: a registered plugin that turns activity and a target into values (information content, AUROC, decoder, ...).
 - **level**: whether a metric yields one value per cell (`cell`) or per population (`population`).
-- **null**: the plugin that defines how the activity-behavior link is broken: `circular_shift`, `label_shuffle` or `bout_shuffle`.
+- **null**: the plugin that defines how the activity-behavior link is broken: `circular_shift`, `label_shuffle`, `bout_shuffle`, `covariate_matched_shift`, `cell_shift` or `within_state_shuffle`.
 - **surrogate**: one dataset produced by a null; the metric is recomputed on each to build the null distribution.
 - **n_jobs**: `ShuffleConfig.n_jobs`, worker threads over batches of shuffles (`-1` = all cores); results are bit-identical for any value. `run_set(n_jobs=)` is the separate process-level knob across sessions.
 - **shuffle**: the whole test (`ShuffleConfig`): `n_shuffles` surrogates, the null, `alpha`, `tail`, `seed`.
@@ -71,3 +71,11 @@
 - **epoch**: one row `label, start_s, stop_s` of an annotation file, on the session clock; a table of them is a `BoutTable` (`load_epochs_csv`).
 - **frame labels**: a per-frame categorical annotation; as epochs it becomes states with `bouts_to_states`, as integers with `labels_to_states`.
 - **session folder config**: the `session.yaml` / `config.yaml` read by `load_session_dir` (schema `SessionDirConfig`) that names the files, orientation, clocks, arena and subjects of one recording; `write_session_dir_template` writes a commented example.
+- **covariate-matched null**: `covariate_matched_shift`, a circular shift restricted to offsets under which each state's covariate (usually speed) has the same distribution as observed (KS distance or standardised mean difference at most `tolerance`). Use it when a state is confounded with speed. `ShuffleResult.null_info` holds `acceptance_rate` and `balance_max`.
+- **cell shift**: `cell_shift`, a null that rolls every cell by its own random offset (distinct across cells), keeping each cell's autocorrelation and removing cell-to-cell coordination; the null for population metrics, where a common shift changes nothing.
+- **within-state shuffle**: `within_state_shuffle`, a null that permutes activity frames (or blocks of `block_s`) inside each state of an exclusive state space. State means are invariant; use it for order-dependent metrics such as split-half stability.
+- **participation ratio**: `(sum lambda)^2 / sum lambda^2` of the covariance eigenvalues of the population; 1 for activity along one axis, up to the number of cells for independent, equal-variance cells. An effective dimension (`participation_ratio`).
+- **mean vector length**: MVL, `|sum_b r_b exp(i theta_b)| / sum_b r_b` over the bins of a circular tuning curve; 0 for a flat curve, 1 for activity in one direction (`circular_tuning`).
+- **place field (as detected here)**: a connected group of at least `min_field_bins` grid bins whose occupancy-normalised rate passes a threshold (default half of the cell's peak); `place_fields` reports count, area, centroid and the ratio of mean rate inside fields to outside. A threshold-defined summary, not a test of spatial tuning by itself.
+- **z-score (null-normalised)**: `ShuffleResult.z_score`, `(observed - null_mean) / null_std`; an effect size on one scale across cells and metrics that does not hit the p floor. NaN when the null is constant or undefined.
+- **latency (PETH)**: `latency_s` of `peth(null_band=True)`, the first time at or after event onset at which the observed response lies outside the circular-shift band for `min_latency_bins` consecutive bins; NaN if it never does.

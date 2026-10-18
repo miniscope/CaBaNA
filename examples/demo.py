@@ -27,11 +27,18 @@ chosen (``selections.json``), shows the held-out score curve and a sweep over si
 without the shuffle test (figures 28 and 29), and runs the number-of-levels comparison through
 ``cabana.sweep``.
 
+The Phase E section (end of the run) adds the nulls and metrics of roadmap phase E: a speed-matched
+null on ``auroc[social]`` (acceptance rate and balance printed, significant counts compared
+with the plain circular shift), place fields, tuning selectivity, noise correlations and the
+participation ratio under ``cell_shift``, decoding of ``x``, a PETH null band with latency
+sorting, and the ``z`` column (figures 34 to 38).
+
 Outputs in --out: results.csv, results.zip and session.zip (reload with
 `cabana.ResultSet.load` / `cabana.Session.load`), nulls_compared.csv, levels_sweep.csv,
 selections.json, provenance files and figures 01 to 29 (20 to 26 are the amplitude / decoding
 figures, 27 the classification, 28a/28b the smoothing choice, 29 the smoothing stability), and the evidence-first views (all/, cards/, 30 to 33,
-rate_maps_data.json).
+rate_maps_data.json), and 34 to 38 for Phase E (place fields, pairwise matrix, participation
+ratio, signal decoding, PETH sorted by latency).
 """
 
 from __future__ import annotations
@@ -802,6 +809,226 @@ def evidence_first_views(session, results, place_result, out: Path) -> int:
     return n
 
 
+def phase_e_pipeline(n_shuffles: int, n_small: int, n_null: int) -> Pipeline:
+    """Phase E analyses on the prepared session (states, speed signal and masks already exist).
+
+    ``n_shuffles`` is for the cheap fast-path analyses, ``n_small`` for the ones that
+    recompute the metric on every surrogate (``cell_shift``, ``place_fields`` components).
+    """
+    shuf = ShuffleConfig(n_shuffles=n_shuffles, min_shift_s=20.0, seed=0)
+    # the same auROC against two nulls.  The matched null keeps only the shifts under which
+    # every social state sees the same distribution of speed as it does in the data
+    matched = {
+        "name": "covariate_matched_shift",
+        "covariate": "speed",
+        "statistic": "mean",  # |difference of means| / pooled sd, at most `tolerance`
+        "tolerance": 0.5,  # scales with state size: small states need a looser one
+        "min_frames": 100,  # states with fewer frames are not matched
+        "max_tries": 100,
+        "min_shift_s": 10.0,
+    }
+    # cell_shift rolls every cell by its own offset, which is what a population null needs
+    pop = {"name": "cell_shift", "min_pair_separation_s": 2.0}
+    return Pipeline(
+        analyses=[
+            AnalysisSpec(
+                name="auroc_plain",
+                metric={"name": "auroc"},
+                states="social",
+                shuffle=ShuffleConfig(n_shuffles=n_shuffles, min_shift_s=10.0, seed=15),
+            ),
+            AnalysisSpec(
+                name="auroc_speed_matched",
+                metric={"name": "auroc"},
+                states="social",
+                shuffle=ShuffleConfig(n_shuffles=n_shuffles, null=matched, seed=16),
+            ),
+            AnalysisSpec(
+                name="fields",
+                metric={"name": "place_fields", "min_field_bins": 2},
+                states="position",
+                masks=["speed"],
+                shuffle=ShuffleConfig(n_shuffles=n_small, min_shift_s=20.0, seed=11),
+            ),
+            AnalysisSpec(
+                name="selectivity",
+                metric={"name": "tuning_selectivity"},
+                states="syllables",
+                shuffle=shuf,
+            ),
+            # noise correlations: shared frame-to-frame variability after removing each
+            # syllable's mean.  A common shift would leave them unchanged, so cell_shift
+            AnalysisSpec(
+                name="noise_corr",
+                metric={"name": "pairwise_correlation", "kind": "noise"},
+                states="syllables",
+                shuffle=ShuffleConfig(n_shuffles=n_small, null=pop, seed=17),
+            ),
+            AnalysisSpec(
+                name="pr",
+                metric={"name": "participation_ratio"},
+                states="syllables",
+                shuffle=ShuffleConfig(n_shuffles=n_small, null=pop, seed=18),
+            ),
+            AnalysisSpec(
+                name="decode_x",
+                metric={"name": "decode_signal", "n_folds": 3},
+                signal="x",
+                shuffle=ShuffleConfig(n_shuffles=n_small, min_shift_s=20.0, seed=12),
+            ),
+            # PETH with the descriptive null band and response latency
+            AnalysisSpec(
+                name="peth_band",
+                metric={
+                    "name": "peth",
+                    "pre_s": 4.0,
+                    "post_s": 4.0,
+                    "baseline_s": (-4.0, -1.0),
+                    "response_s": (0.0, 1.5),
+                    "min_duration_s": 1.5,
+                    "min_gap_s": 1.0,
+                    "null_band": True,
+                    "n_null": n_null,
+                },
+                states="social",
+            ),
+        ]
+    )
+
+
+def phase_e_section(session, out: Path, quick: bool) -> dict[str, int]:
+    """Confound-resistant nulls and the Phase E metrics; returns counts the tests can check."""
+    n_fast = 200 if quick else 1000
+    n_small = 30 if quick else 200
+    n_null = 50 if quick else 200
+    t0 = time.perf_counter()
+    _, res = phase_e_pipeline(n_fast, n_small, n_null).run(session)
+    if res.errors:
+        raise RuntimeError(f"Phase E analyses failed: {res.errors}")
+    print(f"  Phase E analyses ran in {time.perf_counter() - t0:.1f} s")
+
+    # 1. speed-matched null versus the plain circular shift
+    plain, matched = res["auroc_plain"], res["auroc_speed_matched"]
+    info = matched.shuffle.null_info
+    n_plain = int(cabana.significant_cells(plain).sum())
+    n_matched = int(cabana.significant_cells(matched).sum())
+    print(
+        f"\n  Speed-matched null on auroc[social]: acceptance rate {info['acceptance_rate']:.0%} "
+        f"({info['n_candidates']} candidate shifts), balance_max {info['balance_max']:.2f} "
+        f"(tolerance {info['tolerance']}), balance_mean {info['balance_mean']:.2f}"
+    )
+    print(
+        f"  Cells significant in any social state: circular shift {n_plain}, "
+        f"speed-matched {n_matched} of {plain.values.shape[0]}"
+    )
+    gt = session.meta["ground_truth"]
+    untuned = np.array(gt["untuned_cells"])
+    print(
+        "  Untuned cells called significant (false positives): "
+        f"circular shift {int(cabana.significant_cells(plain)[untuned].sum())}, "
+        f"speed-matched {int(cabana.significant_cells(matched)[untuned].sum())} of {len(untuned)}"
+    )
+    # states defined by speed cannot be matched on speed: the null raises instead of guessing
+    try:
+        Pipeline(
+            analyses=[
+                AnalysisSpec(
+                    metric={"name": "auroc"},
+                    states="syllables",
+                    shuffle=ShuffleConfig(
+                        n_shuffles=20,
+                        null={
+                            "name": "covariate_matched_shift",
+                            "covariate": "speed",
+                            "tolerance": 0.1,
+                            "max_tries": 20,
+                        },
+                    ),
+                )
+            ]
+        ).run(session)
+        print("  speed-matched null on syllables: no error (unexpected for this simulation)")
+    except ValueError as exc:
+        print(f"  speed-matched null on the speed-defined syllables raises: {str(exc)[:90]}...")
+
+    # 2. place fields
+    fields = res["fields"]
+    sig_f = cabana.significant_cells(fields)
+    n_fields = fields.extras["n_fields"]
+    print(
+        f"\n  place_fields[position]: {int(sig_f.sum())} cells with a significant in/out ratio; "
+        f"median fields per significant cell {np.median(n_fields[sig_f]) if sig_f.any() else float('nan'):.0f}, "
+        f"median area {np.nanmedian(fields.extras['field_area'][sig_f]) if sig_f.any() else float('nan'):.0f} mm^2"
+    )
+    place = np.array(gt["place_cells"])
+    show = place[np.argsort(-np.nan_to_num(fields.values[place]))[:12]]
+    save_fig(
+        cabana.plots.plot_place_fields(session, fields, list(show)), out / "34_place_fields.png"
+    )
+
+    # 3. tuning selectivity of the syllable states
+    sel = res["selectivity"]
+    print(
+        f"  tuning_selectivity[syllables]: median selectivity index {np.nanmedian(sel.values):.2f}, "
+        f"{int(cabana.significant_cells(sel).sum())} cells significant"
+    )
+
+    # 4. pairwise noise correlations and the participation ratio, both against cell_shift
+    nc, pr = res["noise_corr"], res["pr"]
+    print(
+        f"  noise correlations (cell_shift null): mean off-diagonal "
+        f"{float(np.ravel(nc.extras['mean_offdiag'])[0]):+.4f}, "
+        f"{np.nanmean(nc.shuffle.significant[~np.eye(nc.values.shape[0], dtype=bool)]):.1%} "
+        f"of pairs significant (uncorrected; two-sided p floor {2 / (n_small + 1):.3f})"
+    )
+    print(
+        f"  participation_ratio: {pr.values[0]:.1f} of {pr.extras['eigenvalues'].size} cells "
+        f"(null {pr.shuffle.null_lo[0]:.1f} to {pr.shuffle.null_hi[0]:.1f}, p={pr.shuffle.p_value[0]:.3f})"
+    )
+    # weak coupling: narrow colour range
+    save_fig(
+        cabana.plots.plot_pairwise_matrix(nc, vmin=-0.2, vmax=0.2), out / "35_pairwise_matrix.png"
+    )
+    save_fig(cabana.plots.plot_participation_ratio(pr), out / "36_participation_ratio.png")
+
+    # 5. decoding a continuous signal
+    dec = res["decode_x"]
+    print(
+        f"  decode_signal[x]: held-out R^2 {dec.values[0]:.2f} "
+        f"(null {dec.shuffle.null_lo[0]:.2f} to {dec.shuffle.null_hi[0]:.2f}), "
+        f"MAE {dec.extras['mae'][0]:.0f} mm vs chance {dec.extras['chance_mae'][0]:.0f} mm"
+    )
+    save_fig(cabana.plots.plot_decode_signal(dec, session), out / "37_decode_signal.png")
+
+    # 6. PETH with the null band, cells sorted by latency
+    peth = res["peth_band"]
+    lat = peth.extras["latency_s"]
+    print(
+        f"  peth null band: {int(np.isfinite(lat).sum())} of {lat.size} cell x state pairs leave "
+        f"the band; median latency {np.nanmedian(lat):.2f} s"
+    )
+    save_fig(
+        cabana.plots.plot_peth(peth, session, states=[peth.state_names[0]], sort_by="latency"),
+        out / "38_peth_latency.png",
+    )
+
+    # 7. effect sizes: z = (observed - null mean) / null sd, next to p, which is floored
+    df = res.to_dataframe()
+    df = df[df["analysis"] == "auroc_speed_matched"].copy()
+    df["abs_z"] = df["z"].abs()
+    cols = ["cell", "state", "value", "p_value", "z"]
+    print(
+        f"\n  Strongest cells by |z| under the speed-matched null (p cannot go below "
+        f"{1 / (matched.shuffle.n_shuffles + 1):.4f}):"
+    )
+    print(
+        df.sort_values("abs_z", ascending=False)[cols]
+        .head(6)
+        .to_string(index=False, float_format=lambda v: f"{v:.3g}")
+    )
+    return {"n_plain": n_plain, "n_matched": n_matched}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
@@ -1271,6 +1498,9 @@ def main(argv=None) -> int:
     print("\nEvidence-first views (docs/PLOTS.md):")
     n_views = evidence_first_views(session, results, ic_pos, out)
     print(f"  {n_views} figures written to {out}/all, {out}/cards and {out}")
+
+    print("\nPhase E: confound-resistant nulls and new metrics (docs/STATISTICS.md):")
+    phase_e_section(session, out, args.quick)
 
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0

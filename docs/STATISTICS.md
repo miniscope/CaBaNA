@@ -14,7 +14,7 @@ keeping everything else. It is chosen in `ShuffleConfig`.
 | `label_shuffle` | permutes the target in time blocks, within the mask | population and decoder questions (decoding, PV distances, PCA separation), where cell-to-cell structure must stay intact |
 | `bout_shuffle` | re-places scored bouts at random times inside the mask | bout-structured behavior; preserves bout count, durations and exclusivity |
 
-Changing the null is one line:
+These are the original three; "Choosing a null" below adds the covariate-matched shift, the cell shift and the within-state shuffle. Changing the null is one line:
 
 ```python
 shuf = ShuffleConfig(n_shuffles=1000, null={"name": "bout_shuffle"})
@@ -36,6 +36,128 @@ need p-values and the null's bounds, set `ShuffleConfig(keep_null="none")`: the
 p-values, `null_lo`/`null_hi`, `null_median` and `null_mean` are kept and the
 matrix is dropped, so results stay small in memory and in `ResultSet.save`.
 Plots that draw the null histogram need `keep_null="full"` (the default).
+
+### Choosing a null
+
+Six nulls are registered (`cabana.available("null")`). The three in the table
+above break the link between activity and behavior in different ways; the other
+three answer questions the first three cannot.
+
+| null | what it breaks | what it preserves | use it for | fast path | caveats |
+| --- | --- | --- | --- | --- | --- |
+| `circular_shift` | the alignment of every cell with the behavior (all cells rolled by the same offset) | each cell's autocorrelation, the behavior's autocorrelation, cell-to-cell structure | single-cell tuning: auROC, information, mean per state, signal tuning, `place_fields`, `circular_tuning`, `decode_signal` | yes | leaves population statistics unchanged (correlations, participation ratio); cannot separate a state from a covariate that rides on it (speed) |
+| `label_shuffle` | the target, permuted in time blocks inside the mask | the activity untouched, so cell-to-cell structure; block-level autocorrelation of the target | decoders, PV distances, PCA separation | no (loops over `compute`) | blocks shorter than the behavior's timescale give an optimistic null (`block_s`) |
+| `bout_shuffle` | bout timing: bouts are re-placed at random times inside the mask | bout count, durations and exclusivity | bout-structured behavior | no | warns when the space is too dense to place bouts without overlap |
+| `covariate_matched_shift` | the alignment, as `circular_shift`, but only for shifts that keep a covariate (speed) balanced | everything `circular_shift` keeps, plus the covariate's distribution within each state | state or signal tuning when the state is confounded with speed | yes | costs more draws; raises if no shift can be matched; tolerance needs tuning (below) |
+| `cell_shift` | cell-to-cell coordination: every cell rolled by its own offset | each cell's autocorrelation and marginal distribution; the behavior target | population metrics: `pairwise_correlation`, `participation_ratio`, PV metrics | no | slower than the fast path; needs enough distinct shifts for the number of cells |
+| `within_state_shuffle` | the order of frames inside each state | each state's frame set and activity sums (so state means are invariant) | order-dependent metrics: `split_half_stability`, within-state `signal_correlation`, `decode_signal` | no | exclusive state spaces only; leaves `mean_per_state`, `auroc`, `information_content` and `tuning_selectivity` exactly unchanged, so their p-values mean nothing (a warning says so) |
+
+**The covariate-matched null.** If a cell fires faster when the animal runs and
+the animal runs faster in state A than in state B, a cell with no interest in A
+or B will still show a state preference, and the plain circular shift will call
+it significant: every shift scrambles the alignment between speed and the state
+labels, so the null has no speed-driven preference while the observed data do. `covariate_matched_shift` keeps only the shifts under
+which, for every state with at least `min_frames` masked frames, the covariate
+seen by the shifted activity over that state has the same distribution as the
+observed covariate there. "Same" is measured by `statistic`: `ks` (the
+Kolmogorov-Smirnov distance, 0 to 1) or `mean` (`|difference of means| / pooled
+sd`). A candidate is accepted when the statistic is at most `tolerance` in every
+state, and candidates are drawn in random order without replacement until
+`n_shuffles` are accepted. The surrogate is still a roll, so the fast path
+applies; only the draw is more expensive.
+
+Read two numbers in `ShuffleResult.null_info`. `acceptance_rate` is the fraction
+of candidate shifts that passed: it is low when the covariate is strongly tied to
+the state labels, and it says how much freedom the null had. `balance_max` is the
+largest statistic over all accepted shifts and states; it never exceeds
+`tolerance`, and `balance_mean` is the average worst-state value. A very low
+acceptance rate with a tight `balance_max` is a null drawn from a handful of
+shifts: the p-values then rest on few distinct surrogates, so check
+`n_candidates` and loosen `tolerance` before trusting them. On the demo's simulated
+session, `social` bouts against speed with `statistic="mean"`, tolerance 0.5,
+`min_frames=100` and `max_tries=100` accepted about a quarter of the candidates.
+
+Tolerance must scale with the size of the state. A state with few frames has a
+noisy covariate distribution even under a perfect null, so a tolerance that is
+easy to meet for a state with thousands of frames can be impossible for one with
+a hundred. Start from `statistic="mean"` with a tolerance of 0.3 to 0.5, raise
+`min_frames` so that states too small to match are left out of the matching
+(they are not matched at all, which is a weaker null for them), and watch the
+acceptance rate.
+
+If no shift passes, the null raises instead of returning a weak result. That is
+the right answer when the states are *defined by* the covariate: the simulator's
+syllables are defined by speed, so no shift can keep the speed distribution of
+every syllable and still move the activity; asking for a speed-matched null there
+raises, and it should. The question has no answer under that confound. The same
+holds for any state built from the covariate (a "running" and a "still" state
+under a speed-matched null). Use `circular_shift` and report that speed and state
+are not separable, or add speed as a regressor in `glm_encoding`.
+
+**`cell_shift` for population metrics.** A common circular shift rolls every cell
+by the same amount, so it leaves every cell-to-cell correlation, the covariance
+spectrum and the participation ratio exactly as observed. Its p-values for those
+metrics are meaningless. `cell_shift` rolls each cell by its own offset, drawn
+without replacement so that no two cells share one, which keeps each cell's
+autocorrelation and rate but removes the co-fluctuation. The question it answers
+is "are these cells coordinated beyond what their own statistics imply". Two
+cells with shifts a few frames apart stay almost aligned, so set
+`min_pair_separation_s` (for example a few seconds) to require every pair of
+shifts to differ by at least that long; with many cells and a short session this
+may be unsatisfiable, in which case a warning is issued and only distinctness is
+kept. `signal` correlations are the exception: a common shift breaks the link to
+the state labels and does test them.
+
+**`within_state_shuffle`.** It permutes the activity frames within each state of
+an exclusive state space (all cells together, so cell-to-cell structure at a frame
+is kept), optionally in blocks of `block_s` seconds. It is exactly invariant for
+metrics that depend only on the multiset of activity values in each state:
+`mean_per_state`, `auroc`, `information_content` and `tuning_selectivity`. It is
+informative for metrics that depend on order: `split_half_stability` (is the
+stability more than exchangeable frames would give), PETH timing,
+within-state `signal_correlation` and `decode_signal`. It tests "is there
+structure inside the state beyond exchangeability", not "is the cell tuned to the
+state".
+
+### Effect sizes
+
+A p-value is floored at `1 / (n_shuffles + 1)` and says nothing about size, so
+`ShuffleResult` also gives two effect sizes computed from the null draws, both
+kept when `keep_null="none"`:
+
+- `z_score` is `(observed - null_mean) / null_std`, with `null_std` the standard
+  deviation of the finite null draws (ddof 1). It puts auROC, information,
+  correlation and MVL on one scale and is independent of `n_shuffles` apart from
+  sampling noise, whereas p cannot go below the floor: two cells at the floor can
+  have z of 4 and z of 12. It is NaN where the null is constant (a state-mean
+  metric under `within_state_shuffle`, a silent cell), where the null has fewer
+  than two finite draws, or where the observed value is undefined. The tidy table
+  has a `z` column. Treat z as a descriptive effect size, not a Gaussian test: null
+  distributions of ranks and bounded statistics are not normal, and a large z with
+  `p` at the floor means only that the observed value is far outside the draws you
+  made.
+- `bias_corrected` is `observed - null_mean`: the metric with its chance level
+  removed. For Skaggs information this removes the positive bias of a short
+  session (see "Bias in mutual information" below); it is the quantity to compare
+  across cells with different amounts of data.
+
+`null_std` and `null_info` are stored with the result and saved by
+`ResultSet.save`.
+
+### The PETH null band
+
+`peth` can draw a per-bin null band for the event-averaged response
+(`null_band=True`, `n_null` shifts, `null_seed`). It rolls the activity by
+`n_null` circular shifts with event times fixed and takes the 2.5 and 97.5
+percentiles of the shifted PETH in every bin, and it reports `latency_s`, the
+first time at or after onset at which the observed PETH stays outside the band
+for `min_latency_bins` consecutive bins. The band is descriptive. It is computed
+inside the metric's extras with its own seed and shifts, independently of the
+`ShuffleConfig` null (so it does not change with `ShuffleConfig.null` or
+`seed`), it is not corrected for the many bins and cells, and it does not
+change the tested statistic, which is still response minus baseline. Use it to
+see when a response departs from chance and to sort cells by latency; use the
+shuffle p-value for the claim.
 
 ## Reading a result
 
@@ -290,6 +412,11 @@ a substitute for tuning on real data.
 | `min_shift_s` | `ShuffleConfig`, `circular_shift` | 20 s | arbitrary | M | should exceed the autocorrelation time; automatic rule planned |
 | `block_s` | `label_shuffle` null | 1.0 s | arbitrary | M | automatic rule planned |
 | `refractory_s` | `bout_shuffle` null | 2.0 s | arbitrary | L-M | fixed default |
+| `tolerance` / `statistic` | `covariate_matched_shift` | 0.1 / `ks` | arbitrary | H | scale to state size; check `null_info["acceptance_rate"]` and `balance_max` |
+| `min_frames` / `max_tries` | `covariate_matched_shift` | 50 / 20 | arbitrary | M | raise `min_frames` so tiny states are not matched; raise `max_tries` if acceptance is low |
+| `min_pair_separation_s` | `cell_shift` | 0 (distinct shifts only) | arbitrary | L-M | a few seconds for population metrics |
+| `block_s` | `within_state_shuffle` | 0 (single frames) | arbitrary | M | the autocorrelation time of the activity |
+| `n_null` / `null_seed` | `peth` null band | 200 / 0 | arbitrary | L (descriptive) | fixed default |
 | `alpha` / `correction` / `tail` | `ShuffleConfig` | 0.05 / `none` / the metric's default | convention | H for conclusions | pre-registered; see the correction section |
 | `n_components` | `pca_population` | 10 | arbitrary | L | fixed default |
 | cluster `k` | `response_clusters` | chosen by silhouette / BIC over a range | data-driven | M | automatic rule |

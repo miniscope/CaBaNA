@@ -15,7 +15,7 @@ spot-checked against the code by the coordinator.
 | B: parameters, sweeps, provenance | done | `26aca15`, `1326010`, `d660898` | `_kernels`, `Selection` + parameter paths, `Selector` stage, `cabana.sweep` with guard rail, `auto_smooth_sigma`, `auto_null_timescale`, demo figures 28–29, notebook section 5. F1 (kernels) and F4 (tuning export: partially, via `Selection`) pulled forward |
 | C: real data in | done except C8 layers | `3d01847`, `3a3b22b`, `bd70127` | cell metadata and QC, activity conditioning, mask composition, behaviour transforms, alignment, Miniscope-format loaders, `load_calab`, `load_session_dir`, three-chamber fixture, `PLUGINS.md` + `check_plugin`. Deferred: `Session.layers` (multiple activity representations side by side); "preprocess before transforms" resolved by writing Transforms instead |
 | D: evidence-first presentation | done (2026-10-17) | `ab98aed`, `76cd2c2`, `ae4116a` | `_data` companion for every plot (versioned contract, strict JSON), plot registry with `default_plots`, `result.plot` / `plot_all`, shared style, per-cell evidence cards, raster / population tuning / session QA / analysis agreement views, and the D6 figure fixes; guide in `docs/PLOTS.md` |
-| E: metrics and nulls | not started | | |
+| E: metrics and nulls | done (2026-10-17), except `rsa` / `cross_decode` | `4a72905`, `6c871be`, `9de64cd` | speed-matched, per-cell and within-state nulls; `place_fields`, `tuning_selectivity`, `circular_tuning`, `decode_signal`, `pairwise_correlation`, `participation_ratio`; `null_std`, `z_score`, `bias_corrected`, `null_info`; PETH null band and latency; five new figures. Deferred: `rsa`, `cross_decode` |
 | F: CaLab integration | F1 done; F2–F6 open | | licence decision still pending |
 
 Open decisions: licence (AGPL-3.0 vs CaLab's MIT); `auto_null_timescale` floor (5 s) vs the 20–30 s convention.
@@ -106,13 +106,13 @@ subagents). Phases are ordered by dependency, not importance.
 
 ### Phase E: metrics and nulls
 
-| # | Item | Fast path | Effort | Source |
-|---|---|---|---|---|
-| E1 | Covariate-matched (speed-matched) null: accept only shifts whose per-state covariate distribution matches the observed one; balance diagnostic in provenance | yes | M | Metrics |
-| E2 | `cell_shift` / `cell_permutation` null (independent roll per cell) plus `pairwise_correlation` (signal and noise, state-conditioned) and `participation_ratio` | no | M | Metrics |
-| E3 | `place_fields` (threshold + connected components: count, area, centroid, in/out ratio) and `tuning_selectivity` (selectivity index, lifetime sparseness, preferred state) | yes | M + S | Metrics |
-| E4 | Null-normalised z-score and `shuffle_mean` bias correction on `ShuffleResult` | yes | S | Metrics |
-| E5 | `within_state_shuffle`, `rsa`/`cross_decode`, `circular_tuning` (mean vector length), `decode_signal` (ridge/kNN, closed-form ridge for shuffles), PETH per-bin null band and latency | mixed | M each | Metrics |
+| # | Item | Fast path | Effort | Source | Status |
+|---|---|---|---|---|---|
+| E1 | Covariate-matched (speed-matched) null: accept only shifts whose per-state covariate distribution matches the observed one; balance diagnostic in provenance | yes | M | Metrics | done: `covariate_matched_shift`; acceptance rate and balance in `ShuffleResult.null_info` |
+| E2 | `cell_shift` / `cell_permutation` null (independent roll per cell) plus `pairwise_correlation` (signal and noise, state-conditioned) and `participation_ratio` | no | M | Metrics | done: `cell_shift`, `pairwise_correlation`, `participation_ratio` |
+| E3 | `place_fields` (threshold + connected components: count, area, centroid, in/out ratio) and `tuning_selectivity` (selectivity index, lifetime sparseness, preferred state) | yes | M + S | Metrics | done: `place_fields`, `tuning_selectivity` |
+| E4 | Null-normalised z-score and `shuffle_mean` bias correction on `ShuffleResult` | yes | S | Metrics | done: `null_std`, `z_score`, `bias_corrected`, `z` column |
+| E5 | `within_state_shuffle`, `rsa`/`cross_decode`, `circular_tuning` (mean vector length), `decode_signal` (ridge/kNN, closed-form ridge for shuffles), PETH per-bin null band and latency | mixed | M each | Metrics | done except `rsa` and `cross_decode`, deferred: `within_state_shuffle`, `circular_tuning`, `decode_signal`, PETH `null_band` and `latency_s` |
 
 ### Phase F: CaLab integration
 

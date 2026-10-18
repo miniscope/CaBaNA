@@ -318,6 +318,62 @@ def main(argv=None) -> int:
     summary = pd.DataFrame(rows)
     print("cells significant in at least one state, raw and corrected across states (max_stat):")
     print(summary.to_string(index=False))
+    # Phase E analyses run as a second pipeline on the prepared session, so results.zip keeps
+    # the six analyses above.
+    phase_e = Pipeline(
+        analyses=[
+            # Phase E. Investigation is approach and sniffing, so speed is a plausible confound:
+            # keep only circular shifts under which investigation frames see the same speed
+            # distribution as in the data (|d mean| / pooled sd <= tolerance).
+            AnalysisSpec(
+                name="auroc_speed_matched",
+                metric={"name": "auroc"},
+                states="investigation",
+                shuffle=ShuffleConfig(
+                    n_shuffles=n_shuffles,
+                    null={
+                        "name": "covariate_matched_shift",
+                        "covariate": "speed",
+                        "statistic": "mean",
+                        # investigation is slow (about 1 cm/s against 6 cm/s elsewhere), so
+                        # tolerance 0.5 accepts no shift at all; 1.0 accepts about 40%.
+                        # 'investigate_empty' has under 100 frames and is not matched.
+                        "tolerance": 1.0,
+                        "min_frames": 100,
+                        "max_tries": 100,
+                        "min_shift_s": 10.0,
+                    },
+                    seed=args.seed,
+                ),
+            ),
+            # how concentrated each cell's mean rate is across the zones (chamber, cup areas)
+            AnalysisSpec(
+                name="zone_selectivity",
+                metric={"name": "tuning_selectivity"},
+                states="zones_geo",
+                shuffle=circ,
+            ),
+        ]
+    )
+    _, rs_e = phase_e.run(session, progress=False)
+    # Phase E: does the investigation auROC survive a speed-matched null?
+    plain_au, matched_au = rs["auroc[investigation]"], rs_e["auroc_speed_matched"]
+    info = matched_au.shuffle.null_info
+    print(
+        f"\nspeed-matched null: acceptance rate {info['acceptance_rate']:.0%} of "
+        f"{info['n_candidates']} candidate shifts, balance_max {info['balance_max']:.2f} "
+        f"(tolerance {info['tolerance']}), balance_mean {info['balance_mean']:.2f}"
+    )
+    print(
+        "cells significant for investigation (raw p): "
+        f"bout shuffle {int(cabana.significant_cells(plain_au, adjusted=False).sum())}, "
+        f"speed-matched shift {int(cabana.significant_cells(matched_au, adjusted=False).sum())}"
+    )
+    zsel = rs_e["zone_selectivity"]
+    print(
+        f"zone selectivity index: median {np.nanmedian(zsel.values):.2f}; "
+        f"{int(cabana.significant_cells(zsel).sum())} of {zsel.values.shape[0]} cells significant"
+    )
     print("\nselections (values chosen from the data, never from p-values):")
     for s in rs.selections:
         print(f"  {s['path']} = {s['value']}  [{s['method']}]")

@@ -49,6 +49,8 @@ Recent additions:
 - **Fast path for fine grids:** exclusive state spaces above 256 states use per-cell integer-label sums instead of a dense one-hot matmul (6400 states: about 28 s and 2.6 GB down to 0.9 s and 1.0 GB).
 - **Cell classification:** `Criteria` / `Clause` rules (YAML round-trip), `classify`, `place_cell_criteria`, `responsive_cell_criteria` and `plots.plot_classification`.
 - **Data-driven parameters and sweeps:** `selectors=[{"name": "auto_smooth_sigma"}, {"name": "auto_null_timescale"}]` choose spatial smoothing (held-out score, one-SE rule) and the circular-shift length from the data without seeing a p-value; `cabana.sweep` reruns a pipeline over a grid of values and reports how many cells change classification; every chosen value carries a `Selection` record (`results.selections`), and picking a value by significance is refused. The demo shows both (figures 28-29).
+- **Confound-resistant nulls:** `covariate_matched_shift` (keeps speed balanced across states; reports its acceptance rate and balance), `cell_shift` (for population metrics) and `within_state_shuffle` (for order-dependent metrics), with `z_score` and `bias_corrected` effect sizes on every result. See "Choosing a null" in [`docs/STATISTICS.md`](docs/STATISTICS.md).
+- **More metrics:** `place_fields`, `tuning_selectivity`, `circular_tuning` (mean vector length), `decode_signal` (ridge or kNN), `pairwise_correlation` (total, signal, noise), `participation_ratio`, and a PETH null band with response latency; five new figures. The demo's Phase E section runs them.
 - **Loaders:** `cabana.loaders` reads Minian, CaImAn, DeepLabCut, BORIS, Keypoint-MoSeq and `.camap` files with one clock convention (`t_neural = t_video - t_offset_s`).
 - **Run control:** `RunContext` gives progress callbacks, cancellation with partial results, recorded errors and captured warnings; also `run_set`, `Pipeline.iter_run` and `describe()` for a front end.
 
@@ -65,8 +67,9 @@ for the survey they come from and what is still missing):
   and distance, PCA, cross-validated state decoding, a naive-Bayes decoder
   (Gaussian, Poisson or empirical likelihood), and a GLM with a temporal basis
   that reports each regressor's unique contribution.
-- **Null distributions as plugins:** circular shift, block label shuffle and bout
-  shuffle, chosen with one line of `ShuffleConfig`.
+- **Null distributions as plugins:** circular shift, block label shuffle, bout
+  shuffle, speed-matched shift, per-cell shift and within-state shuffle, chosen
+  with one line of `ShuffleConfig`.
 - **Across cells, sessions and animals:** overlap versus chance, response clustering,
   cross-session map and population-vector correlation, per-animal fractions and
   hierarchical bootstrap.

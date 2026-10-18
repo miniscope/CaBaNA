@@ -61,6 +61,19 @@ bins in any map were never visited and are **not zero**.
   colourbar and units, optionally an occupancy panel; bars per state for
   categorical targets. *Look for:* compact single fields (grids) or a bar peak at
   one state; a white dot marks a significant cell.
+- **`plot_place_fields`** (`cells=None`, `max_cells=24`, `ncols=6`,
+  `show_centroid=True`; takes a `place_fields` result). Rate maps with the
+  detected field outlined and the centroid marked. *Look for:* one compact
+  outline around the bright patch of the map (a clean place field), several
+  outlines or a large outlined area (a diffuse or multi-peaked cell), and a
+  centroid that sits inside the outline; light-grey bins were never visited and
+  are not zero.
+- **`plot_circular_tuning`** (`max_cells=16`, `ncols=4`, `polar=True`; takes a
+  `circular_tuning` result). Per-cell tuning curve over angle with the preferred
+  direction as an arrow. *Look for:* a single lobe pointing along a long arrow
+  (strongly direction-tuned, high mean vector length) versus a near-circular
+  curve with a short arrow (untuned); gaps in the curve are directions never
+  sampled. Angle zero is at the right and increases counter-clockwise.
 - **`plot_split_half_maps`**. The two half-session maps side by side, on one
   colour scale per cell. *Look for:* the same field in both halves (high r)
   versus a field that moves or vanishes.
@@ -72,6 +85,13 @@ bins in any map were never visited and are **not zero**.
   a band of cells that rise or fall after the dashed onset line, a latency
   staircase when sorted by latency, and whether significant cells are the
   strongest responders.
+  With `peth(null_band=True)` the mean trace is drawn with the per-bin
+  circular-shift band (2.5 to 97.5 percentile) and `sort_by="latency"` orders
+  cells by `latency_s`, the first time the observed PETH leaves the band for
+  `min_latency_bins` consecutive bins (without the band, by the time of the peak
+  response). The band is
+  descriptive and independent of the `ShuffleConfig` null; see "The PETH null
+  band" in [`STATISTICS.md`](STATISTICS.md).
 - **`plot_event_raster`**. Single events of one cell as an image plus the mean.
   *Look for:* a response on most single events rather than a few.
 - **`plot_joint_histogram`** (`normalize="lift"` by default). State by activity
@@ -95,6 +115,26 @@ bins in any map were never visited and are **not zero**.
 - **`plot_activity_raster`**. Cells by time with a behaviour ribbon under it.
   *Look for:* bursts that line up with a behaviour colour, and whether excluded
   (grey) stretches coincide with the activity you are about to interpret.
+- **`plot_pairwise_matrix`** (`order="cluster"`, `"none"` or `"state"`; takes a
+  `pairwise_correlation` result). Cell-by-cell correlation matrix, reordered so
+  correlated cells are adjacent, significant pairs marked. *Look for:* blocks of
+  red along the diagonal (assemblies of co-active cells) rather than a uniform
+  wash; a near-zero mean off-diagonal with scattered pairs is weak coupling. The
+  diagonal is left grey because self-correlation carries no information. Test
+  these with `cell_shift`, not the default null.
+- **`plot_participation_ratio`** (takes a `participation_ratio` result).
+  Eigen-spectrum of the population covariance with cumulative variance
+  explained. *Look for:* a spectrum dominated by a few components with the
+  cumulative line rising steeply (low-dimensional activity, small participation
+  ratio) versus a flat spectrum and a slowly rising line (activity spread over
+  many dimensions); compare the value with the null band in the title.
+- **`plot_decode_signal`** (`t_range=None`, `channels=None`; needs the session
+  for the true signal). Held-out prediction of a continuous signal from the
+  population, one row per channel: true and predicted traces and a
+  true-versus-predicted scatter, annotated with the per-fold score, the MAE and the chance MAE. *Look for:* the
+  coloured prediction following the grey true trace (not just its slow drift), a
+  scatter that hugs the identity line, and a mean absolute error well below the
+  chance error (the error of always predicting the training mean).
 - **`plot_population_matrix`**. State by state matrix (for example population
   vector overlap). *Look for:* block structure and a strong diagonal.
 - **`plot_metric_strip`**. Per-cell values of a 1-D result against the null band,
@@ -280,6 +320,12 @@ First entry is what `result.plot(session)` draws.
 | `signal_tuning` | `metric_strip`, `shuffle_distribution` |
 | `decode_states` | `metric_strip` |
 | `peth` | `peth`, `event_raster` |
+| `place_fields` | `place_fields`, `rate_maps`, `metric_strip`, `shuffle_distribution` |
+| `tuning_selectivity` | `metric_strip`, `tuning_heatmap`, `shuffle_distribution` |
+| `circular_tuning` | `circular_tuning`, `metric_strip`, `shuffle_distribution` |
+| `decode_signal` | `decode_signal`, `metric_strip` |
+| `pairwise_correlation` | `pairwise_matrix`, `population_matrix` |
+| `participation_ratio` | `participation_ratio`, `metric_strip` |
 | `bayesian_decoder` | `decoded_trajectory`, `population_matrix` |
 | `population_vector_overlap` | `population_matrix` |
 | `pv_stability` | `population_matrix` |
