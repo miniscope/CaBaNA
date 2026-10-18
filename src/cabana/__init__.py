@@ -37,18 +37,24 @@ from ._metrics import (
     AUROC,
     PETH,
     BayesianDecoder,
+    CircularTuning,
+    DecodeSignal,
     DecodeStates,
     GLMEncoding,
     InformationContent,
     MeanPerState,
     MutualInformation,
     PCAPopulation,
+    PairwiseCorrelation,
+    ParticipationRatio,
+    PlaceFields,
     PopulationDistance,
     PopulationVectorOverlap,
     PopulationVectorStability,
     SignalCorrelation,
     SignalTuning,
     SplitHalfStability,
+    TuningSelectivity,
     event_onsets,
     mutual_information_from_counts,
 )
@@ -91,7 +97,14 @@ from ._preprocess import (
     TimeRange,
     ZscoreActivity,
 )
-from ._nulls import BoutShuffle, CircularShift, LabelShuffle
+from ._nulls import (
+    BoutShuffle,
+    CellShift,
+    CircularShift,
+    CovariateMatchedShift,
+    LabelShuffle,
+    WithinStateShuffle,
+)
 from ._plugin_check import PluginReport, check_plugin
 from ._registry import (
     Metric,
@@ -166,6 +179,12 @@ __all__ = [
     # metrics
     "AUROC",
     "BayesianDecoder",
+    "CircularTuning",
+    "DecodeSignal",
+    "PairwiseCorrelation",
+    "ParticipationRatio",
+    "PlaceFields",
+    "TuningSelectivity",
     "DecodeStates",
     "GLMEncoding",
     "InformationContent",
@@ -204,6 +223,9 @@ __all__ = [
     "remapping_summary",
     # shuffling
     "BoutShuffle",
+    "CellShift",
+    "CovariateMatchedShift",
+    "WithinStateShuffle",
     "CircularShift",
     "LabelShuffle",
     "ShuffleConfig",

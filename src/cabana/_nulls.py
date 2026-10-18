@@ -12,18 +12,25 @@ differ in *what* they preserve:
   decoders) where the question is whether *labels* carry structure.
 * ``bout_shuffle`` keeps activity intact and re-places each bout of each state
   at a random time, preserving bout count and durations (CaSA's null).
+* ``covariate_matched_shift`` is ``circular_shift`` restricted to shifts under
+  which a nuisance covariate (e.g. speed) is distributed as observed within
+  every state, so the null cannot be beaten merely by tracking the covariate.
+* ``cell_shift`` rolls every cell by its own offset; breaks cell-cell
+  co-fluctuation (null for population metrics).
+* ``within_state_shuffle`` permutes activity frames inside each state; keeps
+  state-mean activity, destroys within-state temporal structure.
 """
 
 from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import numpy as np
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
-from ._models import StateSpace
+from ._models import Session, StateSpace
 from ._registry import Metric, Null, Target, register
 from ._util import runs
 
@@ -218,4 +225,357 @@ class BoutShuffle(Null):
         return activity, target.model_copy(update={"onehot": oh, "exclusive": shared})
 
 
-__all__ = ["BoutShuffle", "CircularShift", "LabelShuffle", "draw_shifts"]
+def _shift_bounds(n_time: int, min_shift: int) -> tuple[int, int]:
+    """Inclusive ``(lo, hi)`` range of allowed shifts (same clamping as :func:`draw_shifts`)."""
+    if n_time < 4:
+        raise ValueError("need at least 4 frames to shuffle")
+    min_shift = int(max(1, min(min_shift, (n_time - 1) // 2)))
+    return min_shift, n_time - min_shift
+
+
+def _ks_stat(sorted_a: np.ndarray, sorted_b: np.ndarray) -> float:
+    """Two-sample Kolmogorov-Smirnov statistic of two sorted samples (pure numpy)."""
+    pooled = np.concatenate([sorted_a, sorted_b])
+    fa = np.searchsorted(sorted_a, pooled, side="right") / sorted_a.size
+    fb = np.searchsorted(sorted_b, pooled, side="right") / sorted_b.size
+    return float(np.max(np.abs(fa - fb)))
+
+
+@register("null")
+class CovariateMatchedShift(CircularShift):
+    """Circular shift restricted to shifts that keep a covariate balanced across states.
+
+    A plain circular shift can look "significant" for a trivial reason: if a
+    cell fires with speed and the animal is faster in state A than in state B,
+    *any* shift that keeps the speed profile roughly aligned with state labels
+    produces different per-state means than a shift that does not.  This null
+    keeps only the shifts under which, for every state ``s`` with at least
+    ``min_frames`` masked frames, the covariate seen by the shifted activity
+    over the frames of ``s`` -- ``covariate[(t - k) mod n]`` for ``t`` in state
+    ``s`` and in the mask -- has the same distribution as the observed
+    covariate over those frames.  For a signal target (one group) all masked
+    frames are matched together.
+
+    The match is measured by ``statistic``: ``"ks"`` is the two-sample
+    Kolmogorov-Smirnov statistic (max distance between the CDFs, in [0, 1]);
+    ``"mean"`` is ``|difference of means| / pooled std``.  A candidate shift
+    is accepted when the statistic is at most ``tolerance`` in *every* state.
+    Candidates are drawn exactly like ``circular_shift`` (so ``min_shift_s``
+    applies), in random order without replacement, until ``n`` are accepted.
+
+    Preserves both time series' autocorrelation (it is a plain shift) and
+    additionally the per-state covariate distribution.  Use when a behavior
+    state is confounded with a continuous nuisance variable such as speed.
+    Because the surrogate is still ``np.roll(activity, k)``, the **fast path
+    (``compute_shifted``) applies** and metrics run as quickly as under
+    ``circular_shift``; only the shift draw is more expensive.
+
+    Diagnostics (``ShuffleResult.null_info``): ``acceptance_rate`` (accepted
+    over candidates examined), ``n_candidates``, ``balance_max`` (largest
+    statistic over all accepted shifts and states; at most ``tolerance``),
+    ``balance_mean`` (mean over accepted shifts of the worst-state statistic),
+    plus ``covariate``, ``statistic`` and ``tolerance``.  Compare with
+    :meth:`balance` applied to unconstrained shifts to see how much the
+    constraint matters.  A low acceptance rate means the covariate is strongly
+    tied to the state labels; loosen ``tolerance`` or use ``statistic="mean"``.
+    If all distinct shifts are examined and fewer than ``n`` pass, the accepted
+    shifts are reused (with a warning, as for ``circular_shift``); if
+    ``n * max_tries`` candidates are examined first, or none passes, a
+    ``ValueError`` is raised.
+
+    The null is bound to the analysis it was configured for: ``Pipeline``
+    calls ``configure(session, spec)``, which reads ``session.signals[covariate]``
+    and the target's state membership and mask.  Missing (NaN) covariate
+    frames are replaced by the covariate median.
+    """
+
+    name: ClassVar[str] = "covariate_matched_shift"
+    perturbs: ClassVar[Literal["activity", "target"]] = "activity"
+
+    covariate: str = Field("speed", description="Name of the signal in session.signals to match.")
+    channel: int | None = Field(
+        None, description="Column of the covariate when it is 2-D (required then)."
+    )
+    statistic: Literal["ks", "mean"] = Field(
+        "ks", description="Balance statistic: KS distance or |d mean| / pooled std."
+    )
+    tolerance: float = Field(0.1, gt=0, description="Largest allowed statistic in every state.")
+    max_tries: int = Field(
+        20, ge=1, description="Candidates examined per requested shift before giving up."
+    )
+    min_frames: int = Field(
+        50, ge=1, description="States with fewer masked frames are not matched."
+    )
+
+    _cov: np.ndarray | None = PrivateAttr(None)
+    _groups: list[np.ndarray] | None = PrivateAttr(None)
+    _stats: dict[str, Any] = PrivateAttr(default_factory=dict)
+
+    def configure(self, session: Session, spec: Any) -> CovariateMatchedShift:
+        sigs = session.signals
+        if self.covariate not in sigs:
+            raise KeyError(
+                f"covariate_matched_shift: no signal {self.covariate!r} in the session; "
+                f"available signals: {sorted(sigs)}"
+            )
+        cov = np.asarray(sigs[self.covariate], dtype=np.float64)
+        if cov.ndim == 2:
+            if self.channel is None:
+                raise ValueError(
+                    f"covariate {self.covariate!r} has {cov.shape[1]} channels; set channel="
+                )
+            cov = cov[:, self.channel]
+        elif cov.ndim != 1:
+            raise ValueError(f"covariate {self.covariate!r} must be 1-D or 2-D")
+        bad = ~np.isfinite(cov)
+        if bad.all():
+            raise ValueError(f"covariate {self.covariate!r} has no finite values")
+        if bad.any():
+            cov = np.where(bad, np.median(cov[~bad]), cov)
+        listed = list(getattr(spec, "masks", None) or [])
+        mask = session.valid_mask(listed)
+        states = getattr(spec, "states", None)
+        groups: list[np.ndarray] = []
+        if states is not None:
+            target = session.states[states]
+            if target.support is not None:
+                mask = mask & target.support
+            for s in range(target.n_states):
+                idx = np.flatnonzero(target.onehot[:, s] & mask)
+                if idx.size >= self.min_frames:
+                    groups.append(idx)
+        else:
+            idx = np.flatnonzero(mask)
+            if idx.size >= self.min_frames:
+                groups.append(idx)
+        if not groups:
+            raise ValueError(
+                f"covariate_matched_shift: no state has at least min_frames={self.min_frames} "
+                "masked frames; lower min_frames"
+            )
+        bound = self.model_copy()
+        bound._cov = cov
+        bound._groups = groups
+        bound._stats = {}
+        return bound
+
+    def _bound(self, n_time: int) -> tuple[np.ndarray, list[np.ndarray]]:
+        if self._cov is None or self._groups is None:
+            raise RuntimeError(
+                "covariate_matched_shift needs the session: run it through Pipeline or call "
+                ".configure(session, spec)"
+            )
+        if self._cov.shape[0] != n_time:
+            raise ValueError(
+                f"covariate has {self._cov.shape[0]} frames but the activity has {n_time}"
+            )
+        return self._cov, self._groups
+
+    def balance(self, shifts: np.ndarray) -> np.ndarray:
+        """Worst-state balance statistic of each shift, shape ``(len(shifts),)``.
+
+        Useful to compare accepted shifts against unconstrained ones.
+        """
+        if self._cov is None:
+            self._bound(0)  # raises the "needs the session" error
+        cov, groups = self._bound(self._cov.shape[0])
+        return self._stat_matrix(cov, groups, np.asarray(shifts, dtype=np.int64)).max(axis=1)
+
+    def _stat_matrix(
+        self, cov: np.ndarray, groups: list[np.ndarray], shifts: np.ndarray
+    ) -> np.ndarray:
+        """Statistic per (shift, group), shape ``(n_shifts, n_groups)``."""
+        n = cov.shape[0]
+        out = np.empty((shifts.size, len(groups)))
+        for g, idx in enumerate(groups):
+            obs = cov[idx]
+            so = np.sort(obs)
+            if self.statistic == "mean":
+                mo, vo = obs.mean(), obs.var()
+            for i, k in enumerate(shifts):
+                shifted = cov[(idx - int(k)) % n]
+                if self.statistic == "ks":
+                    out[i, g] = _ks_stat(so, np.sort(shifted))
+                else:
+                    sd = np.sqrt((vo + shifted.var()) / 2)
+                    diff = abs(shifted.mean() - mo)
+                    out[i, g] = diff / sd if sd > 0 else (0.0 if diff == 0 else np.inf)
+        return out
+
+    def draw(self, n_time: int, fs: float, n: int, rng: np.random.Generator) -> np.ndarray:
+        cov, groups = self._bound(n_time)
+        lo, hi = _shift_bounds(n_time, int(round(self.min_shift_s * fs)))
+        order = rng.permutation(np.arange(lo, hi + 1))
+        budget = min(order.size, n * self.max_tries)
+        block = 64
+        kept: list[np.ndarray] = []
+        kept_stat: list[np.ndarray] = []
+        n_kept = 0
+        examined = 0
+        pos = 0
+        while n_kept < n and pos < budget:
+            cand = order[pos : min(pos + block, budget)]
+            stat = self._stat_matrix(cov, groups, cand)
+            ok = stat.max(axis=1) <= self.tolerance
+            need = n - n_kept
+            if ok.sum() >= need:
+                last = int(np.flatnonzero(ok)[need - 1])
+                examined += last + 1
+                ok[last + 1 :] = False
+            else:
+                examined += cand.size
+            kept.append(cand[ok])
+            kept_stat.append(stat[ok])
+            n_kept += int(ok.sum())
+            pos += cand.size
+        accepted = np.concatenate(kept) if kept else np.empty(0, dtype=order.dtype)
+        astat = np.concatenate(kept_stat) if kept_stat else np.empty((0, len(groups)))
+        rate = accepted.size / max(examined, 1)
+        if accepted.size < n:
+            exhausted = order.size <= n * self.max_tries and accepted.size > 0
+            if not exhausted:
+                raise ValueError(
+                    f"covariate_matched_shift accepted {accepted.size} of {examined} candidate "
+                    f"shifts (acceptance rate {rate:.3g}); needed {n} within "
+                    f"max_tries={self.max_tries} per shift. Loosen tolerance "
+                    f"(currently {self.tolerance} on the {self.statistic!r} statistic), use "
+                    'statistic="mean", lower min_frames, or raise max_tries.'
+                )
+            warnings.warn(
+                f"covariate_matched_shift: only {accepted.size} distinct shifts pass the "
+                f"balance criterion (acceptance rate {rate:.3g}) for n_shuffles={n}; shifts are "
+                f"reused and the smallest attainable p-value is 1/({accepted.size}+1) = "
+                f"{1.0 / (accepted.size + 1):.4g}; loosen tolerance or use statistic='mean'",
+                UserWarning,
+                stacklevel=2,
+            )
+            fill = rng.integers(0, accepted.size, size=n - accepted.size)
+            accepted = np.concatenate([accepted, accepted[fill]])
+            astat = np.concatenate([astat, astat[fill]])
+        worst = astat.max(axis=1)
+        self._stats.update(
+            acceptance_rate=float(rate),
+            n_candidates=int(examined),
+            balance_max=float(worst.max()),
+            balance_mean=float(worst.mean()),
+        )
+        return accepted.astype(np.int64)
+
+    def diagnostics(self, activity, target, mask, fs, shifts) -> dict[str, Any]:
+        info: dict[str, Any] = {
+            "acceptance_rate": float("nan"),
+            "n_candidates": 0,
+            "balance_max": float("nan"),
+            "balance_mean": float("nan"),
+        }
+        info.update(self._stats)
+        if not self._stats and shifts is not None and self._cov is not None:
+            worst = self.balance(shifts)
+            info["balance_max"], info["balance_mean"] = float(worst.max()), float(worst.mean())
+        info.update(covariate=self.covariate, statistic=self.statistic, tolerance=self.tolerance)
+        return info
+
+
+@register("null")
+class CellShift(Null):
+    """Roll every cell by its own independent random offset.
+
+    Each cell's row of the activity matrix is rolled circularly by a shift
+    drawn uniformly from ``[min_shift_s, n_time - min_shift_s]`` (frames),
+    independently across cells.  Preserves each cell's own autocorrelation,
+    its marginal distribution and its relation to the time axis (and so to the
+    mask and to slow drifts shared with nothing); destroys every cell-cell
+    co-fluctuation.  The behavior target is untouched.
+
+    Use as the null for population metrics (``pairwise_correlation``,
+    ``participation_ratio``, population-vector metrics), where the question is
+    whether cells are coordinated beyond what their individual statistics
+    imply.  For single-cell tuning prefer ``circular_shift``, which has a fast
+    path and shifts the whole population together.  No fast path: the metric is recomputed on every
+    surrogate.
+    """
+
+    name: ClassVar[str] = "cell_shift"
+    perturbs: ClassVar[Literal["activity", "target"]] = "activity"
+
+    min_shift_s: float = Field(
+        20.0,
+        ge=0,
+        description="Smallest allowed |shift| in seconds (clamped below half the session).",
+    )
+
+    def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
+        act = np.asarray(activity, dtype=np.float64)
+        n_cells, n_time = act.shape
+        lo, hi = _shift_bounds(n_time, int(round(self.min_shift_s * fs)))
+        k = rng.integers(lo, hi + 1, size=n_cells)
+        idx = (np.arange(n_time)[None, :] - k[:, None]) % n_time
+        return np.take_along_axis(act, idx, axis=1), target
+
+
+@register("null")
+class WithinStateShuffle(Null):
+    """Permute activity frames within each state of an exclusive state space.
+
+    For every state the frames that are in the state *and* in the mask are
+    permuted among themselves (all cells together, so cell-cell structure at a
+    frame is kept); frames outside any state or outside the mask stay in
+    place.  With ``block_s > 0`` the in-state frames are cut into contiguous
+    blocks (by position among that state's masked frames) and the blocks are
+    permuted, which keeps short-timescale autocorrelation.
+
+    Preserves exactly each state's frame set and per-state activity sums, so
+    state-mean metrics (``mean_per_state``) equal their observed value on
+    every surrogate.  Destroys within-state temporal structure: timing
+    relative to bout onsets (PETH), sub-state tuning and anything that depends
+    on *when* inside a state activity occurs.  It therefore tests "is the
+    within-state structure more than exchangeable?", and is not a test of
+    state tuning itself (use ``circular_shift`` or ``label_shuffle`` for
+    that).  Needs an exclusive state space; not defined for signal targets.
+    No fast path.
+    """
+
+    name: ClassVar[str] = "within_state_shuffle"
+    perturbs: ClassVar[Literal["activity", "target"]] = "activity"
+
+    block_s: float = Field(
+        0.0, ge=0, description="Block length in seconds; 0 permutes single frames."
+    )
+
+    def check_target(self, metric: Metric, target: Target) -> None:
+        if not isinstance(target, StateSpace):
+            raise ValueError("within_state_shuffle needs a StateSpace target (not a signal)")
+        if not target.exclusive:
+            raise ValueError(
+                "within_state_shuffle needs an exclusive StateSpace (states must not overlap)"
+            )
+
+    def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
+        self.check_target(None, target)  # type: ignore[arg-type]
+        assert isinstance(target, StateSpace)
+        act = np.asarray(activity, dtype=np.float64)
+        out = act.copy()
+        m = np.ones(act.shape[1], bool) if mask is None else np.asarray(mask, dtype=bool)
+        block = int(round(self.block_s * fs))
+        for s in range(target.n_states):
+            idx = np.flatnonzero(target.onehot[:, s] & m)
+            if idx.size < 2:
+                continue
+            perm = (
+                rng.permutation(idx.size)
+                if block <= 1
+                else _block_permutation(idx.size, block, rng)
+            )
+            out[:, idx] = act[:, idx[perm]]
+        return out, target
+
+
+__all__ = [
+    "BoutShuffle",
+    "CellShift",
+    "CircularShift",
+    "CovariateMatchedShift",
+    "LabelShuffle",
+    "WithinStateShuffle",
+    "draw_shifts",
+]

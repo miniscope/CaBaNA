@@ -18,6 +18,7 @@ from ._plot_data import PLOT_DATA_VERSION
 from ._plot_registry import register_plot
 from ._plot_style import (
     BASELINE_SHADE,
+    NULL_COLOR,
     RESPONSE_SHADE,
     axis_label,
     mark_significant,
@@ -138,6 +139,10 @@ def plot_peth_data(
     n_events = np.asarray(result.extras["n_events"])
     sem_all = result.extras.get("peth_sem", result.extras.get("sem"))
     sem_all = None if sem_all is None else np.asarray(sem_all, float)
+    lo_all, hi_all = result.extras.get("peth_null_lo"), result.extras.get("peth_null_hi")
+    has_band = lo_all is not None and hi_all is not None
+    lat_ext = result.extras.get("latency_s")
+    lat_ext = None if lat_ext is None else np.asarray(lat_ext, float)
     n_cells, n_states, _ = arr.shape
     cell_idx = np.arange(n_cells) if cells is None else np.asarray(list(cells), dtype=int)
     names = ordered_names(result.state_names, n_states)
@@ -161,6 +166,11 @@ def plot_peth_data(
     mean_sem = None if sem is None else np.full((S, T), np.nan)
     sig_mean = np.full((S, T), np.nan)
     sig_mean_sem = None if sem is None else np.full((S, T), np.nan)
+    null_lo = np.full((S, C, T), np.nan) if has_band else None
+    null_hi = None if null_lo is None else np.full((S, C, T), np.nan)
+    mean_null_lo = np.full((S, T), np.nan) if has_band else None
+    mean_null_hi = None if mean_null_lo is None else np.full((S, T), np.nan)
+    lat_med_sig = np.full(S, np.nan) if has_band else None
     for k, s in enumerate(state_idx):
         d = arr[cell_idx, s]
         valid[k] = bool(np.isfinite(d).any())
@@ -171,6 +181,8 @@ def plot_peth_data(
         if ok.any():
             seg = np.abs(np.nan_to_num(d[:, in_resp], nan=-np.inf))
             lat[ok] = t[in_resp][np.argmax(seg, axis=1)][ok]
+        if lat_ext is not None:
+            lat = lat_ext[cell_idx, s].copy()
         if sort_by == "response":
             key = -np.nan_to_num(np.asarray(result.values, float)[cell_idx, s], nan=-np.inf)
         elif sort_by == "peak":
@@ -184,6 +196,14 @@ def plot_peth_data(
         latency[k] = lat[o]
         if sig_all is not None:
             sig[k] = sig_all[cell_idx, s][o]
+        if has_band:
+            null_lo[k] = np.asarray(lo_all, float)[cell_idx, s][o]
+            null_hi[k] = np.asarray(hi_all, float)[cell_idx, s][o]
+            if np.isfinite(null_lo[k]).any():
+                mean_null_lo[k] = np.nanmean(null_lo[k], axis=0)
+                mean_null_hi[k] = np.nanmean(null_hi[k], axis=0)
+            if sig[k].any() and np.isfinite(latency[k][sig[k]]).any():
+                lat_med_sig[k] = np.nanmedian(latency[k][sig[k]])
         if sem is not None:
             sem[k] = sem_all[cell_idx, s][o]
         mean[k] = np.nanmean(peth[k], axis=0)
@@ -215,6 +235,12 @@ def plot_peth_data(
         "peth": peth,
         "sem": sem,
         "latency_s": latency,
+        "latency_source": "peak" if lat_ext is None else "null_band",
+        "null_lo": null_lo,
+        "null_hi": null_hi,
+        "mean_null_lo": mean_null_lo,
+        "mean_null_hi": mean_null_hi,
+        "latency_median_sig_s": lat_med_sig,
         "significant": sig,
         "valid": valid,
         "mean": mean,
@@ -255,7 +281,11 @@ def plot_peth(
     all shown cells (grey) and over significant cells (orange), each with a +/- SEM
     band when the result stores ``extras["peth_sem"]`` (see :func:`plot_peth_data` for
     how the SEM is combined).  Shading: baseline (grey) and response (orange)
-    windows.  ``result`` and ``session`` may be given in either order.  Look for: a
+    windows.  If the PETH was run with ``null_band=True`` the lower panel also shows
+    the null band (grey, the mean over shown cells of the per-cell 2.5-97.5 percent
+    circular-shift band, an approximation) and a dotted line at the median latency of
+    significant cells; ``sort_by="latency"`` then orders by the null-band latency.
+    ``result`` and ``session`` may be given in either order.  Look for: a
     band of cells that rise (red) or fall (blue) after the dashed onset line, a
     latency staircase when sorted by latency, and whether significant cells are the
     strongest responders.
@@ -330,6 +360,28 @@ def plot_peth(
                 ax, np.full(int(s_sig.sum()), t[-1] + dt), np.flatnonzero(s_sig), clip_on=False
             )
         _shade(ax_m, d["baseline_window_s"], d["response_window_s"])
+        if d["mean_null_lo"] is not None:
+            ax_m.fill_between(
+                t,
+                d["mean_null_lo"][k],
+                d["mean_null_hi"][k],
+                color=NULL_COLOR,
+                alpha=0.5,
+                lw=0,
+                zorder=0,
+                label="null band",
+            )
+            lat_med = d["latency_median_sig_s"][k]
+            if np.isfinite(lat_med):
+                ax_m.axvline(lat_med, color=RESPONSE_SHADE, lw=1.0, ls=":")
+                ax_m.text(
+                    lat_med,
+                    1.0,
+                    f" latency {lat_med:.2g} s",
+                    transform=ax_m.get_xaxis_transform(),
+                    va="top",
+                    fontsize=6,
+                )
         ax_m.plot(t, d["mean"][k], color="0.3", lw=1.2, label="all")
         if d["mean_sem"] is not None:
             ax_m.fill_between(
@@ -351,8 +403,8 @@ def plot_peth(
                     alpha=0.25,
                     lw=0,
                 )
-            if k == 0:
-                ax_m.legend(fontsize=6, frameon=False)
+        if k == 0 and (s_sig.any() or d["mean_null_lo"] is not None):
+            ax_m.legend(fontsize=6, frameon=False)
         ax_m.set_xlabel(d["time_label"])
         ax_m.set_ylabel(d["units"] if k % ncols == 0 else "")
     if im is not None:

@@ -10,6 +10,7 @@ for non-exclusive spaces, in the ``*_onehot`` / matmul kernels).  Only
 
 from __future__ import annotations
 
+from ._label import component_stats, label_components
 from ._levels import (
     activity_levels,
     joint_counts,
@@ -42,9 +43,11 @@ __all__ = [
     "activity_levels",
     "auroc_from_rank_sums",
     "average_ranks",
+    "component_stats",
     "contiguous_folds",
     "dense_ranks",
     "joint_counts",
+    "label_components",
     "level_edges",
     "level_indicator",
     "masked_counts",

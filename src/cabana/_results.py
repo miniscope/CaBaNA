@@ -300,8 +300,9 @@ class MetricResult(BaseModel):
         """Tidy table with one row per (cell[, state]).
 
         Columns, in order: ``metric, target, cell, state, value, p_value,
-        null_lo, null_hi, significant, p_adj, significant_adj, analysis, null,
-        n_shuffles``.  ``analysis``
+        null_lo, null_hi, significant, p_adj, significant_adj, z, analysis, null,
+        n_shuffles, correction``.  ``z`` is :attr:`ShuffleResult.z_score` (NaN without a
+        shuffle).  ``analysis``
         is the unique analysis name, ``null`` the null's name (None without a
         shuffle), ``n_shuffles`` 0 without a shuffle.  Without a shuffle
         ``p_value``, ``null_lo`` and ``null_hi`` are NaN and ``significant`` is
@@ -327,6 +328,7 @@ class MetricResult(BaseModel):
             "significant",
             "p_adj",
             "significant_adj",
+            "z",
             "analysis",
             "null",
             "n_shuffles",
@@ -359,6 +361,7 @@ class MetricResult(BaseModel):
         )
         if sh is not None and sh.significant_adj is None:
             sigadj = sig
+        z = col(None if sh is None else sh.z_score, np.nan)
 
         if self.values.ndim == 1:
             return pd.DataFrame(
@@ -373,6 +376,7 @@ class MetricResult(BaseModel):
                     "significant": sig.astype(bool),
                     "p_adj": padj,
                     "significant_adj": sigadj.astype(bool),
+                    "z": z,
                 }
             )
 
@@ -393,6 +397,7 @@ class MetricResult(BaseModel):
                 "significant": sig.ravel().astype(bool),
                 "p_adj": padj.ravel(),
                 "significant_adj": sigadj.ravel().astype(bool),
+                "z": z.ravel(),
             }
         )
 
@@ -419,6 +424,7 @@ class MetricResult(BaseModel):
                     else (
                         sh.significant if sh.significant_adj is None else sh.significant_adj
                     ).astype(bool),
+                    "z": nan if sh is None else sh.z_score,
                 }
             )
         return pd.DataFrame(
@@ -434,6 +440,7 @@ class MetricResult(BaseModel):
                     "significant": False,
                     "p_adj": np.nan,
                     "significant_adj": False,
+                    "z": np.nan,
                 }
             ]
         )
@@ -655,7 +662,7 @@ class ResultSet(BaseModel):
         pandas.DataFrame
             Concatenation of each result's :meth:`MetricResult.to_dataframe`
             (columns ``metric, target, cell, state, value, p_value, null_lo,
-            null_hi, significant, p_adj, significant_adj, analysis, null, n_shuffles,
+            null_hi, significant, p_adj, significant_adj, z, analysis, null, n_shuffles,
             correction``); an empty frame
             with those columns if nothing qualifies.
         """
@@ -677,6 +684,7 @@ class ResultSet(BaseModel):
                     "n_shuffles",
                     "p_adj",
                     "significant_adj",
+                    "z",
                     "correction",
                 ]
             )

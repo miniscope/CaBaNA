@@ -311,3 +311,62 @@ def test_plots_save_png(planted, planted_result, tmp_path):
     assert (tmp_path / "raster.png").stat().st_size > 1000
     with pytest.raises(ValueError):
         plot_peth(res, planted, sort_by="bogus")
+
+
+# --------------------------------------------------------------------------- #
+# per-bin null band and latency
+# --------------------------------------------------------------------------- #
+
+
+def _band_data(n=3000, onset_lag=5, seed=0):
+    """Cell 0 responds ``onset_lag`` frames after each event onset; cell 1 is flat noise."""
+    rng = np.random.default_rng(seed)
+    onsets = np.arange(100, n - 100, 200)
+    oh = np.zeros((n, 1), bool)
+    x = rng.normal(0.0, 0.3, (2, n))
+    for o in onsets:
+        oh[o : o + 10, 0] = True
+        x[0, o + onset_lag : o + onset_lag + 15] += 4.0
+    return x, _states(oh)
+
+
+BAND = dict(pre_s=2.0, post_s=3.0, baseline_s=(-2.0, 0.0), response_s=(0.0, 2.0), min_shift_s=10.0)
+
+
+def test_null_band_extras_shapes_and_latency():
+    x, st = _band_data()
+    mask = np.ones(x.shape[1], bool)
+    off = PETH(**BAND).extras(x, st, mask, FS)
+    on = PETH(**BAND, null_band=True, n_null=100).extras(x, st, mask, FS)
+    assert set(on) - set(off) == {"peth_null_lo", "peth_null_hi", "peth_null_mean", "latency_s"}
+    assert set(off) == {"peth", "peth_sem", "time_s", "n_events", "p_prepost"}
+    for k in off:
+        np.testing.assert_array_equal(on[k], off[k])
+    assert on["peth_null_lo"].shape == on["peth"].shape == (2, 1, 50)
+    assert on["latency_s"].shape == (2, 1)
+    assert (on["peth_null_lo"] <= on["peth_null_mean"]).all()
+    assert (on["peth_null_mean"] <= on["peth_null_hi"]).all()
+    # planted response begins at 0.5 s
+    assert on["latency_s"][0, 0] == pytest.approx(0.5, abs=0.2)
+    assert np.isnan(on["latency_s"][1, 0])
+    # the observed flat cell stays mostly inside its band
+    inside = (on["peth"][1, 0] >= on["peth_null_lo"][1, 0]) & (
+        on["peth"][1, 0] <= on["peth_null_hi"][1, 0]
+    )
+    assert inside.mean() > 0.8
+
+
+def test_null_band_matches_explicit_shift_and_is_deterministic():
+    from cabana._nulls import draw_shifts
+
+    x, st = _band_data()
+    mask = np.ones(x.shape[1], bool)
+    m = PETH(**BAND, null_band=True, n_null=20, null_seed=3, bin_s=0.5)
+    a = m.extras(x, st, mask, FS)
+    b = m.extras(x, st, mask, FS)
+    np.testing.assert_array_equal(a["peth_null_lo"], b["peth_null_lo"])
+    shifts = draw_shifts(x.shape[1], 20, 100, np.random.default_rng(3))
+    base = PETH(**BAND, bin_s=0.5)
+    ref = np.stack([base.extras(np.roll(x, int(k), axis=1), st, mask, FS)["peth"] for k in shifts])
+    np.testing.assert_allclose(a["peth_null_mean"], ref.mean(axis=0), atol=1e-10)
+    np.testing.assert_allclose(a["peth_null_hi"], np.percentile(ref, 97.5, axis=0), atol=1e-10)

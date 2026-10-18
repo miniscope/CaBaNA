@@ -11,6 +11,7 @@ from scipy.stats import wilcoxon
 from .._models import StateSpace
 from .._registry import Metric, register
 from .._results import Tail
+from .._nulls import draw_shifts
 from .._shuffle import shifted_sums
 from .._util import runs
 
@@ -150,6 +151,18 @@ class PETH(Metric):
         Subtract each event's baseline mean from its window in the ``peth``
         extras (the tested statistic is always response minus baseline).
 
+    null_band : bool, default False
+        Also write a per-bin null band and response latency to the extras (see
+        below).  Off by default; the extras above are unchanged either way.
+    n_null : int, default 200
+        Number of circular shifts used for the band.
+    null_seed : int, default 0
+        Seed of the generator that draws those shifts.
+    min_shift_s : float, default 20.0
+        Smallest circular shift (s) for the band (see ``draw_shifts``).
+    min_latency_bins : int, default 2
+        Consecutive bins outside the band that define a response latency.
+
     Returns
     -------
     numpy.ndarray
@@ -169,6 +182,18 @@ class PETH(Metric):
     ``peth_sem`` is also NaN for a single event), ``time_s`` ``(n_bins,)`` bin
     centres in seconds relative to onset, ``n_events`` ``(n_states,)`` valid
     events (window inside the session), ``p_prepost`` ``(n_cells, n_states)``.
+
+    **Null band (``null_band=True``).**  Additional extras, all from ``n_null``
+    circular shifts of the activity (shifts from ``draw_shifts`` with
+    ``default_rng(null_seed)``, same shifts for every cell and state, event times fixed):
+    ``peth_null_lo`` / ``peth_null_hi`` ``(n_cells, n_states, n_bins)`` at the 2.5 /
+    97.5 percentiles of the shifted PETH, ``peth_null_mean``, and ``latency_s``
+    ``(n_cells, n_states)``: the first bin time ``>= 0`` at which the observed PETH
+    lies outside the band for at least ``min_latency_bins`` consecutive bins (NaN if
+    never).  This band is *descriptive*: it is computed inside ``extras``, independent
+    of the ``ShuffleConfig`` null, is not multiplicity corrected, and does not change
+    the tested statistic.  The shifted PETH is a gather over event windows, vectorised
+    over shifts in blocks.
     """
 
     name: ClassVar[str] = "peth"
@@ -194,6 +219,15 @@ class PETH(Metric):
     min_events: int = Field(3, ge=1, description="States with fewer valid events are NaN.")
     baseline_subtract: bool = Field(
         True, description="Subtract each event's baseline mean in the peth extras."
+    )
+    null_band: bool = Field(
+        False, description="Add a per-bin circular-shift null band and latency to the extras."
+    )
+    n_null: int = Field(200, ge=10, description="Circular shifts used for the null band.")
+    null_seed: int = Field(0, description="Seed of the generator drawing the band's shifts.")
+    min_shift_s: float = Field(20.0, ge=0, description="Smallest shift (s) for the null band.")
+    min_latency_bins: int = Field(
+        2, ge=1, description="Consecutive bins outside the band that define a latency."
     )
 
     # -- geometry ---------------------------------------------------------- #
@@ -287,12 +321,63 @@ class PETH(Metric):
             for c in range(n_cells):
                 if np.count_nonzero(diff[c]) >= _MIN_NONZERO_PREPOST:
                     p[c, s] = wilcoxon(diff[c], zero_method="wilcox").pvalue
-        return {
+        out = {
             "peth": peth,
             "peth_sem": sem,
             "time_s": offs / fs,
             "n_events": n_ev,
             "p_prepost": p,
+        }
+        if self.null_band:
+            out.update(self._band(activity, ons, peth, offs / fs, fs, nb, n_bins))
+        return out
+
+    def _band(self, activity, ons, peth, time_s, fs, nb, n_bins):
+        """Per-bin null band from circular shifts, and the response latency."""
+        pre, post, (b0, b1), _ = self._geometry(fs)
+        act = np.asarray(activity, dtype=np.float64)
+        n_cells, n_time = act.shape
+        n_states = len(ons)
+        rng = np.random.default_rng(self.null_seed)
+        shifts = draw_shifts(n_time, self.n_null, int(round(self.min_shift_s * fs)), rng)
+        offs = np.arange(-pre, post)
+        shape = (n_cells, n_states, n_bins)
+        lo, hi, mean = (np.full(shape, np.nan) for _ in range(3))
+        for s, o in enumerate(ons):
+            if o.size < self.min_events:
+                continue
+            null = np.empty((n_cells, shifts.size, n_bins))
+            block = max(1, int(4e6 // (n_cells * o.size * offs.size)))
+            for i in range(0, shifts.size, block):
+                k = shifts[i : i + block]
+                # roll(x, k)[t] = x[(t - k) mod n]; mean over events first (linear)
+                idx = (o[None, :, None] + offs[None, None, :] - k[:, None, None]) % n_time
+                m = act[:, idx].mean(axis=2)  # (cells, shifts, window)
+                if self.baseline_subtract:
+                    m = m - m[:, :, b0 + pre : b1 + pre].mean(axis=2, keepdims=True)
+                m = m[:, :, : n_bins * nb].reshape(n_cells, k.size, n_bins, nb).mean(axis=3)
+                null[:, i : i + k.size] = m
+            q = np.percentile(null, [2.5, 97.5], axis=1)
+            lo[:, s], hi[:, s], mean[:, s] = q[0], q[1], null.mean(axis=1)
+        with np.errstate(invalid="ignore"):
+            out = (peth < lo) | (peth > hi)
+        out &= np.isfinite(peth) & np.isfinite(lo)
+        out &= (time_s >= 0)[None, None, :]
+        run = out.copy()
+        L = self.min_latency_bins
+        if L > 1:
+            run = np.zeros_like(out)
+            if n_bins >= L:
+                run[..., : n_bins - L + 1] = np.logical_and.reduce(
+                    [out[..., j : n_bins - L + 1 + j] for j in range(L)]
+                )
+        first = np.argmax(run, axis=-1)
+        latency = np.where(run.any(axis=-1), time_s[first], np.nan)
+        return {
+            "peth_null_lo": lo,
+            "peth_null_hi": hi,
+            "peth_null_mean": mean,
+            "latency_s": latency,
         }
 
 

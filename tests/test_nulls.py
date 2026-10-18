@@ -8,14 +8,19 @@ import numpy as np
 import pytest
 
 from cabana import (
+    AnalysisSpec,
     BoutShuffle,
     CircularShift,
     LabelShuffle,
     Metric,
+    Pipeline,
+    ResultSet,
     StateSpace,
+    check_plugin,
     build,
     register,
 )
+from cabana._nulls import CellShift, CovariateMatchedShift, WithinStateShuffle
 from cabana._shuffle import ShuffleConfig, shifted_sums, shuffle_test
 
 FS = 10.0
@@ -385,3 +390,209 @@ def test_shuffle_test_same_seed_identical_null(spec) -> None:
     r2 = shuffle_test(_NullsMeanPerState(), act, st, mask, cfg, FS)
     assert np.array_equal(r1.null, r2.null, equal_nan=True)
     assert np.array_equal(r1.p_value, r2.p_value, equal_nan=True)
+
+
+# ------------------------------------------------------- phase E nulls
+
+
+def _cms_pipeline(**null_kw):
+    null = {"name": "covariate_matched_shift", "covariate": "speed", "min_frames": 200}
+    null.update(null_kw)
+    return Pipeline(
+        analyses=[
+            AnalysisSpec(
+                metric={"name": "information_content"},
+                states="position",
+                shuffle=ShuffleConfig(n_shuffles=30, null=null, seed=0),
+            )
+        ]
+    )
+
+
+def test_new_nulls_exported_and_registered() -> None:
+    for name, cls in [
+        ("covariate_matched_shift", CovariateMatchedShift),
+        ("cell_shift", CellShift),
+        ("within_state_shuffle", WithinStateShuffle),
+    ]:
+        assert type(build("null", {"name": name})) is cls
+    assert issubclass(CovariateMatchedShift, CircularShift)
+
+
+def test_covariate_matched_shift_pipeline(small_session, tmp_path) -> None:
+    pipe = _cms_pipeline(tolerance=0.35)
+    _, rs = pipe.run(small_session)
+    sh = rs.results[0].shuffle
+    info = sh.null_info
+    assert 0 < info["acceptance_rate"] <= 1
+    assert info["balance_max"] <= 0.35 + 1e-12
+    assert info["covariate"] == "speed" and info["statistic"] == "ks"
+    assert info["tolerance"] == 0.35 and info["n_candidates"] >= 30
+    assert sh.shifts.shape == (30,)
+    min_shift = int(round(20.0 * small_session.fs))
+    assert (sh.shifts >= min_shift).all()
+    assert (sh.shifts <= small_session.n_time - min_shift).all()
+    assert sh.null_name == "covariate_matched_shift"
+
+    # the point of the null: better covariate balance than unconstrained shifts
+    spec = pipe.analyses[0]
+    bound = spec.shuffle.resolved_null().configure(small_session, spec)
+    rng = np.random.default_rng(0)
+    free = CircularShift().draw(small_session.n_time, small_session.fs, 30, rng)
+    assert info["balance_mean"] < bound.balance(free).mean()
+
+    # n_jobs independence
+    _, rs4 = pipe.run(small_session, n_jobs=4)
+    np.testing.assert_array_equal(rs4.results[0].shuffle.null, sh.null)
+    np.testing.assert_array_equal(rs4.results[0].shuffle.shifts, sh.shifts)
+
+    # null_info and null_std survive save / load
+    rs.save(tmp_path / "rs")
+    back = ResultSet.load(tmp_path / "rs")
+    sh2 = back.results[0].shuffle
+    assert sh2.null_info == info
+    np.testing.assert_allclose(sh2.null_std, sh.null_std)
+
+
+def test_covariate_matched_shift_mean_statistic(small_session) -> None:
+    _, rs = _cms_pipeline(statistic="mean", tolerance=0.5, min_frames=400).run(small_session)
+    info = rs.results[0].shuffle.null_info
+    assert info["statistic"] == "mean" and info["balance_max"] <= 0.5 + 1e-12
+
+
+def test_covariate_matched_shift_deterministic(small_session) -> None:
+    pipe = _cms_pipeline(tolerance=0.35)
+    spec = pipe.analyses[0]
+    bound = spec.shuffle.resolved_null().configure(small_session, spec)
+    a = bound.draw(small_session.n_time, small_session.fs, 20, np.random.default_rng(5))
+    b = bound.draw(small_session.n_time, small_session.fs, 20, np.random.default_rng(5))
+    np.testing.assert_array_equal(a, b)
+
+
+def test_covariate_matched_shift_unconfigured_raises() -> None:
+    with pytest.raises(RuntimeError, match="needs the session"):
+        CovariateMatchedShift().draw(1000, FS, 5, np.random.default_rng(0))
+
+
+def test_covariate_matched_shift_impossible_tolerance(small_session) -> None:
+    with pytest.raises(ValueError, match="acceptance rate"):
+        _cms_pipeline(tolerance=1e-6).run(small_session)
+
+
+def test_covariate_matched_shift_missing_covariate(small_session) -> None:
+    with pytest.raises(KeyError, match="available signals"):
+        _cms_pipeline(covariate="nope", tolerance=0.35).run(small_session)
+
+
+def test_check_plugin_new_nulls(small_session) -> None:
+    pipe = _cms_pipeline(tolerance=0.4, min_frames=50)
+    spec = pipe.analyses[0]
+    cms = spec.shuffle.resolved_null().configure(small_session, spec)
+    target = small_session.states["position"]
+    check_plugin(cms, small_session, target=target).raise_if_failed()
+    check_plugin(CellShift(min_shift_s=1.0), small_session, target="social").raise_if_failed()
+    check_plugin(WithinStateShuffle(), small_session, target="syllables").raise_if_failed()
+
+
+def test_cell_shift_permutes_each_row_with_distinct_shifts() -> None:
+    rng = np.random.default_rng(0)
+    act = rng.normal(size=(12, 400))
+    st = _runs_states(rng, 400, 3)
+    null = CellShift(min_shift_s=2.0)
+    out, tgt = null.surrogate(act, st, np.ones(400, bool), FS, np.random.default_rng(1))
+    assert tgt is st and out.shape == act.shape
+    np.testing.assert_array_equal(np.sort(out, axis=1), np.sort(act, axis=1))
+    shifts = [int(np.flatnonzero(np.isclose(act[i], out[i][0]))[0]) for i in range(12)]
+    assert len(set(shifts)) > 1
+    ks = [
+        next(k for k in range(400) if np.array_equal(np.roll(act[i], k), out[i])) for i in range(12)
+    ]
+    assert len(set(ks)) > 6
+    assert all(20 <= k <= 380 for k in ks)
+    again, _ = null.surrogate(act, st, np.ones(400, bool), FS, np.random.default_rng(1))
+    other, _ = null.surrogate(act, st, np.ones(400, bool), FS, np.random.default_rng(2))
+    np.testing.assert_array_equal(out, again)
+    assert not np.array_equal(out, other)
+
+
+def test_cell_shift_changes_state_means_and_breaks_correlation() -> None:
+    rng = np.random.default_rng(3)
+    n_time, n_cells = 2000, 15
+    shared = np.convolve(rng.normal(size=n_time), np.ones(10) / 10, mode="same")
+    act = shared[None] * 3 + 0.3 * rng.normal(size=(n_cells, n_time))
+    st = _runs_states(rng, n_time, 3, mean_run=50)
+    mask = np.ones(n_time, bool)
+    mean_pc = build("metric", {"name": "mean_per_state"})
+    obs = mean_pc.compute(act, st, mask, FS)
+    out, _ = CellShift(min_shift_s=5.0).surrogate(act, st, mask, FS, np.random.default_rng(0))
+    assert not np.allclose(mean_pc.compute(out, st, mask, FS), obs)
+
+    def mean_abs_corr(a: np.ndarray) -> float:
+        c = np.corrcoef(a)
+        return float(np.abs(c[np.triu_indices(n_cells, 1)]).mean())
+
+    assert mean_abs_corr(act) > 0.8
+    assert mean_abs_corr(out) < 0.15
+
+
+def test_within_state_shuffle_preserves_state_sums_and_outside_frames() -> None:
+    rng = np.random.default_rng(0)
+    n = 600
+    act = rng.normal(size=(5, n))
+    st = _runs_states(rng, n, 4)
+    oh = st.onehot.copy()
+    oh[100:150] = False  # frames in no state
+    st = st.model_copy(update={"onehot": oh})
+    mask = np.ones(n, bool)
+    mask[300:360] = False
+    null = WithinStateShuffle()
+    out, tgt = null.surrogate(act, st, mask, FS, np.random.default_rng(1))
+    assert tgt is st
+    keep = ~(oh & mask[:, None]).any(1)
+    np.testing.assert_array_equal(out[:, keep], act[:, keep])
+    for s in range(4):
+        idx = oh[:, s] & mask
+        np.testing.assert_allclose(out[:, idx].sum(1), act[:, idx].sum(1))
+        np.testing.assert_array_equal(np.sort(out[:, idx], axis=1), np.sort(act[:, idx], axis=1))
+    assert not np.array_equal(out, act)
+    # state-mean metric: null equals observed on every surrogate
+    res = shuffle_test(
+        build("metric", {"name": "mean_per_state"}),
+        act,
+        st,
+        mask,
+        ShuffleConfig(n_shuffles=5, null=null, seed=0),
+        FS,
+    )
+    np.testing.assert_allclose(res.null, np.broadcast_to(res.observed, res.null.shape), atol=1e-10)
+
+
+def test_within_state_shuffle_blocks_stay_contiguous() -> None:
+    n = 400
+    oh = np.zeros((n, 1), bool)
+    oh[:] = True
+    st = StateSpace(name="one", onehot=oh, state_names=["a"], kind="categorical", exclusive=True)
+    act = np.arange(n, dtype=float)[None]
+    out, _ = WithinStateShuffle(block_s=2.0).surrogate(
+        act, st, np.ones(n, bool), FS, np.random.default_rng(0)
+    )
+    blocks = out[0].reshape(-1, 20)
+    assert (np.diff(blocks, axis=1) == 1).all()  # each block is an unbroken run
+    assert not np.array_equal(out, act)
+    assert sorted(out[0]) == list(range(n))
+
+
+def test_within_state_shuffle_check_target() -> None:
+    null = WithinStateShuffle()
+    met = build("metric", {"name": "mean_per_state"})
+    non_excl = StateSpace(
+        name="n",
+        onehot=np.ones((10, 2), bool),
+        state_names=["a", "b"],
+        kind="bouts",
+        exclusive=False,
+    )
+    with pytest.raises(ValueError, match="exclusive"):
+        null.check_target(met, non_excl)
+    with pytest.raises(ValueError, match="StateSpace"):
+        null.check_target(met, np.zeros(10))

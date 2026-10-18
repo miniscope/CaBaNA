@@ -367,8 +367,8 @@ def _check_metric(
         )
         e2 = m.extras(act, target, mask, fs)
         _ensure(
-            all(np.asarray(v).dtype.kind in "fiub" for v in e.values()),
-            "extras must be numeric arrays",
+            all(np.asarray(v).dtype.kind in "fiubU" for v in e.values()),
+            "extras must be numeric (or str-label) arrays",
         )
         _ensure(_eq(e, e2), "extras are not deterministic")
 
@@ -633,7 +633,26 @@ def check_plugin(
             if kind == "metric":
                 _check_metric(plugin, session, tgt[0], tgt[1], run, n_shuffles)  # type: ignore[arg-type]
             else:
-                _check_null(plugin, session, tgt[0], run, n_shuffles)  # type: ignore[arg-type]
+                tgt_obj, tgt_name = tgt[0], tgt[1]
+
+                def bind() -> None:
+                    # the pipeline calls Null.configure(session, spec) before the shuffle
+                    # test; mirror it with a minimal spec so bound nulls can be checked
+                    from types import SimpleNamespace
+
+                    is_state = isinstance(tgt_obj, StateSpace)
+                    spec = SimpleNamespace(
+                        states=tgt_name if is_state else None,
+                        signal=None if is_state else tgt_name,
+                        masks=None,
+                        name=f"check[{tgt_name}]",
+                    )
+                    tgt.append(plugin.configure(session, spec))
+
+                bound = plugin
+                if run("configure", bind):
+                    bound = tgt[2]
+                _check_null(bound, session, tgt_obj, run, n_shuffles)  # type: ignore[arg-type]
     return report
 
 

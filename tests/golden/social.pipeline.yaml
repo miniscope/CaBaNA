@@ -168,6 +168,11 @@ analyses:
     min_gap_s: 0.0
     min_events: 3
     baseline_subtract: true
+    null_band: false
+    n_null: 200
+    null_seed: 0
+    min_shift_s: 20.0
+    min_latency_bins: 2
   states: social
   signal: null
   shuffle:

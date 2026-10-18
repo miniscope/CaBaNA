@@ -174,3 +174,42 @@ def test_adjusted_significance_used():
     from cabana._plot_style import p_label
 
     assert "p_adj" in p_label(res.shuffle, (1, 0))
+
+
+def _with_band():
+    res, peaks = _synthetic()
+    arr = res.extras["peth"]
+    lo = np.where(np.isfinite(arr), -0.5, np.nan)
+    hi = np.where(np.isfinite(arr), 0.5, np.nan)
+    lat = np.full((4, 2), np.nan)
+    lat[:, 0] = [0.9, np.nan, 0.2, 0.5]  # deliberately unlike the peak order
+    res.extras.update(peth_null_lo=lo, peth_null_hi=hi, peth_null_mean=0 * lo, latency_s=lat)
+    return res
+
+
+def test_null_band_in_data_and_figure():
+    res = _with_band()
+    d = pe.plot_peth_data(res, None, states=[0])
+    back = plots.check_plot_data(d, "peth")
+    assert back["kind"] == "peth"
+    assert d["null_lo"].shape == d["peth"].shape == (1, 4, 50)
+    np.testing.assert_allclose(d["null_hi"][0][np.isfinite(d["null_hi"][0])], 0.5)
+    np.testing.assert_allclose(d["mean_null_lo"][0], -0.5)
+    assert d["latency_source"] == "null_band"
+    plain = pe.plot_peth_data(_synthetic()[0], None, states=[0])
+    assert plain["null_lo"] is None and plain["latency_source"] == "peak"
+    plots.check_plot_data(plain, "peth")
+    fig = pe.plot_peth(res, cabana.simulate_session(duration_s=30, n_cells=4, seed=0), states=[0])
+    ax_m = fig.axes[1]
+    labels = [c.get_label() for c in ax_m.collections]
+    assert "null band" in labels
+    plt.close(fig)
+
+
+def test_sort_by_latency_uses_extras_latency():
+    res = _with_band()
+    d = pe.plot_peth_data(res, None, states=[0], sort_by="latency")
+    # latencies 0.2 (cell 2), 0.5 (cell 3), 0.9 (cell 0), NaN (cell 1) last
+    np.testing.assert_array_equal(d["order"][0], [2, 3, 0, 1])
+    np.testing.assert_allclose(d["latency_s"][0][:3], [0.2, 0.5, 0.9])
+    assert np.isnan(d["latency_s"][0][3])

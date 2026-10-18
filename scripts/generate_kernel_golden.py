@@ -155,12 +155,31 @@ def rank_case(rng: np.random.Generator) -> None:
     )
 
 
+def label_case(rng: np.random.Generator) -> None:
+    out: dict[str, np.ndarray] = {}
+    for tag, shape, prob in (("2d", (14, 11), 0.5), ("3d", (6, 7, 5), 0.4)):
+        mask = rng.random(shape) < prob
+        values = rng.random(shape)
+        out[f"in_mask_{tag}"] = mask
+        out[f"in_values_{tag}"] = values
+        for c in (1, 2):
+            lab, n = K.label_components(mask, c)
+            size, cen, peak = K.component_stats(lab, values, values)
+            out[f"out_labels_{tag}_c{c}"] = lab
+            out[f"out_n_{tag}_c{c}"] = np.int64(n)
+            out[f"out_size_{tag}_c{c}"] = size
+            out[f"out_centroid_{tag}_c{c}"] = cen
+            out[f"out_peak_{tag}_c{c}"] = peak
+    _save("label", **out)
+
+
 def main() -> None:
     rng = np.random.default_rng(20261016)
     sums_case(rng)
     ratemap_case(rng)
     levels_case(rng)
     rank_case(rng)
+    label_case(np.random.default_rng(20261017))  # own stream: added later, keeps older goldens
     for p in sorted(OUT.glob("*.npz")):
         print(p.relative_to(OUT.parent.parent.parent), p.stat().st_size, "bytes")
 

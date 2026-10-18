@@ -1,6 +1,6 @@
 {
   "cabana_version": "0.1.0.dev0",
-  "generated": "2026-10-17T15:25:29+00:00",
+  "generated": "2026-10-18T00:40:34+00:00",
   "cases": {
     "grid": {
       "info": {
@@ -172,6 +172,64 @@
         "null": "circular_shift",
         "keep_null": "full",
         "correction": "none"
+      }
+    },
+    "phase_e": {
+      "fields": {
+        "metric": "place_fields",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "selectivity": {
+        "metric": "tuning_selectivity",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "auroc_speed_matched": {
+        "metric": "auroc",
+        "target": "social",
+        "null": "covariate_matched_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pairwise": {
+        "metric": "pairwise_correlation",
+        "target": "syllables",
+        "null": "cell_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pr": {
+        "metric": "participation_ratio",
+        "target": "syllables",
+        "null": "cell_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "mean_within": {
+        "metric": "mean_per_state",
+        "target": "syllables",
+        "null": "within_state_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "decode_x": {
+        "metric": "decode_signal",
+        "target": "x",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "peth_band": {
+        "metric": "peth",
+        "target": "social",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
       }
     },
     "syllables": {

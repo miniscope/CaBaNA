@@ -237,6 +237,86 @@ CASES: dict[str, dict] = {
             ],
         },
     },
+    # Phase E: new metrics and nulls (fields, selectivity, pairwise, PR, decode_signal,
+    # covariate-matched / cell-shift / within-state nulls, PETH null band).
+    "phase_e": {
+        "sim": {"duration_s": 180, "n_cells": 12, "seed": 6},
+        "pipeline": {
+            "transforms": [
+                *_RAW,
+                {
+                    "name": "bin_grid",
+                    "signals": ["x", "y"],
+                    "bin_size": 100.0,
+                    "output": "position",
+                },
+                {"name": "bouts_to_states", "source": "social"},
+                {"name": "labels_to_states", "source": "syllables"},
+            ],
+            "preprocess": [],
+            "analyses": [
+                {
+                    "name": "fields",
+                    "metric": {"name": "place_fields", "min_field_bins": 1},
+                    "states": "position",
+                    "shuffle": _sh(),
+                },
+                {
+                    "name": "selectivity",
+                    "metric": {"name": "tuning_selectivity"},
+                    "states": "syllables",
+                    "shuffle": _sh(),
+                },
+                {
+                    "name": "auroc_speed_matched",
+                    "metric": {"name": "auroc"},
+                    "states": "social",
+                    "shuffle": _sh(
+                        null={
+                            "name": "covariate_matched_shift",
+                            "covariate": "speed",
+                            "statistic": "mean",
+                            "tolerance": 0.5,
+                            "min_frames": 100,
+                            "max_tries": 100,
+                            "min_shift_s": 10.0,
+                        },
+                        n_shuffles=20,
+                        seed=16,
+                    ),
+                },
+                {
+                    "name": "pairwise",
+                    "metric": {"name": "pairwise_correlation", "kind": "noise"},
+                    "states": "syllables",
+                    "shuffle": _sh(null={"name": "cell_shift"}, n_shuffles=20, seed=17),
+                },
+                {
+                    "name": "pr",
+                    "metric": {"name": "participation_ratio"},
+                    "states": "syllables",
+                    "shuffle": _sh(null={"name": "cell_shift"}, n_shuffles=20, seed=18),
+                },
+                {
+                    "name": "mean_within",
+                    "metric": {"name": "mean_per_state"},
+                    "states": "syllables",
+                    "shuffle": _sh(null={"name": "within_state_shuffle"}, n_shuffles=20, seed=19),
+                },
+                {
+                    "name": "decode_x",
+                    "metric": {"name": "decode_signal", "n_folds": 3},
+                    "signal": "x",
+                    "shuffle": _sh(n_shuffles=20),
+                },
+                {
+                    "name": "peth_band",
+                    "metric": {"name": "peth", "null_band": True, "n_null": 50},
+                    "states": "social",
+                },
+            ],
+        },
+    },
     # Categorical syllable labels.
     "syllables": {
         "sim": {"duration_s": 180, "n_cells": 12, "seed": 5},

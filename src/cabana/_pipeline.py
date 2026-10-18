@@ -873,7 +873,9 @@ class Pipeline(BaseModel):
             values = metric.compute(session.activity, target, mask, session.fs)
         extras = metric.extras(session.activity, target, mask, session.fs)
         has_state_axis = values.ndim >= 2 or metric.level == "population"
-        if values.ndim == 2 and "group_names" in extras:
+        if "group_names" in extras and (
+            values.ndim == 2 or (metric.level == "population" and values.ndim == 1)
+        ):
             state_names = [str(g) for g in extras["group_names"]]
         provenance = {
             "cabana_version": version,
