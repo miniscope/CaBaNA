@@ -142,6 +142,13 @@ class Metric(_Plugin):
     #: Empty means "use the generic views" (tuning heatmap / metric strip /
     #: shuffle distribution / population matrix, whichever fits the result).
     default_plots: ClassVar[tuple[str, ...]] = ()
+    #: True when a cell-level metric computes every cell independently, i.e.
+    #: ``compute(activity[idx]) == compute(activity)[idx]`` for any row subset
+    #: ``idx`` (and likewise ``compute_shifted`` / ``extras``).  Lets the shuffle
+    #: engine evaluate the null in chunks of cells when the full null would not
+    #: fit in memory (``ShuffleConfig.keep_null="none"``).  Set False for a
+    #: cell-level metric that normalises or ranks across cells.
+    cell_separable: ClassVar[bool] = True
 
     @abstractmethod
     def compute(
@@ -236,6 +243,11 @@ class Null(_Plugin):
     """
 
     perturbs: ClassVar[Literal["activity", "target"]] = "activity"
+    #: True when the surrogates drawn for a subset of cells equal the matching
+    #: rows of the surrogates drawn for all cells (shift-based and target-only
+    #: nulls).  False when the draw depends on ``n_cells`` (``cell_shift``), which
+    #: disables chunked evaluation in the shuffle engine.
+    cell_separable: ClassVar[bool] = True
 
     def surrogate(
         self,

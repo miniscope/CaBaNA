@@ -645,6 +645,15 @@ class ResultSet(BaseModel):
                     out.append(s)
         return out
 
+    def summary(self, **kw: Any) -> pd.DataFrame:
+        """One row per analysis: cells tested, significant count and fraction, median z, null.
+
+        See :func:`cabana.summarize` (``cabana._summary``) for the columns and options.
+        """
+        from ._summary import summarize
+
+        return summarize(self, **kw)
+
     def plot_all(self, session: Any = None, **kw: Any) -> dict[str, Any]:
         """Every default plot of every result; see ``cabana.plots.plot_all``.
 

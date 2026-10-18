@@ -32,7 +32,7 @@ from . import _selectors_null as _selectors_null  # noqa: F401  (registers plugi
 from . import _transform as _transform  # noqa: F401  (registers plugins)
 from . import _transform_behavior as _transform_behavior  # noqa: F401  (registers plugins)
 from ._models import Session
-from ._registry import _REGISTRY, Metric, PreprocessStep, Selector, Transform, build
+from ._registry import Metric, PreprocessStep, Selector, Transform, build
 from ._results import MetricResult, ResultSet, RunError, RunWarning
 from ._selection import Selection
 from ._shuffle import RunCancelled, ShuffleConfig, resolve_n_jobs, shuffle_test
@@ -62,6 +62,42 @@ class ProgressEvent:
     shuffles_total: int | None = None
     elapsed_s: float = 0.0
     message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Plain JSON-able dict of every field (one line of ``--progress jsonl``)."""
+        return {
+            "stage": self.stage,
+            "name": self.name,
+            "index": int(self.index),
+            "total": int(self.total),
+            "fraction": float(self.fraction),
+            "shuffles_done": None if self.shuffles_done is None else int(self.shuffles_done),
+            "shuffles_total": None if self.shuffles_total is None else int(self.shuffles_total),
+            "elapsed_s": float(self.elapsed_s),
+            "message": self.message,
+        }
+
+    def to_bridge(self) -> dict[str, Any]:
+        """The CaLab bridge progress payload (``calab._bridge`` ``/api/v1/progress``).
+
+        Maps the event onto the keys the bridge's terminal formatter reads:
+        ``iteration`` / ``max_iterations`` (1-based item within the stage),
+        ``phase`` (``"<stage>:<name>"``), ``phase_progress`` (shuffle fraction when
+        shuffling, else the overall fraction) and ``status`` (``"running"`` or
+        ``"done"``), plus the full :meth:`to_dict` under ``"cabana"``.
+        """
+        if self.shuffles_total:
+            phase_progress = float(self.shuffles_done or 0) / float(self.shuffles_total)
+        else:
+            phase_progress = float(self.fraction)
+        return {
+            "iteration": int(self.index) + 1,
+            "max_iterations": int(self.total),
+            "phase": f"{self.stage}:{self.name}" if self.name else self.stage,
+            "phase_progress": phase_progress,
+            "status": "done" if self.stage == "done" else "running",
+            "cabana": self.to_dict(),
+        }
 
 
 @dataclass
@@ -916,6 +952,30 @@ class Pipeline(BaseModel):
             provenance=provenance,
         )
 
+    def validate(self, session: Session, **kw: Any) -> Any:
+        """Preflight this pipeline against ``session`` without running it.
+
+        Returns a ``ValidationReport`` (see :func:`cabana.validate_pipeline`) listing
+        problems a run would hit (missing state spaces, signals or masks, metric /
+        target mismatches, shuffle settings that cannot reach ``alpha``) together
+        with a time and memory estimate.  Keyword arguments pass through.
+        """
+        from ._validate import validate_pipeline
+
+        return validate_pipeline(self, session, **kw)
+
+    def apply_tuning(self, export: Any, **kw: Any) -> Pipeline:
+        """Copy of this pipeline with the values of a :class:`cabana.TuningExport` applied.
+
+        Every ``chosen`` value is written with :meth:`set_param` and a ``Selection``
+        record copied from the export, so provenance says the value came from a
+        tuning session (see :func:`cabana.apply_tuning`).  Keyword arguments pass
+        through.
+        """
+        from ._tuning import apply_tuning
+
+        return apply_tuning(self, export, **kw)
+
     def to_dict(self) -> dict[str, Any]:
         """Plain-dict form (``{"transforms": [...], "preprocess": [...], "analyses": [...]}``)."""
         d: dict[str, Any] = {
@@ -1329,45 +1389,11 @@ def run_set(
     return RunSetResult(out, res, animal, status)
 
 
-def describe() -> dict[str, Any]:
-    """JSON-serialisable capability description for a front end.
+def describe(**kw: Any) -> dict[str, Any]:
+    """JSON-serialisable capability description for a front end (see ``cabana._describe``)."""
+    from ._describe import describe as _describe
 
-    Returns
-    -------
-    dict
-        ``{"version", "plugins": {kind: {name: {"schema", ...}}}, "schemas":
-        {"ShuffleConfig", "AnalysisSpec", "Pipeline", "Selection"}}``.  Metric entries also
-        carry ``level``, ``input``, ``default_tail`` and ``requires_topology``.
-    """
-    from . import __version__
-
-    def schema(cls: Any) -> dict[str, Any]:
-        try:
-            return cls.model_json_schema()
-        except Exception as exc:  # arbitrary-typed fields cannot always be schematised
-            return {"error": f"{type(exc).__name__}: {exc}"}
-
-    plugins: dict[str, Any] = {}
-    for kind, reg in _REGISTRY.items():
-        entries: dict[str, Any] = {}
-        for name in sorted(reg):
-            cls = reg[name]
-            e: dict[str, Any] = {"schema": schema(cls), "doc": (cls.__doc__ or "").strip()}
-            if kind == "metric":
-                for attr in ("level", "input", "default_tail", "requires_topology"):
-                    e[attr] = getattr(cls, attr, None)
-            entries[name] = e
-        plugins[kind] = entries
-    return {
-        "version": __version__,
-        "plugins": plugins,
-        "schemas": {
-            "ShuffleConfig": schema(ShuffleConfig),
-            "AnalysisSpec": schema(AnalysisSpec),
-            "Pipeline": schema(Pipeline),
-            "Selection": schema(Selection),
-        },
-    }
+    return _describe(**kw)
 
 
 __all__ = [
