@@ -67,3 +67,10 @@ def test_demo_quick(tmp_path):
     assert "Chosen parameters: smooth_sigma_bins" in proc.stdout
     assert "raises: refusing to pick by 'frac_significant'" in proc.stdout
     assert "Stability across sigma" in proc.stdout
+    # Phase F front door: analyze(), saved artefacts and the headless CLI route
+    fd = tmp_path / "front_door"
+    assert "Phase F: the front door and the headless path" in proc.stdout
+    assert ResultSet.load(fd / "results.zip").names()
+    assert (fd / "pipeline.yaml").exists()
+    jsonl = (fd / "cli" / "progress.jsonl").read_text().splitlines()
+    assert json.loads(jsonl[-1])["event"] == "done"

@@ -83,6 +83,7 @@ class _Progress:
         self._own = None
         self.stream: TextIO = sys.stderr
         if path is not None and mode == "jsonl":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
             self._own = open(path, "w", buffering=1)  # noqa: SIM115
             self.stream = self._own
         self.t0 = time.perf_counter()

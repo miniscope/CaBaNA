@@ -194,3 +194,31 @@ def test_provenance_selections_and_resultset_dedupe():
     assert len(sels) == 3  # shared records appear once
     assert [s["method"] for s in sels] == ["fixed_apriori", "user_pick", "user_pick"]
     assert isinstance(ResultSet().selections, list)
+
+
+def test_nested_null_parameter_path():
+    p = Pipeline(
+        analyses=[
+            {
+                "name": "a",
+                "metric": {"name": "auroc"},
+                "states": "social",
+                "shuffle": {
+                    "n_shuffles": 10,
+                    "null": {"name": "covariate_matched_shift", "covariate": "speed"},
+                },
+            },
+            {"name": "b", "metric": {"name": "auroc"}, "states": "social", "shuffle": {}},
+            {"name": "c", "metric": {"name": "auroc"}, "states": "social"},
+        ]
+    )
+    assert p.get_param("analyses.a.shuffle.null.tolerance") == 0.1  # the default
+    q = p.set_param("analyses.*.shuffle.null.tolerance", 1.0, method="user_pick")
+    assert q.get_param("analyses.*.shuffle.null.tolerance") == [1.0]  # only a has a null
+    assert q.analyses[0].shuffle.null.tolerance == 1.0
+    assert p.analyses[0].shuffle.null.tolerance == 0.1  # pure
+    assert q.selections[-1].path == "analyses.*.shuffle.null.tolerance"
+    with pytest.raises(ValueError, match="no field"):
+        p.set_param("analyses.b.shuffle.null.tolerance", 1.0)  # default null: nothing to set
+    with pytest.raises(ValueError, match="bad parameter path"):
+        p.get_param("analyses.a.shuffle.null.x.y")

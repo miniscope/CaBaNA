@@ -452,16 +452,21 @@ class Pipeline(BaseModel):
             raise ValueError(
                 f"bad parameter path {path!r}: expected transforms.<key>.<field>, "
                 "preprocess.<key>.<field>, analyses.<key>.metric.<field>, "
-                "analyses.<key>.shuffle.<field> or analyses.<key>.<field>"
+                "analyses.<key>.shuffle.<field>, analyses.<key>.shuffle.null.<field> or "
+                "analyses.<key>.<field>"
             )
         section, key, rest = parts[0], parts[1], parts[2:]
         sub: str | None = None
         if section == "analyses" and rest[0] in ("metric", "shuffle"):
-            if len(rest) != 2:
+            if rest[0] == "shuffle" and len(rest) == 3 and rest[1] == "null":
+                sub = "shuffle.null"  # a field of the null plugin itself
+            elif len(rest) == 2:
+                sub = rest[0]
+            else:
                 raise ValueError(
                     f"bad parameter path {path!r}: expected analyses.<key>.{rest[0]}.<field>"
+                    + (" or analyses.<key>.shuffle.null.<field>" if rest[0] == "shuffle" else "")
                 )
-            sub = rest[0]
         elif len(rest) != 1:
             raise ValueError(f"bad parameter path {path!r}: too many components")
         field = rest[-1]
@@ -469,17 +474,24 @@ class Pipeline(BaseModel):
         idxs = self._resolve_key(section, key)
         keep: list[int] = []
         for i in idxs:
-            obj: Any = getattr(self, section)[i]
-            if sub is not None:
-                obj = getattr(obj, sub)
-                if obj is None:
-                    continue
+            obj: Any = self._descend(getattr(self, section)[i], sub)
+            if obj is None:
+                continue
             if field in type(obj).model_fields:
                 keep.append(i)
         if not keep:
             what = "any element" if wildcard else "the element"
             raise ValueError(f"{what} addressed by {path!r} has no field {field!r}")
         return section, keep, sub, field, wildcard
+
+    @staticmethod
+    def _descend(obj: Any, sub: str | None) -> Any:
+        """Follow a dotted attribute chain (``"shuffle.null"``); None if any link is None."""
+        for part in sub.split(".") if sub else ():
+            obj = getattr(obj, part)
+            if obj is None:
+                return None
+        return obj
 
     def _targets(self, path: str) -> set[tuple[str, int, str | None, str]]:
         """The concrete ``(section, index, sub, field)`` slots a parameter path addresses."""
@@ -502,7 +514,9 @@ class Pipeline(BaseModel):
         """Value at a dotted parameter path; a list (one per element) for a ``*`` key.
 
         Path grammar: ``transforms.<key>.<field>``, ``preprocess.<key>.<field>``,
-        ``analyses.<key>.metric.<field>``, ``analyses.<key>.shuffle.<field>`` and
+        ``analyses.<key>.metric.<field>``, ``analyses.<key>.shuffle.<field>``,
+        ``analyses.<key>.shuffle.null.<field>`` (a parameter of an explicit null plugin,
+        e.g. ``tolerance``; analyses whose null is the default are skipped) and
         ``analyses.<key>.<field>`` (e.g. ``masks``).  ``<key>`` is an integer index,
         the ``output`` name (transforms; also preprocess) or ``name`` (preprocess;
         also transforms), the resolved analysis name (see :meth:`resolved_names`),
@@ -518,9 +532,7 @@ class Pipeline(BaseModel):
         section, idxs, sub, field, wildcard = self._parse_path(path)
         vals = []
         for i in idxs:
-            obj: Any = getattr(self, section)[i]
-            if sub is not None:
-                obj = getattr(obj, sub)
+            obj: Any = self._descend(getattr(self, section)[i], sub)
             vals.append(getattr(obj, field))
         return vals if wildcard else vals[0]
 
@@ -558,15 +570,16 @@ class Pipeline(BaseModel):
             data[field] = value
             return type(obj).model_validate(data)
 
+        def rebuild(obj: Any, chain: list[str]) -> Any:
+            if not chain:
+                return revalidate(obj)
+            data = {k: getattr(obj, k) for k in type(obj).model_fields}
+            data[chain[0]] = rebuild(getattr(obj, chain[0]), chain[1:])
+            return type(obj).model_validate(data)
+
         items = list(getattr(self, section))
         for i in idxs:
-            if sub is None:
-                items[i] = revalidate(items[i])
-            else:
-                spec = items[i]
-                data = {k: getattr(spec, k) for k in type(spec).model_fields}
-                data[sub] = revalidate(getattr(spec, sub))
-                items[i] = type(spec).model_validate(data)
+            items[i] = rebuild(items[i], sub.split(".") if sub else [])
         update: dict[str, Any] = {section: items}
         if method is not None:
             selection = Selection(

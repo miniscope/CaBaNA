@@ -438,8 +438,12 @@ def analyze(
             logger.info("%s", msg)
 
     report = pipeline.validate(session)
-    for issue in report.warnings:
-        text = f"{issue.code}{f' [{issue.analysis}]' if issue.analysis else ''}: {issue.message}"
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for issue in report.warnings:  # one warning per distinct message, naming the analyses
+        grouped.setdefault((issue.code, issue.message), []).append(issue.analysis or "")
+    for (code, message), names in grouped.items():
+        who = ", ".join(n for n in names if n)
+        text = f"{code}{f' [{who}]' if who else ''}: {message}"
         logger.warning("%s", text)
         warnings.warn(text, UserWarning, stacklevel=2)
     if not report.ok:

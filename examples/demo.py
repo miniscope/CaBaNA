@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import textwrap
 import time
 from pathlib import Path
 
@@ -1029,6 +1030,109 @@ def phase_e_section(session, out: Path, quick: bool) -> dict[str, int]:
     return {"n_plain": n_plain, "n_matched": n_matched}
 
 
+def front_door_section(session, out: Path, quick: bool) -> dict[str, int]:
+    """The one-call path: recipes, preflight, summary, memory, tuning and the CLI."""
+    from cabana._cli import main as cabana_main
+
+    fd = out / "front_door"
+    fd.mkdir(parents=True, exist_ok=True)
+    n_sh = 100 if quick else 300
+    recipes = cabana.recipes()
+    print(f"  recipes: {', '.join(recipes)}")
+
+    # (a) preflight: a recipe is a pipeline with placeholders; validate() checks it on the session
+    pipe = cabana.recipe_pipeline("place_cell", states="position")
+    print("\n  Preflight report (Pipeline.validate):")
+    print(textwrap.indent(str(pipe.validate(session)), "    "))
+
+    # (b) the one-liner
+    t0 = time.perf_counter()
+    sess_fd, results = cabana.analyze(
+        session, "place_cell", states="position", n_shuffles=n_sh, progress=False, out_dir=fd
+    )
+    print(f"\n  analyze(place_cell) in {time.perf_counter() - t0:.1f} s; results.summary():")
+    summ = results.summary()
+    short = ["analysis", "metric", "n_shuffles", "n_tested", "n_significant", "median_z"]
+    print(textwrap.indent(cabana.format_summary(summ[short]), "    "))
+    n_sig = int(summ.loc[summ["analysis"] == "information", "n_significant"].iloc[0])
+
+    # (c) memory: the estimate, and the chunked null giving the same p-values
+    print("\n  Memory estimate:")
+    print(textwrap.indent(str(cabana.memory_estimate(pipe, sess_fd)), "    "))
+
+    def auroc_social(**shuffle_kw):
+        spec = AnalysisSpec(
+            name="a",
+            metric={"name": "auroc"},
+            states="social",
+            shuffle=ShuffleConfig(n_shuffles=n_sh, **shuffle_kw),
+        )
+        return Pipeline(analyses=[spec]).run(sess_fd)[1]["a"]
+
+    full = auroc_social()
+    chunked = auroc_social(keep_null="none", max_null_bytes=1)
+    n_chunks = int(chunked.shuffle.null_info["chunks"])
+    diff = float(np.max(np.abs(full.shuffle.p_value - chunked.shuffle.p_value)))
+    same = bool(np.allclose(full.shuffle.p_value, chunked.shuffle.p_value))
+    print(
+        f"  auroc[social], keep_null='none', max_null_bytes=1: {n_chunks} chunks; "
+        f"p equals the unchunked run: {same} (max abs difference {diff:.1e})"
+    )
+
+    # (d) tuning: sweep, choose, apply; reliability criterion only
+    base = Pipeline(
+        analyses=[
+            AnalysisSpec(
+                name="split",
+                metric={"name": "split_half_stability"},
+                states="position",
+                masks=["speed"],
+            )
+        ]
+    )
+    sigma = "analyses.*.metric.smooth_sigma_bins"
+    print(
+        "\n  tune() picks by 'median_value' here only because the metric is split_half_stability, "
+        "a held-out reliability.\n  Never use median_value for information_content: its bias "
+        "grows with smoothing, so the score rewards the wrong sigma."
+    )
+    export = cabana.tune(sess_fd, base, {sigma: [0, 1, 2]}, criterion="median_value")
+    tuned = base.apply_tuning(export)
+    chosen = tuned.analyses[0].metric.smooth_sigma_bins
+    print(f"  chosen smooth_sigma_bins: {chosen} (export.chosen {export.chosen})")
+    print("  export.to_json()[:300]:")
+    print(textwrap.indent(export.to_json()[:300], "    "))
+
+    # (e) save and run the same thing headless through the command line
+    sess_fd.save(fd / "session.zip")
+    yaml_path = fd / "pipeline.yaml"
+    (fd / "cli").mkdir(exist_ok=True)  # the progress file's folder must exist
+    prog = fd / "cli" / "progress.jsonl"
+    print(f"\n  cabana run {yaml_path.name} --session session.zip --out cli --progress jsonl:")
+    rc = cabana_main(
+        [
+            "run",
+            str(yaml_path),
+            "--session",
+            str(fd / "session.zip"),
+            "--out",
+            str(fd / "cli"),
+            "--progress",
+            "jsonl",
+            "--progress-file",
+            str(prog),
+        ]
+    )
+    lines = prog.read_text().splitlines()
+    print(f"  exit code {rc}; {len(lines)} jsonl lines; last event: {lines[-1]}")
+    return {
+        "n_recipes": len(recipes),
+        "n_significant_place": n_sig,
+        "n_chunks": n_chunks,
+        "n_progress_lines": len(lines),
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
@@ -1501,6 +1605,9 @@ def main(argv=None) -> int:
 
     print("\nPhase E: confound-resistant nulls and new metrics (docs/STATISTICS.md):")
     phase_e_section(session, out, args.quick)
+
+    print("\nPhase F: the front door and the headless path")
+    front_door_section(session, out, args.quick)
 
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0

@@ -445,8 +445,10 @@ class CovariateMatchedShift(CircularShift):
                     f"covariate_matched_shift accepted {accepted.size} of {examined} candidate "
                     f"shifts (acceptance rate {rate:.3g}); needed {n} within "
                     f"max_tries={self.max_tries} per shift. Loosen tolerance "
-                    f"(currently {self.tolerance} on the {self.statistic!r} statistic), use "
-                    'statistic="mean", lower min_frames, or raise max_tries.'
+                    f"(currently {self.tolerance} on the {self.statistic!r} statistic)"
+                    + (', use statistic="mean"' if self.statistic != "mean" else "")
+                    + ", lower min_frames, or raise max_tries. A state that is itself "
+                    "defined by the covariate (e.g. speed-based syllables) can never be matched."
                 )
             warnings.warn(
                 f"covariate_matched_shift: only {accepted.size} distinct shifts pass the "
