@@ -19,6 +19,11 @@ from cabana._registry import _REGISTRY
 from cabana._results import MetricResult, ResultSet, ShuffleResult
 
 ALLOWED = {
+    "place_fields",
+    "circular_tuning",
+    "decode_signal",
+    "pairwise_matrix",
+    "participation_ratio",
     "rate_maps",
     "metric_strip",
     "shuffle_distribution",

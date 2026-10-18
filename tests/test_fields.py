@@ -250,3 +250,30 @@ def test_pipeline_plot(small_session):
     sess, rs = ana.run(small_session)
     fig = rs.get("place_fields", "position").plot(sess)
     assert isinstance(fig, Figure)
+
+
+def test_place_fields_untestable_cell_is_nan(sim_session):
+    act, st, mask, fs = _inputs(sim_session)
+    bad = act.copy()
+    bad[3, 100] = np.nan
+    for stat in ("in_out_ratio", "n_fields", "field_area", "peak_rate"):
+        for mb in (1, 2):
+            m = PlaceFields(statistic=stat, min_field_bins=mb)
+            assert np.isnan(m.compute(bad, st, mask, fs)[3])
+            assert np.isfinite(m.compute(bad, st, mask, fs)[4])
+            sh = m.compute_shifted(bad, st, mask, fs, np.array([10, 20]))
+            assert np.isnan(sh[:, 3]).all() and np.isfinite(sh[:, 4]).all()
+    ex = PlaceFields().extras(bad, st, mask, fs)
+    for k in ("n_fields", "field_area", "in_out_ratio", "peak_rate"):
+        assert np.isnan(ex[k][3]) and np.isfinite(ex[k][4])
+
+
+def test_tuning_selectivity_negative_and_few_states():
+    act, st, mask = _cat_session()
+    with pytest.raises(ValueError, match="non-negative"):
+        TuningSelectivity().compute(act - 0.5, st, mask, 10.0)
+    # only one valid state (min_occupancy excludes the rest): NaN, not 0
+    m = TuningSelectivity(min_occupancy_s=10.0)
+    st1, mask1 = st, mask.copy()
+    mask1[100:] = False  # state 0 keeps 100 frames = 10 s, others empty
+    assert np.isnan(m.compute(act, st1, mask1, 10.0)).all()

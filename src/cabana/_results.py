@@ -128,9 +128,13 @@ class ShuffleResult(BaseModel):
         if self.null_mean is None or self.null_std is None:
             return np.full(obs.shape, np.nan)
         sd = np.asarray(self.null_std, float)
+        mean = np.asarray(self.null_mean, float)
+        # a null that is constant up to summation-order noise (e.g. a state-mean metric
+        # under within_state_shuffle) must give NaN, not a huge z
+        floor = 1e-9 * np.maximum(np.maximum(np.abs(mean), np.abs(obs)), 1e-300)
         with np.errstate(divide="ignore", invalid="ignore"):
-            z = (obs - np.asarray(self.null_mean, float)) / sd
-        return np.where(np.isfinite(sd) & (sd > 0), z, np.nan)
+            z = (obs - mean) / sd
+        return np.where(np.isfinite(sd) & (sd > floor), z, np.nan)
 
     @property
     def bias_corrected(self) -> np.ndarray:

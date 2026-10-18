@@ -117,7 +117,7 @@ class DecodeSignal(Metric):
     level: ClassVar[Literal["cell", "population"]] = "population"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"
-    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip",)
+    default_plots: ClassVar[tuple[str, ...]] = ("decode_signal", "metric_strip")
 
     method: Literal["ridge", "knn"] = Field("ridge", description="Ridge or k-nearest neighbours.")
     alpha: float = Field(1.0, gt=0, description="Ridge penalty on (standardised) features.")

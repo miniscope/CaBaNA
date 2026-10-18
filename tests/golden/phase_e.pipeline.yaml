@@ -127,6 +127,7 @@ analyses:
     'null':
       name: cell_shift
       min_shift_s: 20.0
+      min_pair_separation_s: 0.0
     min_shift_s: 10.0
     seed: 17
     derive_seeds: true
@@ -151,6 +152,7 @@ analyses:
     'null':
       name: cell_shift
       min_shift_s: 20.0
+      min_pair_separation_s: 0.0
     min_shift_s: 10.0
     seed: 18
     derive_seeds: true
@@ -162,12 +164,13 @@ analyses:
     correction: none
     correction_scope: states
   masks: null
-- name: mean_within
+- name: split_half_within
   metric:
-    name: mean_per_state
-    statistic: mean
-    min_frames: 20
-  states: syllables
+    name: split_half_stability
+    n_blocks: 2
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 0.0
+  states: position
   signal: null
   shuffle:
     n_shuffles: 20

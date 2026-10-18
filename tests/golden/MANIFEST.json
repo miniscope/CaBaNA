@@ -1,6 +1,6 @@
 {
   "cabana_version": "0.1.0.dev0",
-  "generated": "2026-10-18T00:40:34+00:00",
+  "generated": "2026-10-18T00:53:52+00:00",
   "cases": {
     "grid": {
       "info": {
@@ -210,9 +210,9 @@
         "keep_null": "full",
         "correction": "none"
       },
-      "mean_within": {
-        "metric": "mean_per_state",
-        "target": "syllables",
+      "split_half_within": {
+        "metric": "split_half_stability",
+        "target": "position",
         "null": "within_state_shuffle",
         "keep_null": "full",
         "correction": "none"

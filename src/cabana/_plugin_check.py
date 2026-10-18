@@ -490,10 +490,10 @@ def _check_null(plugin: Null, session: Session, target: Any, run: _Runner, n_shu
     np.random.set_state(saved)
     run("check_target", lambda: plugin.check_target(MeanPerState(), target))
 
-    def engine() -> None:
+    def engine() -> str | None:
         met = MeanPerState(min_frames=1)
         if not isinstance(target, StateSpace):
-            return None
+            return "skipped: the engine determinism check needs a StateSpace target"
         cfg = ShuffleConfig(n_shuffles=n_shuffles, null=plugin, seed=0, batch_size=4)
         r1 = shuffle_test(met, act, target, mask, cfg, fs)
         r2 = shuffle_test(met, act, target, mask, cfg.model_copy(update={"n_jobs": 2}), fs)

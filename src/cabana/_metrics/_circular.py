@@ -91,7 +91,11 @@ class CircularTuning(Metric):
     level: ClassVar[Literal["cell", "population"]] = "cell"
     input: ClassVar[Literal["states", "signal"]] = "signal"
     default_tail: ClassVar[Tail] = "upper"
-    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip", "shuffle_distribution")
+    default_plots: ClassVar[tuple[str, ...]] = (
+        "circular_tuning",
+        "metric_strip",
+        "shuffle_distribution",
+    )
 
     units: Literal["deg", "rad"] = Field("deg", description="Units of the angle signal.")
     n_bins: int = Field(36, ge=2, description="Number of equal angular bins.")

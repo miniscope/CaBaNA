@@ -298,9 +298,9 @@ CASES: dict[str, dict] = {
                     "shuffle": _sh(null={"name": "cell_shift"}, n_shuffles=20, seed=18),
                 },
                 {
-                    "name": "mean_within",
-                    "metric": {"name": "mean_per_state"},
-                    "states": "syllables",
+                    "name": "split_half_within",
+                    "metric": {"name": "split_half_stability"},
+                    "states": "position",
                     "shuffle": _sh(null={"name": "within_state_shuffle"}, n_shuffles=20, seed=19),
                 },
                 {

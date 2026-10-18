@@ -143,7 +143,7 @@ class PairwiseCorrelation(Metric):
     name: ClassVar[str] = "pairwise_correlation"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "two"
-    default_plots: ClassVar[tuple[str, ...]] = ("population_matrix",)
+    default_plots: ClassVar[tuple[str, ...]] = ("pairwise_matrix", "population_matrix")
 
     kind: Literal["total", "noise", "signal"] = Field(
         "total", description="Total, signal (tuning) or noise correlations."
@@ -302,7 +302,7 @@ class ParticipationRatio(Metric):
     name: ClassVar[str] = "participation_ratio"
     level: ClassVar[Literal["cell", "population"]] = "population"
     default_tail: ClassVar[Tail] = "two"
-    default_plots: ClassVar[tuple[str, ...]] = ("metric_strip",)
+    default_plots: ClassVar[tuple[str, ...]] = ("participation_ratio", "metric_strip")
 
     zscore: bool = Field(True, description="Z-score cells over masked frames.")
     min_frames: int = Field(50, ge=1, description="Minimum masked frames (overall / per state).")

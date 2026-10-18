@@ -596,3 +596,45 @@ def test_within_state_shuffle_check_target() -> None:
         null.check_target(met, non_excl)
     with pytest.raises(ValueError, match="StateSpace"):
         null.check_target(met, np.zeros(10))
+
+
+def test_cell_shift_distinct_and_separated_shifts() -> None:
+    n_cells, n_time = 30, 1000
+    act = np.tile(np.arange(n_time, dtype=float), (n_cells, 1))
+    st = _runs_states(np.random.default_rng(0), n_time, 2)
+    ones = np.ones(n_time, bool)
+
+    def shifts_of(out: np.ndarray) -> np.ndarray:
+        return (-(out[:, 0] - 0)).astype(int) % n_time  # row rolled by k: out[0] = -k mod n
+
+    plain = CellShift(min_shift_s=2.0)
+    for seed in range(200):
+        out, _ = plain.surrogate(act, st, ones, FS, np.random.default_rng(seed))
+        assert len(set(shifts_of(out))) == n_cells
+    sep = CellShift(min_shift_s=2.0, min_pair_separation_s=1.0)  # 10 frames
+    for seed in range(20):
+        out, _ = sep.surrogate(act, st, ones, FS, np.random.default_rng(seed))
+        k = np.sort(shifts_of(out))
+        gaps = np.diff(np.concatenate([k, [k[0] + n_time]]))
+        assert gaps.min() >= 10
+    with pytest.warns(UserWarning, match="min_pair_separation_s"):
+        CellShift(min_shift_s=2.0, min_pair_separation_s=100.0).surrogate(
+            act, st, ones, FS, np.random.default_rng(0)
+        )
+
+
+def test_within_state_shuffle_warns_on_short_states_and_invariant_metrics() -> None:
+    n = 200
+    oh = np.zeros((n, 2), bool)
+    oh[:150, 0] = True
+    oh[150:, 1] = True  # 50 frames = 5 s
+    st = StateSpace(
+        name="w", onehot=oh, state_names=["long", "short"], kind="categorical", exclusive=True
+    )
+    act = np.random.default_rng(0).normal(size=(3, n))
+    with pytest.warns(UserWarning, match="short"):
+        WithinStateShuffle(block_s=6.0).surrogate(
+            act, st, np.ones(n, bool), FS, np.random.default_rng(0)
+        )
+    with pytest.warns(UserWarning, match="invariant"):
+        WithinStateShuffle().check_target(build("metric", {"name": "mean_per_state"}), st)

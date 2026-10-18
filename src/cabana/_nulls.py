@@ -392,14 +392,19 @@ class CovariateMatchedShift(CircularShift):
             so = np.sort(obs)
             if self.statistic == "mean":
                 mo, vo = obs.mean(), obs.var()
+            if self.statistic == "ks":
+                # gather + row-wise sort in chunks (bounded memory); observed side sorted once
+                for lo in range(0, shifts.size, 64):
+                    ks_ = shifts[lo : lo + 64]
+                    sb = np.sort(cov[(idx[None, :] - ks_[:, None]) % n], axis=1)
+                    for i in range(ks_.size):
+                        out[lo + i, g] = _ks_stat(so, sb[i])
+                continue
             for i, k in enumerate(shifts):
                 shifted = cov[(idx - int(k)) % n]
-                if self.statistic == "ks":
-                    out[i, g] = _ks_stat(so, np.sort(shifted))
-                else:
-                    sd = np.sqrt((vo + shifted.var()) / 2)
-                    diff = abs(shifted.mean() - mo)
-                    out[i, g] = diff / sd if sd > 0 else (0.0 if diff == 0 else np.inf)
+                sd = np.sqrt((vo + shifted.var()) / 2)
+                diff = abs(shifted.mean() - mo)
+                out[i, g] = diff / sd if sd > 0 else (0.0 if diff == 0 else np.inf)
         return out
 
     def draw(self, n_time: int, fs: float, n: int, rng: np.random.Generator) -> np.ndarray:
@@ -493,6 +498,17 @@ class CellShift(Null):
     imply.  For single-cell tuning prefer ``circular_shift``, which has a fast
     path and shifts the whole population together.  No fast path: the metric is recomputed on every
     surrogate.
+
+    The per-cell shifts are drawn *without replacement*, so no two cells share
+    a shift (identical shifts would leave those two cells' co-fluctuation
+    intact and bias the null toward the observed value).  Two cells whose
+    shifts differ by only a few frames still stay almost aligned; set
+    ``min_pair_separation_s > 0`` to require every pair of shifts to differ by
+    at least that long (circular distance).  Residual limitation: with many
+    cells and a short session the requirement may be unsatisfiable; then, after a
+    bounded number of attempts the separation is dropped (distinct shifts only)
+    and a ``UserWarning`` is issued.  If there are more cells than distinct allowed shifts, shifts are
+    drawn with replacement (with a warning).
     """
 
     name: ClassVar[str] = "cell_shift"
@@ -503,12 +519,49 @@ class CellShift(Null):
         ge=0,
         description="Smallest allowed |shift| in seconds (clamped below half the session).",
     )
+    min_pair_separation_s: float = Field(
+        0.0,
+        ge=0,
+        description="Minimum circular distance (s) between any two cells' shifts; 0 = distinct only.",
+    )
+
+    _MAX_REDRAWS: ClassVar[int] = 100
 
     def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
         act = np.asarray(activity, dtype=np.float64)
         n_cells, n_time = act.shape
         lo, hi = _shift_bounds(n_time, int(round(self.min_shift_s * fs)))
-        k = rng.integers(lo, hi + 1, size=n_cells)
+        pool = np.arange(lo, hi + 1)
+        sep = int(round(self.min_pair_separation_s * fs))
+        replace = pool.size < n_cells
+        if replace:
+            warnings.warn(
+                f"cell_shift: only {pool.size} distinct shifts for {n_cells} cells; shifts are "
+                "drawn with replacement so some cells share a shift; lower min_shift_s or use a "
+                "longer recording",
+                UserWarning,
+                stacklevel=2,
+            )
+        k = rng.choice(pool, size=n_cells, replace=replace)
+        if sep > 0 and n_cells > 1:
+            room = pool.size - (n_cells - 1) * sep  # sorted shifts compressed by the gaps
+            ok = False
+            if room >= n_cells:
+                for _ in range(self._MAX_REDRAWS):  # redraw only if the wrap-around gap is short
+                    u = np.sort(rng.choice(room, size=n_cells, replace=False))
+                    cand = lo + u + np.arange(n_cells) * sep
+                    if cand[0] + n_time - cand[-1] >= sep:
+                        k = rng.permutation(cand)
+                        ok = True
+                        break
+            if not ok:
+                warnings.warn(
+                    f"cell_shift: cannot separate {n_cells} cells' shifts by "
+                    f"min_pair_separation_s={self.min_pair_separation_s} within the allowed "
+                    "range; using distinct shifts without the separation guarantee",
+                    UserWarning,
+                    stacklevel=2,
+                )
         idx = (np.arange(n_time)[None, :] - k[:, None]) % n_time
         return np.take_along_axis(act, idx, axis=1), target
 
@@ -533,7 +586,22 @@ class WithinStateShuffle(Null):
     state tuning itself (use ``circular_shift`` or ``label_shuffle`` for
     that).  Needs an exclusive state space; not defined for signal targets.
     No fast path.
+
+    Which metrics it is informative for: a metric that depends only on the
+    multiset of activity values within each state (``mean_per_state``,
+    ``auroc``, ``information_content``, ``tuning_selectivity``) is exactly
+    invariant under this null, so its p-values are meaningless (``check_target``
+    warns).  Use it for order-dependent metrics: ``split_half_stability``,
+    PETH timing, within-state ``signal_correlation``, ``decode_signal``.
+
+    With ``block_s > 0`` a state whose masked frames fit in a single block (fewer
+    than two blocks) cannot be reordered and is left unshuffled; a
+    ``UserWarning`` names such states (once per run in ``shuffle_test``).
     """
+
+    _INVARIANT: ClassVar[frozenset[str]] = frozenset(
+        {"mean_per_state", "auroc", "information_content", "tuning_selectivity"}
+    )
 
     name: ClassVar[str] = "within_state_shuffle"
     perturbs: ClassVar[Literal["activity", "target"]] = "activity"
@@ -549,17 +617,31 @@ class WithinStateShuffle(Null):
             raise ValueError(
                 "within_state_shuffle needs an exclusive StateSpace (states must not overlap)"
             )
+        mname = getattr(metric, "name", None)
+        if mname in self._INVARIANT:
+            warnings.warn(
+                f"within_state_shuffle leaves {mname!r} exactly invariant (it depends only on "
+                "the per-state multiset of activity values), so its p-values are meaningless; "
+                "use an order-dependent metric or another null",
+                UserWarning,
+                stacklevel=2,
+            )
 
     def surrogate(self, activity, target, mask, fs, rng) -> tuple[np.ndarray, Target]:
-        self.check_target(None, target)  # type: ignore[arg-type]
+        if not isinstance(target, StateSpace) or not target.exclusive:
+            self.check_target(None, target)  # type: ignore[arg-type]
         assert isinstance(target, StateSpace)
         act = np.asarray(activity, dtype=np.float64)
         out = act.copy()
         m = np.ones(act.shape[1], bool) if mask is None else np.asarray(mask, dtype=bool)
         block = int(round(self.block_s * fs))
+        stuck: list[str] = []
         for s in range(target.n_states):
             idx = np.flatnonzero(target.onehot[:, s] & m)
             if idx.size < 2:
+                continue
+            if block > 1 and idx.size <= block:
+                stuck.append(str(target.state_names[s]))
                 continue
             perm = (
                 rng.permutation(idx.size)
@@ -567,6 +649,13 @@ class WithinStateShuffle(Null):
                 else _block_permutation(idx.size, block, rng)
             )
             out[:, idx] = act[:, idx[perm]]
+        if stuck:
+            warnings.warn(
+                f"within_state_shuffle: states {stuck} have fewer than 2 blocks of "
+                f"block_s={self.block_s} s among their masked frames and were left unshuffled",
+                UserWarning,
+                stacklevel=2,
+            )
         return out, target
 
 

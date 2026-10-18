@@ -72,6 +72,11 @@ class PlaceFields(Metric):
     (bin widths from ``topology.edges``) and ``centroid`` (largest field, rate-weighted) in
     signal units, NaN with no field.
 
+    **Untestable cells.**  A cell with no finite valid bin (all-NaN rate map, e.g. after a NaN
+    frame, or no valid state) gets NaN for every statistic and for the ``n_fields``,
+    ``field_area``, ``in_out_ratio`` and ``peak_rate`` extras (``n_fields`` is then a float
+    array), so the shuffle reports p = NaN rather than a spurious 1.
+
     **Null.**  Circular shift of activity (``compute_shifted``): the rate maps for all
     shifts come from one batched sums call, then ``peak_rate`` is fully vectorised and
     ``in_out_ratio`` is vectorised unless ``min_field_bins > 1``; ``n_fields`` and
@@ -92,7 +97,12 @@ class PlaceFields(Metric):
     input: ClassVar = "states"
     requires_topology: ClassVar[bool] = True
     default_tail: ClassVar[Tail] = "upper"
-    default_plots: ClassVar[tuple[str, ...]] = ("rate_maps", "metric_strip", "shuffle_distribution")
+    default_plots: ClassVar[tuple[str, ...]] = (
+        "place_fields",
+        "rate_maps",
+        "metric_strip",
+        "shuffle_distribution",
+    )
 
     smooth_sigma_bins: float = Field(1.0, ge=0, description="Gaussian map smoothing in bins.")
     min_occupancy_s: float = Field(0.1, ge=0, description="Minimum occupancy (s) of a valid bin.")
@@ -172,22 +182,24 @@ class PlaceFields(Metric):
         lead = rate.shape[:-1]
         if self.statistic == "peak_rate":
             return self._peak(rate, valid)
+        untestable = ~np.isfinite(rate).any(axis=-1)  # all-NaN cell or no valid bin
         cand = self._candidates(rate)
         if self.statistic == "in_out_ratio" and self.min_field_bins <= 1:
-            return self._in_out(rate, cand, valid)  # every candidate bin is a field: vectorised
+            out = self._in_out(rate, cand, valid)  # every candidate bin is a field: vectorised
+            return np.where(untestable, np.nan, out)
         flat_c = cand.reshape(-1, cand.shape[-1])
-        flat_r = rate.reshape(-1, rate.shape[-1])
-        area = _bin_areas(states.topology)
-        out = np.zeros(flat_c.shape[0])
+        fields = np.zeros(flat_c.shape, dtype=bool)
+        n_fields = np.zeros(flat_c.shape[0])
         for i in range(flat_c.shape[0]):  # the labelling step: one component search per map
             lab, n = self._fields_one(flat_c[i], shape)
-            if self.statistic == "n_fields":
-                out[i] = n
-            elif self.statistic == "field_area":
-                out[i] = area[lab > 0].sum()
-            else:
-                out[i] = self._in_out(flat_r[i], lab > 0, valid) if n else np.nan
-        return out.reshape(lead)
+            fields[i], n_fields[i] = lab > 0, n
+        if self.statistic == "n_fields":
+            out = n_fields
+        elif self.statistic == "field_area":
+            out = fields @ _bin_areas(states.topology)
+        else:
+            out = self._in_out(rate.reshape(-1, rate.shape[-1]), fields, valid)
+        return np.where(untestable.reshape(-1), np.nan, out).reshape(lead)
 
     # ---- Metric API ---------------------------------------------------------
     def compute(self, activity, states, mask, fs):
@@ -236,6 +248,11 @@ class PlaceFields(Metric):
                 for ax in range(topo.ndim):
                     centroid[c, ax] = np.interp(cen[big, ax], np.arange(shape[ax]), centers[ax])
         peak = self._peak(rate, valid)
+        bad = ~np.isfinite(rate).any(axis=-1)
+        n_fields[bad] = np.nan
+        field_area[bad] = np.nan
+        in_out = np.where(bad, np.nan, self._in_out(rate, labels > 0, valid))
+        peak = np.where(bad, np.nan, peak)
         return {
             "rate_map": rate,
             "field_labels": labels,
@@ -243,7 +260,7 @@ class PlaceFields(Metric):
             "field_area": field_area,
             "centroid": centroid,
             "peak_rate": peak,
-            "in_out_ratio": self._in_out(rate, labels > 0, valid),
+            "in_out_ratio": in_out,
             "valid_states": valid,
             "bin_area": area,
         }
@@ -270,7 +287,7 @@ class TuningSelectivity(Metric):
     Returns
     -------
     numpy.ndarray
-        ``compute`` returns ``(n_cells,)``; NaN for a silent cell or with no valid state.
+        ``compute`` returns ``(n_cells,)``; NaN for a silent cell or with fewer than two valid states.
 
     Notes
     -----
@@ -278,6 +295,8 @@ class TuningSelectivity(Metric):
     ``selectivity_index`` and ``depth`` approach 1 when one state carries all the rate;
     ``sparseness`` is 1 minus the Rolls-Tovee activity ratio, so 0 means flat and
     ``1 - 1/n`` means one state (higher is more selective).
+
+    **Activity.**  Must be non-negative (``ValueError`` otherwise).
 
     **State space.**  Any exclusive state space; no topology is needed unless smoothing.
 
@@ -322,10 +341,18 @@ class TuningSelectivity(Metric):
         )
 
     @staticmethod
+    def _check_activity(activity: np.ndarray) -> None:
+        if np.nanmin(activity) < 0:
+            raise ValueError(
+                "metric 'tuning_selectivity': needs non-negative activity (rates); z-scored or "
+                "dF/F traces can go negative and push the index outside [0, 1]."
+            )
+
+    @staticmethod
     def _indices(rate: np.ndarray, valid: np.ndarray) -> dict[str, np.ndarray]:
         n = int(valid.sum())
         lead = rate.shape[:-1]
-        if n == 0:
+        if n < 2:  # selectivity is undefined with fewer than two valid states
             nan = np.full(lead, np.nan)
             return {"selectivity_index": nan, "sparseness": nan, "depth": nan}
         r = rate[..., valid]
@@ -339,6 +366,7 @@ class TuningSelectivity(Metric):
 
     def compute(self, activity, states, mask, fs):
         self.check_target(states)
+        self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
         occ = masked_counts(states, mask)
         sums = state_sums(np.asarray(activity, dtype=np.float64), states, mask)
@@ -347,6 +375,7 @@ class TuningSelectivity(Metric):
 
     def compute_shifted(self, activity, states, mask, fs, shifts):
         self.check_target(states)
+        self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
         occ = masked_counts(states, mask)
         sums = shifted_sums_for(np.asarray(activity, dtype=np.float64), states, mask, shifts)
@@ -355,6 +384,7 @@ class TuningSelectivity(Metric):
 
     def extras(self, activity, states, mask, fs):
         self.check_target(states)
+        self._check_activity(activity)
         mask = np.asarray(mask, dtype=bool)
         occ = masked_counts(states, mask)
         sums = state_sums(np.asarray(activity, dtype=np.float64), states, mask)
