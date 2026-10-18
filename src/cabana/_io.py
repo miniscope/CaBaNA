@@ -309,7 +309,14 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
             sh = r.shuffle
             for field in ("observed", "p_value", "null_lo", "null_hi", "significant"):
                 arrays[f"sh_{field}"] = np.asarray(getattr(sh, field))
-            for field in ("shifts", "null_median", "null_mean", "p_adj", "significant_adj"):
+            for field in (
+                "shifts",
+                "null_median",
+                "null_mean",
+                "null_std",
+                "p_adj",
+                "significant_adj",
+            ):
                 v = getattr(sh, field)
                 if v is not None:
                     arrays[f"sh_{field}"] = np.asarray(v)
@@ -323,6 +330,7 @@ def save_results(rs: ResultSet, path: str | Path) -> None:
                 "correction": sh.correction,
                 "correction_scope": sh.correction_scope,
                 "correction_note": sh.correction_note,
+                "null_info": _jsonable(sh.null_info),
             }
         fname = f"results/{i:03d}.npz"
         files[fname] = _npz_bytes(arrays)
@@ -412,6 +420,8 @@ def load_results(path: str | Path) -> ResultSet:
                 significant=sig,
                 null_median=a.get("sh_null_median"),
                 null_mean=a.get("sh_null_mean"),
+                null_std=a.get("sh_null_std"),
+                null_info=dict(m.get("null_info") or {}),
                 p_adj=a.get("sh_p_adj"),
                 significant_adj=a.get("sh_significant_adj"),
                 correction=m.get("correction", "none"),

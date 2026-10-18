@@ -854,6 +854,9 @@ class Pipeline(BaseModel):
             if n_jobs is not None:
                 cfg = cfg.model_copy(update={"n_jobs": n_jobs})
             used_n_jobs = resolve_n_jobs(cfg.n_jobs)
+            bound = cfg.resolved_null().configure(session, spec)
+            if bound is not cfg.null:
+                cfg = cfg.model_copy(update={"null": bound})
             shuf = shuffle_test(
                 metric,
                 session.activity,

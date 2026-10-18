@@ -286,6 +286,36 @@ class Null(_Plugin):
         """Hook for nulls that only make sense for some targets (default: any)."""
         return None
 
+    def configure(self, session: Session, spec: Any) -> Null:
+        """Hook called by the pipeline before the shuffle test, with the full session.
+
+        Lets a null read session data it cannot get from ``(activity, target,
+        mask)`` alone -- e.g. a covariate-matched shift reads the speed signal
+        named in its ``covariate`` field.  Return ``self`` (default) or a bound
+        copy (``self.model_copy(update=...)`` plus private attributes); never
+        mutate ``self``.  ``spec`` is the ``AnalysisSpec`` being run (``states``
+        / ``signal`` / ``masks`` / ``name``).
+        """
+        return self
+
+    def diagnostics(
+        self,
+        activity: np.ndarray,
+        target: Target,
+        mask: np.ndarray,
+        fs: float,
+        shifts: np.ndarray | None,
+    ) -> dict[str, Any]:
+        """JSON-serialisable facts about the draw, stored as ``ShuffleResult.null_info``.
+
+        Called once after all surrogates are drawn.  ``shifts`` is the array of
+        accepted frame offsets for shift-type nulls, else ``None``.  A matched
+        null reports its acceptance rate and balance statistic here; the
+        default reports nothing.  Values must be plain Python / numpy scalars,
+        lists or small arrays.
+        """
+        return {}
+
 
 class Selector(_Plugin):
     """Data-driven choice of pipeline parameters, run after preprocessing.

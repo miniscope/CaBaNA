@@ -596,11 +596,15 @@ def shuffle_test(
         warnings.simplefilter("ignore", RuntimeWarning)
         null_median = np.nanmedian(null, axis=0)
         null_mean = np.nanmean(null, axis=0)
+        null_std = np.nanstd(null, axis=0, ddof=1) if total > 1 else np.full(observed.shape, np.nan)
+    info = null_plugin.diagnostics(activity, target, mask, fs, shifts)
     return ShuffleResult(
         observed=observed,
         null=null if config.keep_null == "full" else None,
         null_median=null_median,
         null_mean=null_mean,
+        null_std=null_std,
+        null_info=dict(info or {}),
         shifts=shifts,
         p_value=p,
         null_lo=lo,

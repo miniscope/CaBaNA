@@ -55,8 +55,22 @@ class ShuffleResult(BaseModel):
         Number of surrogates drawn.
     null_name : str, default "circular_shift"
         Registry name of the null that generated the surrogates.
-    null_median, null_mean : S float | None
-        Nan-median / nan-mean of the null draws (kept even when ``null`` is dropped).
+    null_median, null_mean, null_std : S float | None
+        Nan-median / nan-mean / nan-std (ddof=1) of the null draws (kept even
+        when ``null`` is dropped).  ``null_std`` is None for results saved
+        before it was added.
+    null_info : dict
+        Facts about the draw reported by the null (``Null.diagnostics``), e.g.
+        acceptance rate and balance statistic of a covariate-matched shift.
+        Empty for plain nulls.
+
+    Derived
+    -------
+    :attr:`z_score` is ``(observed - null_mean) / null_std`` (NaN where the null
+    is constant or missing): an effect size on a common scale across cells and
+    metrics, independent of ``n_shuffles``.  :attr:`bias_corrected` is
+    ``observed - null_mean``: the metric with its chance level removed (e.g.
+    the Skaggs information bias; see ``plot_information_comparison``).
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -97,9 +111,34 @@ class ShuffleResult(BaseModel):
     null_median: np.ndarray | None = Field(
         None, description="Nan-median of the null draws, shape S (kept when null is dropped)."
     )
+    null_std: np.ndarray | None = Field(
+        None, description="Nan-std (ddof=1) of the null draws, shape S (kept when null is dropped)."
+    )
+    null_info: dict[str, Any] = Field(
+        default_factory=dict, description="Null.diagnostics() output: acceptance rate, balance, ..."
+    )
     null_mean: np.ndarray | None = Field(
         None, description="Nan-mean of the null draws, shape S (kept when null is dropped)."
     )
+
+    @property
+    def z_score(self) -> np.ndarray:
+        """``(observed - null_mean) / null_std``; NaN where undefined (see class docstring)."""
+        obs = np.asarray(self.observed, float)
+        if self.null_mean is None or self.null_std is None:
+            return np.full(obs.shape, np.nan)
+        sd = np.asarray(self.null_std, float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            z = (obs - np.asarray(self.null_mean, float)) / sd
+        return np.where(np.isfinite(sd) & (sd > 0), z, np.nan)
+
+    @property
+    def bias_corrected(self) -> np.ndarray:
+        """``observed - null_mean``: the metric with its chance level removed."""
+        obs = np.asarray(self.observed, float)
+        if self.null_mean is None:
+            return np.full(obs.shape, np.nan)
+        return obs - np.asarray(self.null_mean, float)
 
 
 class MetricResult(BaseModel):
