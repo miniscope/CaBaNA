@@ -39,6 +39,10 @@ selections.json, provenance files and figures 01 to 29 (20 to 26 are the amplitu
 figures, 27 the classification, 28a/28b the smoothing choice, 29 the smoothing stability), and the evidence-first views (all/, cards/, 30 to 33,
 rate_maps_data.json), and 34 to 38 for Phase E (place fields, pairwise matrix, participation
 ratio, signal decoding, PETH sorted by latency).
+
+The head-orientation section (after Phase F) runs ``cabana.analyze(session, "head_orientation")``
+on the simulated quaternion: circular tuning of yaw, correlation and tuning of pitch and roll,
+compared with the planted head-direction and pitch cells (figures 39 to 41).
 """
 
 from __future__ import annotations
@@ -108,8 +112,10 @@ def describe_ground_truth(session) -> str:
         f"Planted: {len(gt['place_cells'])} place cells (2D Gaussian fields, active only while "
         f"moving above {gt['speed_gate_mm_s']:g} mm/s), {len(social)} social cells tied to "
         f"{', '.join(behaviors)} ({n_exc} excited, {len(social) - n_exc} inhibited), "
-        f"{len(gt['syllable_cells'])} syllable cells (x3 in one syllable), and "
-        f"{len(gt['untuned_cells'])} untuned cells that fire at baseline only."
+        f"{len(gt['syllable_cells'])} syllable cells (x3 in one syllable), "
+        f"{len(gt.get('head_direction_cells', []))} head-direction cells (von Mises tuning to "
+        f"yaw), {len(gt.get('pitch_cells', []))} pitch cells (rate rises or falls with nose-up "
+        f"pitch) and {len(gt['untuned_cells'])} untuned cells that fire at baseline only."
     )
 
 
@@ -1133,6 +1139,87 @@ def front_door_section(session, out: Path, quick: bool) -> dict[str, int]:
     }
 
 
+def head_orientation_section(session, out: Path, quick: bool) -> dict[str, int | float]:
+    """Head direction and pitch from the simulated quaternion; returns numbers the tests check."""
+    gt = session.meta["ground_truth"]
+    n_sh = 200 if quick else 500
+    t0 = time.perf_counter()
+    # the recipe adds resample_signal(head_orientation) and head_orientation, which write
+    # head_yaw, head_pitch and head_roll (degrees; yaw 0 = +x, counter-clockwise; nose-up
+    # pitch positive); analyze() does so because the session has the raw quaternion only
+    sess_h, res = cabana.analyze(
+        session, "head_orientation", n_shuffles=n_sh, progress=False, on_error="raise"
+    )
+    print(f"  analyze(head_orientation) in {time.perf_counter() - t0:.1f} s:")
+    short = ["analysis", "metric", "n_shuffles", "n_tested", "n_significant", "median_z"]
+    print(textwrap.indent(cabana.format_summary(res.summary()[short]), "    "))
+
+    def sig(name: str) -> np.ndarray:
+        return np.asarray(res[name].shuffle.p_value).reshape(-1) < 0.01
+
+    hd_cells = np.array([d["cell"] for d in gt["head_direction_cells"]])
+    pitch_cells = np.array([d["cell"] for d in gt["pitch_cells"]])
+    untuned = np.array(gt["untuned_cells"])
+    hd_sig, corr_sig, tun_sig = sig("head_direction"), sig("pitch_correlation"), sig("pitch_tuning")
+    n_hd, n_pc, n_pt = (
+        int(x[c].sum())
+        for x, c in ((hd_sig, hd_cells), (corr_sig, pitch_cells), (tun_sig, pitch_cells))
+    )
+    fp = {k: int(v[untuned].sum()) for k, v in (("hd", hd_sig), ("pitch", corr_sig))}
+
+    # preferred direction of the detected head-direction cells against the planted one; the
+    # sensor yaw is the arena yaw minus head_yaw_offset_deg (0 here)
+    off = float(gt.get("head_yaw_offset_deg", 0.0))
+    pref = res["head_direction"].extras["preferred_direction"]
+    found = [d for d in gt["head_direction_cells"] if hd_sig[d["cell"]]]
+    err = np.array(
+        [abs((pref[d["cell"]] - (d["preferred_deg"] - off) + 180.0) % 360.0 - 180.0) for d in found]
+    )
+    print(
+        f"  head direction (circular_tuning[head_yaw], p<0.01): {n_hd} of {len(hd_cells)} planted "
+        f"cells detected; untuned false positives {fp['hd']} of {len(untuned)}; preferred-direction "
+        f"error of the detected cells median {np.median(err) if err.size else float('nan'):.1f} deg "
+        f"(max {err.max() if err.size else float('nan'):.1f})"
+    )
+    print(
+        f"  pitch cells: signal_correlation finds {n_pc} of {len(pitch_cells)} (untuned false "
+        f"positives {fp['pitch']} of {len(untuned)}); binned signal_tuning finds {n_pt}, because "
+        "pitch coding here is monotonic: correlation is the primary test, binned information "
+        "needs a bump"
+    )
+
+    save_fig(
+        cabana.plots.plot_circular_tuning(res["head_direction"], list(hd_cells[:8])),
+        out / "39_head_direction.png",
+    )
+    save_fig(
+        cabana.plots.plot_ground_truth_recovery(sess_h, res),
+        out / "40_head_orientation_recovery.png",
+    )
+    # mean activity against pitch for the planted pitch cells
+    pitch = np.asarray(sess_h.signals["head_pitch"])
+    edges = np.quantile(pitch[np.isfinite(pitch)], np.linspace(0, 1, 9))
+    idx = np.clip(np.digitize(pitch, edges[1:-1]), 0, 7)
+    centers = [np.nanmean(pitch[idx == b]) for b in range(8)]
+    fig, ax = plt.subplots(figsize=(5.0, 3.6))
+    for d in gt["pitch_cells"]:
+        rate = [sess_h.activity[d["cell"]][idx == b].mean() for b in range(8)]
+        ax.plot(centers, rate, marker="o", label=f"cell {d['cell']} ({d['sign']})")
+    ax.set_xlabel("head pitch (deg, nose-up positive)")
+    ax.set_ylabel("mean activity")
+    ax.legend(fontsize=7)
+    save_fig(fig, out / "41_pitch_cells.png")
+    return {
+        "n_hd": n_hd,
+        "n_hd_planted": len(hd_cells),
+        "n_pitch_corr": n_pc,
+        "n_pitch_planted": len(pitch_cells),
+        "n_fp_hd": fp["hd"],
+        "n_fp_pitch": fp["pitch"],
+        "median_pref_error_deg": float(np.median(err)) if err.size else float("nan"),
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--n-shuffles", type=int, default=1000)
@@ -1608,6 +1695,9 @@ def main(argv=None) -> int:
 
     print("\nPhase F: the front door and the headless path")
     front_door_section(session, out, args.quick)
+
+    print("\nHead orientation: head direction and pitch cells (docs/RECIPES.md)")
+    head_orientation_section(session, out, args.quick)
 
     print(f"\nTotal runtime: {time.perf_counter() - t0:.1f} s. Outputs in {out}")
     return 0

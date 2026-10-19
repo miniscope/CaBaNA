@@ -69,6 +69,8 @@ class HeadOrientationConfig(_Cfg):
     format: Literal["quaternion_wxyz"] = "quaternion_wxyz"
     output: str = "head_direction"
     offset_deg: float = 0.0
+    # also write head_yaw/head_pitch/head_roll via the head_orientation transform
+    euler: bool = True
 
 
 class SignalConfig(_Cfg):
@@ -319,7 +321,7 @@ def load_session_dir(
         ``name``, ``session_id`` from ``name``).
     resample : bool, default True
         Also build the neural-clock products: position and extra signals resampled onto the
-        neural frames (``max_gap_s``), ``head_w/x/y/z`` and ``head_direction``, and one state
+        neural frames (``max_gap_s``), ``head_w/x/y/z``, ``head_direction`` and (``euler``) ``head_yaw/pitch/roll``, and one state
         space per ``behavior.epochs`` entry.  ``False`` keeps only the raw inputs in
         ``session.behavior`` (on their own clocks) for you to process.
 
@@ -489,6 +491,12 @@ def load_session_dir(
             {"name": "head_direction", "quaternion": "head", "output": ho.output,
              "offset_deg": ho.offset_deg},
         ).apply(ses)  # fmt: skip
+        if ho.euler:
+            ses = build(
+                "transform",
+                {"name": "head_orientation", "quaternion": "head",
+                 "yaw_offset_deg": ho.offset_deg},
+            ).apply(ses)  # fmt: skip
     for k, ec in bc.epochs.items():
         ses = build(
             "transform",
@@ -527,6 +535,7 @@ behavior:
     format: quaternion_wxyz
     output: head_direction           # signal name; head_w/x/y/z are written too
     offset_deg: 0.0                  # calibrate the sensor's arbitrary zero heading
+    # euler: true                    # also write head_yaw/head_pitch/head_roll (degrees)
   # signals:                         # extra tabular signals, same join rule as position
   #   wheel: {file: wheel.csv, columns: [speed]}
   epochs:                            # annotation CSVs: label, start_s, stop_s (session clock)

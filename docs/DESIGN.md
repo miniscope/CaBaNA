@@ -230,14 +230,28 @@ Defaults: `fs=20`, `duration_s=1200`, `n_cells=200`, `seed=0`.
   peak 3–8 Hz above baseline, gated by speed > 20 mm/s); `frac_social=0.2`
   cells each tied to one behavior, half excited (×3–5) and half inhibited
   (×0.2); `frac_syllable=0.1` cells tuned to one syllable (×3). Remaining
-  cells untuned.
+  cells untuned. Head-direction (`frac_head_direction=0.1`, von Mises on the
+  arena-frame heading, κ 2–6, peak 3–8 Hz) and pitch cells (`frac_pitch=0.05`,
+  rate ×exp(±gain·pitch/20)) are carved out of that untuned pool.
+- **Head orientation.** `include_head_orientation=True` adds
+  `behavior["head_orientation"]`, a unit quaternion per *neural* frame
+  (channels `head_w..head_z`, intrinsic Z-Y'-X'' of yaw/pitch/roll; yaw is the
+  arena heading minus `head_yaw_offset_deg`). Heading follows the direction of
+  travel while moving plus OU scanning noise (sd 20°, 0.5 s) and holds while
+  paused; pitch is OU around −5° plus +35° during rear syllables; roll is OU
+  noise. Everything head-related uses a separate generator
+  (`default_rng([seed, 1])`), so all other output is bit-identical to a run
+  with `include_head_orientation=False`.
 - **Activity.** Rate → Poisson counts per neural frame → multiply by a
   per-event log-normal amplitude (σ 0.3) to mimic deconvolved calcium.
   `activity_kind="deconvolved"`. A parameter `kind="spike_counts"` skips the
   amplitude step to mimic ephys.
 - **Ground truth** in `session.meta["ground_truth"]`: `place_cells` (indices),
   `field_centers_mm` (n_place, 2), `social_cells` (list of
-  `{"cell", "behavior", "sign"}`), `syllable_cells`, `speed_gate_mm_s`.
+  `{"cell", "behavior", "sign"}`), `syllable_cells`, `head_direction_cells`
+  (`{"cell", "preferred_deg", "kappa", "peak_hz"}`, arena frame), `pitch_cells`
+  (`{"cell", "sign", "gain"}`), `head_yaw_offset_deg`, `untuned_cells`,
+  `speed_gate_mm_s`.
   `session.meta["simulation"] = config.model_dump()`.
 
 ### `_transform/_core.py` — behavior → state spaces

@@ -107,7 +107,13 @@ file unless `timestamps=` overrides them (a warning if they disagree by more tha
 `head_z`, then `resample_signal` and `head_direction(quaternion="head")`. Name
 the channels with a prefix: plain `x`, `y`, `z` would overwrite the position
 signals. The zero of yaw is the sensor's power-on heading; calibrate it with
-`offset_deg`.
+`offset_deg`. For roll, pitch and yaw use `head_orientation(quaternion="head")`
+(`head_yaw`, `head_pitch`, `head_roll`, degrees; intrinsic Z-Y'-X'' angles in the sensor
+axes, with yaw and roll ill-defined near pitch = +-90 degrees; `yaw_offset_deg` calibrates yaw;
+x forward, y left, z up, pitch nose-up positive, positive roll right ear down). To test cells
+against these angles, run `cabana.analyze(session, "head_orientation")` (see `RECIPES.md`): it adds
+the two transforms itself when the raw `head_orientation` signal is in `session.behavior`, and
+tests yaw by circular tuning and pitch and roll by correlation and tuning information.
 
 **`load_epochs_csv(path, *, label_column="label", start_column="start_s",
 stop_column="stop_s", scored_span=None)`** returns a `BoutTable`. Times are
@@ -292,7 +298,8 @@ What the loader does, in order:
    the scored span is the neural time range.
 3. With `resample=True` (default): resamples position and signals onto the neural frames
    (`resample_signal`, `max_gap_s`), writes `head_w/x/y/z` and `head_direction`
-   (`head_direction(quaternion=...)`, with `offset_deg`), and turns each `epochs` entry into a
+   (`head_direction(quaternion=...)`, with `offset_deg`) and, unless `euler: false`,
+   `head_yaw/head_pitch/head_roll` (`head_orientation`, same offset on yaw), and turns each `epochs` entry into a
    `StateSpace` named by its key (`bouts_to_states` with that entry's cleanup). With
    `resample=False` only the raw inputs are put in `session.behavior`.
 

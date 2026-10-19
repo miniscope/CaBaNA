@@ -1500,7 +1500,7 @@ def plot_population_matrix(
 # ground truth recovery
 # --------------------------------------------------------------------------- #
 
-_POP_ORDER = ("place", "social", "syllable", "untuned")
+_POP_ORDER = ("place", "social", "syllable", "head direction", "pitch", "untuned")
 
 
 def _planted_populations(gt: dict[str, Any]) -> dict[str, list[int]]:
@@ -1511,6 +1511,10 @@ def _planted_populations(gt: dict[str, Any]) -> dict[str, list[int]]:
         pops["social"] = sorted({int(d["cell"]) for d in gt["social_cells"]})
     if "syllable_cells" in gt:
         pops["syllable"] = sorted({int(d["cell"]) for d in gt["syllable_cells"]})
+    if "head_direction_cells" in gt:  # absent from sessions saved before head tuning existed
+        pops["head direction"] = sorted({int(d["cell"]) for d in gt["head_direction_cells"]})
+    if "pitch_cells" in gt:
+        pops["pitch"] = sorted({int(d["cell"]) for d in gt["pitch_cells"]})
     if "untuned_cells" in gt:
         pops["untuned"] = [int(c) for c in gt["untuned_cells"]]
     return pops

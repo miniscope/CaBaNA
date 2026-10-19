@@ -231,6 +231,23 @@ class SmoothSignal(_SignalFilter):
         return out
 
 
+def _quaternion(session: Session, name: str) -> np.ndarray:
+    """Unnormalised ``(n_time, 4)`` w,x,y,z array from a 2-D signal or ``{name}_w/_x/_y/_z``."""
+    if name in session.signals and np.asarray(session.signals[name]).ndim == 2:
+        arr = np.asarray(session.signals[name], float)
+        if arr.shape[1] != 4:
+            raise ValueError(f"quaternion signal {name!r} needs 4 channels, got {arr.shape[1]}")
+        return arr
+    names = [f"{name}_{c}" for c in "wxyz"]
+    missing = [n for n in names if n not in session.signals]
+    if missing:
+        raise KeyError(
+            f"quaternion {name!r} needs a (n_time, 4) signal or signals {names}; "
+            f"missing {missing}; available: {sorted(session.signals)}"
+        )
+    return np.stack([np.asarray(session.signals[n], float) for n in names], axis=1)
+
+
 @register("transform")
 class HeadDirection(Transform):
     """Heading angle, from two points or from an orientation quaternion.
@@ -275,25 +292,9 @@ class HeadDirection(Transform):
             raise ValueError("front and back must both be given")
         return self
 
-    def _quat(self, session: Session) -> np.ndarray:
-        q = self.quaternion
-        if q in session.signals and np.asarray(session.signals[q]).ndim == 2:
-            arr = np.asarray(session.signals[q], float)
-            if arr.shape[1] != 4:
-                raise ValueError(f"quaternion signal {q!r} needs 4 channels, got {arr.shape[1]}")
-            return arr
-        names = [f"{q}_{c}" for c in "wxyz"]
-        missing = [n for n in names if n not in session.signals]
-        if missing:
-            raise KeyError(
-                f"quaternion {q!r} needs a (n_time, 4) signal or signals {names}; "
-                f"missing {missing}; available: {sorted(session.signals)}"
-            )
-        return np.stack([np.asarray(session.signals[n], float) for n in names], axis=1)
-
     def apply(self, session: Session) -> Session:
         if self.quaternion is not None:
-            q = self._quat(session)
+            q = _quaternion(session, self.quaternion)
             norm = np.sqrt((q**2).sum(axis=1))
             with np.errstate(invalid="ignore", divide="ignore"):
                 w, x, y, z = (q / norm[:, None]).T
@@ -312,6 +313,71 @@ class HeadDirection(Transform):
         if self.units == "deg":
             ang = np.degrees(ang)
         return _set_units(session.with_signal(self.output, ang), [self.output], self.units)
+
+
+@register("transform")
+class HeadOrientation(Transform):
+    """Roll, pitch and yaw from an orientation quaternion (Miniscope V4 BNO).
+
+    **Convention.**  Intrinsic Z-Y'-X'' Tait-Bryan angles in a head frame with x forward,
+    y left and z up, ``q = q_z(yaw) * q_y(-pitch) * q_x(roll)`` for a ``w, x, y, z``
+    quaternion (normalised first)::
+
+        yaw   = atan2(2(wz + xy), 1 - 2(y^2 + z^2))     in (-180, 180]
+        pitch = asin(clip(2(zx - wy), -1, 1))           in [-90, 90]
+        roll  = atan2(2(wx + yz), 1 - 2(x^2 + y^2))     in (-180, 180]
+
+    Positive yaw is counter-clockwise seen from above, positive pitch is nose up (a positive
+    rotation about the left-pointing y axis tips the nose down, hence the sign) and positive
+    roll lowers the right ear.
+
+    ``yaw`` uses the same formula as :class:`HeadDirection`, so ``head_yaw`` equals
+    ``head_direction`` in the same units.  ``q`` and ``-q`` give identical angles.  Rows with a
+    zero norm or any NaN are NaN in all three outputs.  Units default to degrees, matching the
+    ``circular_tuning`` metric.
+
+    Near ``pitch = +-90`` degrees (gimbal lock) yaw and roll become ill-defined individually
+    (only their sum or difference is constrained): do not interpret them there.
+
+    The axes are those of the sensor.  If the IMU is not mounted with x forward, y left and z
+    up relative to the head, pitch and roll swap or change sign, so check against a known
+    movement: rearing should give positive pitch.  ``yaw_offset_deg`` is a calibration offset added to yaw before
+    wrapping (the sensor's power-on zero is arbitrary).
+    """
+
+    name: ClassVar[str] = "head_orientation"
+
+    quaternion: str = Field(
+        "head",
+        description="w,x,y,z orientation: a (n_time, 4) signal of this name or {name}_w.._z.",
+    )
+    prefix: str = Field("head", description="Outputs are {prefix}_yaw, _pitch and _roll.")
+    units: Literal["deg", "rad"] = Field("deg", description="Angle units.")
+    yaw_offset_deg: float = Field(0.0, description="Calibration offset added to yaw, degrees.")
+    unwrap_yaw: bool = Field(False, description="Unwrap 2*pi jumps in yaw across finite frames.")
+
+    def apply(self, session: Session) -> Session:
+        q = _quaternion(session, self.quaternion)
+        norm = np.sqrt((q**2).sum(axis=1))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            w, x, y, z = (q / norm[:, None]).T
+        yaw = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
+        pitch = np.arcsin(np.clip(2 * (z * x - w * y), -1, 1))
+        roll = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
+        bad = ~(norm > 0) | ~np.isfinite(q).all(axis=1)
+        yaw, pitch, roll = (np.where(bad, np.nan, a) for a in (yaw, pitch, roll))
+        yaw = yaw + np.radians(self.yaw_offset_deg)
+        if self.unwrap_yaw:
+            ok = np.isfinite(yaw)
+            yaw[ok] = np.unwrap(yaw[ok])
+        else:
+            yaw = np.where(np.isfinite(yaw), -np.arctan2(np.sin(-yaw), np.cos(-yaw)), np.nan)
+        out = {"yaw": yaw, "pitch": pitch, "roll": roll}
+        names = []
+        for k, a in out.items():
+            names.append(f"{self.prefix}_{k}")
+            session = session.with_signal(names[-1], np.degrees(a) if self.units == "deg" else a)
+        return _set_units(session, names, self.units)
 
 
 @register("transform")

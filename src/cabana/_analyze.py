@@ -72,6 +72,7 @@ def _normalize(d: dict[str, Any], default_name: str = "") -> dict[str, Any]:
     head["targets"] = dict(head.get("targets") or {})
     head["defaults"] = dict(head.get("defaults") or {})
     head["ensure_masks"] = dict(head.get("ensure_masks") or {})
+    head["ensure_signals"] = dict(head.get("ensure_signals") or {})
     return {**head, "pipeline": copy.deepcopy(pipe)}
 
 
@@ -87,7 +88,7 @@ def _load_recipe(name: str) -> dict[str, Any]:
     -------
     dict
         ``name``, ``title``, ``description``, ``targets`` (placeholder -> what it must be),
-        ``defaults`` (placeholder values used when not given), ``ensure_masks`` and
+        ``defaults`` (placeholder values used when not given), ``ensure_masks``, ``ensure_signals`` and
         ``pipeline`` (the template with ``${placeholders}``).
 
     Raises
@@ -279,7 +280,37 @@ def _build_pipeline(
             extra.append(_speed_gate(spec, session, name, notes, override_paths))
         if extra:
             pipe["preprocess"] = [*extra, *pipe.get("preprocess", [])]
+    if session is not None:
+        extra_t: list[dict[str, Any]] = []
+        for sig, spec in rec["ensure_signals"].items():
+            if sig in session.signals or not _mentions(pipe.get("analyses", []), sig):
+                continue
+            chain = [dict(t) for t in spec["transforms"]]
+            source = spec.get("source")
+            if source is not None and source not in session.behavior:
+                notes.append(
+                    (
+                        "hint",
+                        f"signal {sig!r} is not in the session and {where} can only create it "
+                        f"from the raw signal {source!r}, which the session lacks; add the "
+                        f"transforms that make {sig!r} or put the signal in session.signals",
+                    )
+                )
+            elif not any(t in extra_t for t in chain):  # one chain may make several signals
+                extra_t.extend(chain)
+        if extra_t:
+            pipe["transforms"] = [*extra_t, *pipe.get("transforms", [])]
     return Pipeline.from_dict(pipe)
+
+
+def _mentions(obj: Any, value: str) -> bool:
+    if isinstance(obj, str):
+        return obj == value
+    if isinstance(obj, list):
+        return any(_mentions(x, value) for x in obj)
+    if isinstance(obj, dict):
+        return any(_mentions(v, value) for v in obj.values())
+    return False
 
 
 def recipe(name: str) -> dict[str, Any]:

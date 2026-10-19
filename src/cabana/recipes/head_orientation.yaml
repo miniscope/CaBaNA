@@ -1,0 +1,56 @@
+recipe:
+  name: head_orientation
+  title: Head direction, pitch and roll tuning
+  description: >-
+    Cell responses to head orientation from a Miniscope V4 style quaternion (signals
+    head_w, head_x, head_y, head_z in session.behavior). Head direction (yaw) is tested with
+    circular tuning (Rayleigh vector length and preferred direction); pitch and roll with
+    cross-correlation, the primary test because their coding is often monotonic, and with
+    binned tuning information, which finds bump-shaped tuning. All use a circular-shift null.
+    When the angle signals are missing, analyze() adds the two transforms that make them,
+    resample_signal(source="head_orientation") then head_orientation, provided the raw
+    head_orientation signal is in the session; otherwise add those transforms yourself.
+    Yaw 0 is +x, counter-clockwise, and is the sensor's own zero unless you set
+    yaw_offset_deg on the head_orientation transform.
+  defaults:
+    yaw: head_yaw
+    pitch: head_pitch
+    roll: head_roll
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+  ensure_signals:
+    head_yaw: &angles
+      source: head_orientation
+      transforms:
+      - {name: resample_signal, source: head_orientation}
+      - {name: head_orientation}
+    head_pitch: *angles
+    head_roll: *angles
+pipeline:
+  selectors:
+  - name: auto_null_timescale
+  analyses:
+  - name: head_direction
+    metric: {name: circular_tuning}
+    signal: ${yaw}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+  - name: pitch_correlation
+    metric: {name: signal_correlation}
+    signal: ${pitch}
+    shuffle: *shuffle
+  - name: pitch_tuning
+    metric: {name: signal_tuning}
+    signal: ${pitch}
+    shuffle: *shuffle
+  - name: roll_correlation
+    metric: {name: signal_correlation}
+    signal: ${roll}
+    shuffle: *shuffle
+  - name: roll_tuning
+    metric: {name: signal_tuning}
+    signal: ${roll}
+    shuffle: *shuffle

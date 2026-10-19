@@ -57,6 +57,12 @@ def test_loads_fixture(ses, three_chamber_dir):
 def test_signals_and_states(ses):
     for k in ("x", "y", "head_direction", "head_w", "head_x", "head_y", "head_z"):
         assert ses.signals[k].shape == (ses.n_time,)
+    for k in ("head_yaw", "head_pitch", "head_roll"):
+        assert ses.signals[k].shape == (ses.n_time,)
+        assert ses.meta["signal_units"][k] == "deg"
+    np.testing.assert_allclose(
+        ses.signals["head_yaw"], np.degrees(ses.signals["head_direction"]), equal_nan=True
+    )
     assert 0 < np.isnan(ses.signals["x"]).mean() < 0.05  # lost frames stay NaN
     assert not np.any(ses.signals["x"] == -1)
     assert np.nanmax(np.abs(ses.signals["head_direction"])) <= np.pi

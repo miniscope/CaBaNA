@@ -326,6 +326,13 @@ quaternion's arbitrary zero with `head_direction(offset_deg=...)` first. On the 
 three-chamber slice it agrees with the annotations on 99.9 to 100 % of frames and finds every
 annotated bout within 0.5 s (zero offset needed).
 
+To ask whether cells are tuned to head direction, pitch or roll, put the quaternion in
+`session.behavior["head_orientation"]` (channels `head_w` to `head_z`, see `LOADERS.md`) and run
+`cabana.analyze(session, "head_orientation")`: it makes `head_yaw`, `head_pitch` and `head_roll`
+(nose-up positive pitch) and tests yaw by circular tuning, pitch and roll by correlation and tuning
+information. To calibrate yaw, add `resample_signal` and `head_orientation(yaw_offset_deg=...)`
+yourself first (see `RECIPES.md`).
+
 ## 5. Masks and support
 
 Every analysis runs on a set of frames: the **support** of its target AND any

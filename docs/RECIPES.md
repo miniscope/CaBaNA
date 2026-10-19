@@ -25,6 +25,7 @@ results.summary()                 # one row per analysis (see below)
 | `syllables` | `states=` exclusive labels | `information_content`, `auroc`, `mutual_information` | `circular_shift`; `max_stat` on the auROC |
 | `event_response` | `states=` any state space | `peth` on state onsets with `null_band: true` | none: the per-bin null band and latency are descriptive, there is no shuffle test (`n_shuffles=`, `min_shift_s=` and `masks=` raise) |
 | `speed_tuning` | `signal=` a per-frame signal | `signal_correlation`, `signal_tuning` | `circular_shift` |
+| `head_orientation` | none; signals `head_yaw`, `head_pitch`, `head_roll` (defaults of `${yaw}`, `${pitch}`, `${roll}`) | `circular_tuning` on yaw; `signal_correlation` and `signal_tuning` on pitch and on roll | `circular_shift` |
 | `population` | `states=` any state space | `pv_stability`, `population_vector_overlap`, `decode_states`, `participation_ratio`; re-binned to 0.5 s | `cell_shift` (cells at least 1 s apart) for the PV, overlap and participation metrics; `label_shuffle` (block length from `auto_null_timescale`) for `decode_states`; 200 shuffles |
 
 `social_speed_matched` is the variant to use when a behavior rides on locomotion: a plain
@@ -103,6 +104,19 @@ cm. When the unit cannot be determined the gate is 2 position-units/s and `analy
 with `**{"preprocess.speed.min_speed": 20.0}` (which also silences the warning). A session with
 neither the mask nor the `speed` signal fails validation with a hint to run `resample_signal` and
 `speed` first.
+
+A recipe may also declare `ensure_signals:` (`head_orientation` does for the three angle signals):
+when the pipeline uses a signal the session lacks and the raw signal named by `source:` is in
+`session.behavior`, `analyze` prepends the listed transforms (for `head_orientation`:
+`resample_signal(source="head_orientation")` then `head_orientation`). Without the raw signal
+validation fails with a hint to add the transforms. The recipe targets yaw (circular tuning:
+Rayleigh length and preferred direction), pitch and roll (cross-correlation first, since their
+coding is often monotonic, plus binned tuning information). Conventions: head frame x forward,
+y left, z up; yaw 0 is +x, positive counter-clockwise from above; pitch is nose-up positive
+(rearing gives positive pitch); positive roll is right ear down. A real sensor's yaw zero is
+its power-on heading, so set `yaw_offset_deg` on the `head_orientation` transform (add the
+transforms yourself to do so). Use other signal names with
+`cabana.recipe_pipeline("head_orientation", yaw=..., pitch=..., roll=...)`.
 
 ## Overrides
 

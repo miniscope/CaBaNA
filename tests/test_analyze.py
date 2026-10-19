@@ -16,6 +16,7 @@ TARGETS = {
     "syllables": {"states": "syllables"},
     "event_response": {"states": "social"},
     "speed_tuning": {"signal": "speed"},
+    "head_orientation": {},
     "population": {"states": "syllables"},
 }
 
@@ -41,7 +42,7 @@ def test_every_recipe_builds_a_valid_pipeline(name, sim_session):
     assert Pipeline.from_yaml(pipe.to_yaml()).to_dict() == pipe.to_dict()
 
 
-@pytest.mark.parametrize("name", sorted(set(TARGETS) - {"place_cell"}))
+@pytest.mark.parametrize("name", sorted(set(TARGETS) - {"place_cell", "head_orientation"}))
 def test_every_recipe_validates_on_sim_session(name, sim_session):
     pipe = cabana.recipe_pipeline(name, **_kw(name))
     assert pipe.validate(sim_session, time_budget_s=0.0).ok
@@ -402,6 +403,30 @@ def test_social_speed_matched_has_no_selector():
     pipe = cabana.recipe_pipeline("social_speed_matched", states="social", n_shuffles=50)
     assert not pipe.selectors
     assert "syllables" in cabana.recipe("social_speed_matched")["description"]
+
+
+def test_head_orientation_recipe_makes_its_signals():
+    s = cabana.simulate_session(n_cells=30, duration_s=120, seed=2)
+    assert "head_yaw" not in s.signals
+    pipe = cabana.recipe_pipeline("head_orientation", n_shuffles=50)
+    assert not pipe.transforms  # the plain template adds none; analyze() ensures them
+    out, res = cabana.analyze(s, "head_orientation", n_shuffles=50, progress=False)
+    assert res.status == "ok" and "head_pitch" in out.signals
+    assert [r.metric for r in res][0] == "circular_tuning"
+    # already present: not added again
+    _, res2 = cabana.analyze(out, "head_orientation", n_shuffles=50, progress=False)
+    assert res2.status == "ok"
+    assert len(res2["head_direction"].provenance["transforms"]) == 2  # not run twice
+
+
+def test_head_orientation_recipe_hint_without_raw_signal(sim_session):
+    with pytest.raises(ValueError, match="raw signal 'head_orientation'"):
+        cabana.analyze(_drop_head(sim_session), "head_orientation", n_shuffles=50, progress=False)
+
+
+def _drop_head(session):
+    behavior = {k: v for k, v in session.behavior.items() if k != "head_orientation"}
+    return session.model_copy(update={"behavior": behavior})
 
 
 def test_min_shift_keeps_block_selector_of_population(sim_session):

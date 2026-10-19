@@ -7,6 +7,7 @@ from cabana._transform._behavior import (
     ArenaTransform,
     Distance,
     HeadDirection,
+    HeadOrientation,
     InterpolateGaps,
     SmoothSignal,
     ZoneOccupancy,
@@ -324,3 +325,120 @@ def test_zones_from_meta():
     assert (lab[:100] == 0).all() and (lab[400:] == 1).all() and (lab[200:300] == -1).all()
     with pytest.raises(KeyError):
         ZoneOccupancy(signal="", zones_from_meta=True).apply(zone_session())
+
+
+def _quat_zyx(yaw, pitch, roll):
+    """q = qz(yaw) * qy(-pitch) * qx(roll), (n, 4) w,x,y,z; pitch is nose-up positive."""
+    cy, sy = np.cos(yaw / 2), np.sin(yaw / 2)
+    cp, sp = np.cos(pitch / 2), np.sin(-pitch / 2)
+    cr, sr = np.cos(roll / 2), np.sin(roll / 2)
+    return np.stack(
+        [
+            cy * cp * cr + sy * sp * sr,
+            cy * cp * sr - sy * sp * cr,
+            cy * sp * cr + sy * cp * sr,
+            sy * cp * cr - cy * sp * sr,
+        ],
+        axis=1,
+    )
+
+
+def _euler_grid():
+    yaw, pitch, roll = np.meshgrid(
+        np.radians(np.arange(-170, 171, 40.0)),
+        np.radians(np.arange(-80, 81, 20.0)),
+        np.radians(np.arange(-170, 171, 40.0)),
+        indexing="ij",
+    )
+    return yaw.ravel(), pitch.ravel(), roll.ravel()
+
+
+def _qsess(q, name="head"):
+    return Session(
+        activity=np.ones((1, len(q))), t=np.arange(len(q)) / FS, fs=FS, signals={name: q}
+    )
+
+
+def test_head_orientation_round_trip():
+    yaw, pitch, roll = _euler_grid()
+    s = _qsess(_quat_zyx(yaw, pitch, roll))
+    r = HeadOrientation(units="rad").apply(s)
+    np.testing.assert_allclose(r.signals["head_yaw"], yaw, atol=1e-9)
+    np.testing.assert_allclose(r.signals["head_pitch"], pitch, atol=1e-9)
+    np.testing.assert_allclose(r.signals["head_roll"], roll, atol=1e-9)
+    d = HeadOrientation().apply(s)  # degrees by default
+    np.testing.assert_allclose(d.signals["head_pitch"], np.degrees(pitch), atol=1e-7)
+    np.testing.assert_allclose(d.signals["head_roll"], np.degrees(roll), atol=1e-7)
+    assert d.meta["signal_units"]["head_yaw"] == "deg"
+    assert r.meta["signal_units"]["head_roll"] == "rad"
+    assert HeadOrientation(prefix="imu").apply(s).signals.keys() >= {
+        "imu_yaw", "imu_pitch", "imu_roll"
+    }  # fmt: skip
+
+
+def test_head_orientation_yaw_matches_head_direction():
+    yaw, pitch, roll = _euler_grid()
+    s = _qsess(_quat_zyx(yaw, pitch, roll))
+    hd = HeadDirection(quaternion="head").apply(s).signals["head_direction"]
+    ho = HeadOrientation(units="rad").apply(s).signals["head_yaw"]
+    np.testing.assert_allclose(ho, hd, atol=1e-12)
+    hd_deg = HeadDirection(quaternion="head", units="deg").apply(s).signals["head_direction"]
+    np.testing.assert_allclose(HeadOrientation().apply(s).signals["head_yaw"], hd_deg, atol=1e-9)
+
+
+def test_head_orientation_sign_scale_and_bad_rows():
+    yaw, pitch, roll = _euler_grid()
+    q = _quat_zyx(yaw, pitch, roll)
+    ref = HeadOrientation().apply(_qsess(q))
+    for other in (-q, 3 * q):
+        got = HeadOrientation().apply(_qsess(other))
+        for k in ("yaw", "pitch", "roll"):
+            np.testing.assert_allclose(
+                got.signals[f"head_{k}"], ref.signals[f"head_{k}"], atol=1e-9
+            )
+    qb = q.copy()
+    qb[3] = np.nan
+    qb[7, 2] = np.nan
+    qb[9] = 0.0
+    got = HeadOrientation().apply(_qsess(qb))
+    for k in ("yaw", "pitch", "roll"):
+        a = got.signals[f"head_{k}"]
+        assert np.isnan(a[[3, 7, 9]]).all()
+        assert np.isfinite(np.delete(a, [3, 7, 9])).all()
+
+
+def test_head_orientation_yaw_offset_and_unwrap():
+    th = np.radians(np.array([170.0, -170.0, 10.0]))
+    s = _qsess(_quat_zyx(th, 0 * th, 0 * th))
+    r = HeadOrientation(yaw_offset_deg=20).apply(s).signals["head_yaw"]
+    np.testing.assert_allclose(r, [-170, -150, 30], atol=1e-9)
+    # yaw ramp crossing +-180: wrapped has a jump, unwrapped is monotonic
+    ramp = np.radians(np.linspace(150, 210, 61))
+    s2 = _qsess(_quat_zyx(ramp, 0 * ramp, 0 * ramp))
+    w = HeadOrientation().apply(s2).signals["head_yaw"]
+    u = HeadOrientation(unwrap_yaw=True).apply(s2)
+    assert np.abs(np.diff(w)).max() > 300
+    assert np.abs(np.diff(u.signals["head_yaw"])).max() < 5  # degrees: no 360 jump
+    ur = HeadOrientation(unwrap_yaw=True, units="rad").apply(s2).signals["head_yaw"]
+    assert np.abs(np.diff(ur)).max() < 0.1
+
+
+def test_head_orientation_input_forms_and_errors():
+    yaw, pitch, roll = _euler_grid()
+    q = _quat_zyx(yaw, pitch, roll)
+    a = HeadOrientation(quaternion="imu").apply(_qsess(q, "imu"))
+    s4 = Session(
+        activity=np.ones((1, len(q))),
+        t=np.arange(len(q)) / FS,
+        fs=FS,
+        signals={f"imu_{c}": q[:, i] for i, c in enumerate("wxyz")},
+    )
+    b = HeadOrientation(quaternion="imu").apply(s4)
+    for k in ("yaw", "pitch", "roll"):
+        np.testing.assert_allclose(a.signals[f"head_{k}"], b.signals[f"head_{k}"])
+    with pytest.raises(KeyError, match="available"):
+        HeadOrientation(quaternion="nope").apply(sess(x=np.zeros(N)))
+    with pytest.raises(ValueError, match="4 channels"):
+        HeadOrientation(quaternion="imu").apply(_qsess(q[:, :3], "imu"))
+    t = build("transform", {"name": "head_orientation", "quaternion": "imu"})
+    assert isinstance(t, HeadOrientation) and build("transform", t.to_dict()) == t

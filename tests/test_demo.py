@@ -74,3 +74,16 @@ def test_demo_quick(tmp_path):
     assert (fd / "pipeline.yaml").exists()
     jsonl = (fd / "cli" / "progress.jsonl").read_text().splitlines()
     assert json.loads(jsonl[-1])["event"] == "done"
+    # head orientation: the recipe makes head_yaw/pitch from the quaternion and recovers planted cells
+    assert "8 of 8 planted cells detected" in proc.stdout
+    assert "signal_correlation finds 4 of 4" in proc.stdout
+    assert (
+        "untuned false positives 0 of 20" in proc.stdout
+        or "untuned false positives 1 of 20" in proc.stdout
+    )
+    for name in ("39_head_direction", "40_head_orientation_recovery", "41_pitch_cells"):
+        assert (tmp_path / f"{name}.png").exists()
+    import re
+
+    err = float(re.search(r"cells median ([0-9.]+) deg", proc.stdout).group(1))
+    assert err < 10.0

@@ -232,6 +232,23 @@ def test_ground_truth_recovery(setup, tmp_path):
     _check(fig2, tmp_path, "gt_empty")
 
 
+def test_ground_truth_recovery_head_populations(setup):
+    sess, ic, stab, au, pop = setup
+    gt = dict(sess.meta["ground_truth"])
+    gt["head_direction_cells"] = [{"cell": 4, "preferred_deg": 10.0}, {"cell": 5}]
+    gt["pitch_cells"] = [{"cell": 6, "sign": "up"}]
+    with_head = sess.model_copy(update={"meta": {**sess.meta, "ground_truth": gt}})
+    d = P.plot_ground_truth_recovery_data(with_head, [ic])
+    assert d["populations"] == ["place", "social", "syllable", "head direction", "pitch", "untuned"]
+    rows = {p: n for p, n in zip(d["rows"]["population"], d["rows"]["n"], strict=True)}
+    assert rows["head direction"] == 2 and rows["pitch"] == 1
+    _check_fig = P.plot_ground_truth_recovery(with_head, [ic])
+    assert set(_check_fig.cabana_summary["population"]) >= {"head direction", "pitch"}
+    # sessions without the keys keep the original populations
+    d0 = P.plot_ground_truth_recovery_data(sess, [ic])
+    assert "head direction" not in d0["populations"] and "pitch" not in d0["populations"]
+
+
 def test_ground_truth_recovery_adjusted(setup, tmp_path):
     sess, ic, stab, au, pop = setup
     sh = au.shuffle
