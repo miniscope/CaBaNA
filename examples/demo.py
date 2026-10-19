@@ -143,6 +143,9 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
         transforms=[
             {"name": "resample_signal", "source": "position"},
             {"name": "speed"},
+            # IMU quaternion -> head_yaw / head_pitch / head_roll (degrees)
+            {"name": "resample_signal", "source": "head_orientation"},
+            {"name": "head_orientation"},
             # fixed arena extent so grids are identical across sessions (needed for cross-session maps)
             {
                 "name": "bin_grid",
@@ -197,9 +200,11 @@ def build_pipeline(n_shuffles: int) -> Pipeline:
             # No speed mask: huddling is stationary. The scored span is the space's own support.
             AnalysisSpec(metric={"name": "auroc"}, states="social", shuffle=shuf_c),
             AnalysisSpec(
-                metric={"name": "population_vector_overlap"},
+                # Pearson centres each state vector across cells; cosine on max-scaled rates is ~0.95
+                # for any pair because most cells fire alike in every state.
+                metric={"name": "population_vector_overlap", "similarity": "pearson"},
                 states="social",
-                shuffle=None,
+                shuffle=shuf_c,  # p-value per state pair, marked on the matrix plot
             ),
             # 'still' is a syllable we want to keep, so no speed mask (support = labelled span).
             AnalysisSpec(metric={"name": "information_content"}, states="syllables", shuffle=shuf),

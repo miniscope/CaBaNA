@@ -156,7 +156,11 @@ def _page(cells: Sequence[int], max_cells: int | None, page: int) -> tuple[list[
 
 
 def _signal_units(session: Session, name: str) -> str:
-    """Units of the behavior input called ``name`` (or carrying channel ``name``), else ``""``."""
+    """Units a transform recorded for signal ``name`` (``meta["signal_units"]``), else those of
+    the behavior input called ``name`` (or carrying channel ``name``), else ``""``."""
+    derived = (getattr(session, "meta", {}) or {}).get("signal_units", {})
+    if derived.get(name):
+        return str(derived[name])
     b = getattr(session, "behavior", {}) or {}
     sig = b.get(name)
     if isinstance(sig, ContinuousSignal):
@@ -201,6 +205,7 @@ def plot_behavior_overview_data(
     speed_signal: str = "speed",
     speed_mask: str = "speed",
     states: Sequence[str] | None = None,
+    orientation_prefix: str = "head",
 ) -> dict[str, Any]:
     """Data behind :func:`plot_behavior_overview`.
 
@@ -209,7 +214,9 @@ def plot_behavior_overview_data(
     dict
         ``t`` plus ``panels``: a list of dicts with ``type`` in ``"trajectory"``
         (``x``, ``y``, ``x_label``, ``y_label``), ``"speed"`` (``values``,
-        ``label``, ``excluded`` as ``[t0, t1]`` pairs), ``"ethogram"`` (``name``,
+        ``label``, ``excluded`` as ``[t0, t1]`` pairs), ``"heading"`` (``values``, ``label``,
+        ``period``: 360 or 2*pi), ``"tilt"`` (``pitch`` and ``roll``, either may be None,
+        ``label``), ``"ethogram"`` (``name``,
         ``state_names``, ``segments`` per state as ``[start, duration]`` pairs,
         ``colors``) or ``"strip"`` (``name``, ``labels`` with -1 for none,
         ``state_names``, ``colors``).  ``panels`` is empty when nothing can be drawn.
@@ -242,6 +249,22 @@ def plot_behavior_overview_data(
                 "excluded": excluded,
             }
         )
+    yaw, pitch, roll = (f"{orientation_prefix}_{k}" for k in ("yaw", "pitch", "roll"))
+    if yaw in session.signals:
+        u = _signal_units(session, yaw)
+        panels.append(
+            {
+                "type": "heading",
+                "values": np.asarray(session.signals[yaw], float),
+                "label": axis_label("yaw", u),
+                "period": 2 * np.pi if u == "rad" else 360.0,
+            }
+        )
+    if pitch in session.signals or roll in session.signals:
+        tilt = {k: np.asarray(session.signals[n], float) if n in session.signals else None
+                for k, n in (("pitch", pitch), ("roll", roll))}  # fmt: skip
+        u = _signal_units(session, pitch if pitch in session.signals else roll)
+        panels.append({"type": "tilt", **tilt, "label": axis_label("angle", u)})
     dt = float(np.median(np.diff(t))) if len(t) > 1 else 1.0
     for s in spaces:
         if s.kind == "bouts":
@@ -282,8 +305,9 @@ def plot_behavior_overview(
     speed_signal: str = "speed",
     speed_mask: str = "speed",
     states: Sequence[str] | None = None,
+    orientation_prefix: str = "head",
 ) -> Figure:
-    """Overview of behavior: trajectory, speed, ethograms and label strips.
+    """Overview of behavior: trajectory, speed, head orientation, ethograms and label strips.
 
     Panels that lack data are skipped.  If nothing can be drawn an empty
     figure with a text note is returned.  Look for: coverage of the arena by the
@@ -304,6 +328,10 @@ def plot_behavior_overview(
     states : sequence of str, optional
         State spaces to draw (``None`` = all): ``"bouts"`` spaces as ethograms,
         exclusive ``"categorical"`` spaces as colour strips; other kinds are skipped.
+    orientation_prefix : str, default "head"
+        Prefix of the ``head_orientation`` transform's outputs: ``{prefix}_yaw`` is drawn as a
+        heading trace (dots, since it wraps), ``{prefix}_pitch`` and ``{prefix}_roll`` as a
+        tilt panel.  Skipped when those signals are absent.
 
     Returns
     -------
@@ -315,6 +343,7 @@ def plot_behavior_overview(
         speed_signal=speed_signal,
         speed_mask=speed_mask,
         states=states,
+        orientation_prefix=orientation_prefix,
     )
     t = d["t"]
     panels = d["panels"]
@@ -331,7 +360,7 @@ def plot_behavior_overview(
         return fig
 
     def height(p: dict[str, Any]) -> float:
-        return {"trajectory": 3.2, "speed": 1.4, "strip": 1.0}.get(
+        return {"trajectory": 3.2, "speed": 1.4, "heading": 1.4, "tilt": 1.4, "strip": 1.0}.get(
             p["type"], max(1.0, 0.4 * len(p.get("state_names", [])) + 0.6)
         )
 
@@ -355,6 +384,25 @@ def plot_behavior_overview(
             ax.set_ylabel(p["label"])
             ax.set_xlabel("time (s)")
             ax.set_xlim(t[0], t[-1])
+        elif kind == "heading":
+            half = p["period"] / 2
+            ax.scatter(t, p["values"], s=1, color="C1", lw=0, rasterized=True)
+            ax.set_ylim(-half, half)
+            ax.set_yticks(np.linspace(-half, half, 5))
+            ax.set_ylabel(p["label"])
+            ax.set_xlabel("time (s)")
+            ax.set_xlim(t[0], t[-1])
+            ax.set_title("Head direction", fontsize=10)
+        elif kind == "tilt":
+            for k, c in (("pitch", "C2"), ("roll", "C4")):
+                if p[k] is not None:
+                    ax.plot(t, p[k], color=c, lw=0.6, label=k)
+            ax.axhline(0, color="0.6", lw=0.5, zorder=0)
+            ax.set_ylabel(p["label"])
+            ax.set_xlabel("time (s)")
+            ax.set_xlim(t[0], t[-1])
+            ax.set_title("Head pitch (nose up +) and roll", fontsize=10)
+            ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8, frameon=False)
         elif kind == "ethogram":
             n = len(p["state_names"])
             for j, segs in enumerate(p["segments"]):
@@ -1412,7 +1460,10 @@ def plot_metric_scatter(
 
 
 def plot_population_matrix_data(
-    result: MetricResult, vmin: float | None = None, vmax: float | None = None
+    result: MetricResult,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    alpha: float | None = None,
 ) -> dict[str, Any]:
     """Data behind :func:`plot_population_matrix`.
 
@@ -1420,7 +1471,9 @@ def plot_population_matrix_data(
     -------
     dict
         ``matrix`` (NaN = under-sampled state), ``state_names``, ``vmin``, ``vmax``,
-        ``label`` and ``title``.
+        ``label``, ``title`` and ``significant``: a boolean matrix of state pairs whose
+        value beats the shuffle null (the diagonal is always False), or None without a
+        shuffle.
 
     Raises
     ------
@@ -1430,6 +1483,9 @@ def plot_population_matrix_data(
     m = np.asarray(result.values, float)
     if m.ndim != 2 or m.shape[0] != m.shape[1]:
         raise ValueError(f"values must be a 2D square matrix, got shape {m.shape}")
+    sig = _significant(result, alpha)
+    if sig is not None:
+        sig = np.asarray(sig, bool).reshape(m.shape) & ~np.eye(m.shape[0], dtype=bool)
     return _base(
         "population_matrix",
         metric=result.metric,
@@ -1440,6 +1496,7 @@ def plot_population_matrix_data(
         label=metric_label(result.metric, result.params),
         title=result.metric,
         unvisited_color=UNVISITED_COLOR,
+        significant=sig,
     )
 
 
@@ -1455,11 +1512,15 @@ def plot_population_matrix(
     cmap: str = "viridis",
     vmin: float | None = None,
     vmax: float | None = None,
+    alpha: float | None = None,
+    mark_significant_pairs: bool = True,
 ) -> Figure:
     """Square state x state matrix (e.g. population vector overlap).
 
     Look for: block structure (groups of similar states) and a strong diagonal;
-    NaN entries (under-sampled states) are drawn light grey.
+    NaN entries (under-sampled states) are drawn light grey.  With a shuffle, state pairs
+    whose value beats the null (in the metric's tail, e.g. more overlap than chance for
+    ``population_vector_overlap``) carry the significance marker; the diagonal never does.
 
     Parameters
     ----------
@@ -1471,6 +1532,11 @@ def plot_population_matrix(
         Colormap.
     vmin, vmax : float, optional
         Colour limits; ``None`` autoscales.
+    alpha : float, optional
+        Test the raw p-values at this level instead of the result's own significance
+        (which is multiplicity-adjusted when a correction was applied).
+    mark_significant_pairs : bool, default True
+        Mark significant state pairs (needs a shuffle).
 
     Returns
     -------
@@ -1481,7 +1547,7 @@ def plot_population_matrix(
     ValueError
         If ``values`` is not a square 2-D array.
     """
-    d = plot_population_matrix_data(result, vmin, vmax)
+    d = plot_population_matrix_data(result, vmin, vmax, alpha)
     m = d["matrix"]
     n = m.shape[0]
     fig, ax = _get_ax(ax, (max(4.5, 0.4 * n + 2.5), max(4.0, 0.4 * n + 2.0)))
@@ -1493,6 +1559,10 @@ def plot_population_matrix(
     ax.set_yticks(range(n), d["state_names"], fontsize=8)
     ax.set_title(d["title"])
     ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.03, label=d["label"])
+    if mark_significant_pairs and d["significant"] is not None and d["significant"].any():
+        rows, cols = np.nonzero(d["significant"])
+        mark_significant(ax, cols, rows, s=max(8.0, min(40.0, 400.0 / n)))
+        ax.set_title(f"{d['title']}\n(o = significant vs shuffle)", fontsize=10)
     return fig
 
 

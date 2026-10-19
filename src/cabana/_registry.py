@@ -395,7 +395,9 @@ def register(kind: PluginKind):
         If the class does not subclass the base for ``kind`` or has no class-level
         string ``name``.
     ValueError
-        If another class is already registered under that name.
+        If another class is already registered under that name.  Re-defining the same
+        class (same module and qualified name, e.g. re-running a notebook cell or reloading
+        a module) replaces the old registration instead.
     """
 
     def deco(cls: type[_Plugin]) -> type[_Plugin]:
@@ -405,8 +407,15 @@ def register(kind: PluginKind):
         name = getattr(cls, "name", None)
         if not isinstance(name, str) or not name:
             raise TypeError(f"{cls.__name__} must define a class-level string 'name'")
-        if name in _REGISTRY[kind] and _REGISTRY[kind][name] is not cls:
-            raise ValueError(f"{kind} plugin {name!r} is already registered")
+        old = _REGISTRY[kind].get(name)
+        if old is not None and old is not cls:
+            same = (old.__module__, old.__qualname__) == (cls.__module__, cls.__qualname__)
+            if not same:
+                raise ValueError(
+                    f"{kind} plugin {name!r} is already registered by "
+                    f"{old.__module__}.{old.__qualname__}; {cls.__module__}.{cls.__qualname__} "
+                    "needs a different name"
+                )
         _REGISTRY[kind][name] = cls
         return cls
 

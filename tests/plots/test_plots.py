@@ -135,6 +135,30 @@ def test_behavior_overview(setup, tmp_path):
     _check(P.plot_behavior_overview(sess, states=["syll"]), tmp_path, "overview_syll")
 
 
+def test_behavior_overview_head_orientation(tmp_path):
+    import cabana
+
+    s = cabana.simulate_session(n_cells=5, duration_s=60, seed=0)
+    s, _ = cabana.Pipeline(
+        transforms=[
+            {"name": "resample_signal", "source": "head_orientation"},
+            {"name": "head_orientation"},
+        ]
+    ).run(s)
+    d = P.plot_behavior_overview_data(s)
+    by_type = {p["type"]: p for p in d["panels"]}
+    assert by_type["heading"]["period"] == 360.0
+    assert by_type["heading"]["label"] == "yaw (deg)"
+    assert by_type["tilt"]["pitch"].shape == by_type["tilt"]["roll"].shape == s.t.shape
+    _check(P.plot_behavior_overview(s), tmp_path, "overview_head")
+    # only roll present, in radians
+    r = s.replace(signals={"head_roll": np.radians(s.signals["head_roll"])},
+                  meta={**s.meta, "signal_units": {"head_roll": "rad"}})  # fmt: skip
+    tilt = {p["type"]: p for p in P.plot_behavior_overview_data(r)["panels"]}["tilt"]
+    assert tilt["pitch"] is None and tilt["label"] == "angle (rad)"
+    assert "heading" not in {p["type"] for p in P.plot_behavior_overview_data(r)["panels"]}
+
+
 def test_behavior_overview_empty(tmp_path):
     s = Session(activity=np.zeros((1, 5)), t=np.arange(5) / 10, fs=10.0)
     _check(P.plot_behavior_overview(s), tmp_path, "overview_empty")
@@ -200,8 +224,36 @@ def test_metric_scatter(setup, tmp_path):
 def test_population_matrix(setup, tmp_path):
     _, ic, _, _, pop = setup
     _check(P.plot_population_matrix(pop), tmp_path, "popmat")
+    d = P.plot_population_matrix_data(pop)
+    if pop.shuffle is None:
+        assert d["significant"] is None
+    else:
+        assert d["significant"].shape == d["matrix"].shape
+        assert not np.diag(d["significant"]).any()
     with pytest.raises(ValueError):
         P.plot_population_matrix(ic)
+
+
+def test_population_matrix_marks_significant_pairs(tmp_path):
+    import cabana
+
+    s = cabana.simulate_session(n_cells=60, duration_s=300, seed=0)
+    s, rs = cabana.Pipeline(
+        transforms=[{"name": "bouts_to_states", "source": "social", "output": "social"}],
+        analyses=[
+            {"metric": {"name": "population_vector_overlap", "similarity": "pearson"},
+             "states": "social", "shuffle": {"n_shuffles": 50, "min_shift_s": 20.0, "seed": 0}}
+        ],
+    ).run(s, progress=False)  # fmt: skip
+    r = rs.results[0]
+    d = P.plot_population_matrix_data(r)
+    off = ~np.eye(d["matrix"].shape[0], dtype=bool)
+    np.testing.assert_array_equal(d["significant"][off], np.asarray(r.shuffle.significant)[off])
+    assert not np.diag(d["significant"]).any()
+    loose = P.plot_population_matrix_data(r, alpha=1.0)["significant"]
+    assert loose[off].sum() >= d["significant"][off].sum()
+    _check(P.plot_population_matrix(r, vmin=-1, vmax=1), tmp_path, "popmat_sig")
+    _check(P.plot_population_matrix(r, mark_significant_pairs=False), tmp_path, "popmat_nosig")
 
 
 def test_ground_truth_recovery(setup, tmp_path):

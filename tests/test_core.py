@@ -330,3 +330,29 @@ def test_metric_result_dataframe_shapes() -> None:
     assert rs.get("pop").values.shape == (3, 3)
     with pytest.raises(KeyError):
         rs.get("nope")
+
+
+def test_register_redefinition_replaces_but_name_clash_raises(monkeypatch) -> None:
+    from typing import ClassVar
+
+    from cabana._registry import _REGISTRY, Metric, register
+
+    monkeypatch.setitem(_REGISTRY, "metric", dict(_REGISTRY["metric"]))
+
+    def define():  # same module and qualname each time, like re-running a notebook cell
+        class Redefined(Metric):
+            name: ClassVar[str] = "redefined_metric"
+
+            def compute(self, activity, states, mask, fs):
+                return np.zeros(activity.shape[0])
+
+        return register("metric")(Redefined)
+
+    first, second = define(), define()
+    assert first is not second and _REGISTRY["metric"]["redefined_metric"] is second
+
+    class Other(Metric):
+        name: ClassVar[str] = "redefined_metric"
+
+    with pytest.raises(ValueError, match="already registered by .*Redefined"):
+        register("metric")(Other)
