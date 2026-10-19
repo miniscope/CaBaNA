@@ -266,13 +266,13 @@ class MetricResult(BaseModel):
         -------
         matplotlib.figure.Figure
         """
-        from ._plot_registry import plot
+        from ._plots._registry import plot
 
         return plot(self, session, kind, **kw)
 
     def plots(self, session: Any = None) -> list[str]:
         """Registry names of the plots that apply to this result (``cabana.plots.plots_for``)."""
-        from ._plot_registry import plots_for
+        from ._plots._registry import plots_for
 
         return plots_for(self, session)
 
@@ -661,7 +661,7 @@ class ResultSet(BaseModel):
         ``out_dir=`` saves them (``<analysis>__<plot>.png``) and returns paths;
         otherwise returns open figures keyed ``"<analysis>/<plot>"``.
         """
-        from ._plot_registry import plot_all
+        from ._plots._registry import plot_all
 
         return plot_all(self, session, **kw)
 

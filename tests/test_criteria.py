@@ -14,7 +14,7 @@ from cabana._criteria import (
     place_cell_criteria,
     responsive_cell_criteria,
 )
-from cabana._plots_posthoc import plot_classification
+from cabana._plots._posthoc import plot_classification
 from cabana._posthoc import overlap_matrix, overlap_vs_chance
 
 

@@ -17,7 +17,7 @@ from cabana._statesums import (
     state_labels,
     state_sums,
 )
-from test_information import make_states
+from helpers import make_states
 
 
 def _random_states(rng, n_time, n_states, p_none=0.15, exclusive=True):

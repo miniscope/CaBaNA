@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from . import loaders, plots
 from ._analyze import analyze, recipe, recipe_pipeline, recipes
-from ._cohort import (
+from ._cohort._stats import (
     BootstrapResult,
     cohort_table,
     compare_states_across_animals,
@@ -16,7 +16,7 @@ from ._cohort import (
     hierarchical_bootstrap,
     per_animal_summary,
 )
-from ._cohort_models import CellMatch, SessionSet
+from ._cohort._models import CellMatch, SessionSet
 from ._criteria import (
     ClassificationResult,
     Clause,
@@ -28,7 +28,7 @@ from ._criteria import (
     responsive_cell_criteria,
 )
 from ._design import DesignMatrix, design_columns, raised_cosine_basis
-from ._cross_session import (
+from ._cohort._cross_session import (
     CrossSessionResult,
     cross_session_map_correlation,
     cross_session_pv_correlation,
@@ -83,7 +83,7 @@ from ._selection import Selection
 from ._summary import format_summary, summarize
 from ._validate import Issue, ValidationReport, validate_pipeline
 from ._study import StudySpec, run_study
-from ._preprocess_cells import SelectCells, cell_qc_table
+from ._preprocess._cells import SelectCells, cell_qc_table
 from ._selectors import grid_bin_size, heldout_smoothing_scores
 from ._sweep import StabilityReport, SweepResult, sweep
 from ._tuning import TuningExport, apply_tuning, tune
@@ -96,7 +96,7 @@ from ._posthoc import (
     response_features,
     significant_cells,
 )
-from ._preprocess import (
+from ._preprocess._core import (
     BinarizeActivity,
     RebinTime,
     SmoothActivity,
@@ -127,8 +127,8 @@ from ._logging import log_context, logger, merge_context, print_context, tqdm_co
 from ._results import MetricResult, ResultSet, RunError, RunWarning, ShuffleResult
 from ._shuffle import RunCancelled, ShuffleConfig, adjust_p_values, shifted_sums, shuffle_test
 from ._simulate import SimulationConfig, simulate_session
-from ._transform import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
-from ._transform_behavior import states_to_bouts
+from ._transform._core import BinGrid, BoutsToStates, LabelsToStates, ResampleSignal, Speed
+from ._transform._behavior import states_to_bouts
 
 try:
     from importlib.metadata import PackageNotFoundError, version as _version

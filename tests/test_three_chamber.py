@@ -199,7 +199,7 @@ def derived(three_chamber_dir):
 
 
 def _agreement(s, tol=0.5):
-    from cabana._transform_behavior import states_to_bouts
+    from cabana._transform._behavior import states_to_bouts
 
     geo, ann = s.states["investigation_geo"], s.states["investigation"]
     gb = states_to_bouts(geo, s.fs, t0=s.t[0])

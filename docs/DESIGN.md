@@ -71,11 +71,11 @@ plugin points. The middle is shared.
    matplotlib), *renderers* (`plot_<x>(...) -> Figure`, drawn from that dict
    alone, looking at `StateSpace.kind` and `topology` to decide how), and a
    *registry* (`Metric.default_plots`, `cabana.plots.plot`, `result.plot`,
-   `ResultSet.plot_all`). Modules: `_plot_style.py`, `_plot_data.py`,
-   `_plot_registry.py`, and the renderers in `_plots.py`, `_plots_events.py`,
-   `_plots_information.py`, `_plots_posthoc.py`, `_plots_cohort.py`,
-   `_plots_sweep.py`, `_plots_views.py`, `_plots_card.py` and
-   `_plots_metrics.py`, all behind the
+   `ResultSet.plot_all`). Modules: `_plots/_style.py`, `_plots/_data.py`,
+   `_plots/_registry.py`, and the renderers in `_plots/_core.py`, `_plots/_events.py`,
+   `_plots/_information.py`, `_plots/_posthoc.py`, `_plots/_cohort.py`,
+   `_plots/_sweep.py`, `_plots/_views.py`, `_plots/_card.py` and
+   `_plots/_metrics.py`, all behind the
    `cabana.plots` facade (`len(cabana.plots.__all__)` is 92 names: the renderers
    and their `_data` companions plus the registry and style helpers).
 
@@ -240,7 +240,7 @@ Defaults: `fs=20`, `duration_s=1200`, `n_cells=200`, `seed=0`.
   `{"cell", "behavior", "sign"}`), `syllable_cells`, `speed_gate_mm_s`.
   `session.meta["simulation"] = config.model_dump()`.
 
-### `_transform.py` — behavior → state spaces
+### `_transform/_core.py` — behavior → state spaces
 
 Registered `Transform`s (each has an `output: str` naming what it writes):
 
@@ -252,7 +252,7 @@ Registered `Transform`s (each has an `output: str` naming what it writes):
 | `bouts_to_states` | `source`, `behaviors: list[str] \| None`, `exclusive=False`, `add_rest=False`, `rest_name="rest"`, `output="social"` | `StateSpace(kind="bouts")`; frame active when `start_s <= t < stop_s`; if `exclusive`, overlaps resolve by order in `behaviors`; `rest` = scored & no behavior; `support` = the scored span, also written as `masks[f"{output}_scored"]` |
 | `labels_to_states` | `source`, `output="syllables"` | step (previous-sample) resample of `LabelSeries` onto `session.t`; `StateSpace(kind="categorical", exclusive=True)`; `-1` → no state; `support` = the covered span, also `masks[f"{output}_covered"]` |
 
-### `_preprocess.py` — masks and signal conditioning
+### `_preprocess/_core.py` — masks and signal conditioning
 
 | name | params | effect |
 | --- | --- | --- |
@@ -315,7 +315,7 @@ Skaggs convention), then divided. Smoothing with no topology raises.
 
 Three layers; the user-facing guide is [`PLOTS.md`](PLOTS.md).
 
-**Plot-data layer (`_plot_data.py`).** Every renderer `plot_<x>` has a companion
+**Plot-data layer (`_plots/_data.py`).** Every renderer `plot_<x>` has a companion
 `plot_<x>_data(...) -> dict` holding everything the figure shows (arrays, labels,
 units, colours, significance flags, titles). The renderer draws from the dict and
 never goes back to the `MetricResult` or `Session`. Contract: `"kind"` (the plot
@@ -327,25 +327,25 @@ unvisited, never zero. `to_json` writes strict JSON (NaN and inf become the same
 and `check_plot_data` asserts the contract and is applied to every `_data`
 function in the tests. This is what lets CaLab draw the same figure.
 
-**Renderers.** `_plots.py` (maps, tuning, strips, null histograms, ground truth,
-behaviour overview), `_plots_events.py` (PETH, event raster),
-`_plots_information.py` (joint histogram, decoded trajectory, information
-comparison, level sweep), `_plots_posthoc.py` (overlap, clusters,
-classification), `_plots_cohort.py`, `_plots_sweep.py` (sweep gallery, stability
-and facet plots), `_plots_views.py` (`plot_activity_raster`,
+**Renderers.** `_plots/_core.py` (maps, tuning, strips, null histograms, ground truth,
+behaviour overview), `_plots/_events.py` (PETH, event raster),
+`_plots/_information.py` (joint histogram, decoded trajectory, information
+comparison, level sweep), `_plots/_posthoc.py` (overlap, clusters,
+classification), `_plots/_cohort.py`, `_plots/_sweep.py` (sweep gallery, stability
+and facet plots), `_plots/_views.py` (`plot_activity_raster`,
 `plot_population_tuning`, `plot_session_qa`, `plot_analysis_agreement`) and
-`_plots_card.py` (`plot_cell_card`, `plot_cell_cards`: one page per cell,
+`_plots/_card.py` (`plot_cell_card`, `plot_cell_cards`: one page per cell,
 assembled from the same `_data` functions and the registry's panel renderers).
 All return a `Figure`, never call `plt.show`.
 
-**Style (`_plot_style.py`).** `use_style()` (an rc context), `state_colors`
+**Style (`_plots/_style.py`).** `use_style()` (an rc context), `state_colors`
 (Okabe-Ito up to 8 states, `tab20` to 20, warning beyond, memoised on the names),
 one significance marker (`mark_significant`), `axis_label` / `metric_label` with
 units, `fmt_p` (`p=0.023`, `p<0.001`, `(floor)` at the shuffle resolution), and
 the unvisited-bin grey. Adjusted p-values are used for every significance mark
 whenever a correction was applied.
 
-**Registry (`_plot_registry.py`).** `@register_plot(name, data=, needs_session=,
+**Registry (`_plots/_registry.py`).** `@register_plot(name, data=, needs_session=,
 level=, requires=, defaults=)` stores a `PlotSpec`. `requires` is a tuple from
 `"shuffle"`, `"null"`, `"extras:<key>"`, `"values:1d"`, `"values:2d"`,
 `"topology"`, `"ground_truth"`; `plots_for(result, session)` returns the
@@ -459,7 +459,7 @@ Values `(n_cells, n_groups)`: unique contribution of each regressor group
 deviance explained when the group is removed. Extras: `weights`,
 `deviance_explained` (full model), `kernels` when a basis is used.
 
-### Across sessions and animals (`_cross_session.py`, `_cohort.py`)
+### Across sessions and animals (`_cohort/_cross_session.py`, `_cohort/_stats.py`)
 
 `CellMatch(session_a, session_b, pairs (n_pairs, 2), confidence)` records a
 registration (CellReg-style). `SessionSet(sessions: dict[str, Session],
@@ -779,7 +779,7 @@ one and pickling drops it (so `run_set` workers do not receive it).  `cabana._me
 
 `AutoSmoothSigma` (`auto_smooth_sigma`) is the first built-in `Selector`. It is built only from kernels (`contiguous_folds`, `shifted_label_sums`, `masked_counts`, `rate_map`): per-state sums are computed once, each fold's training sums are total minus held-out sums, and the held-out Poisson (or Gaussian) score is evaluated per state from held-out sums and counts, so scoring a candidate never loops over frames. It returns one `Selection` per matching analysis; the pipeline applies them to a per-run copy, so the written spec is unchanged and `provenance["selections"]` records the curve. The module does not import `_shuffle`, which a test enforces. `heldout_smoothing_scores` is the plain function behind it for sweeps and plots. `pool="per_cell"` is not implemented because the metrics take one `smooth_sigma_bins` per analysis.
 
-## Sweeps (`src/cabana/_sweep.py`, `src/cabana/_plots_sweep.py`)
+## Sweeps (`src/cabana/_sweep.py`, `src/cabana/_plots/_sweep.py`)
 
 `cabana.sweep` sits above `Pipeline`: it needs only `set_param`, `iter_run`/`run` and `RunContext`. When no swept path touches `transforms.` or `preprocess.`, it consumes `iter_run`'s `("session", ...)` and `("pipeline", effective)` events once (transforms, preprocess and selectors run; the generator is closed before any analysis), then runs an analyses-only copy of the effective pipeline per grid point on that prepared session, so a sigma sweep never repeats the transforms. A swept path overrides whatever a selector chose for it; the selector's `Selection` stays in provenance. A transform sweep reruns the full pipeline per point and records each point's state-space layout (`SweepResult.layouts`) so plots can lay out rate maps whose grid changes. `SweepResult` is a plain dataclass (picklable); `save` writes `index.json` plus one `ResultSet` zip per point. `pick` is the only place a sweep becomes a `Selection`, and it refuses significance-based criteria unless told otherwise (STATISTICS.md, "Sweeps").
 
@@ -789,11 +789,11 @@ The sweep plots follow a plot-data pattern: `plot_sweep_gallery_data`, `plot_swe
 
 `_tuning.py` holds `TuningExport` (pydantic, `extra="forbid"`, `schema_version` "1.0.0", `kind` "cabana.TuningExport"), `apply_tuning` and `tune`. The layout mirrors CaLab's CaTune export (`schema_version`, tool version, `export_date`, parameters, `metadata`) so a future CaLab slider app can post the same document back; `calab.tune()` is the model for `cabana.tune()`, which today is headless (sweep, then `pick`) and raises `NotImplementedError` for `open_browser=True` or `app_url`. `chosen` is keyed by `Pipeline.set_param` paths, so applying it needs no new vocabulary. `SweepResult` gained `pipeline_sha256`, `session_hash` and `session_meta` (set in `sweep()`, stored in `index.json`; an older index loads them as empty, and `to_tuning_export` then asks for a rerun). `to_json` encodes non-finite floats with `_encode_floats`, so the file is strict JSON.
 
-## Behaviour signal transforms (`src/cabana/_transform_behavior.py`)
+## Behaviour signal transforms (`src/cabana/_transform/_behavior.py`)
 
 Pure transforms on per-frame `Session.signals` (neural clock): `interpolate_gaps`, `smooth_signal` (NaN-aware median, Gaussian, Savitzky-Golay), `head_direction` (two points or a BNO quaternion), `distance`, `arena_transform` (similarity or numpy-only DLT homography), `zone_occupancy` (a `StateSpace` from polygons or rectangles, optionally from `meta["arena"]["zones"]`). A position is a prefix naming `{prefix}_x`/`{prefix}_y` signals (`""` = `x`, `y`). Signals carry no units field, so units live in `meta["signal_units"]`. `BoutsToStates` cleans in a fixed order (point windows, `merge_gap_s`, `min_gap_s`, `min_duration_s`); `LabelsToStates` mode-filters then removes short runs; `states_to_bouts` is the inverse of `bouts_to_states`. `load_dlc` keeps per-bodypart likelihood channels and reads multi-animal files. Adding fields to transforms changes the serialised `provenance["transforms"]`, so the golden fixtures were regenerated.
 
-## Cell QC (`src/cabana/_preprocess_cells.py`, `_loaders/_calab.py`)
+## Cell QC (`src/cabana/_preprocess/_cells.py`, `_loaders/_calab.py`)
 
 Loaders populate `Session.cell_meta` (CaImAn `snr` / `r_values` / `cnn_preds` / `accepted`, Minian centroids, CaLab `alpha` / `pve` / kernel taus) and no longer filter at load: `load_caiman(accepted_only=True)` builds the full session and reduces it with `Session.select_cells`, so the selection is logged in `meta["cell_selection"]`. `SelectCells` (`select_cells`) is the QC step: threshold criteria on `cell_meta` columns, with `n_events` / `mean_rate_hz` / `fraction_finite` computed on demand (`cell_qc_table`) from the activity over `valid_mask()`; a criterion with no column warns and is skipped. `load_calab` duck-types `CaDeconResult` so CaBaNA never imports `calab`; `DetectEvents` writes `noise_sd`, `event_threshold` and `n_events` to `cell_meta`.
 
@@ -801,7 +801,7 @@ Loaders populate `Session.cell_meta` (CaImAn `snr` / `r_values` / `cnn_preds` / 
 
 Alignment happens before resampling, on the raw behavior times: `fit_clock` (least squares `t_b = scale * (t_a - offset_s)` from paired sync events) and `apply_clock` are plain functions, not steps, because they act on times that are not yet frames of a session. The registered preprocess steps work on a session already on the neural clock: `timing_check` (pure; `timing_report` into `meta["timing"]`, warns on dropped frames or jitter), `trim_to_overlap` (longest contiguous run where every `*_covered` mask or state support is True, via `select_frames`) and `resample` (non-integer `fs_target`: linear for continuous kinds, summed bins for event kinds, nearest for states, all-true for masks; delegates to `rebin` for an integer ratio and warns that integer re-binning is preferred). `ResampleSignal` gained `method` and `max_gap_s`, and omits both from `to_dict()` while at their defaults so recorded provenance, and the golden fixtures, do not change. `timing_report`, `load_miniscope_timestamps`, `load_head_orientation`, `load_position_csv` and `load_epochs_csv` live in `cabana.loaders`; the lab's three-chamber dataset (75 s slice, `scripts/slim_three_chamber.py`) is the end-to-end fixture.
 
-## Session folders and geometry-derived investigation (`_loaders/_session_dir.py`, `_transform_behavior.py`)
+## Session folders and geometry-derived investigation (`_loaders/_session_dir.py`, `_transform/_behavior.py`)
 
 `load_session_dir` replaces the hand assembly in `tests/test_three_chamber.py`: a typed pydantic config (`SessionDirConfig`, unknown keys rejected) names the activity file and its orientation, the two timestamps files, the position / head-orientation / epoch tables and the arena, and the loader composes the existing pieces (`load_miniscope_timestamps`, `timing_report`, `load_position_csv`, `load_head_orientation`, `load_epochs_csv`, `apply_clock`, and the registered `resample_signal`, `head_direction`, `bouts_to_states` transforms) rather than adding new readers. Validation is the lab's own spec (position frames a subset of the stamps, one head row per neural frame, strictly increasing time, stop at or after start, frame counts matching) with errors that name the field and file. The arena is stored in the layout `zone_occupancy` already reads, plus `meta["enclosures"]`, `meta["subjects"]` and per-clock `meta["timing"]`. `investigation_from_geometry` derives investigation states from position, heading and enclosure geometry (edge distance and bearing, then the `bouts_to_states` cleanup); on the three-chamber fixture it reproduces the annotations (about 99.9 % frame agreement, all bouts within 0.5 s), so the lab's scoring rule is testable rather than assumed.
 

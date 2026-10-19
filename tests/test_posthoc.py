@@ -7,8 +7,8 @@ import pytest
 from scipy.stats import hypergeom
 from sklearn.metrics import adjusted_rand_score
 
-from cabana._plot_data import check_plot_data
-from cabana._plots_posthoc import (
+from cabana._plots._data import check_plot_data
+from cabana._plots._posthoc import (
     plot_classification,
     plot_classification_data,
     plot_clusters,

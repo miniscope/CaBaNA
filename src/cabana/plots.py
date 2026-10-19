@@ -13,8 +13,8 @@ writes every default figure of every result.  ``use_style()`` is the shared look
 
 from __future__ import annotations
 
-from ._plot_data import PLOT_DATA_VERSION, check_plot_data, from_json, to_json
-from ._plot_registry import (
+from ._plots._data import PLOT_DATA_VERSION, check_plot_data, from_json, to_json
+from ._plots._registry import (
     PlotSpec,
     available_plots,
     plot,
@@ -24,7 +24,7 @@ from ._plot_registry import (
     register_plot,
     save_figures,
 )
-from ._plot_style import (
+from ._plots._style import (
     METRIC_LABELS,
     OKABE_ITO,
     SIGNIFICANCE_MARKER,
@@ -36,7 +36,7 @@ from ._plot_style import (
     use_style,
 )
 
-from ._plots import (
+from ._plots._core import (
     plot_behavior_overview,
     plot_behavior_overview_data,
     plot_ground_truth_recovery,
@@ -56,8 +56,8 @@ from ._plots import (
     plot_tuning_heatmap,
     plot_tuning_heatmap_data,
 )
-from ._plots_card import plot_cell_card, plot_cell_card_data, plot_cell_cards
-from ._plots_cohort import (
+from ._plots._card import plot_cell_card, plot_cell_card_data, plot_cell_cards
+from ._plots._cohort import (
     plot_cohort_fractions,
     plot_cohort_fractions_data,
     plot_cross_session,
@@ -65,8 +65,8 @@ from ._plots_cohort import (
     plot_hierarchical_bootstrap,
     plot_hierarchical_bootstrap_data,
 )
-from ._plots_events import plot_event_raster, plot_event_raster_data, plot_peth, plot_peth_data
-from ._plots_information import (
+from ._plots._events import plot_event_raster, plot_event_raster_data, plot_peth, plot_peth_data
+from ._plots._information import (
     plot_decoded_trajectory,
     plot_decoded_trajectory_data,
     plot_information_comparison,
@@ -76,7 +76,7 @@ from ._plots_information import (
     plot_level_sweep,
     plot_level_sweep_data,
 )
-from ._plots_metrics import (
+from ._plots._metrics import (
     plot_circular_tuning,
     plot_circular_tuning_data,
     plot_decode_signal,
@@ -88,7 +88,7 @@ from ._plots_metrics import (
     plot_place_fields,
     plot_place_fields_data,
 )
-from ._plots_posthoc import (
+from ._plots._posthoc import (
     plot_classification,
     plot_classification_data,
     plot_clusters,
@@ -98,7 +98,7 @@ from ._plots_posthoc import (
     plot_overlap_matrix,
     plot_overlap_matrix_data,
 )
-from ._plots_sweep import (
+from ._plots._sweep import (
     plot_sweep,
     plot_sweep_data,
     plot_sweep_gallery,
@@ -106,7 +106,7 @@ from ._plots_sweep import (
     plot_sweep_stability,
     plot_sweep_stability_data,
 )
-from ._plots_views import (
+from ._plots._views import (
     plot_activity_raster,
     plot_activity_raster_data,
     plot_analysis_agreement,

@@ -401,7 +401,7 @@ def run_study(
         ``study.json`` with ``classification_errors`` are written first).
     """
     from . import __version__
-    from ._cohort_models import SessionSet
+    from ._cohort._models import SessionSet
 
     pipeline = spec.resolved_pipeline(base_dir)
     criteria = spec.resolved_criteria(base_dir)

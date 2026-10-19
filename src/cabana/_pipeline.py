@@ -23,14 +23,14 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from . import _alignment as _alignment  # noqa: F401  (registers plugins)
-from . import _preprocess as _preprocess  # noqa: F401  (registers plugins)
-from . import _preprocess_activity as _preprocess_activity  # noqa: F401  (registers plugins)
-from . import _preprocess_cells as _preprocess_cells  # noqa: F401  (registers plugins)
-from . import _preprocess_masks as _preprocess_masks  # noqa: F401  (registers plugins)
+from ._preprocess import _core as _preprocess  # noqa: F401  (registers plugins)
+from ._preprocess import _activity as _preprocess_activity  # noqa: F401  (registers plugins)
+from ._preprocess import _cells as _preprocess_cells  # noqa: F401  (registers plugins)
+from ._preprocess import _masks as _preprocess_masks  # noqa: F401  (registers plugins)
 from . import _selectors as _selectors  # noqa: F401  (registers plugins)
 from . import _selectors_null as _selectors_null  # noqa: F401  (registers plugins)
-from . import _transform as _transform  # noqa: F401  (registers plugins)
-from . import _transform_behavior as _transform_behavior  # noqa: F401  (registers plugins)
+from ._transform import _core as _transform  # noqa: F401  (registers plugins)
+from ._transform import _behavior as _transform_behavior  # noqa: F401  (registers plugins)
 from ._models import Session
 from ._registry import Metric, PreprocessStep, Selector, Transform, build
 from ._results import MetricResult, ResultSet, RunError, RunWarning
@@ -1155,7 +1155,7 @@ class RunSetResult:
 
     def table(self) -> Any:
         """Long cohort table (``cohort_table(results, animal)``)."""
-        from ._cohort import cohort_table
+        from ._cohort._stats import cohort_table
 
         return cohort_table(self.results, self.animal)
 
@@ -1284,7 +1284,7 @@ def run_set(
     remaining sessions still run, unless the cancel came from the shared
     ``context.should_cancel``; then the rest are ``"not_run"``.
     """
-    from ._cohort_models import SessionSet
+    from ._cohort._models import SessionSet
 
     if isinstance(sessions, SessionSet):
         sess = dict(sessions.sessions)

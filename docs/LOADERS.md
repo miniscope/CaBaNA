@@ -368,7 +368,7 @@ session, results = pipe.run(session)
 Each loader's file name above is a placeholder; the example assumes a CaImAn
 file with `estimates/S`, a DeepLabCut CSV with `nose` and
 `tail`, a BORIS aggregated export and a MoSeq CSV. The snippet was run on small
-synthetic versions of all four (the test file `tests/test_loaders.py` shows how
+synthetic versions of all four (the test file `tests/loaders/test_loaders.py` shows how
 to build such files).
 
 `session.behavior` holds raw behavior inputs on their own clocks; the pipeline's
