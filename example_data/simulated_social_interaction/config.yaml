@@ -1,0 +1,4 @@
+# arena settings for the simulated social interaction
+arena_cm: [50, 50]
+close_contact_cm: 6  # sniffing
+following: within 12 cm and both faster than 8 cm/s

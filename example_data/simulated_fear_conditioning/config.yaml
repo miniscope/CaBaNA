@@ -1,0 +1,4 @@
+# settings for the simulated fear conditioning session
+chamber_cm: [25, 25]
+tones: 5 x 30 s, starting at 150 s and every 120 s
+shocks: 2 s at the end of tones 3 to 5

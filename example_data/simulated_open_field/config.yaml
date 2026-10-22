@@ -1,0 +1,4 @@
+# arena and zone settings for the simulated open field
+arena_cm: [40, 40]
+zones:  # center is the inner 20 x 20 cm, periphery is the rest
+  center: [[10, 30], [10, 30]]
