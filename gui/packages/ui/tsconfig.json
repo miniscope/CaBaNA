@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../compute" },
+    { "path": "../core" },
+    { "path": "../io" },
+    { "path": "../tutorials" }
+  ]
+}

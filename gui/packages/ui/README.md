@@ -1,0 +1,51 @@
+# @calab/ui
+
+Shared SolidJS layout components, chart primitives, and CSS design tokens for the CaLab monorepo.
+
+Depends on `@calab/tutorials` (for TutorialPanel and TutorialLauncher components), and `@calab/io` for the import flow. External dependencies: `solid-js`, `uplot`.
+
+```
+@calab/tutorials
+  ↑
+@calab/ui
+  ↑
+apps/catune, apps/carank
+```
+
+## Exports
+
+| Export             | Source                 | Description                                                           |
+| ------------------ | ---------------------- | --------------------------------------------------------------------- |
+| `DashboardShell`   | `DashboardShell.tsx`   | 3-section CSS grid layout (header / main / sidebar)                   |
+| `DashboardPanel`   | `DashboardPanel.tsx`   | Variant-based panel wrapper with `data-panel-id` for layout targeting |
+| `VizLayout`        | `VizLayout.tsx`        | Scroll/dashboard mode switcher for visualization content              |
+| `CompactHeader`    | `CompactHeader.tsx`    | Shared header component with app title, version, and action buttons   |
+| `CardGrid`         | `CardGrid.tsx`         | Responsive grid for multi-cell trace cards                            |
+| `TutorialPanel`    | `TutorialPanel.tsx`    | Tutorial selection and progress panel                                 |
+| `TutorialLauncher` | `TutorialLauncher.tsx` | Tutorial launch button component                                      |
+| `Card`             | `Card.tsx`             | Generic card wrapper component                                        |
+
+The table above covers the layout components; the barrel (`src/index.ts`) also re-exports the chart utilities below. Community and auth widgets live in `@calab/community-ui`, so `@calab/ui` never loads Supabase or auth code. Consult `src/index.ts` for the authoritative export list.
+
+## Import flow (`@calab/ui/import`)
+
+The data-import screen shared by the apps. Every component takes the app's `ImportStore` (`createImportStore` in `@calab/io`) as `store`: `ImportOverlay` (the whole flow, `layout: 'stacked' | 'split'`), `FileDropZone`, `NpzArraySelector`, `DimensionConfirmation`, `SamplingRateInput`, `DataValidationReport`, `TracePreview`. A separate entry so apps without an import flow never load `@calab/io`.
+
+## Shared app stylesheets (`@calab/ui/styles/*`)
+
+`base.css` and `tutorial.css` are the design-system base. `app-global.css` (import screen, cards, buttons) and `app-controls.css` (control panels) hold the rules CaTune and CaDecon share; each app imports them just before its own `styles/global.css` / `styles/controls.css`, which keep only app-specific rules.
+
+## Chart utilities (`@calab/ui/chart`)
+
+Shared uPlot primitives so every app charts consistently (also re-exported from the top-level barrel):
+
+| Export                                                                                                                                                                      | Source            | Description                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------- |
+| `OKABE_ITO`, `OKABE_ITO_CYCLE`, `NEUTRAL`, `TRACE_COLORS`, `GROUND_TRUTH_COLORS`, `KERNEL_FIT_COLORS`, `METRIC_COLORS`, `DISTRIBUTION_COLORS`, `subsetColor`, `withOpacity` | `series-utils.ts` | Colorblind-safe Okabe-Ito palette and semantic color roles for series |
+| `VIRIDIS_LUT`, `viridisRGB`, `viridisCss`                                                                                                                                   | `colormap.ts`     | 256-entry viridis lookup table + RGB/CSS accessors (raster heatmaps)  |
+| `niceTicks`                                                                                                                                                                 | `chart-math.ts`   | Human-friendly axis tick values (1/2/5×10ⁿ)                           |
+| `chartAxis`, `labeledAxis`, `syncCursor`, `staticCursor`, `safeRange`, `integerTickValues`, `hiddenTickValues`                                                              | `axis-helpers.ts` | uPlot axis/cursor/range builders with shared theming                  |
+
+## CSS
+
+Layout styles are in `styles/layout.css`. Apps define their own design tokens (colors, spacing, shadows) in their `global.css` files, following the dark-theme scientific instrument aesthetic.
