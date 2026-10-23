@@ -30,7 +30,11 @@ export function AurocScale(): JSX.Element {
   const stops = Array.from({ length: 11 }, (_, i) => i / 10);
   return (
     <div class="cb-auroc-scale">
-      <div class="cb-auroc-scale__bar" role="img" aria-label="auROC scale from 0 (lower activity during the behavior) to 1 (higher)">
+      <div
+        class="cb-auroc-scale__bar"
+        role="img"
+        aria-label="auROC scale from 0 (lower activity during the behavior) to 1 (higher)"
+      >
         <For each={stops}>{(v) => <span style={{ background: aurocColor(v) }} />}</For>
       </div>
       <div class="cb-auroc-scale__ends">
@@ -67,7 +71,7 @@ function Timeline(props: { data: AurocData }): JSX.Element {
   const gaps = createMemo(() => {
     const out: [number, number][] = [];
     const m = d().mask;
-    for (let i = 0; i < m.length; ) {
+    for (let i = 0; i < m.length;) {
       if (m[i]) {
         i++;
         continue;
@@ -84,18 +88,36 @@ function Timeline(props: { data: AurocData }): JSX.Element {
     return Array.from({ length: Math.floor(dur() / step) + 1 }, (_, i) => i * step);
   };
   return (
-    <svg class="cb-auroc-timeline" viewBox={`0 0 ${W} ${H()}`} role="img" aria-label="Behavior bouts over time; hatched bands are excluded frames">
+    <svg
+      class="cb-auroc-timeline"
+      viewBox={`0 0 ${W} ${H()}`}
+      role="img"
+      aria-label="Behavior bouts over time; hatched bands are excluded frames"
+    >
       <defs>
-        <pattern id="cb-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <pattern
+          id="cb-hatch"
+          width="5"
+          height="5"
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
           <line x1="0" y1="0" x2="0" y2="5" stroke="#999" stroke-width="1.5" />
         </pattern>
       </defs>
       <For each={d().labels}>
         {(label, i) => {
-          const tooFew = () => d().info[i()].during < MIN_FRAMES || d().info[i()].outside < MIN_FRAMES;
+          const tooFew = () =>
+            d().info[i()].during < MIN_FRAMES || d().info[i()].outside < MIN_FRAMES;
           return (
             <g opacity={tooFew() ? 0.55 : 1}>
-              <text x={L - 8} y={T + i() * ROW + 14} text-anchor="end" font-size="12" fill="currentColor">
+              <text
+                x={L - 8}
+                y={T + i() * ROW + 14}
+                text-anchor="end"
+                font-size="12"
+                fill="currentColor"
+              >
                 {label}
               </text>
               <For each={bouts(label)}>
@@ -115,18 +137,43 @@ function Timeline(props: { data: AurocData }): JSX.Element {
       </For>
       <For each={gaps()}>
         {([a, b]) => (
-          <rect x={x(a)} y={T} width={Math.max(2, x(b) - x(a))} height={d().labels.length * ROW} fill="url(#cb-hatch)" opacity="0.6" />
+          <rect
+            x={x(a)}
+            y={T}
+            width={Math.max(2, x(b) - x(a))}
+            height={d().labels.length * ROW}
+            fill="url(#cb-hatch)"
+            opacity="0.6"
+          />
         )}
       </For>
-      <line x1={L} x2={W - R} y1={T + d().labels.length * ROW} y2={T + d().labels.length * ROW} stroke="#999" />
+      <line
+        x1={L}
+        x2={W - R}
+        y1={T + d().labels.length * ROW}
+        y2={T + d().labels.length * ROW}
+        stroke="#999"
+      />
       <For each={ticks()}>
         {(s) => (
-          <text x={x(s)} y={T + d().labels.length * ROW + 15} text-anchor="middle" font-size="11" fill="currentColor">
+          <text
+            x={x(s)}
+            y={T + d().labels.length * ROW + 15}
+            text-anchor="middle"
+            font-size="11"
+            fill="currentColor"
+          >
             {s}
           </text>
         )}
       </For>
-      <text x={W - R} y={T + d().labels.length * ROW + 15} text-anchor="end" font-size="11" fill="currentColor">
+      <text
+        x={W - R}
+        y={T + d().labels.length * ROW + 15}
+        text-anchor="end"
+        font-size="11"
+        fill="currentColor"
+      >
         s
       </text>
     </svg>
@@ -137,7 +184,14 @@ function Timeline(props: { data: AurocData }): JSX.Element {
 const changed = (k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS') =>
   aurocSettings[k] !== DEFAULT_AUROC_SETTINGS[k];
 
-function NumberBox(props: { k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS'; step: number; min?: number; max?: number; label: string; unit?: string }): JSX.Element {
+function NumberBox(props: {
+  k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS';
+  step: number;
+  min?: number;
+  max?: number;
+  label: string;
+  unit?: string;
+}): JSX.Element {
   return (
     <div class="cb-setting">
       <div class="cb-setting__title">{props.label}</div>
@@ -175,8 +229,10 @@ function AurocSetup(): JSX.Element {
     const x = data();
     return 'error' in x ? undefined : undefined;
   };
-  const selected = () => (ok() ? ok()!.labels.filter((l) => !aurocSettings.unselected.includes(l)) : []);
-  const tooFew = (i: number) => ok()!.info[i].during < MIN_FRAMES || ok()!.info[i].outside < MIN_FRAMES;
+  const selected = () =>
+    ok() ? ok()!.labels.filter((l) => !aurocSettings.unselected.includes(l)) : [];
+  const tooFew = (i: number) =>
+    ok()!.info[i].during < MIN_FRAMES || ok()!.info[i].outside < MIN_FRAMES;
 
   // Behaviors with too few frames start out unselected, once, when the data first appear.
   let seeded = false;
@@ -200,7 +256,8 @@ function AurocSetup(): JSX.Element {
   // The automatic minimum shift, worked out ahead of the run so it can be shown here.
   createEffect(() => {
     const d = ok();
-    if (d && aurocSettings.shiftAuto && selected().length) estimateMinShift(aurocInput(d, [...aurocSettings.unselected]));
+    if (d && aurocSettings.shiftAuto && selected().length)
+      estimateMinShift(aurocInput(d, [...aurocSettings.unselected]));
   });
 
   const eligible = createMemo(() => {
@@ -220,7 +277,11 @@ function AurocSetup(): JSX.Element {
         </button>
       }
     >
-      <button class="btn-primary" disabled={!ok() || !selected().length} onClick={() => void runAuroc()}>
+      <button
+        class="btn-primary"
+        disabled={!ok() || !selected().length}
+        onClick={() => void runAuroc()}
+      >
         {aurocOutcome() ? 'Run again' : 'Run analysis'}
       </button>
     </Show>
@@ -234,14 +295,16 @@ function AurocSetup(): JSX.Element {
         <div>
           <h2>auROC analysis</h2>
           <p>
-            Identify cells with higher or lower activity during each behavior. auROC measures how consistently activity is
-            higher during the behavior than outside it; time-shifted data are used to test significance.
+            Identify cells with higher or lower activity during each behavior. auROC measures how
+            consistently activity is higher during the behavior than outside it; time-shifted data
+            are used to test significance.
           </p>
           <Show when={ok()}>
             <p class="cb-muted">
               {ok()!.cells} cells selected · Deconvolved events
               <Show when={ok()!.cellsMissing.length}>
-                {' '}· {ok()!.cellsMissing.length} with missing neural values (not evaluated)
+                {' '}
+                · {ok()!.cellsMissing.length} with missing neural values (not evaluated)
               </Show>
             </p>
           </Show>
@@ -264,7 +327,8 @@ function AurocSetup(): JSX.Element {
       </Show>
       <Show when={!ok()}>
         <div class="cb-empty">
-          {(data() as { error: string }).error} auROC needs deconvolved neural data, neural timestamps and behavior annotations.
+          {(data() as { error: string }).error} auROC needs deconvolved neural data, neural
+          timestamps and behavior annotations.
         </div>
       </Show>
 
@@ -273,20 +337,24 @@ function AurocSetup(): JSX.Element {
           <summary>How the analysis works</summary>
           <div class="cb-muted">
             <p>
-              <strong>Compare activity:</strong> For each cell and behavior, auROC is the probability that a randomly chosen
-              frame during the behavior has higher neural activity than a randomly chosen frame outside it. Frames outside
-              the behavior include unlabeled frames. Excluded frames are left out of both groups.
+              <strong>Compare activity:</strong> For each cell and behavior, auROC is the
+              probability that a randomly chosen frame during the behavior has higher neural
+              activity than a randomly chosen frame outside it. Frames outside the behavior include
+              unlabeled frames. Excluded frames are left out of both groups.
             </p>
             <AurocScale />
             <p>
-              <strong>Test significance:</strong> The cell’s neural data are shifted in time relative to behavior (wrapping
-              around the end of the recording) and auROC is recalculated. This gives the values expected without the original
-              alignment. The two-sided p-value compares the observed auROC with these values, then is adjusted for the number of behaviors tested per cell.
+              <strong>Test significance:</strong> The cell’s neural data are shifted in time
+              relative to behavior (wrapping around the end of the recording) and auROC is
+              recalculated. This gives the values expected without the original alignment. The
+              two-sided p-value compares the observed auROC with these values, then is adjusted for
+              the number of behaviors tested per cell.
             </p>
             <p>
-              <strong>Not evaluated:</strong> auROC is left undefined when a cell has a missing neural value among the
-              included frames, or when a behavior has fewer than {MIN_FRAMES} included frames during or outside it. These
-              results are not zero and not nonsignificant; they are left out of the counts of evaluated cells.
+              <strong>Not evaluated:</strong> auROC is left undefined when a cell has a missing
+              neural value among the included frames, or when a behavior has fewer than {MIN_FRAMES}{' '}
+              included frames during or outside it. These results are not zero and not
+              nonsignificant; they are left out of the counts of evaluated cells.
             </p>
             <p>
               <strong>Direction alone does not establish significance.</strong>
@@ -312,8 +380,16 @@ function AurocSetup(): JSX.Element {
                   <tr>
                     <td>
                       <label>
-                        <input type="checkbox" checked={!aurocSettings.unselected.includes(b.label)} onChange={() => toggle(b.label)} />
-                        <span class="cb-dot" style={{ background: tooFew(i()) ? '#999' : behaviorColor(i()) }} /> {b.label}
+                        <input
+                          type="checkbox"
+                          checked={!aurocSettings.unselected.includes(b.label)}
+                          onChange={() => toggle(b.label)}
+                        />
+                        <span
+                          class="cb-dot"
+                          style={{ background: tooFew(i()) ? '#999' : behaviorColor(i()) }}
+                        />{' '}
+                        {b.label}
                       </label>
                     </td>
                     <td>{b.duration.toFixed(1)}</td>
@@ -328,7 +404,8 @@ function AurocSetup(): JSX.Element {
           <For each={ok()!.info.filter((_, i) => tooFew(i))}>
             {(b) => (
               <p class="cb-muted">
-                <span class="cb-pill cb-pill--warn">Insufficient data</span> {b.label}: {Math.min(b.during, b.outside)} frames; {MIN_FRAMES} required during and outside.
+                <span class="cb-pill cb-pill--warn">Insufficient data</span> {b.label}:{' '}
+                {Math.min(b.during, b.outside)} frames; {MIN_FRAMES} required during and outside.
               </p>
             )}
           </For>
@@ -337,36 +414,48 @@ function AurocSetup(): JSX.Element {
           <div class="cb-muted">Hatched: excluded frames · Gray: not tested</div>
           <HowToRead>
             <p>
-              Each row represents a behavior; colored bars mark its bouts. Hatched bands show excluded frames. Check whether
-              enough included data remain during and outside each behavior.
+              Each row represents a behavior; colored bars mark its bouts. Hatched bands show
+              excluded frames. Check whether enough included data remain during and outside each
+              behavior.
             </p>
           </HowToRead>
-          <p class="cb-muted">Frame counts include only frames retained for analysis. Each behavior is compared with all other included frames, including unlabeled frames.</p>
+          <p class="cb-muted">
+            Frame counts include only frames retained for analysis. Each behavior is compared with
+            all other included frames, including unlabeled frames.
+          </p>
           <Note>
             <p>
-              Overlapping behaviors are tested independently: a frame in two behaviors counts as inside for both. Merging
-              behaviors is done in annotation setup, not here.
+              Overlapping behaviors are tested independently: a frame in two behaviors counts as
+              inside for both. Merging behaviors is done in annotation setup, not here.
             </p>
           </Note>
           <div class="cb-statbox">
             <div class="cb-setting__title">
-              {ok()!.mask.reduce((a, b) => a + b, 0).toLocaleString()} of {ok()!.frames.toLocaleString()} frames included in analysis
+              {ok()!
+                .mask.reduce((a, b) => a + b, 0)
+                .toLocaleString()}{' '}
+              of {ok()!.frames.toLocaleString()} frames included in analysis
             </div>
             <div class="cb-muted">
               {ok()!.excluded.noPosition > 0
                 ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position excluded`
                 : 'No frames without position'}
               {' · '}
-              {prep.minSpeed > 0 ? `${ok()!.excluded.slow.toLocaleString()} frames below ${prep.minSpeed} cm/s excluded` : 'No speed filter'}
+              {prep.minSpeed > 0
+                ? `${ok()!.excluded.slow.toLocaleString()} frames below ${prep.minSpeed} cm/s excluded`
+                : 'No speed filter'}
               {' · '}
               <button class="cb-link" onClick={() => goToStep('prep')}>
                 Edit frame selection
               </button>
             </div>
-            <div class="cb-muted">Uses the frame selection from Preprocess. No additional filter is applied here.</div>
+            <div class="cb-muted">
+              Uses the frame selection from Preprocess. No additional filter is applied here.
+            </div>
           </div>
           <div class="cb-muted">
-            Neural signal: deconvolved events · Smoothing from Preprocess (Gaussian, σ = {prep.eventSigmaS} s)
+            Neural signal: deconvolved events · Smoothing from Preprocess (Gaussian, σ ={' '}
+            {prep.eventSigmaS} s)
           </div>
           <Show when={ok()!.cellsMissing.length}>
             <details class="cb-notebox">
@@ -375,10 +464,16 @@ function AurocSetup(): JSX.Element {
               </summary>
               <div class="cb-muted">
                 <p>
-                  These cells have a missing neural value in the included frames, so their auROC is undefined. They are kept in
-                  the results as Not evaluated and are left out of the evaluated-cell counts.
+                  These cells have a missing neural value in the included frames, so their auROC is
+                  undefined. They are kept in the results as Not evaluated and are left out of the
+                  evaluated-cell counts.
                 </p>
-                <p>Cells: {ok()!.cellsMissing.map((c) => ok()!.cellIds[c] + 1).join(', ')}</p>
+                <p>
+                  Cells:{' '}
+                  {ok()!
+                    .cellsMissing.map((c) => ok()!.cellIds[c] + 1)
+                    .join(', ')}
+                </p>
               </div>
             </details>
           </Show>
@@ -389,15 +484,22 @@ function AurocSetup(): JSX.Element {
           <div class="cb-setting">
             <div class="cb-setting__title">Method</div>
             <div class="cb-seg">
-              <button classList={{ 'cb-seg__on': aurocSettings.method === 'circular' }} onClick={() => setAurocSettings('method', 'circular')}>
+              <button
+                classList={{ 'cb-seg__on': aurocSettings.method === 'circular' }}
+                onClick={() => setAurocSettings('method', 'circular')}
+              >
                 Time-shifted data (circular shift)
               </button>
-              <button classList={{ 'cb-seg__on': aurocSettings.method === 'speed' }} onClick={() => setAurocSettings('method', 'speed')}>
+              <button
+                classList={{ 'cb-seg__on': aurocSettings.method === 'speed' }}
+                onClick={() => setAurocSettings('method', 'speed')}
+              >
                 Speed-matched time-shifted data
               </button>
             </div>
             <div class="cb-muted">
-              Shift neural activity in time relative to behavior and recalculate auROC to estimate chance associations.
+              Shift neural activity in time relative to behavior and recalculate auROC to estimate
+              chance associations.
               {aurocSettings.method === 'speed' &&
                 ' Only shifts that keep the speed distribution during each behavior similar to the original are used.'}
             </div>
@@ -408,28 +510,43 @@ function AurocSetup(): JSX.Element {
               <For each={[true, false]}>
                 {(a) => (
                   <label class="cb-radio">
-                    <input type="radio" name="auroc-shift" checked={aurocSettings.shiftAuto === a} onChange={() => setAurocSettings('shiftAuto', a)} />
+                    <input
+                      type="radio"
+                      name="auroc-shift"
+                      checked={aurocSettings.shiftAuto === a}
+                      onChange={() => setAurocSettings('shiftAuto', a)}
+                    />
                     {a ? 'Auto' : 'Manual'}
                   </label>
                 )}
               </For>
               <Show when={aurocSettings.shiftAuto}>
-                <span class="cb-pill">{autoShift() ? `Using ${autoShift()!.minShiftS} s` : 'Working it out…'}</span>
+                <span class="cb-pill">
+                  {autoShift() ? `Using ${autoShift()!.minShiftS} s` : 'Working it out…'}
+                </span>
               </Show>
               <Show when={!aurocSettings.shiftAuto}>
                 <NumberBox k="minShiftS" label="" unit="s" step={0.5} min={0.5} />
               </Show>
             </div>
-            <div class="cb-muted">Minimum time offset between neural activity and behavior in the shifted comparisons.</div>
+            <div class="cb-muted">
+              Minimum time offset between neural activity and behavior in the shifted comparisons.
+            </div>
           </div>
           <Show when={aurocSettings.method === 'speed'}>
             <div class="cb-setting">
               <div class="cb-setting__title">Balance measure</div>
               <div class="cb-seg">
-                <button classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'ks' }} onClick={() => setAurocSettings('match', 'statistic', 'ks')}>
+                <button
+                  classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'ks' }}
+                  onClick={() => setAurocSettings('match', 'statistic', 'ks')}
+                >
                   KS distance
                 </button>
-                <button classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'mean' }} onClick={() => setAurocSettings('match', 'statistic', 'mean')}>
+                <button
+                  classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'mean' }}
+                  onClick={() => setAurocSettings('match', 'statistic', 'mean')}
+                >
                   Difference in means
                 </button>
               </div>
@@ -437,21 +554,45 @@ function AurocSetup(): JSX.Element {
             <div class="cb-controls">
               <div class="cb-setting">
                 <div class="cb-setting__title">Tolerance</div>
-                <label class="cb-prep-field" classList={{ 'cb-prep-field--changed': aurocSettings.match.tolerance !== 0.1 }}>
-                  <input type="number" min="0.01" step="0.01" value={aurocSettings.match.tolerance} onInput={(e) => +e.currentTarget.value > 0 && setAurocSettings('match', 'tolerance', +e.currentTarget.value)} />
+                <label
+                  class="cb-prep-field"
+                  classList={{ 'cb-prep-field--changed': aurocSettings.match.tolerance !== 0.1 }}
+                >
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={aurocSettings.match.tolerance}
+                    onInput={(e) =>
+                      +e.currentTarget.value > 0 &&
+                      setAurocSettings('match', 'tolerance', +e.currentTarget.value)
+                    }
+                  />
                 </label>
               </div>
               <div class="cb-setting">
                 <div class="cb-setting__title">Candidates per shift</div>
-                <label class="cb-prep-field" classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}>
-                  <input type="number" min="1" step="1" value={aurocSettings.match.maxTries} onInput={(e) => +e.currentTarget.value >= 1 && setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))} />
+                <label
+                  class="cb-prep-field"
+                  classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}
+                >
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={aurocSettings.match.maxTries}
+                    onInput={(e) =>
+                      +e.currentTarget.value >= 1 &&
+                      setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))
+                    }
+                  />
                 </label>
               </div>
             </div>
             <div class="cb-muted">
-              KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s starting settings, not validated standards.
-              There is no cut-off for a low acceptance rate; the run stops if no shift can be matched, and does not fall back to
-              unmatched shifts.
+              KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s starting
+              settings, not validated standards. There is no cut-off for a low acceptance rate; the
+              run stops if no shift can be matched, and does not fall back to unmatched shifts.
             </div>
             <Show when={!ok()!.speed}>
               <div class="cb-note">Speed matching needs a loaded position file.</div>
@@ -461,7 +602,10 @@ function AurocSetup(): JSX.Element {
               <For each={eligible()}>
                 {(e) => (
                   <div class="cb-muted">
-                    {e.label}: {e.matched ? 'matched' : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
+                    {e.label}:{' '}
+                    {e.matched
+                      ? 'matched'
+                      : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
                   </div>
                 )}
               </For>
@@ -469,13 +613,13 @@ function AurocSetup(): JSX.Element {
           </Show>
           <Note>
             <p>
-              The neural data are shifted around the whole recording first, wrapping at its end, and the frame selection is
-              applied afterwards, so excluded frames keep their time positions. The recording is treated as one continuous
-              session.
+              The neural data are shifted around the whole recording first, wrapping at its end, and
+              the frame selection is applied afterwards, so excluded frames keep their time
+              positions. The recording is treated as one continuous session.
             </p>
             <p>
-              <em>Auto</em> sets the minimum shift to 3 times the longer of the neural and behavior autocorrelation times,
-              between 5 s and a quarter of the recording.
+              <em>Auto</em> sets the minimum shift to 3 times the longer of the neural and behavior
+              autocorrelation times, between 5 s and a quarter of the recording.
             </p>
           </Note>
         </section>
@@ -489,10 +633,16 @@ function AurocSetup(): JSX.Element {
           <div class="cb-setting">
             <div class="cb-setting__title">Correction method</div>
             <div class="cb-seg">
-              <button classList={{ 'cb-seg__on': aurocSettings.correction === 'max_stat' }} onClick={() => setAurocSettings('correction', 'max_stat')}>
+              <button
+                classList={{ 'cb-seg__on': aurocSettings.correction === 'max_stat' }}
+                onClick={() => setAurocSettings('correction', 'max_stat')}
+              >
                 Maximum statistic (max-stat)
               </button>
-              <button classList={{ 'cb-seg__on': aurocSettings.correction === 'none' }} onClick={() => setAurocSettings('correction', 'none')}>
+              <button
+                classList={{ 'cb-seg__on': aurocSettings.correction === 'none' }}
+                onClick={() => setAurocSettings('correction', 'none')}
+              >
                 None
               </button>
             </div>
@@ -503,14 +653,17 @@ function AurocSetup(): JSX.Element {
               : 'No correction: p-values are not adjusted for the number of behaviors or cells tested.'}
           </div>
           <div class="cb-muted">
-            Changing the behaviors included in a new analysis can change adjusted p-values and response classifications.
+            Changing the behaviors included in a new analysis can change adjusted p-values and
+            response classifications.
           </div>
           <div class="cb-muted">Two-sided · Detects higher or lower activity.</div>
           <div class="cb-muted">Minimum unadjusted p-value: approximately {minP().toFixed(3)}</div>
           <details class="cb-notebox">
             <summary>Advanced options (random seed)</summary>
             <NumberBox k="seed" label="Random seed" step={1} />
-            <div class="cb-muted">The same seed, settings and data give the same shifts and results.</div>
+            <div class="cb-muted">
+              The same seed, settings and data give the same shifts and results.
+            </div>
           </details>
         </section>
       </Show>
