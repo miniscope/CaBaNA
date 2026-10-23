@@ -96,7 +96,7 @@ function Explorer(): JSX.Element {
           <Show when={footprints()}>
             <div>
               <div class="cb-label">Footprints</div>
-              <FootprintViewer />
+              <FootprintViewer partners />
               <div class="cb-controls">
                 <label>
                   Color by

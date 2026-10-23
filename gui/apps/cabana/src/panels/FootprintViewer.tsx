@@ -22,8 +22,12 @@ const rgb = (c: number): [number, number, number] => {
 
 const QUALITY = { good: [46, 160, 80], warn: [235, 170, 20], bad: [215, 50, 50] } as const;
 
-/** All footprints in one image. Click a cell to select it. The selected cell is white and the cell it correlates with most is orange. */
-export function FootprintViewer(): JSX.Element {
+/**
+ * All footprints in one image. Click a cell to select it; the selected cell is white and drawn
+ * whole on top of its neighbors. With `partners`, the neighbor it correlates with most is orange
+ * and an overlapping partner picked from the QC list is cyan.
+ */
+export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
   const map = createMemo(() => {
     const f = footprints();
@@ -37,11 +41,28 @@ export function FootprintViewer(): JSX.Element {
         const v = norm[c * px + i];
         if (v > value[i] && v > FOOTPRINT_CUTOFF * 0.5) [owner[i], value[i]] = [c, v];
       }
-    return { f, owner, value };
+    return { f, norm, owner, value };
+  });
+
+  // Each pixel's cell as drawn: the brightest cell, except that the selected cell covers all of
+  // its own pixels. Clicking a white pixel therefore keeps the selection.
+  const shown = createMemo(() => {
+    const m = map();
+    if (!m) return undefined;
+    const sel = cell();
+    const px = m.owner.length;
+    const owner = m.owner.slice();
+    const value = m.value.slice();
+    if (sel >= 0 && sel < m.f.cells)
+      for (let i = 0; i < px; i++) {
+        const v = m.norm[sel * px + i];
+        if (v > FOOTPRINT_CUTOFF * 0.5) [owner[i], value[i]] = [sel, v];
+      }
+    return { f: m.f, owner, value };
   });
 
   createEffect(() => {
-    const m = map();
+    const m = shown();
     if (!m || !canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -49,12 +70,12 @@ export function FootprintViewer(): JSX.Element {
     const sel = cell();
     const byQuality = colorBy() === 'quality';
     const scores = cellScores();
-    // Highlighted cells: selected (white), most correlated (orange), overlapping partner (cyan).
-    const marks = new Map<number, [number, number, number]>([
-      [cellResult()?.partner[sel] ?? -1, [255, 150, 30]],
-      [overlapPartner(), [60, 200, 255]],
-      [sel, [255, 255, 255]],
-    ]);
+    const marks = new Map<number, [number, number, number]>();
+    if (props.partners) {
+      marks.set(cellResult()?.partner[sel] ?? -1, [255, 150, 30]);
+      marks.set(overlapPartner(), [60, 200, 255]);
+    }
+    marks.set(sel, [255, 255, 255]);
     canvas.width = f.width;
     canvas.height = f.height;
     const img = ctx.createImageData(f.width, f.height);
@@ -77,7 +98,7 @@ export function FootprintViewer(): JSX.Element {
   });
 
   const pick = (e: MouseEvent) => {
-    const m = map();
+    const m = shown();
     if (!m || !canvas) return;
     const box = canvas.getBoundingClientRect();
     const x = Math.floor(((e.clientX - box.left) / box.width) * m.f.width);
