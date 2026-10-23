@@ -126,10 +126,15 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
     '/',
   )[0];
   if (folder) setSessionName(folder);
+  // A config is read first, so the file names it gives decide where the other files go.
+  const config = slot ? undefined : files.find((f) => matchSlot(f.name) === 'config');
+  if (config) await load('config', config);
+  const named = new Map(Object.entries(configFiles()).map(([id, n]) => [n, id as SlotId]));
   const rest: File[] = [];
   await Promise.all(
     files.map((f) => {
-      const id = slot ?? matchSlot(f.name);
+      if (f === config) return;
+      const id = slot ?? named.get(f.name) ?? matchSlot(f.name);
       if (id) return load(id, f);
       rest.push(f);
     }),
@@ -197,6 +202,9 @@ export function undoPositionCorrections(): void {
   setVersion((v) => v + 1);
 }
 
+/** The file name a loaded config.yaml gives for each slot. */
+export const [configFiles, setConfigFiles] = createSignal<Partial<Record<SlotId, string>>>({});
+
 const configHooks: ((text: string) => void)[] = [];
 /** Run `f` with the text of a config.yaml when one is loaded. */
 export const onConfig = (f: (text: string) => void) => configHooks.push(f);
@@ -206,6 +214,7 @@ export const onClear = (f: () => void) => clearHooks.push(f);
 
 export function clearAll(): void {
   setSessionName(undefined);
+  setConfigFiles({});
   setOverride({ neuralFps: undefined, cameraFps: undefined, durationS: undefined });
   clearHooks.forEach((f) => f());
   setAnnotationEdits({});
@@ -348,8 +357,10 @@ export const [source, setSource] = createStore({
   positionTool: 'other',
   positionUnit: 'cm' as 'cm' | 'px',
   pxPerCm: 10,
-  /** Seconds the behavior video ran before the miniscope started: t_neural = t_video - offset. */
+  /** Seconds the behavior video ran before the miniscope started: t_neural = scale * (t_video - offset). */
   clockOffsetS: 0,
+  /** Ratio of the neural clock's rate to the camera clock's, for clocks that drift apart. Usually 1. */
+  clockScale: 1,
   annotationTool: 'other',
   annotationUnit: 'seconds' as 'seconds' | 'milliseconds' | 'camera frames' | 'miniscope frames',
   extractionTool: 'other',
@@ -390,14 +401,15 @@ export const frameTimes = createMemo(() => {
 });
 
 /**
- * Behavior camera frame times in seconds on the neural clock: camera time minus the clock offset
- * from Experimental Setup (the framework's `scale * (t - offset_s)` with scale 1).
+ * Behavior camera frame times in seconds on the neural clock, with the clock offset and scale
+ * from Experimental Setup: the framework's `scale * (t - offset_s)`.
  */
 export const cameraClock = createMemo(() => {
   const ts = table('behavior_timestamps');
   if (!ts) return undefined;
   try {
-    return column(ts, 'time stamp').map((v) => v / 1000 - source.clockOffsetS);
+    const { clockOffsetS: off, clockScale: k } = source;
+    return column(ts, 'time stamp').map((v) => k * (v / 1000 - off));
   } catch {
     return undefined;
   }

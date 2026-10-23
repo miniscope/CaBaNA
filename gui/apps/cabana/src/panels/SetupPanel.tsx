@@ -4,6 +4,7 @@ import { INDICATORS } from '../lib/decon.ts';
 import { indicatorId, setIndicator } from '../lib/decon-state.ts';
 import { PARADIGMS } from '../lib/experiments.ts';
 import { downloadConfig } from '../lib/session-config.ts';
+import { ConfigReport } from './ConfigReport.tsx';
 import {
   derivedCameraFps,
   derivedDuration,
@@ -291,11 +292,23 @@ function SessionTab(): JSX.Element {
             onInput={(e) => setSource('clockOffsetS', +e.currentTarget.value || 0)}
           />
         </label>
+        <label class="cb-setup-field">
+          Behavior clock scale
+          <input
+            type="number"
+            step="0.0001"
+            min="0"
+            value={source.clockScale}
+            onInput={(e) => setSource('clockScale', +e.currentTarget.value || 1)}
+          />
+        </label>
       </div>
       <Note>
-        The clock offset is how long the behavior video ran before the miniscope started. It is
-        subtracted from the camera times, so position lines up with the neural frames everywhere in
-        CaBaNA and in the saved config. Check the result under Timing and alignment in Data QC.
+        The clock offset is how long the behavior video ran before the miniscope started. The clock
+        scale corrects a camera clock that runs at a slightly different rate; leave it at 1 unless
+        the two clocks drift apart. Camera times become scale x (time - offset), so position lines
+        up with the neural frames everywhere in CaBaNA and in the saved config. Check the result
+        under Timing and alignment in Data QC.
       </Note>
     </section>
   );
@@ -536,6 +549,7 @@ export function SetupPanel(): JSX.Element {
           Download Config
         </button>
       </div>
+      <ConfigReport />
       <div class="cb-tabs" role="tablist">
         <For each={TABS}>
           {(t) => (

@@ -1,5 +1,6 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { GROUPS, SLOTS, type Slot } from '../lib/slots.ts';
+import { ConfigReport } from './ConfigReport.tsx';
 import { Preview } from './Preview.tsx';
 import { Req } from './parts.tsx';
 import {
@@ -209,6 +210,9 @@ export function LoadPanel(): JSX.Element {
               <section class="cb-group">
                 <h3>{g}</h3>
                 <For each={SLOTS.filter((s) => s.group === g)}>{(s) => <Row slot={s} />}</For>
+                <Show when={g === 'Settings'}>
+                  <ConfigReport />
+                </Show>
               </section>
             )}
           </For>

@@ -1,14 +1,28 @@
-# arena and zone settings for the simulated three-chamber task
-arena_cm: [60, 30]
-zones:  # on x, cm
-  left: [0, 20]
-  center: [20, 40]
-  right: [40, 60]
-enclosures:  # half-discs against the end walls; the subject cannot enter (centre x, centre y, radius in cm)
-  left: [0, 15, 9]  # stimulus
-  right: [60, 15, 9]  # empty
-dividers:  # walls between the chambers; the subject goes around the end that stops short (x, y from, y to in cm)
-  left: [20, 9, 30]
-  right: [40, 0, 21]
-head_orientation: quaternion (qw, qx, qy, qz) from the miniscope IMU; yaw about z, 0 = east, counterclockwise
-investigation: within 4 cm of an enclosure with the head pointing at it (within 45 degrees)
+# Session config for the simulated three-chamber task, in the layout cabana.loaders.load_session_dir reads.
+# Head orientation: quaternion (qw, qx, qy, qz) from the miniscope IMU; yaw about z, 0 = east, counterclockwise.
+# Investigation: within 4 cm of an enclosure with the head pointing at it (within 45 degrees).
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {denoised: neural_denoised.npy, raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  position: {file: position.csv, units: cm}
+  head_orientation: {file: headOrientation.csv}
+  epochs:
+    zones: {file: zone_annotations.csv, exclusive: true}
+    investigation: {file: investigation_annotations.csv, exclusive: false}
+arena:
+  size: [60, 30]
+  units: cm
+  zones:  # x-ranges [x0, x1], each across the full height
+    left: [0, 20]
+    center: [20, 40]
+    right: [40, 60]
+  enclosures:  # half-discs against the end walls; the subject cannot enter
+    left: {center: [0, 15], radius: 9, contents: stimulus}
+    right: {center: [60, 15], radius: 9, contents: empty}
+  dividers:  # walls between the chambers; each stops short of one arena wall, leaving a doorway
+    left: [[19.5, 9], [20.5, 9], [20.5, 30], [19.5, 30]]
+    right: [[39.5, 0], [40.5, 0], [40.5, 21], [39.5, 21]]

@@ -209,6 +209,13 @@ def arena_media(folder: Path, size_cm, path, cam_fps, body_cm=8.0, px_per_cm=10,
 
 # ---------------------------------------------------------------- open field
 
+# The neural part of each session config; every example has deconvolved events and timestamps.
+NEURAL_CONFIG = (
+    "neural:\n  file: neural_deconvolved.npy\n  kind: deconvolved\n  timestamps: neural_timestamps.csv\n"
+    "  alternatives: {{{alternatives}}}\n"
+)
+
+
 def open_field():
     rng = np.random.default_rng(101)
     folder = HERE / "simulated_open_field"
@@ -250,8 +257,12 @@ def open_field():
                  [("center", a, b) for a, b in epochs(center, t_c)] +
                  [("periphery", a, b) for a, b in epochs(~center, t_c)])
     (folder / "config.yaml").write_text(
-        "# arena and zone settings for the simulated open field\n"
-        "arena_cm: [40, 40]\nzones:  # center is the inner 20 x 20 cm, periphery is the rest\n  center: [[10, 30], [10, 30]]\n")
+        "# Session config for the simulated open field, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# The center zone is the inner 20 x 20 cm; periphery (in the annotations) is the rest.\n"
+        + NEURAL_CONFIG.format(alternatives="denoised: neural_denoised.npy, raw: neural_raw.npy")
+        + "behavior:\n  timestamps: behavior_timestamps.csv\n  position: {file: position.csv, units: cm}\n"
+        "  epochs:\n    zones: {file: zone_annotations.csv, exclusive: true}\n"
+        "arena:\n  size: [40, 40]\n  units: cm\n  zones:\n    center: [10, 10, 30, 30]\n")
 
 
 # ---------------------------------------------------------------- social interaction
@@ -323,8 +334,12 @@ def social():
     rows.append(("sniff_anogenital", 300.0, 300.02))
     write_epochs(folder / "social_annotations.csv", rows)
     (folder / "config.yaml").write_text(
-        "# arena settings for the simulated social interaction\narena_cm: [50, 50]\n"
-        "close_contact_cm: 6  # sniffing\nfollowing: within 12 cm and both faster than 8 cm/s\n")
+        "# Session config for the simulated social interaction, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# Sniffing: within 6 cm. Following: within 12 cm and both faster than 8 cm/s.\n"
+        + NEURAL_CONFIG.format(alternatives="denoised: neural_denoised.npy, raw: neural_raw.npy")
+        + "behavior:\n  timestamps: behavior_timestamps.csv\n  position: {file: position.csv, units: cm}\n"
+        "  epochs:\n    social: {file: social_annotations.csv, exclusive: false}\n"
+        "arena:\n  size: [50, 50]\n  units: cm\n")
 
 
 # ---------------------------------------------------------------- fear conditioning
@@ -363,8 +378,12 @@ def fear():
     save(folder, raw=raw, dec=dec)  # no denoised traces and no footprints on purpose
     write_epochs(folder / "behavior_annotations.csv", rows)
     (folder / "config.yaml").write_text(
-        "# settings for the simulated fear conditioning session\nchamber_cm: [25, 25]\n"
-        "tones: 5 x 30 s, starting at 150 s and every 120 s\nshocks: 2 s at the end of tones 3 to 5\n")
+        "# Session config for the simulated fear conditioning session, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# Tones: 5 x 30 s, starting at 150 s and every 120 s. Shocks: 2 s at the end of tones 3 to 5.\n"
+        + NEURAL_CONFIG.format(alternatives="raw: neural_raw.npy")
+        + "behavior:\n  timestamps: behavior_timestamps.csv\n"
+        "  epochs:\n    behavior: {file: behavior_annotations.csv, exclusive: false}\n"
+        "arena:\n  size: [25, 25]\n  units: cm\n")
 
 
 if __name__ == "__main__":
