@@ -16,6 +16,7 @@ export function aurocCsv(out: AurocOutcome): string {
   const head = [
     `# correction: ${CORRECTION_TEXT[s.correction]}; alpha=${s.alpha}; two-sided`,
     `# behaviors in the family: ${out.labels.join(', ')}`,
+    `# compared against: ${out.against ?? 'all other included frames'}`,
     `# shuffles=${s.nShuffles}; minimum_shift_s=${out.minShiftS}; seed=${s.seed}; method=${s.method === 'speed' ? 'speed-matched circular shift' : 'circular shift'}`,
     'cell,behavior,auroc,p_unadjusted,p_adjusted,response',
   ];
@@ -57,6 +58,7 @@ export function aurocMetadata(out: AurocOutcome) {
     })),
     min_frames: MIN_FRAMES,
     comparison: {
+      against: out.against ?? 'all_other_frames',
       method: s.method === 'speed' ? 'covariate_matched_shift (speed)' : 'circular_shift',
       minimum_shift_s: out.minShiftS,
       minimum_shift_auto: s.shiftAuto,

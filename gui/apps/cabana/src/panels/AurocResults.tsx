@@ -487,16 +487,18 @@ function Inspector(props: {
   const info = () => o().info[props.b];
   const sentence = () => {
     const cell = `Cell ${o().cellIds[props.c] + 1}`;
-    const beh = o().labels[props.b];
+    const against = o().against;
+    const beh = against ? o().labels[props.b].split(' vs ')[0] : o().labels[props.b];
+    const other = against ?? 'outside it';
     if (r() === 'excited')
-      return `${cell} shows significantly higher activity during ${beh} than outside it.`;
+      return `${cell} shows significantly higher activity during ${beh} than ${against ? 'during ' : ''}${other}.`;
     if (r() === 'inhibited')
-      return `${cell} shows significantly lower activity during ${beh} than outside it.`;
+      return `${cell} shows significantly lower activity during ${beh} than ${against ? 'during ' : ''}${other}.`;
     if (r() === 'not significant')
-      return `${cell} does not differ significantly between ${beh} and the rest of the included frames.`;
+      return `${cell} does not differ significantly between ${beh} and ${against ?? 'the rest of the included frames'}.`;
     return o().cellsMissing.includes(props.c)
       ? `${cell} was not evaluated: it has a missing neural value among the included frames.`
-      : `${cell} was not evaluated for ${beh}: the behavior has fewer than ${MIN_FRAMES} included frames during or outside it.`;
+      : `${cell} was not evaluated for ${o().labels[props.b]}: a group has fewer than ${MIN_FRAMES} included frames.`;
   };
   return (
     <>
@@ -623,8 +625,8 @@ function Inspector(props: {
             </div>
           </div>
           <div class="cb-muted">
-            Included frames: during / outside · {info().during.toLocaleString()} /{' '}
-            {info().outside.toLocaleString()}
+            Included frames: {o().against ? `${o().against} only` : 'during / outside'} ·{' '}
+            {info().during.toLocaleString()} / {info().outside.toLocaleString()}
           </div>
           <p>{sentence()}</p>
           {RESPONSE_NOTE}
@@ -1064,6 +1066,7 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
       </section>
       <section>
         <h4>Comparison</h4>
+        <KV k="Compared against" v={o().against ?? 'All other frames'} />
         <KV
           k="Method"
           v={o().settings.method === 'speed' ? 'Speed-matched circular shift' : 'Circular shift'}

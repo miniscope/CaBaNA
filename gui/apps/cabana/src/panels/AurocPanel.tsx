@@ -2,7 +2,8 @@ import { createEffect, createMemo, For, Show, type JSX } from 'solid-js';
 import { matchGroupsOf, MIN_FRAMES } from '../lib/auroc.ts';
 import {
   aurocData,
-  aurocInput,
+  aurocPlan,
+  pairIndexes,
   aurocOutcome,
   aurocSettings,
   aurocShowResults,
@@ -229,8 +230,14 @@ function AurocSetup(): JSX.Element {
     const x = data();
     return 'error' in x ? undefined : undefined;
   };
-  const selected = () =>
-    ok() ? ok()!.labels.filter((l) => !aurocSettings.unselected.includes(l)) : [];
+  const plan = createMemo(() =>
+    ok()
+      ? aurocPlan(ok()!, { ...aurocSettings, unselected: [...aurocSettings.unselected] })
+      : undefined,
+  );
+  const selected = () => plan()?.labels ?? [];
+  const pairMode = () => aurocSettings.compare === 'behavior' && ok()!.labels.length >= 2;
+  const pair = () => pairIndexes(ok()!, aurocSettings);
   const tooFew = (i: number) =>
     ok()!.info[i].during < MIN_FRAMES || ok()!.info[i].outside < MIN_FRAMES;
 
@@ -256,15 +263,12 @@ function AurocSetup(): JSX.Element {
   // The automatic minimum shift, worked out ahead of the run so it can be shown here.
   createEffect(() => {
     const d = ok();
-    if (d && aurocSettings.shiftAuto && selected().length)
-      estimateMinShift(aurocInput(d, [...aurocSettings.unselected]));
+    if (d && aurocSettings.shiftAuto && selected().length) estimateMinShift(plan()!.input);
   });
 
   const eligible = createMemo(() => {
-    const d = ok();
-    if (!d) return [];
-    const input = aurocInput(d, [...aurocSettings.unselected]);
-    const { matched } = matchGroupsOf(input, aurocSettings.match.minFrames);
+    if (!plan()) return [];
+    const { matched } = matchGroupsOf(plan()!.input, aurocSettings.match.minFrames);
     return selected().map((label, i) => ({ label, matched: matched[i] }));
   });
 
@@ -296,8 +300,9 @@ function AurocSetup(): JSX.Element {
           <h2>auROC analysis</h2>
           <p>
             Identify cells with higher or lower activity during each behavior. auROC measures how
-            consistently activity is higher during the behavior than outside it; time-shifted data
-            are used to test significance.
+            consistently activity is higher during one group of frames than another: a behavior
+            against all other frames, or against a second behavior. Time-shifted data are used to
+            test significance.
           </p>
           <Show when={ok()}>
             <p class="cb-muted">
@@ -337,10 +342,12 @@ function AurocSetup(): JSX.Element {
           <summary>How the analysis works</summary>
           <div class="cb-muted">
             <p>
-              <strong>Compare activity:</strong> For each cell and behavior, auROC is the
-              probability that a randomly chosen frame during the behavior has higher neural
-              activity than a randomly chosen frame outside it. Frames outside the behavior include
-              unlabeled frames. Excluded frames are left out of both groups.
+              <strong>Compare activity:</strong> For each cell, auROC is the probability that a
+              randomly chosen frame during the behavior has higher neural activity than a randomly
+              chosen frame in the comparison group. Against all other frames, the comparison group
+              is every frame outside the behavior, including unlabeled frames. Against another
+              behavior, it is that behavior's frames only; frames in neither behavior, and frames in
+              both, are left out. Frames excluded in Preprocess are left out of both groups.
             </p>
             <AurocScale />
             <p>
@@ -352,9 +359,9 @@ function AurocSetup(): JSX.Element {
             </p>
             <p>
               <strong>Not evaluated:</strong> auROC is left undefined when a cell has a missing
-              neural value among the included frames, or when a behavior has fewer than {MIN_FRAMES}{' '}
-              included frames during or outside it. These results are not zero and not
-              nonsignificant; they are left out of the counts of evaluated cells.
+              neural value among the included frames, or when either group has fewer than{' '}
+              {MIN_FRAMES} included frames. These results are not zero and not nonsignificant; they
+              are left out of the counts of evaluated cells.
             </p>
             <p>
               <strong>Direction alone does not establish significance.</strong>
@@ -364,6 +371,65 @@ function AurocSetup(): JSX.Element {
 
         <section class="cb-setgroup">
           <h3>1 · Behaviors and included data</h3>
+          <div class="cb-setting">
+            <div class="cb-setting__title">Compare against</div>
+            <div class="cb-seg">
+              <button
+                classList={{ 'cb-seg__on': !pairMode() }}
+                onClick={() => setAurocSettings('compare', 'rest')}
+              >
+                All other frames
+              </button>
+              <button
+                classList={{ 'cb-seg__on': pairMode() }}
+                disabled={ok()!.labels.length < 2}
+                onClick={() => setAurocSettings('compare', 'behavior')}
+              >
+                Another behavior
+              </button>
+            </div>
+            <Show
+              when={pairMode()}
+              fallback={
+                <div class="cb-muted">
+                  Each selected behavior is compared with every included frame outside it, including
+                  unlabeled frames.
+                </div>
+              }
+            >
+              <div class="cb-controls">
+                <For each={[0, 1]}>
+                  {(k) => (
+                    <label class="cb-prep-field">
+                      {k === 0 ? 'Behavior' : 'against'}{' '}
+                      <select
+                        value={ok()!.labels[pair()[k]]}
+                        onChange={(e) =>
+                          setAurocSettings(k === 0 ? 'pairA' : 'pairB', e.currentTarget.value)
+                        }
+                      >
+                        <For each={ok()!.labels}>
+                          {(l, i) => (
+                            <option
+                              value={l}
+                              selected={i() === pair()[k]}
+                              disabled={i() === pair()[1 - k]}
+                            >
+                              {l}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    </label>
+                  )}
+                </For>
+              </div>
+              <div class="cb-muted">
+                auROC above 0.5 means higher activity during {ok()!.labels[pair()[0]]} than during{' '}
+                {ok()!.labels[pair()[1]]}. Frames in neither behavior, or in both, are left out.
+              </div>
+            </Show>
+          </div>
           <table class="cb-auroc-table">
             <thead>
               <tr>
@@ -377,14 +443,16 @@ function AurocSetup(): JSX.Element {
             <tbody>
               <For each={ok()!.info}>
                 {(b, i) => (
-                  <tr>
+                  <tr classList={{ 'cb-muted': pairMode() && !pair().includes(i()) }}>
                     <td>
                       <label>
-                        <input
-                          type="checkbox"
-                          checked={!aurocSettings.unselected.includes(b.label)}
-                          onChange={() => toggle(b.label)}
-                        />
+                        <Show when={!pairMode()}>
+                          <input
+                            type="checkbox"
+                            checked={!aurocSettings.unselected.includes(b.label)}
+                            onChange={() => toggle(b.label)}
+                          />
+                        </Show>
                         <span
                           class="cb-dot"
                           style={{ background: tooFew(i()) ? '#999' : behaviorColor(i()) }}
@@ -401,7 +469,13 @@ function AurocSetup(): JSX.Element {
               </For>
             </tbody>
           </table>
-          <For each={ok()!.info.filter((_, i) => tooFew(i))}>
+          <For
+            each={
+              pairMode()
+                ? plan()!.info.filter((i) => Math.min(i.during, i.outside) < MIN_FRAMES)
+                : ok()!.info.filter((_, i) => tooFew(i))
+            }
+          >
             {(b) => (
               <p class="cb-muted">
                 <span class="cb-pill cb-pill--warn">Insufficient data</span> {b.label}:{' '}
@@ -420,8 +494,10 @@ function AurocSetup(): JSX.Element {
             </p>
           </HowToRead>
           <p class="cb-muted">
-            Frame counts include only frames retained for analysis. Each behavior is compared with
-            all other included frames, including unlabeled frames.
+            Frame counts include only frames retained for analysis.{' '}
+            {pairMode()
+              ? `Compared: ${plan()!.info[0].during.toLocaleString()} frames in ${ok()!.labels[pair()[0]]} only, ${plan()!.info[0].outside.toLocaleString()} in ${ok()!.labels[pair()[1]]} only.`
+              : 'Each behavior is compared with all other included frames, including unlabeled frames.'}
           </p>
           <Note>
             <p>
@@ -437,20 +513,17 @@ function AurocSetup(): JSX.Element {
               of {ok()!.frames.toLocaleString()} frames included in analysis
             </div>
             <div class="cb-muted">
-              {ok()!.excluded.noPosition > 0
-                ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position excluded`
-                : 'No frames without position'}
-              {' · '}
               {prep.minSpeed > 0
-                ? `${ok()!.excluded.slow.toLocaleString()} frames below ${prep.minSpeed} cm/s excluded`
-                : 'No speed filter'}
+                ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position (speed unknown) and ${ok()!.excluded.slow.toLocaleString()} frames below ${prep.minSpeed} cm/s excluded`
+                : 'No speed filter · Frames without position are kept'}
               {' · '}
               <button class="cb-link" onClick={() => goToStep('prep')}>
                 Edit frame selection
               </button>
             </div>
             <div class="cb-muted">
-              Uses the frame selection from Preprocess. No additional filter is applied here.
+              auROC does not use position, so frames without it are kept unless the Preprocess speed
+              filter is on.
             </div>
           </div>
           <div class="cb-muted">

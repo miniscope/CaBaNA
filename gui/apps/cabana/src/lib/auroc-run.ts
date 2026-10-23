@@ -62,12 +62,13 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
   const pos = positionOnNeural();
   const mask = new Uint8Array(n.frames).fill(1);
   const excluded = { noPosition: 0, slow: 0 };
-  if (pos && pos.sx.length === n.frames)
+  // auROC does not use position, so frames without it are kept unless the speed filter needs their speed.
+  if (pos && pos.sx.length === n.frames && prep.minSpeed > 0)
     for (let i = 0; i < n.frames; i++) {
       if (!(Number.isFinite(pos.sx[i]) && Number.isFinite(pos.sy[i]))) {
         mask[i] = 0;
         excluded.noPosition++;
-      } else if (prep.minSpeed > 0 && !(pos.speedAfter[i] >= prep.minSpeed)) {
+      } else if (!(pos.speedAfter[i] >= prep.minSpeed)) {
         mask[i] = 0;
         excluded.slow++;
       }
@@ -123,6 +124,10 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
 });
 
 export const DEFAULT_AUROC_SETTINGS = {
+  /** `rest`: each behavior against all other frames. `behavior`: `pairA` against `pairB` only; other frames are left out. */
+  compare: 'rest' as 'rest' | 'behavior',
+  pairA: '',
+  pairB: '',
   /** Behaviors left out of the run, by label. Behaviors with too few frames start out left out. */
   unselected: [] as string[],
   method: 'circular' as 'circular' | 'speed',
@@ -159,6 +164,8 @@ export interface AurocOutcome {
   timescale?: AurocMinShift;
   matched?: MatchedDraw;
   excluded: AurocData['excluded'];
+  /** The behavior every row was compared against, in a behavior-against-behavior run; otherwise absent (all other frames). */
+  against?: string;
   seconds: number;
   settings: AurocSettings;
 }
@@ -198,13 +205,40 @@ function submit<T>(make: (done: (r: T) => void, jobId: number) => Record<string,
   });
 }
 
-/** Behaviors the run will use: the selected ones. */
-export function selectedBehaviors(data: AurocData, unselected: readonly string[]) {
-  const keep = data.labels.map((l) => !unselected.includes(l));
-  const idx = keep.flatMap((k, i) => (k ? [i] : []));
-  const rows = new Uint8Array(idx.length * data.frames);
-  idx.forEach((b, j) => rows.set(data.behaviors.subarray(b * data.frames, (b + 1) * data.frames), j * data.frames));
-  return { idx, rows, labels: idx.map((b) => data.labels[b]) };
+/** The two behaviors of a behavior-against-behavior comparison: the chosen ones, else the first two. */
+export function pairIndexes(data: AurocData, cfg: Pick<AurocSettings, 'pairA' | 'pairB'>): [number, number] {
+  const a = Math.max(0, data.labels.indexOf(cfg.pairA));
+  const b = data.labels.indexOf(cfg.pairB);
+  return [a, b >= 0 && b !== a ? b : a === 0 ? 1 : 0];
+}
+
+type PlanSettings = Pick<AurocSettings, 'compare' | 'pairA' | 'pairB' | 'unselected'>;
+
+/**
+ * What one run tests: the input, a label and frame counts for each row, and the behavior compared against.
+ * Against all other frames, each selected behavior is a row on the Preprocess frame selection. Against another
+ * behavior, there is one row (A against B) on the frames in exactly one of the two; frames in neither are left out.
+ */
+export function aurocPlan(data: AurocData, cfg: PlanSettings) {
+  const { frames } = data;
+  const row = (b: number) => data.behaviors.subarray(b * frames, (b + 1) * frames);
+  const base = { neural: data.neural, cells: data.cells, frames, fs: data.fs };
+  if (cfg.compare === 'behavior' && data.labels.length >= 2) {
+    const [a, b] = pairIndexes(data, cfg);
+    const [ra, rb] = [row(a), row(b)];
+    const mask = data.mask.map((m, t) => (m && ra[t] !== rb[t] ? 1 : 0));
+    const rows = Uint8Array.from(ra);
+    const input: AurocInput = { ...base, behaviors: rows, nBehaviors: 1, mask };
+    const { n1, n0 } = frameCounts(input);
+    const { duration, bouts } = data.info[a];
+    const info = [{ label: `${data.labels[a]} vs ${data.labels[b]}`, duration, bouts, during: n1[0], outside: n0[0] }];
+    return { input, labels: [info[0].label], info, against: data.labels[b] };
+  }
+  const idx = data.labels.flatMap((l, i) => (cfg.unselected.includes(l) ? [] : [i]));
+  const rows = new Uint8Array(idx.length * frames);
+  idx.forEach((b, j) => rows.set(row(b), j * frames));
+  const input: AurocInput = { ...base, behaviors: rows, nBehaviors: idx.length, mask: data.mask };
+  return { input, labels: idx.map((b) => data.labels[b]), info: idx.map((b) => data.info[b]), against: undefined };
 }
 
 export async function runAuroc(): Promise<void> {
@@ -214,9 +248,8 @@ export async function runAuroc(): Promise<void> {
     return;
   }
   const cfg = { ...aurocSettings, unselected: [...aurocSettings.unselected], match: { ...aurocSettings.match } };
-  const sel = selectedBehaviors(data, cfg.unselected);
-  const input = aurocInput(data, cfg.unselected);
-  if (!sel.labels.length) {
+  const { input, labels, info, against } = aurocPlan(data, cfg);
+  if (!labels.length) {
     setAurocStatus({ kind: 'error', message: 'Select at least one behavior.' });
     return;
   }
@@ -286,8 +319,9 @@ export async function runAuroc(): Promise<void> {
       return out;
     };
     setAurocOutcome({
-      labels: sel.labels,
-      info: sel.idx.map((b) => data.info[b]),
+      labels,
+      info,
+      against,
       cellIds: data.cellIds,
       input,
       result: { observed: cat((p) => p.observed), pRaw: cat((p) => p.pRaw), pAdj: cat((p) => p.pAdj) },
@@ -329,20 +363,6 @@ export function shiftedValues(out: AurocOutcome, cellIndex: number): Float64Arra
     cache.set(key, v);
   }
   return v;
-}
-
-/** The input for the selected behaviors. */
-export function aurocInput(data: AurocData, unselected: readonly string[]): AurocInput {
-  const sel = selectedBehaviors(data, unselected);
-  return {
-    neural: data.neural,
-    cells: data.cells,
-    frames: data.frames,
-    fs: data.fs,
-    behaviors: sel.rows,
-    nBehaviors: sel.labels.length,
-    mask: data.mask,
-  };
 }
 
 /** The automatic minimum shift for the current data and selection, worked out on a worker before the run. */
