@@ -293,8 +293,9 @@ function SessionTab(): JSX.Element {
         </label>
       </div>
       <Note>
-        The clock offset is how long the behavior video ran before the miniscope started. It lines
-        the two clocks up in the saved config.
+        The clock offset is how long the behavior video ran before the miniscope started. It is
+        subtracted from the camera times, so position lines up with the neural frames everywhere in
+        CaBaNA and in the saved config. Check the result under Timing and alignment in Data QC.
       </Note>
     </section>
   );

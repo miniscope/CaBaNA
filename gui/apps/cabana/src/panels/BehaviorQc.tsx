@@ -1,13 +1,16 @@
 import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
 import { TracePanel } from '@calab/ui/chart';
 import { annotationStats, type Epoch } from '../lib/behavior.ts';
-import { timingChecks, type PositionQc } from '../lib/qc.ts';
+import { clockProgress, timingChecks, type PositionQc } from '../lib/qc.ts';
 import {
+  alignmentResults,
   annotationFixCounts,
+  cameraClock,
   annotationLog,
   annotationResults,
   editAnnotations,
   correctPosition,
+  frameTimes,
   maxSpeed,
   positionLog,
   positionResult,
@@ -248,9 +251,41 @@ function PositionFixes(): JSX.Element {
   );
 }
 
+/** Each recording's progress against time on the neural clock; the two lines should start and end together. */
+function ClockPlot(): JSX.Element {
+  const both = () => {
+    const [n, c] = [frameTimes(), cameraClock()];
+    return n?.length && c?.length ? clockProgress(n, c) : undefined;
+  };
+  return (
+    <Show when={both()}>
+      <div class="cb-label">Recording progress on the neural clock</div>
+      <TracePanel
+        data={() => both() as unknown as [number[], ...number[][]]}
+        series={[
+          {},
+          { label: 'Miniscope (% of frames)', stroke: '#2171b5', width: 1.5 },
+          { label: 'Behavior camera (% of frames)', stroke: '#e09800', width: 1.5, dash: [6, 4] },
+        ]}
+        height={180}
+        syncKey="cabana-clocks"
+        xLabel="Time (s)"
+      />
+      <div class="cb-muted">
+        Each line climbs from 0 to 100% as its recording runs. Lines that start or end apart mean
+        one recording started or stopped first. A flat step is a run of dropped frames, and a
+        difference in slope is a difference in frame rate.
+      </div>
+    </Show>
+  );
+}
+
 export function BehaviorQc(): JSX.Element {
   const pos = () => positionResult();
-  const timing = () => timingResults().flatMap((r) => timingChecks(r.name, r));
+  const timing = () => [
+    ...timingResults().flatMap((r) => timingChecks(r.name, r)),
+    ...alignmentResults(),
+  ];
   const posOk = () => {
     const p = pos();
     return p && 'checks' in p ? p : undefined;
@@ -265,7 +300,7 @@ export function BehaviorQc(): JSX.Element {
 
       <QcDashboard
         cards={[
-          { title: 'Frame timing', checks: timing(), open: scrollTo('qc-timing') },
+          { title: 'Timing and alignment', checks: timing(), open: scrollTo('qc-timing') },
           {
             title: 'Position tracking',
             checks: posOk()?.checks ?? [],
@@ -284,7 +319,8 @@ export function BehaviorQc(): JSX.Element {
       />
 
       <Show when={timing().length}>
-        <Checks id="qc-timing" title="Frame timing" checks={timing()} />
+        <Checks id="qc-timing" title="Timing and alignment" checks={timing()} />
+        <ClockPlot />
       </Show>
 
       <Show when={pos() && !posOk()}>

@@ -15,6 +15,7 @@ import {
   type Table,
 } from './parse.ts';
 import {
+  alignmentChecks,
   cellQc,
   footprintCentroids,
   footprintChecks,
@@ -388,15 +389,28 @@ export const frameTimes = createMemo(() => {
   return ts ? column(ts, 'time stamp').map((v) => v / 1000) : undefined;
 });
 
-/** Time in seconds of each row of the position file, from the camera timestamps. */
+/**
+ * Behavior camera frame times in seconds on the neural clock: camera time minus the clock offset
+ * from Experimental Setup (the framework's `scale * (t - offset_s)` with scale 1).
+ */
+export const cameraClock = createMemo(() => {
+  const ts = table('behavior_timestamps');
+  if (!ts) return undefined;
+  try {
+    return column(ts, 'time stamp').map((v) => v / 1000 - source.clockOffsetS);
+  } catch {
+    return undefined;
+  }
+});
+
+/** Time in seconds of each row of the position file, on the neural clock. */
 export const cameraTimes = createMemo(() => {
   const pos = table('position');
   const ts = table('behavior_timestamps');
-  if (!pos || !ts) return undefined;
+  const t = cameraClock();
+  if (!pos || !ts || !t) return undefined;
   try {
-    const at = new Map(
-      column(ts, 'frame number').map((f, i) => [f, column(ts, 'time stamp')[i] / 1000]),
-    );
+    const at = new Map(column(ts, 'frame number').map((f, i) => [f, t[i]]));
     return column(pos, 'frame').map((f) => at.get(f) ?? NaN);
   } catch {
     return undefined;
@@ -431,6 +445,25 @@ export const timingResults = createMemo(() =>
       return []; // the timestamps files are checked where they are loaded
     }
   }),
+);
+
+/** Whether the neural data, its timestamps and the behavior camera line up. */
+export const alignmentResults = createMemo(() =>
+  alignmentChecks(
+    frameTimes(),
+    (
+      [
+        ['Raw traces', 'neural_raw'],
+        ['Denoised traces', 'neural_denoised'],
+        ['Deconvolved events', 'neural_deconvolved'],
+      ] as const
+    ).flatMap(([name, id]) => {
+      const m = matrix(id);
+      return m ? [[name, m.frames] as [string, number]] : [];
+    }),
+    cameraClock(),
+    source.clockOffsetS,
+  ),
 );
 
 const centroids = createMemo(() => {
