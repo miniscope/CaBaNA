@@ -17,7 +17,7 @@ export const DEFAULT_PREP = {
   /** speed: window (s) of the finite difference. */
   speedWindowS: 0.25,
   /** speed_threshold: frames with speed below this (cm/s) are left out. */
-  minSpeed: 0,
+  minSpeed: 2,
   /** clean_mask dilate_s: each behavior bout is widened by this many seconds on both sides. */
   labelPadS: 0,
 };

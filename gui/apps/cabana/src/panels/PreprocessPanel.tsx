@@ -258,8 +258,8 @@ export function PreprocessPanel(): JSX.Element {
             Position is first placed on the miniscope frames (lost stretches over 0.5 s stay lost),
             then smoothed, then speed is taken over the speed window. Place cell analyses often
             leave out frames when the animal is nearly still, because firing then may reflect rest
-            rather than place. Typical thresholds are a few cm/s. A window or threshold of 0 leaves
-            that step out.
+            rather than place. Typical thresholds are a few cm/s. The minimum speed here is the one
+            place cell and auROC analyses use. A window or threshold of 0 leaves that step out.
           </Note>
           <div class="cb-controls">
             <label>

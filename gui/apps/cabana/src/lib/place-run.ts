@@ -28,8 +28,6 @@ export const DEFAULT_PLACE_SETTINGS = {
   nShuffles: 1000,
   seed: 0,
   alpha: 0.05,
-  /** Frames slower than this (cm/s) are left out. */
-  minSpeed: 2,
   /** Minimum seconds in a bin, for information and stability. Shared with the arena settings (`arena.minOccupancy`). */
   minOccS: DEFAULT_PLACE.minOccInfoS,
   /** Minimum seconds in a bin for it to count in a place field. */
@@ -106,7 +104,7 @@ const subset = (input: PlaceInput, from: number, to: number): PlaceInput => ({
 });
 
 export async function runPlaceCells(): Promise<void> {
-  const data = placeData(placeSettings.minSpeed);
+  const data = placeData();
   if (!data || 'error' in data) {
     setPlaceStatus({
       kind: 'error',

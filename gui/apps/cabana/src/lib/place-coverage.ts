@@ -22,7 +22,7 @@ export interface Coverage {
 }
 
 export function coverage(bin: number): Coverage | undefined {
-  const f = placeFrames(placeSettings.minSpeed, bin);
+  const f = placeFrames(bin);
   const fs = placeNeural()?.fs;
   if (!f || 'error' in f || !fs) return undefined;
   const { grid } = f;

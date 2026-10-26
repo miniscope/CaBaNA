@@ -204,8 +204,7 @@ export function preprocessYaml(): string {
       exclude_ids: [...rejected()].sort((a, b) => a - b).map(String),
     });
   if (prep.eventSigmaS > 0) steps.push({ name: 'smooth_activity', sigma_s: prep.eventSigmaS });
-  if (prep.minSpeed > 0)
-    steps.push({ name: 'speed_threshold', signal: 'speed', min_speed: prep.minSpeed });
+  steps.push({ name: 'speed_threshold', signal: 'speed', min_speed: prep.minSpeed });
   if (prep.labelPadS > 0) {
     const labels = new Set(
       annotationResults()

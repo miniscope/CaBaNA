@@ -21,7 +21,6 @@ import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlaceResults } from './PlaceResults.tsx';
 
 type NumKey =
-  | 'minSpeed'
   | 'nShuffles'
   | 'alpha'
   | 'fieldThreshold'
@@ -113,7 +112,7 @@ function AutoManual(props: {
 }
 
 function PlaceSetup(): JSX.Element {
-  const frames = createMemo(() => placeFrames(placeSettings.minSpeed));
+  const frames = createMemo(() => placeFrames());
   const ready = () => !!(deconvolved() && placeNeural());
   const ok = () => {
     const f = frames();
@@ -129,11 +128,10 @@ function PlaceSetup(): JSX.Element {
     if (s.kind === 'error') return s.message;
     if (f && 'error' in f) return f.error;
     return f && f.used === 0
-      ? 'No frame passes the speed threshold. Lower the minimum speed.'
+      ? 'No frame passes the speed threshold. Lower the minimum speed in Preprocess.'
       : undefined;
   };
   const rejected = () => (deconvolved()?.cells ?? 0) - (placeNeural()?.cells ?? 0);
-  const raised = () => prep.minSpeed > placeSettings.minSpeed;
   const setBin = (v: number) => {
     const max = Math.min(...sizeCm()) / 2;
     if (Number.isFinite(v)) setArena('binCm', Math.min(max, Math.max(0.5, v)));
@@ -223,13 +221,16 @@ function PlaceSetup(): JSX.Element {
             <p class="cb-muted">
               Calculate each cell’s event-rate map from movement-filtered data, with smoothing.
             </p>
-            <Num
-              k="minSpeed"
-              label="Minimum speed"
-              unit="cm/s"
-              step={0.5}
-              hint="Exclude frames with movement below this speed."
-            />
+            <div class="cb-setting">
+              <div class="cb-setting__title">Minimum speed</div>
+              <div>
+                {prep.minSpeed} cm/s, set in{' '}
+                <button class="cb-link" onClick={() => goToStep('prep')}>
+                  Preprocess
+                </button>
+              </div>
+              <div class="cb-muted">Exclude frames with movement below this speed.</div>
+            </div>
             <div class="cb-statbox">
               <div class="cb-setting__title">
                 {ok()!.used.toLocaleString()} / {placeNeural()!.frames.toLocaleString()} frames
@@ -240,12 +241,6 @@ function PlaceSetup(): JSX.Element {
                 value={ok()!.used}
                 max={placeNeural()!.frames}
               />
-              <Show when={raised()}>
-                <div class="cb-muted">
-                  Preprocess sets a minimum speed of {prep.minSpeed} cm/s, higher than the value
-                  above, so {prep.minSpeed} cm/s is used.
-                </div>
-              </Show>
               <Note>
                 <p>
                   Only frames at or above the minimum speed are included in spatial maps and tuning

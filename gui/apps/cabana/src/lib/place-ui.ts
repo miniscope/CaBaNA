@@ -20,7 +20,7 @@ export function placeChanges(): string[] {
   const a = o.settings;
   const b = placeSettings;
   const out: string[] = [];
-  if (Math.max(b.minSpeed, prep.minSpeed) !== o.data.minSpeed) out.push('minimum speed');
+  if (prep.minSpeed !== o.data.minSpeed) out.push('minimum speed');
   if (effectiveBin() !== o.data.grid.bin) out.push('bin size');
   if (a.minOccS !== arena.minOccupancy) out.push('minimum time per bin (spatial tuning)');
   if (a.sigmaAuto !== b.sigmaAuto || (!b.sigmaAuto && a.sigma !== b.sigma)) out.push('smoothing');

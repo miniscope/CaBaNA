@@ -96,12 +96,9 @@ export interface PlaceFrames {
 
 /**
  * For each neural frame, the grid bin the animal was in, or -1 when the frame is not used: no position,
- * below the speed gate, or in a bin outside the arena. `minSpeedCmS` is raised to the Preprocess gate if that is higher.
+ * below the Preprocess speed gate, or in a bin outside the arena.
  */
-export function placeFrames(
-  minSpeedCmS: number,
-  bin = effectiveBin(),
-): PlaceFrames | { error: string } | undefined {
+export function placeFrames(bin = effectiveBin()): PlaceFrames | { error: string } | undefined {
   const p = positionOnNeural();
   const n = placeNeural();
   if (!p || !n) return undefined;
@@ -109,7 +106,7 @@ export function placeFrames(
   if (!grid) return { error: 'Set the arena size in Experimental Setup first.' };
   if (p.sx.length !== n.frames)
     return { error: 'Position and neural data have different numbers of frames.' };
-  const minSpeed = Math.max(minSpeedCmS, prep.minSpeed);
+  const { minSpeed } = prep;
   const labels = new Int32Array(n.frames).fill(-1);
   let used = 0;
   for (let t = 0; t < n.frames; t++) {
@@ -130,8 +127,8 @@ export interface PlaceData extends PlaceFrames {
 }
 
 /** What the place-cell analysis takes: the neural data and the frames in use. */
-export function placeData(minSpeedCmS: number): PlaceData | { error: string } | undefined {
-  const f = placeFrames(minSpeedCmS);
+export function placeData(): PlaceData | { error: string } | undefined {
+  const f = placeFrames();
   const n = placeNeural();
   if (!f || !n) return undefined;
   if ('error' in f) return f;
