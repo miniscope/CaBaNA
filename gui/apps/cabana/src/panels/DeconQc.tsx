@@ -1,7 +1,7 @@
 import { createMemo, For, Show, type JSX } from 'solid-js';
 import { SolidUplot } from '@dschz/solid-uplot';
 import { TracePanel, chartAxis } from '@calab/ui/chart';
-import { INDICATORS, SWEEP_TAUS, fitLine, reconvolve } from '../lib/decon.ts';
+import { INDICATORS, PRESET_NOTE, SWEEP_TAUS, fitLine, reconvolve } from '../lib/decon.ts';
 import {
   compareTo,
   editTau,
@@ -27,7 +27,7 @@ import {
   rawTrace,
   samplingRate,
 } from '../lib/store.ts';
-import { CellPicker, Checks, QcVerdict } from './parts.tsx';
+import { CellPicker, Checks, Note, QcVerdict } from './parts.tsx';
 
 type Data = [number[], ...number[][]];
 const gap = null as unknown as number;
@@ -293,6 +293,7 @@ export function DeconQc(): JSX.Element {
           <span class="cb-muted">Median explained: {(100 * med()!).toFixed(0)}%</span>
         </Show>
       </div>
+      <Note>{PRESET_NOTE}</Note>
       <Show
         when={target()}
         fallback={

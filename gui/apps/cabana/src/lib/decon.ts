@@ -12,12 +12,21 @@ export interface Indicator {
   tauDecay: number;
 }
 
-/** Rough time constants (s) in line with CaLab's simulation presets. Always editable. */
+/**
+ * Starting values for the double-exponential kernel. Published kinetics are half-times from different
+ * preparations (for example GCaMP6f: half-decay 142 ms after 1 AP in vivo, 400 ms after 10 APs in culture;
+ * Chen et al. 2013, doi:10.1038/nature12354), so the time constants are set from them roughly. Always editable.
+ */
+export const PRESET_NOTE =
+  'Starting values for the double-exponential kernel. Published indicator kinetics are half-times measured in different preparations (for example GCaMP6f: half-decay 142 ms after 1 AP in vivo, 400 ms after 10 APs in culture; Chen et al. 2013, doi:10.1038/nature12354). The kernel time constants are set from these roughly and are always editable. jGCaMP8f uses half-rise 7.1 ms and half-decay 67.4 ms (Zhang et al. 2023, doi:10.1038/s41586-023-05828-9).';
+
 export const INDICATORS: Indicator[] = [
   { id: 'gcamp6f', label: 'GCaMP6f', tauRise: 0.1, tauDecay: 0.6 },
   { id: 'gcamp6m', label: 'GCaMP6m', tauRise: 0.15, tauDecay: 0.9 },
   { id: 'gcamp6s', label: 'GCaMP6s', tauRise: 0.4, tauDecay: 1.8 },
-  { id: 'jgcamp8f', label: 'jGCaMP8f', tauRise: 0.05, tauDecay: 0.3 },
+  // Zhang et al. 2023, Nature 615:884: half-rise 7.1 ms, half-decay 67.4 ms (Janelia GENIE page).
+  // tauDecay = 67.4 ms / ln 2 = 97 ms; tauRise 14 ms gives a kernel half-rise of about 7 ms.
+  { id: 'jgcamp8f', label: 'jGCaMP8f', tauRise: 0.014, tauDecay: 0.1 },
   { id: 'ogb1', label: 'OGB-1', tauRise: 0.05, tauDecay: 1.5 },
   { id: 'custom', label: 'Custom', tauRise: 0.1, tauDecay: 0.5 },
 ];

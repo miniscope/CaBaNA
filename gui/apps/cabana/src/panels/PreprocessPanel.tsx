@@ -425,8 +425,11 @@ export function PreprocessPanel(): JSX.Element {
         <Note>
           Place maps count how long the animal spends, and what the cell does, in each square bin.
           Small bins show detail, but each holds little data and is noisy. Large bins are smoother
-          but blur the fields. Studies most often use 2 to 5 cm. Draw the arena and set its scale in
-          Experimental Setup first. Tick Show place map bins there to see them on the picture.
+          but blur the fields. Published calcium-imaging place maps use bins of about 2 to 6.5 cm
+          (for example 3.5 cm, Ziv et al. 2013, doi:10.1038/nn.3329; 4 cm, Rubin et al. 2015,
+          doi:10.7554/eLife.12247; 6.5 cm, Cai et al. 2016, doi:10.1038/nature17955; 2 cm, Shuman et
+          al. 2020, doi:10.1038/s41593-019-0559-0). Draw the arena and set its scale in Experimental
+          Setup first. Tick Show place map bins there to see them on the picture.
         </Note>
         <div class="cb-controls">
           <label>
@@ -454,8 +457,8 @@ export function PreprocessPanel(): JSX.Element {
           >
             Place cells
           </button>
-          . Bins visited for less than the minimum time are left out of the maps. 0.05 s is the
-          default in the Miniscope place cell guide.
+          . Bins visited for less than the minimum time are left out of the maps. 0.05 s is from the
+          Miniscope place cell guide's example run, not from a paper.
         </div>
         <Show
           when={binStats()}

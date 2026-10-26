@@ -102,7 +102,7 @@ export const TOL_INFO: Record<
     label: 'Overlapping footprint pairs',
     unit: '% of cells',
     step: 1,
-    why: 'Footprints that share most of their pixels usually mean one cell was split in two, or that two cells contaminate each other.',
+    why: 'Footprints that share most of their pixels usually mean one cell was split in two, or that two cells contaminate each other. Footprint overlap above about 50%, with correlated traces, is a common screen for split cells (Miniscope guide, miniscope.org/wiki/Guide/Data_processing_considerations).',
     ifFails:
       'Cells that share pixels share signal, so the same activity is counted twice. This biases correlations, population analyses and decoding.',
   },
@@ -156,7 +156,8 @@ function QcParameters(props: { keys: TolKey[] }): JSX.Element {
       <summary>QC parameters {changed() ? '(changed from the defaults)' : '(defaults)'}</summary>
       <p class="cb-muted">
         These numbers set what the checks flag and when a section fails. Change a number, then press
-        Set parameters.
+        Set parameters. Defaults chosen for CaBaNA, not published standards; change them to suit the
+        dataset.
       </p>
       <For each={props.keys}>
         {(k) => (

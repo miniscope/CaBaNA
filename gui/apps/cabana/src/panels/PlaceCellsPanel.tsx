@@ -373,8 +373,7 @@ function PlaceSetup(): JSX.Element {
               <p>
                 <strong>Minimum time per bin</strong> (default 0.05 s). A bin with less time than
                 this has no rate in the tests. The occupancy preview shows how many bins meet it.
-                The default is the one used by the reference framework; no source for it is
-                documented.
+                The default is from the Miniscope place cell guide's example run, not from a paper.
               </p>
             </Note>
           </section>
@@ -423,7 +422,7 @@ function PlaceSetup(): JSX.Element {
                 <strong>Minimum time per bin</strong> (default 0.1 s). Bins visited for less time
                 are left out of field detection, so they can never be inside a field. This is
                 separate from the spatial-tuning value because the two are set independently in the
-                reference framework.
+                reference framework. The default is a framework default, with no published source.
               </p>
               <p>
                 These settings set the outlines, the number of fields, and the in-field to
