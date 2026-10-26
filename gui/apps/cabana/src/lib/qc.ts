@@ -173,8 +173,8 @@ export function alignmentChecks(
       group: 'Behavior',
       title: 'Camera covers the miniscope recording',
       status: pct > 1 ? 'warn' : 'pass',
-      value: `${outside.toLocaleString()} ${fr} outside`,
-      limit: '1%',
+      value: `${outside.toLocaleString()} ${fr} outside, ${pct.toFixed(2)}%`,
+      limit: 'allow 1%',
       detail: `Miniscope ${s(n0)} to ${s(n1)} s (${s(n1 - n0)} s). Camera ${s(c0)} to ${s(c1)} s (${s(c1 - c0)} s) after the ${offsetS} s clock offset. Miniscope frames outside the camera recording, which get no position: ${outside.toLocaleString()} (${pct.toFixed(2)}%, limit 1%).`,
       fix: 'If the camera started before or after the miniscope, enter the difference as the behavior clock offset in Experimental Setup. Otherwise check that the right video and timestamps were loaded.',
     });

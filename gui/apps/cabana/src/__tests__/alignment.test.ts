@@ -21,14 +21,14 @@ describe('alignmentChecks', () => {
   it('passes when the camera covers the miniscope recording', () => {
     const [, span] = alignmentChecks(range(100, 0.1), [['Events', 100]], range(60, 0.2, -1), 0);
     expect(span.status).toBe('pass');
-    expect(span.value).toBe('0 frames outside');
+    expect(span.value).toBe('0 frames outside, 0.00%');
   });
 
   it('warns when the camera starts late', () => {
     const [span] = alignmentChecks(range(100, 0.1), [], range(50, 0.2, 2), 0);
     expect(span.id).toBe('align-span');
     expect(span.status).toBe('warn');
-    expect(span.value).toBe('20 frames outside');
+    expect(span.value).toBe('20 frames outside, 20.00%');
   });
 });
 
