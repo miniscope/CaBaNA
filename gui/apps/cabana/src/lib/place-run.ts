@@ -126,7 +126,12 @@ export async function runPlaceCells(): Promise<void> {
     progress('Choosing smoothing and null timescale from the data');
     const [sigmaChoice, timescale] = await Promise.all([
       cfg.sigmaAuto
-        ? submit<SigmaChoice>((onComplete) => ({ kind: 'sigma', input, onComplete }))
+        ? submit<SigmaChoice>((onComplete) => ({
+            kind: 'sigma',
+            input,
+            minOccS: cfg.minOccS,
+            onComplete,
+          }))
         : undefined,
       cfg.shiftAuto
         ? submit<TimescaleChoice>((onComplete) => ({ kind: 'timescale', input, onComplete }))

@@ -79,6 +79,10 @@ describe('place cells in the browser', () => {
     same(c.scores, ref.sigma_scores.mean, 6);
     same(c.se, ref.sigma_scores.se, 6);
   });
+  it('auto_smooth_sigma follows the minimum time per bin', () => {
+    expect(selectSigma(input, undefined, { minOccS: 0.05 }).sigma).toBe(0.5);
+    expect(selectSigma(input, undefined, { minOccS: 5 }).sigma).toBe(0);
+  });
   it('autocorrelation times', () => {
     const used = Uint8Array.from(ref.labels, (l) => (l >= 0 ? 1 : 0));
     ref.acf.cell_taus.forEach((want, c) => {
