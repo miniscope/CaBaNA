@@ -188,6 +188,10 @@ export function occupancy(grid: BinGrid): Float64Array {
 /** Bin size used until one is chosen. A starting value only: it depends on the arena, animal and frame rate. */
 export const DEFAULT_BIN_CM = 3;
 export const effectiveBin = () => arena.binCm ?? DEFAULT_BIN_CM;
+/** Set the bin size: at least 0.5 cm, at most half the smaller arena side. */
+export function setBinCm(v: number): void {
+  if (Number.isFinite(v)) setArena('binCm', Math.min(Math.min(...sizeCm()) / 2, Math.max(0.5, v)));
+}
 
 const r = (v: number) => Math.round(v * 100) / 100;
 export const cmPts = (z: Zone) => z.pts.map((p) => toCm(p)!.map(r));

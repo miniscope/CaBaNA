@@ -1,6 +1,8 @@
 import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { TracePanel } from '@calab/ui/chart';
-import { arena, binStats, effectiveBin, setArena } from '../lib/arena.ts';
+import { arena, binStats, effectiveBin, setBinCm, sizeCm } from '../lib/arena.ts';
+import { setAnalysisId } from '../lib/analyses.ts';
+import { placeSettings } from '../lib/place-run.ts';
 import { boutFrames, dilateMask, lowerBound, smoothNeural } from '../lib/framework.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { positionOnNeural, trackedPosition } from '../lib/prepared.ts';
@@ -12,6 +14,7 @@ import {
   deconvolved,
   denoisedTrace,
   frameTimes,
+  goToStep,
   rawTrace,
   rejected,
   samplingRate,
@@ -406,26 +409,27 @@ export function PreprocessPanel(): JSX.Element {
             <input
               type="number"
               min="0.5"
+              max={Math.min(...sizeCm()) / 2}
               step="0.5"
               value={effectiveBin()}
-              onInput={(e) => setArena('binCm', Math.max(0.5, +e.currentTarget.value || 0.5))}
+              onInput={(e) => setBinCm(+e.currentTarget.value || 0.5)}
             />{' '}
             cm
           </label>
-          <label>
-            Minimum time in a bin
-            <input
-              type="number"
-              min="0"
-              step="0.05"
-              value={arena.minOccupancy}
-              onInput={(e) => setArena('minOccupancy', Math.max(0, +e.currentTarget.value || 0))}
-            />{' '}
-            s
-          </label>
         </div>
         <div class="cb-muted">
-          Bins left out of the maps are those visited for less than the minimum time. 0.05 s is the
+          Minimum time in a bin: {arena.minOccupancy} s for spatial tuning and{' '}
+          {placeSettings.minOccFieldsS} s for place-field boundaries. Set on{' '}
+          <button
+            class="cb-link"
+            onClick={() => {
+              setAnalysisId('place');
+              goToStep('analyze');
+            }}
+          >
+            Place cells
+          </button>
+          . Bins visited for less than the minimum time are left out of the maps. 0.05 s is the
           default in the Miniscope place cell guide.
         </div>
         <Show

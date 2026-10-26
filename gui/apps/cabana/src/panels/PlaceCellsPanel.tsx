@@ -1,5 +1,5 @@
 import { createMemo, For, Show, type JSX } from 'solid-js';
-import { arena, effectiveBin, setArena, sizeCm } from '../lib/arena.ts';
+import { arena, effectiveBin, setArena } from '../lib/arena.ts';
 import {
   DEFAULT_PLACE_SETTINGS,
   cancelPlaceRun,
@@ -132,10 +132,6 @@ function PlaceSetup(): JSX.Element {
       : undefined;
   };
   const rejected = () => (deconvolved()?.cells ?? 0) - (placeNeural()?.cells ?? 0);
-  const setBin = (v: number) => {
-    const max = Math.min(...sizeCm()) / 2;
-    if (Number.isFinite(v)) setArena('binCm', Math.min(max, Math.max(0.5, v)));
-  };
 
   const runButton = () => (
     <Show
@@ -256,37 +252,18 @@ function PlaceSetup(): JSX.Element {
             </div>
             <div class="cb-setting">
               <div class="cb-setting__title">Spatial bin size</div>
-              <div class="cb-controls">
-                <label
-                  class="cb-prep-field"
-                  classList={{ 'cb-prep-field--changed': arena.binCm !== undefined }}
-                >
-                  <input
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    value={effectiveBin()}
-                    onInput={(e) => setBin(+e.currentTarget.value)}
-                  />
-                  cm
-                </label>
-                <input
-                  class="cb-place-slider"
-                  type="range"
-                  min="1"
-                  max={Math.max(2, Math.floor(Math.min(...sizeCm()) / 2))}
-                  step="0.5"
-                  value={effectiveBin()}
-                  aria-label="Spatial bin size"
-                  onInput={(e) => setBin(+e.currentTarget.value)}
-                />
+              <div>
+                {effectiveBin()} cm, set in{' '}
+                <button class="cb-link" onClick={() => goToStep('prep')}>
+                  Preprocess
+                </button>
               </div>
               <div class="cb-muted">Side length of each square spatial bin.</div>
               <Note>
                 <p>
                   Choose bins small enough to resolve spatial patterns, but large enough to estimate
                   activity reliably. Use the occupancy preview to check coverage; if sampling is
-                  sparse, increase bin size.
+                  sparse, increase bin size in Preprocess.
                 </p>
                 <p>Smoothing is set in bins, so changing the bin size changes the blur in cm.</p>
               </Note>
@@ -394,9 +371,9 @@ function PlaceSetup(): JSX.Element {
               </p>
               <p>
                 <strong>Minimum time per bin</strong> (default 0.05 s). A bin with less time than
-                this has no rate in the tests. The value is the one set in Experimental Setup and
-                Preprocess. The occupancy preview shows how many bins meet it. The default is the
-                one used by the reference framework; no source for it is documented.
+                this has no rate in the tests. The occupancy preview shows how many bins meet it.
+                The default is the one used by the reference framework; no source for it is
+                documented.
               </p>
             </Note>
           </section>
