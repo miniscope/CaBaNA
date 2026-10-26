@@ -356,6 +356,8 @@ export const [source, setSource] = createStore({
   stimuli: [] as { name: string; kind: string; durationS?: number; note: string }[],
   positionTool: 'other',
   positionUnit: 'cm' as 'cm' | 'px',
+  /** Position in cm with y growing downward, as in camera images: y is flipped to the arena's y-up frame. */
+  yDown: false,
   pxPerCm: 10,
   /** Seconds the behavior video ran before the miniscope started: t_neural = scale * (t_video - offset). */
   clockOffsetS: 0,

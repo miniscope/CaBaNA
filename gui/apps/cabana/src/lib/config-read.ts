@@ -24,6 +24,9 @@ export const META_FIELDS = [
   ['tracked_body_part', 'bodyPart'],
   ['likelihood_threshold', 'likelihoodMin'],
 ] as const;
+/** Flip y in the arena's height, the same step for positions and zones. */
+export const flipY = (y: number, height: number) => height - y;
+
 export type MetaField = (typeof META_FIELDS)[number][1];
 
 export interface Stimulus {
@@ -45,6 +48,8 @@ export interface ConfigValues {
   arena?: { width: number; height: number; shape: 'rectangle' | 'circle' };
   zones?: CmZone[];
   bodyLengthCm?: number;
+  /** The position file has y growing downward (metadata.y_increases: down). */
+  yDown?: boolean;
   subjectId?: string;
   meta: Partial<Record<MetaField, string | number>>;
   stimuli?: Stimulus[];
@@ -186,7 +191,7 @@ function readValues(cfg: Obj, r: ConfigRead): void {
   }
   if (isObj(beh.epochs)) readEpochs(beh.epochs, r);
 
-  if (isObj(cfg.arena)) readArena(cfg.arena, r, cfg.metadata);
+  if (isObj(cfg.arena)) readArena(cfg.arena, r, cfg.metadata, v.positionUnit);
 
   if (isObj(cfg.subjects)) v.subjectId = str(cfg.subjects.focal);
 
@@ -214,7 +219,7 @@ function readEpochs(epochs: Obj, r: ConfigRead): void {
   }
 }
 
-function readArena(a: Obj, r: ConfigRead, meta: unknown): void {
+function readArena(a: Obj, r: ConfigRead, meta: unknown, positionUnit?: 'cm' | 'px'): void {
   const units = a.units ?? 'cm';
   if (units !== 'cm') {
     r.problems.push(
@@ -276,19 +281,23 @@ function readArena(a: Obj, r: ConfigRead, meta: unknown): void {
       if (isPolygon(d)) zones.push({ name, kind: 'exclude', shape: 'polygon', pts: d });
       else bad('Divider', name);
     }
+  // Zones are in the position file's frame; with y down, flip them to the GUI's y-up frame.
+  if (isObj(meta) && meta.y_increases === 'down' && positionUnit !== 'px')
+    for (const z of zones) z.pts = z.pts.map(([x, y]) => [x, flipY(y, h)]);
   r.values.zones = zones;
 }
 
 const isPolygon = (z: unknown): z is Pt[] => Array.isArray(z) && z.length >= 3 && z.every(isPt);
 
 function readMetadata(m: Obj, r: ConfigRead): void {
-  const known = new Set<string>(['arena_shape', 'body_length_cm', 'stimuli']);
+  const known = new Set<string>(['arena_shape', 'body_length_cm', 'stimuli', 'y_increases']);
   for (const [key, field] of META_FIELDS) {
     known.add(key);
     const val = m[key];
     if (typeof val === 'string' || typeof val === 'number') r.values.meta[field] = val;
   }
   r.values.bodyLengthCm = num(m.body_length_cm);
+  r.values.yDown = m.y_increases === 'down';
   if (Array.isArray(m.stimuli))
     r.values.stimuli = m.stimuli.filter(isObj).map((s) => ({
       name: String(s.name ?? ''),

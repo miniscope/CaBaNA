@@ -6,7 +6,7 @@
 import { Document, isMap, visit } from 'yaml';
 import { arena, cmPts, effectiveBin, pendingZones, sizeCm } from './arena.ts';
 import { configReport } from './config-import.ts';
-import { META_FIELDS, restoreKept, type CmZone } from './config-read.ts';
+import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
 import {
@@ -29,11 +29,17 @@ const flow = (v: unknown) => JSON.stringify(v);
 const round = (v: number) => Math.round(v * 100) / 100;
 const rounded = (z: CmZone) => z.pts.map((p) => p.map(round));
 
-/** Zones in cm: the drawn ones, and any from a config still waiting for the arena outline. */
-const cmZones = (): CmZone[] => [
-  ...arena.zones.map((z) => ({ ...z, pts: cmPts(z) as [number, number][] })),
-  ...(pendingZones() ?? []),
-];
+/** Zones in cm: the drawn ones, and any from a config still waiting for the arena outline. With y down they are written in the position file's frame. */
+const cmZones = (): CmZone[] => {
+  const h = sizeCm()[1];
+  const back = source.yDown && source.positionUnit === 'cm';
+  return [
+    ...arena.zones.map((z) => ({ ...z, pts: cmPts(z) as [number, number][] })),
+    ...(pendingZones() ?? []),
+  ].map((z) =>
+    back ? { ...z, pts: z.pts.map(([x, y]): [number, number] => [x, flipY(y, h)]) } : z,
+  );
+};
 
 /** The framework has rectangles and polygons; a circle becomes a 32-sided polygon. */
 function zoneShape(z: CmZone): number[] | number[][] {
@@ -149,6 +155,7 @@ function sessionConfig(): Obj {
   for (const [key, field] of META_FIELDS)
     if (source[field] !== '' && source[field] !== undefined) meta[key] = source[field];
   if (arena.shape === 'circle') meta.arena_shape = 'circle';
+  if (source.yDown && source.positionUnit === 'cm') meta.y_increases = 'down';
   if (arena.bodyLength) meta.body_length_cm = round(arena.bodyLength);
   const stimuli = source.stimuli.filter((s) => s.name);
   if (stimuli.length)

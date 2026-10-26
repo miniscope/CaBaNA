@@ -29,6 +29,7 @@ onConfig((text) => {
   if (v.clockOffsetS !== undefined) setSource('clockOffsetS', v.clockOffsetS);
   if (v.clockScale !== undefined) setSource('clockScale', v.clockScale);
   if (v.positionUnit) setSource('positionUnit', v.positionUnit);
+  if (v.yDown !== undefined) setSource('yDown', v.yDown);
   if (v.subjectId) setSource('subjectId', v.subjectId);
   for (const [k, val] of Object.entries(v.meta)) setSource(k as never, val as never);
   if (v.stimuli) setSource('stimuli', v.stimuli);

@@ -5,7 +5,7 @@
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { FrameSource } from './frame.ts';
-import type { CmZone } from './config-read.ts';
+import { flipY, type CmZone } from './config-read.ts';
 import { cameraFps, onClear, positionResult, source } from './store.ts';
 
 export type Pt = [number, number];
@@ -159,7 +159,10 @@ export function binGrid(bin: number): BinGrid | undefined {
 export const positionsCm = createMemo<{ x: number[]; y: number[] }>(() => {
   const p = positionResult();
   if (!p || !('x' in p)) return { x: [], y: [] };
-  if (source.positionUnit === 'cm') return { x: p.x, y: p.y };
+  if (source.positionUnit === 'cm') {
+    const h = sizeCm()[1];
+    return { x: p.x, y: source.yDown ? p.y.map((v) => flipY(v, h)) : p.y };
+  }
   const f = frame();
   const s = pxPerCm();
   const b = arena.box;

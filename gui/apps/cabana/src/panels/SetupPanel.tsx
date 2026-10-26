@@ -342,6 +342,18 @@ function TrackingTab(): JSX.Element {
               />
             </label>
           </Show>
+          <Show when={source.positionUnit === 'cm'}>
+            <label class="cb-setup-field">
+              y increases
+              <select
+                value={source.yDown ? 'down' : 'up'}
+                onChange={(e) => setSource('yDown', e.currentTarget.value === 'down')}
+              >
+                <option value="up">Up</option>
+                <option value="down">Down</option>
+              </select>
+            </label>
+          </Show>
           <Text
             label="Body part tracked"
             value={source.bodyPart}
@@ -378,7 +390,11 @@ function TrackingTab(): JSX.Element {
         <Note>
           Position frames below the likelihood threshold are treated as lost. The head direction
           offset is added to the head orientation so that 0 degrees points to the right of the
-          picture and angles grow counterclockwise. It only matters for head direction.
+          picture and angles grow counterclockwise. It only matters for head direction. Maps and
+          zones put y up, with 0 at the arena's bottom edge. Camera tracking often has y growing
+          downward instead; choose Down for position files like that, and y is flipped using the
+          arena height. Zones in a loaded config are flipped the same way. Pixel positions are
+          already read with y down, so this applies to centimeters only.
         </Note>
       </section>
       <section class="cb-group">
