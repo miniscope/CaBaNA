@@ -24,7 +24,6 @@ import {
 } from './qc.ts';
 import { NEIGHBOR_PX, cellChecks, eventFractions, scoreCells } from './cells.ts';
 import { annotationQc, dropShortBouts, mergeBouts, readEpochs, type Epoch } from './behavior.ts';
-import { fillPositionGaps, medianSmoothPosition } from './corrections.ts';
 import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 
@@ -164,44 +163,6 @@ export function togglePending(c: number): void {
 }
 export const setPendingTo = (cells: number[]) => setPending(new Set(cells));
 
-let originalPosition: Table | undefined;
-const [positionLog, setPositionLog] = createSignal<string[]>([]);
-/** The framework steps behind the position corrections, in the order they were applied. */
-const [positionSteps, setPositionSteps] = createSignal<Record<string, unknown>[]>([]);
-export { positionLog, positionSteps };
-
-/** `median`: smooth_signal with a median window of `seconds`. `fill`: interpolate_gaps for lost stretches up to `seconds`. */
-export function correctPosition(kind: 'median' | 'fill', seconds: number): void {
-  const t = data.position as Table | undefined;
-  if (!t) return;
-  originalPosition ??= t;
-  const fps = cameraFps();
-  const { table: next, changed } =
-    kind === 'median' ? medianSmoothPosition(t, seconds, fps) : fillPositionGaps(t, seconds, fps);
-  data.position = next;
-  setPositionSteps((l) => [
-    ...l,
-    kind === 'median'
-      ? { name: 'smooth_signal', signal: ['x', 'y'], method: 'median', window_s: seconds }
-      : { name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: seconds },
-  ]);
-  setPositionLog((l) => [
-    ...l,
-    kind === 'median'
-      ? `Median filter (${seconds} s window): ${changed} frames changed.`
-      : `Filled lost stretches of ${seconds} s or less: ${changed} frames filled.`,
-  ]);
-  setVersion((v) => v + 1);
-}
-
-export function undoPositionCorrections(): void {
-  if (originalPosition) data.position = originalPosition;
-  originalPosition = undefined;
-  setPositionLog([]);
-  setPositionSteps([]);
-  setVersion((v) => v + 1);
-}
-
 /** The file name a loaded config.yaml gives for each slot. */
 export const [configFiles, setConfigFiles] = createSignal<Partial<Record<SlotId, string>>>({});
 
@@ -222,9 +183,6 @@ export function clearAll(): void {
   setExampleMedia(undefined);
   setRejected(new Set<number>());
   setPending(new Set<number>());
-  originalPosition = undefined;
-  setPositionLog([]);
-  setPositionSteps([]);
   setAnnotationFixed({ merge: false, drop: false });
   for (const k of ['position', 'annotations', 'cells', 'decon'] as const) setProceed(k, false);
   for (const s of SLOTS) {

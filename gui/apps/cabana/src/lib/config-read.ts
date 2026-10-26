@@ -42,6 +42,7 @@ export interface ConfigValues {
   clockOffsetS?: number;
   clockScale?: number;
   positionUnit?: 'cm' | 'px';
+  maxGapS?: number;
   headOffsetDeg?: number;
   mergeGapS?: number;
   minBoutS?: number;
@@ -92,8 +93,8 @@ const SECTIONS: Record<string, { read: string[]; keep: string[] }> = {
   },
   'behavior.clock': { read: ['offset_s', 'scale'], keep: [] },
   'behavior.position': {
-    read: ['file', 'units'],
-    keep: ['frame_column', 'columns', 'missing_value', 'max_gap_s'],
+    read: ['file', 'units', 'max_gap_s'],
+    keep: ['frame_column', 'columns', 'missing_value'],
   },
   'behavior.head_orientation': {
     read: ['file', 'offset_deg'],
@@ -181,6 +182,7 @@ function readValues(cfg: Obj, r: ConfigRead): void {
   }
   if (isObj(beh.position)) {
     r.files.position = base(beh.position.file);
+    v.maxGapS = num(beh.position.max_gap_s);
     const u = beh.position.units ?? 'cm';
     if (u === 'cm' || u === 'px') v.positionUnit = u;
     else r.problems.push(`behavior.position.units "${String(u)}": the GUI reads cm or px.`);

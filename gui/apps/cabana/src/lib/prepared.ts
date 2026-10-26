@@ -3,7 +3,13 @@
 
 import { createMemo } from 'solid-js';
 import { binGrid, effectiveBin, positionsCm, type BinGrid } from './arena.ts';
-import { resampleLinear, smoothNeural, smoothSignal, speedOver } from './framework.ts';
+import {
+  interpolateGaps,
+  resampleLinear,
+  smoothNeural,
+  smoothSignal,
+  speedOver,
+} from './framework.ts';
 import type { PlaceInput } from './placecells.ts';
 import { prep } from './preprocess.ts';
 import {
@@ -32,8 +38,8 @@ export const positionCm = createMemo(() => {
 });
 
 /**
- * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over 0.5 s stay lost),
- * then smooth_signal, then speed.
+ * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over `maxGapS` stay lost),
+ * then interpolate_gaps, smooth_signal, then speed.
  */
 export const positionOnNeural = createMemo(() => {
   const c = positionCm();
@@ -42,25 +48,26 @@ export const positionOnNeural = createMemo(() => {
   if (!c || !ct || !nt) return undefined;
   const ok = ct.map((v, i) => Number.isFinite(v) && (i === 0 || v > ct[i - 1]));
   const tb = ct.filter((_, i) => ok[i]);
-  const x = resampleLinear(
-    tb,
-    c.x.filter((_, i) => ok[i]),
-    nt,
-    0.5,
-  );
-  const y = resampleLinear(
-    tb,
-    c.y.filter((_, i) => ok[i]),
-    nt,
-    0.5,
-  );
+  const onFrames = (v: number[]) =>
+    resampleLinear(
+      tb,
+      v.filter((_, i) => ok[i]),
+      nt,
+      prep.maxGapS,
+    );
   const f = samplingRate() ?? 30;
+  const fill = (v: Float64Array) =>
+    prep.fillGapS > 0 ? interpolateGaps(v, f, prep.fillGapS) : { out: v, filled: 0 };
+  const fx = fill(onFrames(c.x));
+  const fy = fill(onFrames(c.y));
+  const [x, y] = [fx.out, fy.out];
   const smooth = (v: Float64Array) =>
     prep.posWindowS > 0 ? smoothSignal(v, f, prep.posMethod, prep.posWindowS) : v;
   const sx = smooth(x);
   const sy = smooth(y);
   return {
     x,
+    filled: fx.filled,
     sx,
     sy,
     speedBefore: speedOver(x, y, nt, f, prep.speedWindowS),

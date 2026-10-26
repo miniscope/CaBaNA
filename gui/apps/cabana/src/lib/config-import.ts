@@ -4,6 +4,7 @@
 import { createSignal } from 'solid-js';
 import { setArena, setPendingZones } from './arena.ts';
 import { readConfig, type ConfigRead } from './config-read.ts';
+import { setPrep } from './preprocess.ts';
 import {
   onClear,
   onConfig,
@@ -29,6 +30,7 @@ onConfig((text) => {
   if (v.clockOffsetS !== undefined) setSource('clockOffsetS', v.clockOffsetS);
   if (v.clockScale !== undefined) setSource('clockScale', v.clockScale);
   if (v.positionUnit) setSource('positionUnit', v.positionUnit);
+  if (v.maxGapS !== undefined) setPrep('maxGapS', v.maxGapS);
   if (v.yDown !== undefined) setSource('yDown', v.yDown);
   if (v.subjectId) setSource('subjectId', v.subjectId);
   for (const [k, val] of Object.entries(v.meta)) setSource(k as never, val as never);

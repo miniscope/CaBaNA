@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, For, Show, type JSX } from 'solid-js';
 import { TracePanel } from '@calab/ui/chart';
 import { annotationStats, type Epoch } from '../lib/behavior.ts';
 import { clockProgress, timingChecks, type PositionQc } from '../lib/qc.ts';
@@ -9,17 +9,14 @@ import {
   annotationLog,
   annotationResults,
   editAnnotations,
-  correctPosition,
   frameTimes,
   maxSpeed,
-  positionLog,
   positionResult,
   sessionDuration,
   setMaxSpeed,
   timingResults,
   tol,
   undoAnnotationEdits,
-  undoPositionCorrections,
 } from '../lib/store.ts';
 import { Checks, QcVerdict } from './parts.tsx';
 import { QcDashboard } from './QcDashboard.tsx';
@@ -190,67 +187,6 @@ function AnnotationFixes(): JSX.Element {
   );
 }
 
-/** Corrections for position that CaBaNA can make. */
-function PositionFixes(): JSX.Element {
-  const [windowS, setWindowS] = createSignal(0.25);
-  const [gapS, setGapS] = createSignal(0.5);
-  return (
-    <div class="cb-fix">
-      <div class="cb-fix__title">Fix in CaBaNA</div>
-      <div class="cb-controls">
-        <button
-          class="btn-secondary btn-small"
-          onClick={() => correctPosition('median', windowS())}
-        >
-          Apply median filter
-        </button>
-        <label>
-          window of
-          <input
-            type="number"
-            min="0.03"
-            step="0.05"
-            value={windowS()}
-            onInput={(e) => setWindowS(Math.max(0.03, +e.currentTarget.value || 0.25))}
-          />
-          s
-        </label>
-        <span class="cb-muted">
-          Replaces each position by the median of its neighbors, which removes jumps.
-        </span>
-      </div>
-      <div class="cb-controls">
-        <button class="btn-secondary btn-small" onClick={() => correctPosition('fill', gapS())}>
-          Fill short gaps
-        </button>
-        <label>
-          up to
-          <input
-            type="number"
-            min="0.03"
-            step="0.1"
-            value={gapS()}
-            onInput={(e) => setGapS(Math.max(0.03, +e.currentTarget.value || 0.5))}
-          />
-          s
-        </label>
-        <span class="cb-muted">
-          Draws a straight line across short lost stretches. A stretch at the start or end of the
-          session is not filled.
-        </span>
-      </div>
-      <Show when={positionLog().length}>
-        <ul class="cb-muted">
-          <For each={positionLog()}>{(m) => <li>{m}</li>}</For>
-        </ul>
-        <button class="cb-link" onClick={undoPositionCorrections}>
-          Undo all position corrections
-        </button>
-      </Show>
-    </div>
-  );
-}
-
 /** Each recording's progress against time on the neural clock; the two lines should start and end together. */
 function ClockPlot(): JSX.Element {
   const both = () => {
@@ -332,9 +268,7 @@ export function BehaviorQc(): JSX.Element {
           title="Position tracking"
           checks={posOk()!.checks}
           allowed={['lostPct', 'jumpPct']}
-        >
-          <PositionFixes />
-        </QcVerdict>
+        />
         <Checks title="Position" checks={posOk()!.checks} />
         <div class="cb-cellbar">
           <span>Jump threshold</span>

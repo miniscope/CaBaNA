@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { flipY, readConfig } from '../lib/config-read.ts';
 import { setArena, setPendingZones } from '../lib/arena.ts';
-import { setPrep } from '../lib/preprocess.ts';
+import { prep, setPrep } from '../lib/preprocess.ts';
 import { preprocessYaml, sessionYaml } from '../lib/session-config.ts';
-import { setSource } from '../lib/store.ts';
+import { addFiles, setSource } from '../lib/store.ts';
 
 describe('preprocess.yaml', () => {
   it('always writes the minimum speed, 2 cm/s by default', () => {
@@ -12,6 +12,23 @@ describe('preprocess.yaml', () => {
   it('writes the Preprocess value after it is changed', () => {
     setPrep('minSpeed', 5);
     expect(preprocessYaml()).toContain('"min_speed":5');
+  });
+});
+
+describe('position steps', () => {
+  it('writes the gap limit, then fills gaps before smoothing, as the GUI runs them', async () => {
+    await addFiles([new File(['frame,x,y\n0,1,1\n'], 'position.csv')]);
+    setPrep({ maxGapS: 0.3, fillGapS: 0.4, posWindowS: 0.25 });
+    expect(readConfig(sessionYaml()).values.maxGapS).toBe(0.3);
+    const yaml = preprocessYaml();
+    expect(yaml).toContain('"name":"interpolate_gaps","signal":["x","y"],"max_gap_s":0.4');
+    expect(yaml.indexOf('interpolate_gaps')).toBeLessThan(yaml.indexOf('smooth_signal'));
+    expect(yaml.indexOf('smooth_signal')).toBeLessThan(yaml.indexOf('"name":"speed"'));
+  });
+  it('leaves the fill step out at 0', () => {
+    setPrep('fillGapS', 0);
+    expect(preprocessYaml()).not.toContain('interpolate_gaps');
+    expect(prep.maxGapS).toBe(0.3);
   });
 });
 

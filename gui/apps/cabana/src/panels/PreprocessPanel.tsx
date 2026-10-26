@@ -12,7 +12,6 @@ import {
   deconvolved,
   denoisedTrace,
   frameTimes,
-  positionLog,
   rawTrace,
   rejected,
   samplingRate,
@@ -255,12 +254,18 @@ export function PreprocessPanel(): JSX.Element {
           <Note>
             Tracking jitter makes a still animal look like it is moving, which inflates speed. A
             median window removes jumps and keeps sharp turns; a Gaussian window blurs them.
-            Position is first placed on the miniscope frames (lost stretches over 0.5 s stay lost),
-            then smoothed, then speed is taken over the speed window. Place cell analyses often
-            leave out frames when the animal is nearly still, because firing then may reflect rest
-            rather than place. Typical thresholds are a few cm/s. The minimum speed here is the one
-            place cell and auROC analyses use. A window or threshold of 0 leaves that step out.
+            Position is first placed on the miniscope frames (lost stretches longer than the gap
+            limit stay lost), then short lost stretches are filled with a straight line, then
+            smoothed, then speed is taken over the speed window. A stretch at the start or end of
+            the session is not filled. Place cell analyses often leave out frames when the animal is
+            nearly still, because firing then may reflect rest rather than place. Typical thresholds
+            are a few cm/s. The minimum speed here is the one place cell and auROC analyses use. A
+            window or threshold of 0 leaves that step out.
           </Note>
+          <div class="cb-controls">
+            <Field k="maxGapS" label="Lost stretches longer than" unit="s stay lost" step={0.1} />
+            <Field k="fillGapS" label="Fill lost stretches up to" unit="s" step={0.1} />
+          </div>
           <div class="cb-controls">
             <label>
               Smooth position with
@@ -455,8 +460,10 @@ export function PreprocessPanel(): JSX.Element {
             Cells: {cells()} kept{rejected().size ? `, ${rejected().size} rejected in Data QC` : ''}
             .
           </li>
-          <Show when={positionLog().length}>
-            <For each={positionLog()}>{(m) => <li>Position: {m}</li>}</For>
+          <Show when={onNeural() && prep.fillGapS > 0}>
+            <li>
+              Position: lost stretches up to {prep.fillGapS} s filled ({onNeural()!.filled} frames).
+            </li>
           </Show>
           <Show when={annotationLog().length}>
             <For each={annotationLog()}>{(m) => <li>Annotations: {m}</li>}</For>

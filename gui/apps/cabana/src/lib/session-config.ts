@@ -14,7 +14,6 @@ import {
   annotationResults,
   loaded,
   override,
-  positionSteps,
   rejected,
   sessionName,
   source,
@@ -108,7 +107,8 @@ function sessionConfig(): Obj {
       offset_s: source.clockOffsetS,
       ...(source.clockScale !== 1 && { scale: source.clockScale }),
     };
-  if (file('position')) beh.position = { file: file('position'), units: source.positionUnit };
+  if (file('position'))
+    beh.position = { file: file('position'), units: source.positionUnit, max_gap_s: prep.maxGapS };
   if (file('head_orientation'))
     beh.head_orientation = { file: file('head_orientation'), offset_deg: arena.headOffset };
   const names = configReport()?.values.epochNames ?? {};
@@ -185,7 +185,7 @@ export function sessionYaml(): string {
 
 /** The preprocessing steps, in the order the framework runs them. */
 export function preprocessYaml(): string {
-  const transforms: Record<string, unknown>[] = [...positionSteps()];
+  const transforms: Record<string, unknown>[] = [];
   if (source.positionUnit === 'px')
     transforms.unshift({
       name: 'arena_transform',
@@ -193,6 +193,8 @@ export function preprocessYaml(): string {
       scale: round(1 / source.pxPerCm),
       // The framework names the unit mm after a scale; the values here are cm.
     });
+  if (prep.fillGapS > 0)
+    transforms.push({ name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: prep.fillGapS });
   if (prep.posWindowS > 0)
     transforms.push({
       name: 'smooth_signal',

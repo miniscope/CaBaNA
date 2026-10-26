@@ -94,7 +94,7 @@ export function positionQc(
         value: `${missingPct.toFixed(1)}%`,
         limit: `allow ${tol.lostPct}%`,
         detail: `${missingPct.toFixed(1)}% of ${frame.length.toLocaleString()} frames are lost (allowed: ${tol.lostPct}%).`,
-        fix: 'Fill short gaps below. Long dropouts cannot be filled: re-run tracking or exclude that stretch.',
+        fix: 'Short gaps can be filled in Preprocess. Long dropouts cannot be filled: re-run tracking or exclude that stretch.',
       },
       {
         id: 'gap',
@@ -112,7 +112,7 @@ export function positionQc(
         status: failIfOver((100 * jumps) / Math.max(speed.length, 1), tol.jumpPct),
         value: `${jumps} of ${speed.length.toLocaleString()}`,
         detail: `${jumps} of ${speed.length.toLocaleString()} frame steps (${((100 * jumps) / Math.max(speed.length, 1)).toFixed(3)}%) are faster than ${maxSpeed} cm/s (allowed: ${tol.jumpPct}%). Fastest: ${Math.max(0, ...speed).toFixed(1)} cm/s.`,
-        fix: 'Apply the median filter below, or fix the tracker (identity swaps, reflections) and re-run tracking.',
+        fix: 'Smooth position with a median in Preprocess, or fix the tracker (identity swaps, reflections) and re-run tracking.',
       },
     ],
   };
