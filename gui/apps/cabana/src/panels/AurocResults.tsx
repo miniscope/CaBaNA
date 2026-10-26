@@ -15,7 +15,6 @@ import {
 } from '../lib/auroc-view.ts';
 import { downloadText } from '../lib/place-export.ts';
 import { deconvolved, goToStep } from '../lib/store.ts';
-import { prep } from '../lib/preprocess.ts';
 import { Footprint } from './FootprintStrip.tsx';
 import { HowToRead, Note } from './parts.tsx';
 import { AurocScale, behaviorColor } from './AurocPanel.tsx';
@@ -1044,8 +1043,8 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
         <KV
           k="Excluded: below minimum speed"
           v={
-            prep.minSpeed > 0
-              ? `${o().excluded.slow.toLocaleString()} (${prep.minSpeed} cm/s)`
+            o().excluded.minSpeed !== undefined
+              ? `${o().excluded.slow.toLocaleString()} (${o().excluded.minSpeed} cm/s)`
               : 'No speed filter'
           }
         />

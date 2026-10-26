@@ -512,18 +512,25 @@ function AurocSetup(): JSX.Element {
                 .toLocaleString()}{' '}
               of {ok()!.frames.toLocaleString()} frames included in analysis
             </div>
-            <div class="cb-muted">
-              {prep.minSpeed > 0
-                ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position (speed unknown) and ${ok()!.excluded.slow.toLocaleString()} frames below ${prep.minSpeed} cm/s excluded`
-                : 'No speed filter · Frames without position are kept'}
-              {' · '}
+            <label class="cb-muted">
+              <input
+                type="checkbox"
+                checked={aurocSettings.speedFilter}
+                onChange={(e) => setAurocSettings('speedFilter', e.currentTarget.checked)}
+              />{' '}
+              Leave out frames slower than {prep.minSpeed} cm/s (set in{' '}
               <button class="cb-link" onClick={() => goToStep('prep')}>
-                Edit frame selection
+                Preprocess
               </button>
+              )
+            </label>
+            <div class="cb-muted">
+              {ok()!.excluded.minSpeed !== undefined
+                ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position (speed unknown) and ${ok()!.excluded.slow.toLocaleString()} frames below ${ok()!.excluded.minSpeed} cm/s excluded`
+                : 'No speed filter · Frames without position are kept'}
             </div>
             <div class="cb-muted">
-              auROC does not use position, so frames without it are kept unless the Preprocess speed
-              filter is on.
+              auROC does not use position, so every frame is kept unless the speed filter is chosen.
             </div>
           </div>
           <div class="cb-muted">

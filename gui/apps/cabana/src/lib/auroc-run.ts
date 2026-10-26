@@ -42,7 +42,8 @@ export interface AurocData {
   behaviors: Uint8Array;
   /** The Preprocess frame selection: 1 for frames kept. */
   mask: Uint8Array;
-  excluded: { noPosition: number; slow: number };
+  /** `minSpeed` is the speed filter used, or undefined when it is off. */
+  excluded: { noPosition: number; slow: number; minSpeed?: number };
   info: BehaviorInfo[];
   /** Cells with a missing neural value among the included frames: Not evaluated. */
   cellsMissing: number[];
@@ -50,25 +51,53 @@ export interface AurocData {
   speed?: Float64Array;
 }
 
+export const DEFAULT_AUROC_SETTINGS = {
+  /** `rest`: each behavior against all other frames. `behavior`: `pairA` against `pairB` only; other frames are left out. */
+  compare: 'rest' as 'rest' | 'behavior',
+  pairA: '',
+  pairB: '',
+  /** Behaviors left out of the run, by label. Behaviors with too few frames start out left out. */
+  unselected: [] as string[],
+  method: 'circular' as 'circular' | 'speed',
+  /** auto_null_timescale, or the smallest circular shift in seconds. */
+  shiftAuto: true,
+  minShiftS: 20,
+  nShuffles: 1000,
+  seed: 0,
+  alpha: 0.05,
+  /** Correction across the selected behaviors within each cell. */
+  correction: 'max_stat' as 'none' | 'max_stat',
+  /** Leave out frames below the Preprocess minimum speed. Off: auROC keeps every frame. */
+  speedFilter: false,
+  match: { ...DEFAULT_MATCH } as MatchOptions,
+};
+export const [aurocSettings, setAurocSettings] = createStore({
+  ...DEFAULT_AUROC_SETTINGS,
+  match: { ...DEFAULT_MATCH },
+});
+export type AurocSettings = typeof DEFAULT_AUROC_SETTINGS;
+
 /** The analysis input, or an explanation of what is missing. */
 export const aurocData = createMemo<AurocData | { error: string }>(() => {
   const n = placeNeural();
   const t = frameTimes();
   const ann = annotationResults().find((r) => r.id === 'behavior_annotations');
   if (!n) return { error: 'Load deconvolved neural data first.' };
-  if (!t || t.length !== n.frames) return { error: 'Load neural timestamps that match the neural data.' };
+  if (!t || t.length !== n.frames)
+    return { error: 'Load neural timestamps that match the neural data.' };
   if (!ann || ann.error) return { error: ann?.error ?? 'Load behavior annotations first.' };
   const labels = [...new Set(ann.epochs.map((e) => e.label))];
   const pos = positionOnNeural();
   const mask = new Uint8Array(n.frames).fill(1);
-  const excluded = { noPosition: 0, slow: 0 };
-  // auROC does not use position, so frames without it are kept unless the speed filter needs their speed.
-  if (pos && pos.sx.length === n.frames && prep.minSpeed > 0)
+  const minSpeed = aurocSettings.speedFilter && prep.minSpeed > 0 ? prep.minSpeed : undefined;
+  const excluded = { noPosition: 0, slow: 0, minSpeed };
+  // auROC does not use position, so frames without it are kept unless the speed filter is chosen and needs their speed.
+  if (pos && pos.sx.length === n.frames && minSpeed !== undefined)
     for (let i = 0; i < n.frames; i++) {
       if (!(Number.isFinite(pos.sx[i]) && Number.isFinite(pos.sy[i]))) {
         mask[i] = 0;
         excluded.noPosition++;
-      } else if (!(pos.speedAfter[i] >= prep.minSpeed)) {
+      } else if (!(pos.speedAfter[i] >= minSpeed)) {
         mask[i] = 0;
         excluded.slow++;
       }
@@ -77,7 +106,9 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
   if (prep.labelPadS > 0)
     labels.forEach((_, b) => {
       const row = Array.from(behaviors.subarray(b * n.frames, (b + 1) * n.frames), (v) => v === 1);
-      dilateMask(row, n.fs, prep.labelPadS).forEach((v, i) => (behaviors[b * n.frames + i] = v ? 1 : 0));
+      dilateMask(row, n.fs, prep.labelPadS).forEach(
+        (v, i) => (behaviors[b * n.frames + i] = v ? 1 : 0),
+      );
     });
   const base: AurocInput = {
     neural: n.neural,
@@ -122,30 +153,6 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
     speed: pos && pos.sx.length === n.frames ? fillMissing(pos.speedAfter) : undefined,
   };
 });
-
-export const DEFAULT_AUROC_SETTINGS = {
-  /** `rest`: each behavior against all other frames. `behavior`: `pairA` against `pairB` only; other frames are left out. */
-  compare: 'rest' as 'rest' | 'behavior',
-  pairA: '',
-  pairB: '',
-  /** Behaviors left out of the run, by label. Behaviors with too few frames start out left out. */
-  unselected: [] as string[],
-  method: 'circular' as 'circular' | 'speed',
-  /** auto_null_timescale, or the smallest circular shift in seconds. */
-  shiftAuto: true,
-  minShiftS: 20,
-  nShuffles: 1000,
-  seed: 0,
-  alpha: 0.05,
-  /** Correction across the selected behaviors within each cell. */
-  correction: 'max_stat' as 'none' | 'max_stat',
-  match: { ...DEFAULT_MATCH } as MatchOptions,
-};
-export const [aurocSettings, setAurocSettings] = createStore({
-  ...DEFAULT_AUROC_SETTINGS,
-  match: { ...DEFAULT_MATCH },
-});
-export type AurocSettings = typeof DEFAULT_AUROC_SETTINGS;
 
 /** What a finished run used and found. */
 export interface AurocOutcome {
@@ -193,7 +200,9 @@ onClear(() => {
 });
 
 type Make = (done: (r: never) => void, jobId: number) => Record<string, unknown>;
-function submit<T>(make: (done: (r: T) => void, jobId: number) => Record<string, unknown>): Promise<T> {
+function submit<T>(
+  make: (done: (r: T) => void, jobId: number) => Record<string, unknown>,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const jobId = nextJob++;
     pool!.dispatch({
@@ -206,7 +215,10 @@ function submit<T>(make: (done: (r: T) => void, jobId: number) => Record<string,
 }
 
 /** The two behaviors of a behavior-against-behavior comparison: the chosen ones, else the first two. */
-export function pairIndexes(data: AurocData, cfg: Pick<AurocSettings, 'pairA' | 'pairB'>): [number, number] {
+export function pairIndexes(
+  data: AurocData,
+  cfg: Pick<AurocSettings, 'pairA' | 'pairB'>,
+): [number, number] {
   const a = Math.max(0, data.labels.indexOf(cfg.pairA));
   const b = data.labels.indexOf(cfg.pairB);
   return [a, b >= 0 && b !== a ? b : a === 0 ? 1 : 0];
@@ -231,14 +243,27 @@ export function aurocPlan(data: AurocData, cfg: PlanSettings) {
     const input: AurocInput = { ...base, behaviors: rows, nBehaviors: 1, mask };
     const { n1, n0 } = frameCounts(input);
     const { duration, bouts } = data.info[a];
-    const info = [{ label: `${data.labels[a]} vs ${data.labels[b]}`, duration, bouts, during: n1[0], outside: n0[0] }];
+    const info = [
+      {
+        label: `${data.labels[a]} vs ${data.labels[b]}`,
+        duration,
+        bouts,
+        during: n1[0],
+        outside: n0[0],
+      },
+    ];
     return { input, labels: [info[0].label], info, against: data.labels[b] };
   }
   const idx = data.labels.flatMap((l, i) => (cfg.unselected.includes(l) ? [] : [i]));
   const rows = new Uint8Array(idx.length * frames);
   idx.forEach((b, j) => rows.set(row(b), j * frames));
   const input: AurocInput = { ...base, behaviors: rows, nBehaviors: idx.length, mask: data.mask };
-  return { input, labels: idx.map((b) => data.labels[b]), info: idx.map((b) => data.info[b]), against: undefined };
+  return {
+    input,
+    labels: idx.map((b) => data.labels[b]),
+    info: idx.map((b) => data.info[b]),
+    against: undefined,
+  };
 }
 
 export async function runAuroc(): Promise<void> {
@@ -247,7 +272,11 @@ export async function runAuroc(): Promise<void> {
     setAurocStatus({ kind: 'error', message: data.error });
     return;
   }
-  const cfg = { ...aurocSettings, unselected: [...aurocSettings.unselected], match: { ...aurocSettings.match } };
+  const cfg = {
+    ...aurocSettings,
+    unselected: [...aurocSettings.unselected],
+    match: { ...aurocSettings.match },
+  };
   const { input, labels, info, against } = aurocPlan(data, cfg);
   if (!labels.length) {
     setAurocStatus({ kind: 'error', message: 'Select at least one behavior.' });
@@ -276,8 +305,7 @@ export async function runAuroc(): Promise<void> {
       minShift: Math.round(minShiftS * input.fs),
       nShuffles: cfg.nShuffles,
       seed: cfg.seed,
-      match:
-        cfg.method === 'speed' ? { speed: data.speed!, options: { ...cfg.match } } : undefined,
+      match: cfg.method === 'speed' ? { speed: data.speed!, options: { ...cfg.match } } : undefined,
       onComplete,
     }));
 
@@ -324,7 +352,11 @@ export async function runAuroc(): Promise<void> {
       against,
       cellIds: data.cellIds,
       input,
-      result: { observed: cat((p) => p.observed), pRaw: cat((p) => p.pRaw), pAdj: cat((p) => p.pAdj) },
+      result: {
+        observed: cat((p) => p.observed),
+        pRaw: cat((p) => p.pRaw),
+        pAdj: cat((p) => p.pAdj),
+      },
       cellsMissing: data.cellsMissing,
       shifts: draw.shifts,
       uniqueShifts: draw.unique,
