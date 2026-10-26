@@ -5,7 +5,7 @@ import { setAnalysisId } from '../lib/analyses.ts';
 import { placeSettings } from '../lib/place-run.ts';
 import { boutFrames, dilateMask, lowerBound, smoothNeural } from '../lib/framework.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
-import { positionOnNeural, trackedPosition } from '../lib/prepared.ts';
+import { positionIssue, positionOnNeural, trackedPosition } from '../lib/prepared.ts';
 import { preprocessYaml } from '../lib/session-config.ts';
 import {
   annotationLog,
@@ -184,7 +184,14 @@ export function PreprocessPanel(): JSX.Element {
         </label>
       </div>
 
-      <Show when={preset().events || preset().trace}>
+      <Show
+        when={preset().events || preset().trace}
+        fallback={
+          <Show when={anything()}>
+            <div class="cb-muted">Neural signals need deconvolved events or a trace.</div>
+          </Show>
+        }
+      >
         <section class="cb-group">
           <h3>Neural signals</h3>
           <Note>
@@ -251,7 +258,14 @@ export function PreprocessPanel(): JSX.Element {
         </section>
       </Show>
 
-      <Show when={pos()}>
+      <Show
+        when={pos()}
+        fallback={
+          <Show when={anything()}>
+            <div class="cb-muted">{positionIssue()}</div>
+          </Show>
+        }
+      >
         <section class="cb-group">
           <h3>Position</h3>
           <Note>
@@ -286,7 +300,7 @@ export function PreprocessPanel(): JSX.Element {
             <Field k="speedWindowS" label="Speed window" unit="s" step={0.05} />
             <Field k="minSpeed" label="Leave out frames slower than" unit="cm/s" step={0.5} />
           </div>
-          <Show when={frames()}>
+          <Show when={frames()} fallback={<div class="cb-muted">{positionIssue(true)}</div>}>
             <div class="cb-muted">
               {frames()!.pct.toFixed(1)}% of the neural frames are kept (position found
               {prep.minSpeed > 0 ? `, speed at least ${prep.minSpeed} cm/s` : ''}).
@@ -339,7 +353,18 @@ export function PreprocessPanel(): JSX.Element {
         </section>
       </Show>
 
-      <Show when={labels().length && frameTimes()}>
+      <Show
+        when={labels().length && frameTimes()}
+        fallback={
+          <Show when={anything()}>
+            <div class="cb-muted">
+              {labels().length
+                ? 'Frame labels need neural timestamps.'
+                : 'Frame labels need behavior annotations.'}
+            </div>
+          </Show>
+        }
+      >
         <section class="cb-group">
           <h3>Frame labels</h3>
           <Note>

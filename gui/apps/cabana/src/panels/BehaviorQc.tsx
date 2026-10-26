@@ -18,6 +18,7 @@ import {
   tol,
   undoAnnotationEdits,
 } from '../lib/store.ts';
+import { positionIssue } from '../lib/prepared.ts';
 import { Checks, QcVerdict } from './parts.tsx';
 import { QcDashboard } from './QcDashboard.tsx';
 
@@ -194,7 +195,12 @@ function ClockPlot(): JSX.Element {
     return n?.length && c?.length ? clockProgress(n, c) : undefined;
   };
   return (
-    <Show when={both()}>
+    <Show
+      when={both()}
+      fallback={
+        <div class="cb-muted">The clock plot needs both neural and behavior camera timestamps.</div>
+      }
+    >
       <div class="cb-label">Recording progress on the neural clock</div>
       <TracePanel
         data={() => both() as unknown as [number[], ...number[][]]}
@@ -226,9 +232,10 @@ export function BehaviorQc(): JSX.Element {
     const p = pos();
     return p && 'checks' in p ? p : undefined;
   };
+  const empty = () => !pos() && !annotationResults().length;
   return (
     <>
-      <Show when={!pos() && !annotationResults().length}>
+      <Show when={empty()}>
         <div class="cb-empty">
           Load position and camera timestamps, or annotation files, to check behavior.
         </div>
@@ -254,9 +261,19 @@ export function BehaviorQc(): JSX.Element {
         ]}
       />
 
-      <Show when={timing().length}>
+      <Show
+        when={timing().length}
+        fallback={
+          <Show when={!empty()}>
+            <div class="cb-muted">Timing and alignment need timestamps files.</div>
+          </Show>
+        }
+      >
         <Checks id="qc-timing" title="Timing and alignment" checks={timing()} />
         <ClockPlot />
+      </Show>
+      <Show when={!pos() && annotationResults().length}>
+        <div class="cb-muted">{positionIssue()}</div>
       </Show>
 
       <Show when={pos() && !posOk()}>

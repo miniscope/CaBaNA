@@ -12,7 +12,7 @@ import {
   setPlaceShowResults,
 } from '../lib/place-run.ts';
 import { placeChanges } from '../lib/place-ui.ts';
-import { placeFrames, placeNeural } from '../lib/prepared.ts';
+import { placeFrames, placeNeural, positionIssue } from '../lib/prepared.ts';
 import { prep } from '../lib/preprocess.ts';
 import { deconvolved, goToStep } from '../lib/store.ts';
 import { OccupancyPreview } from './OccupancyPreview.tsx';
@@ -126,6 +126,7 @@ function PlaceSetup(): JSX.Element {
     const s = placeStatus();
     const f = frames();
     if (s.kind === 'error') return s.message;
+    if (!f && ready()) return positionIssue(true);
     if (f && 'error' in f) return f.error;
     return f && f.used === 0
       ? 'No frame passes the speed threshold. Lower the minimum speed in Preprocess.'

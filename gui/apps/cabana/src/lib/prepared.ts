@@ -16,11 +16,22 @@ import {
   cameraTimes,
   deconvolved,
   frameTimes,
+  loaded,
   positionResult,
   rejected,
   samplingRate,
   source,
 } from './store.ts';
+
+/** Why position is not available, or undefined when it is. `onNeural` also needs the neural frame times. */
+export function positionIssue(onNeural = false): string | undefined {
+  if (!loaded.position?.summary) return 'Position needs a position file.';
+  if (!loaded.behavior_timestamps?.summary) return 'Position needs camera timestamps.';
+  const p = positionResult();
+  if (!p || 'error' in p || !cameraTimes()) return 'Position failed QC: see Behavior QC.';
+  if (onNeural && !frameTimes()) return 'Position needs neural timestamps.';
+  return undefined;
+}
 
 /** The tracked position, when a position file and its timestamps are loaded and valid. */
 export const trackedPosition = () => {
