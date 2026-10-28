@@ -242,7 +242,7 @@ export function DecodingResults(props: { out: DecodeOutcome; onEdit: () => void 
         <div>
           <h2>Decoding: position</h2>
           <p class="cb-muted">
-            Bayesian decoder, {o().params.likelihood}; each frame decoded by a model trained on the other folds.
+            Bayesian decoder, {o().params.likelihood === 'gaussian' ? 'Gaussian' : 'Poisson'} likelihood; each frame decoded by a model trained on the other folds.
           </p>
         </div>
         <div class="cb-controls">
