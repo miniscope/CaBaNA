@@ -8,9 +8,11 @@ import {
   type WorkerPool,
 } from '@calab/compute';
 import type { BayesInput, BayesOut } from './decode-bayes.ts';
+import type { LinearInput, LinearOut } from './decode-linear.ts';
 import type {
   DecodingWorkerInbound,
   DecodingWorkerOutbound,
+  LinearWorkerInbound,
   ShuffleBatch,
 } from '../workers/decoding-types.ts';
 
@@ -19,6 +21,12 @@ export type DecodingPoolJob = BaseJob &
   (
     | ({ kind: 'observed'; onComplete(r: BayesOut): void } & Fields<
         Extract<DecodingWorkerInbound, { type: 'observed-job' }>
+      >)
+    | ({ kind: 'linear-observed'; onComplete(r: LinearOut): void } & Fields<
+        Extract<LinearWorkerInbound, { type: 'linear-observed-job' }>
+      >)
+    | ({ kind: 'linear-shuffles'; onProgress(done: number): void; onComplete(r: ShuffleBatch): void } & Fields<
+        Extract<LinearWorkerInbound, { type: 'linear-shuffles-job' }>
       >)
     | ({ kind: 'shuffles'; onProgress(done: number): void; onComplete(r: ShuffleBatch): void } & Fields<
         Extract<DecodingWorkerInbound, { type: 'shuffles-job' }>
@@ -30,7 +38,7 @@ const router: MessageRouter<DecodingPoolJob, DecodingWorkerOutbound> = {
   getJobId: (msg) => ('jobId' in msg ? msg.jobId : undefined),
   routeMessage(job, msg, finish) {
     if (msg.type === 'progress') {
-      if (job.kind === 'shuffles') job.onProgress(msg.done);
+      if (job.kind === 'shuffles' || job.kind === 'linear-shuffles') job.onProgress(msg.done);
     } else if (msg.type === 'error') {
       finish();
       job.onError(msg.message);
@@ -44,16 +52,16 @@ const router: MessageRouter<DecodingPoolJob, DecodingWorkerOutbound> = {
     const { kind, jobId, ...rest } = job as Record<string, unknown> & typeof job;
     // Callbacks stay on this side; only data goes to the worker.
     const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => typeof v !== 'function'));
-    const src = (job as { input: BayesInput }).input;
-    const input: BayesInput = {
+    const src = (job as { input: BayesInput | LinearInput }).input;
+    const input = {
       ...src,
-      neural: Float32Array.from(src.neural as ArrayLike<number>),
+      neural: src.neural instanceof Float64Array ? src.neural.slice() : Float32Array.from(src.neural as ArrayLike<number>),
       labels: src.labels.slice(),
       mask: src.mask.slice(),
-      centers: src.centers?.slice(),
+      ...('centers' in src && src.centers ? { centers: src.centers.slice() } : {}),
     };
     const buffers = [(input.neural as Float32Array).buffer, input.labels.buffer, input.mask.buffer];
-    if (input.centers) buffers.push(input.centers.buffer);
+    if ('centers' in input && input.centers) buffers.push((input.centers as Float64Array).buffer);
     return [{ ...data, type: `${kind}-job`, jobId, input }, buffers as ArrayBuffer[]];
   },
 };

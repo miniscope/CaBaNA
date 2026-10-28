@@ -5,7 +5,7 @@
 //
 // The classifier is a TypeScript port of the same objective, not scikit-learn's solver (lbfgs). The
 // objective is strictly convex, so it has one optimum, and this solver runs to a tight tolerance. scikit-learn
-// stops at its default tolerance (1e-4), so the weights differ from its output by about that much (this solver: largest gradient component 1e-7) and a
+// stops at its default tolerance (1e-4), so the weights differ from its output by about that much (this solver: largest gradient component 1e-5 in the decoder, 1e-7 in the weight test) and a
 // frame on the decision boundary can be classified differently; the test file states the agreement reached.
 //
 // Neural data is cells x frames of events summed per time bin (see `rebin` in decode-shared.ts); every cell
@@ -18,6 +18,8 @@ export interface LinearInput {
   neural: ArrayLike<number>;
   cells: number;
   frames: number;
+  /** Sampling rate of the binned data, Hz. */
+  fs: number;
   /** State of each frame (-1: none), exclusive. */
   labels: Int32Array;
   mask: Uint8Array;
@@ -31,6 +33,9 @@ export interface LinearParams {
   /** A behavior needs this many frames, and so does everything else, to be decoded. */
   minFramesPerClass: number;
 }
+
+/** Gradient tolerance of the decoder's fits: weights are within about 1e-5 of the optimum, far tighter than scikit-learn's default 1e-4 stop. */
+export const FIT_TOL = 1e-5;
 
 export const DEFAULT_LINEAR: LinearParams = { nFolds: 5, C: 1, minFramesPerClass: 20 };
 
@@ -63,7 +68,6 @@ export function fitLogistic(x: Float64Array, y: Uint8Array, n: number, d: number
   const sw = [n / (2 * (n - n1)), n / (2 * n1)];
   const dim = d + 1;
   const theta = new Float64Array(dim);
-  const z = new Float64Array(n);
   const grad = new Float64Array(dim);
 
   /** Loss and gradient at `t`. */
@@ -167,7 +171,7 @@ export function fitPredict(xTrain: Float64Array, yTrain: Uint8Array, nTrain: num
   }
   const xt = new Float64Array(nTrain * d);
   for (let i = 0; i < nTrain; i++) for (let j = 0; j < d; j++) xt[i * d + j] = (xTrain[i * d + j] - mu[j]) / sd[j];
-  const fit = fitLogistic(xt, yTrain, nTrain, d, C);
+  const fit = fitLogistic(xt, yTrain, nTrain, d, C, FIT_TOL);
   const out = new Uint8Array(nTest);
   for (let i = 0; i < nTest; i++) {
     let m = fit.b;

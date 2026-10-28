@@ -1,11 +1,17 @@
 // The Behavior target of the Decoding page: setup (behaviors, priority order, overlaps, decoder, test) and results.
 
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { annotatedBehaviors, behaviorDecodeData, orderOf, OTHER_NAME } from '../lib/decode-data.ts';
-import { behaviorConfusionCsv, behaviorMetadata, behaviorStatesCsv, DEPARTURES } from '../lib/decoding-export.ts';
+import { annotatedBehaviors, behaviorDecodeData, linearDecodeData, orderOf, OTHER_NAME } from '../lib/decode-data.ts';
+import { behaviorConfusionCsv, behaviorMetadata, behaviorStatesCsv, DEPARTURES, linearMetadata, linearStatesCsv } from '../lib/decoding-export.ts';
 import {
   behaviorOutcome,
   behaviorRunIssue,
+  linearOutcome,
+  linearRunIssue,
+  linearShowResults,
+  runLinearDecoding,
+  setLinearShowResults,
+  type LinearOutcome,
   behaviorShowResults,
   cancelDecodeRun,
   decodeSettings,
@@ -20,6 +26,10 @@ import {
   behaviorRows,
   behaviorSettingChanges,
   confusionShares,
+  linearRows,
+  linearSettingChanges,
+  summarizeLinear,
+  type BehaviorRow,
   formatP,
   summarizeBehavior,
 } from '../lib/decoding-view.ts';
@@ -59,8 +69,11 @@ function BehaviorSetup(): JSX.Element {
     const s = decodeStatus();
     return s.kind === 'running' ? s : undefined;
   };
-  const issue = () => behaviorRunIssue(data(), decodeSettings);
-  const changes = () => behaviorSettingChanges();
+  const logistic = () => B().decoder === 'logistic';
+  const linearData = createMemo(() => (logistic() ? linearDecodeData({ order: B().order, unselected: [...B().unselected], other: B().other }, B().binS) : undefined));
+  const issue = () => (logistic() ? linearRunIssue(linearData(), decodeSettings) : behaviorRunIssue(data(), decodeSettings));
+  const hasOutcome = () => (logistic() ? linearOutcome() : behaviorOutcome());
+  const changes = () => (logistic() ? linearSettingChanges() : behaviorSettingChanges());
   const chosen = (l: string) => !B().unselected.includes(l);
   const toggle = (l: string) =>
     setDecodeSettings('behavior', 'unselected', chosen(l) ? [...B().unselected, l] : B().unselected.filter((x) => x !== l));
@@ -100,14 +113,14 @@ function BehaviorSetup(): JSX.Element {
         </div>
         <TargetSelector />
         <div class="cb-controls">
-          <Show when={behaviorOutcome()}>
-            <button class="btn-secondary" onClick={() => setBehaviorShowResults(true)}>
+          <Show when={hasOutcome()}>
+            <button class="btn-secondary" onClick={() => (logistic() ? setLinearShowResults(true) : setBehaviorShowResults(true))}>
               {changes().length ? 'View previous results' : 'View results'}
             </button>
           </Show>
         </div>
       </div>
-      <Show when={behaviorOutcome() && changes().length}>
+      <Show when={hasOutcome() && changes().length}>
         <div class="cb-muted">Changed since the last run: {changes().join(', ')}. Run again to update.</div>
       </Show>
       <Show when={error()}>
@@ -122,9 +135,10 @@ function BehaviorSetup(): JSX.Element {
         </div>
       </Show>
       <Show when={ok()}>
-        <InputNote cells={ok()!.input.cells} />
+        <InputNote cells={ok()!.input.cells} summed={logistic()} />
         <PresetBar>
-          integration window {D.behavior.windowS} s, {D.blockS} s blocks, {D.nShuffles.toLocaleString()} shuffles.
+          Bayesian decoder with an integration window of {D.behavior.windowS} s (logistic regression: {D.behavior.binS} s bins, C = {D.behavior.C}),{' '}
+          {D.blockS} s blocks, {D.nShuffles.toLocaleString()} shuffles.
         </PresetBar>
         <div class="cb-pe-body">
           <section class="cb-setgroup cb-pe-left">
@@ -212,7 +226,28 @@ function BehaviorSetup(): JSX.Element {
           </section>
 
           <section class="cb-setgroup cb-pe-right">
-            <h3>2 · Bayesian decoder</h3>
+            <h3>2 · Decoder</h3>
+            <Row
+              label="Decoder"
+              tip="Bayesian: naive-Bayes decoder (Shuman et al. 2020), each frame decoded from a window of events. Logistic regression: scikit-learn's L2 logistic regression, one behavior against the rest, on events summed in time bins; the result per behavior is balanced accuracy (chance 0.5)."
+            >
+              <Choice label="Decoder" value={B().decoder} options={[['bayes', 'Bayesian'], ['logistic', 'Logistic regression']]} onSet={(v) => setDecodeSettings('behavior', 'decoder', v)} />
+            </Row>
+            <Show when={logistic()}>
+              <Row
+                label="Time bin"
+                tip="Events are summed in bins of this length, and each bin takes the behavior covering at least half of it. Shorter bins give more samples but sparser events. Rounded to whole frames."
+              >
+                <NumField label="Time bin (s)" value={B().binS} def={D.behavior.binS} min={0.05} step={0.1} unit="s" onSet={(v) => setDecodeSettings('behavior', 'binS', Math.max(0.05, v))} />
+              </Row>
+              <Row
+                label="C (regularization)"
+                tip="Inverse regularization strength: smaller C shrinks the weights more. Each cell is standardized with the training fold; classes are weighted to balance."
+              >
+                <NumField label="C" value={B().C} def={D.behavior.C} min={0.0001} step={0.1} onSet={(v) => setDecodeSettings('behavior', 'C', Math.max(0.0001, v))} />
+              </Row>
+            </Show>
+            <Show when={!logistic()}>
             <Row label="Likelihood" tip="Gaussian: Shuman et al. 2020, the lab's decoder. Poisson: independent Poisson cells, Zhang et al. 1998.">
               <Choice label="Likelihood" value={B().likelihood} options={[['gaussian', 'Gaussian'], ['poisson', 'Poisson']]} onSet={(v) => setDecodeSettings('behavior', 'likelihood', v)} />
             </Row>
@@ -233,10 +268,11 @@ function BehaviorSetup(): JSX.Element {
             <Row label="Prior" tip="Occupancy: behaviors that take more frames in the training folds are more likely. Uniform: every behavior is equally likely.">
               <Choice label="Prior" value={B().prior} options={[['occupancy', 'Occupancy'], ['uniform', 'Uniform']]} onSet={(v) => setDecodeSettings('behavior', 'prior', v)} />
             </Row>
+            </Show>
             <Row label="Folds" tip="The labeled frames are cut into this many contiguous blocks of time. Each block is decoded by a model trained on the others.">
               <NumField label="Folds" value={B().nFolds} def={D.behavior.nFolds} min={2} step={1} onSet={(v) => setDecodeSettings('behavior', 'nFolds', Math.max(2, Math.round(v)))} />
             </Row>
-            <Row label="Minimum frames per behavior" tip="A behavior with fewer frames is not decoded and shows as Not evaluated.">
+            <Row label={logistic() ? 'Minimum bins per behavior' : 'Minimum frames per behavior'} tip="A behavior with fewer frames (bins) than this, or with fewer other labeled frames, is not decoded and shows as Not evaluated.">
               <NumField label="Minimum frames per behavior" value={B().minFrames} def={D.behavior.minFrames} min={1} step={1} onSet={(v) => setDecodeSettings('behavior', 'minFrames', Math.max(1, Math.round(v)))} />
             </Row>
             <TestSection what="behavior" />
@@ -260,8 +296,8 @@ function BehaviorSetup(): JSX.Element {
             </Show>
           </span>
           <Show when={!running()} fallback={<button class="btn-secondary" onClick={cancelDecodeRun}>Cancel</button>}>
-            <button class="btn-primary" disabled={!!issue()} onClick={() => void runBehaviorDecoding()}>
-              {behaviorOutcome() ? 'Run again' : 'Run analysis'} ▶
+            <button class="btn-primary" disabled={!!issue()} onClick={() => void (logistic() ? runLinearDecoding() : runBehaviorDecoding())}>
+              {hasOutcome() ? 'Run again' : 'Run analysis'} ▶
             </button>
           </Show>
         </div>
@@ -336,8 +372,8 @@ function Confusion(props: { out: BehaviorOutcome; w: number; h: number }): JSX.E
 }
 
 /** Recall of each behavior with the 95th percentile of its shuffled recalls and the chance level. */
-function RecallBars(props: { out: BehaviorOutcome; w: number; h: number }): JSX.Element {
-  const rows = createMemo(() => behaviorRows(props.out));
+function RecallBars(props: { rows: BehaviorRow[]; label: string; w: number; h: number }): JSX.Element {
+  const rows = () => props.rows;
   const left = 120;
   const rowH = () => Math.min(34, (props.h - 36) / Math.max(1, rows().length));
   const x = (v: number) => left + v * (props.w - left - 16);
@@ -379,7 +415,7 @@ function RecallBars(props: { out: BehaviorOutcome; w: number; h: number }): JSX.
         )}
       </For>
       <text x={left + (props.w - left - 16) / 2} y={props.h - 2} text-anchor="middle" font-size="11" fill="var(--text-secondary)">
-        Recall (share of the behavior's frames decoded as it)
+        {props.label}
       </text>
     </svg>
   );
@@ -563,7 +599,7 @@ function BehaviorResults(props: { out: BehaviorOutcome; onEdit: () => void }): J
           {(size) => <Show when={size().w > 0 && size().h > 0}><Confusion out={o()} w={size().w} h={size().h} /></Show>}
         </PlotCard>
         <PlotCard class="cb-dec-hist" title="Recall per behavior" help={HELP_RECALL}>
-          {(size) => <Show when={size().w > 0 && size().h > 0}><RecallBars out={o()} w={size().w} h={size().h} /></Show>}
+          {(size) => <Show when={size().w > 0 && size().h > 0}><RecallBars rows={rows()} label="Recall (share of the behavior's frames decoded as it)" w={size().w} h={size().h} /></Show>}
         </PlotCard>
         <PlotCard class="cb-dec-trace" title="True and decoded behavior" help={HELP_TIME}>
           {(size) => <Show when={size().w > 0 && size().h > 0}><LabelTimeline out={o()} w={size().w} h={size().h} /></Show>}
@@ -679,11 +715,144 @@ function BehaviorDetails(props: { out: BehaviorOutcome; onClose: () => void }): 
   );
 }
 
-/** The behavior target: its setup, or after a run its results. */
+const HELP_BALACC = (
+  <>
+    <p>
+      Balanced accuracy of each behavior against all other labeled bins: the mean of the share of its bins decoded as it and the
+      share of the other bins decoded as not it. Chance is 0.5. The dashed line is the 95th percentile of the values obtained with
+      shuffled labels, the range expected without a link between neural data and behavior.
+    </p>
+    <p>Each behavior has its own classifier, trained on the other folds. The overall result is the mean over the evaluated behaviors.</p>
+  </>
+);
+
+function LinearResults(props: { out: LinearOutcome; onEdit: () => void }): JSX.Element {
+  const o = () => props.out;
+  const rows = createMemo(() => linearRows(o()));
+  const sum = createMemo(() => summarizeLinear(o()));
+  let root!: HTMLDivElement;
+  onMount(() => onCleanup(fitToWindow(root)));
+  const t = () => o().test;
+  const status = { significant: '✓ Significant', 'not significant': 'Not significant', untested: 'Not tested', 'not evaluated': 'Not evaluated' };
+  return (
+    <div class="cb-place cb-dec-results" ref={root}>
+      <div class="cb-place-head">
+        <div>
+          <h2>Decoding: behavior</h2>
+          <p class="cb-muted">
+            Logistic regression (L2, C = {o().params.C}), one behavior against the rest, on events summed in {fmt(o().binS)} s bins; each fold
+            decoded by classifiers trained on the other folds.
+          </p>
+        </div>
+        <TargetSelector />
+        <div class="cb-controls">
+          <button class="btn-secondary" onClick={props.onEdit}>
+            Edit setup
+          </button>
+          <PopButton label="Export results" title="Export" width={260} class="btn-secondary" button="Export ▾">
+            {(close) => (
+              <div class="cb-pe-menu">
+                <button class="btn-secondary" onClick={() => (downloadText('decoding_behaviors_logistic.csv', linearStatesCsv(o()), 'text/csv'), close())}>
+                  Per-behavior results (CSV)
+                </button>
+                <button class="btn-secondary" onClick={() => (downloadText('decoding_logistic_run.json', JSON.stringify(linearMetadata(o()), null, 2), 'application/json'), close())}>
+                  Run settings (JSON)
+                </button>
+              </div>
+            )}
+          </PopButton>
+        </div>
+      </div>
+      <Show when={!t()}>
+        <div class="cb-note">The shuffle test was off: there are no p-values, so no behavior is called significant.</div>
+      </Show>
+      <Show when={t() && o().settings.nShuffles < 200}>
+        <div class="cb-note">
+          Quick preview: {o().settings.nShuffles} shuffles. The smallest possible p-value is {(1 / (o().settings.nShuffles + 1)).toFixed(4)}; use more
+          shuffles for results to report.
+        </div>
+      </Show>
+      <div class="cb-dec-summary">
+        <Stat label="Mean balanced accuracy" value={fmt(sum().meanBalancedAccuracy)} note={`over ${sum().evaluated} behaviors; chance 0.5`} tip="The mean of the balanced accuracies of the evaluated behaviors. It is the overall result." />
+        <Stat
+          label="Overall test"
+          value={t() ? `p ${formatP(t()!.pOverall, o().settings.nShuffles)}` : 'Not tested'}
+          note={t() ? 'extension to the framework' : 'shuffle test is off'}
+          tip="The mean balanced accuracy of the real labels is compared with that of every shuffled labelling (upper tail). It is an extension to the framework, which tests each behavior only, and it is not part of the per-behavior correction."
+        />
+        <Stat
+          label="Behaviors evaluated"
+          value={`${sum().evaluated}`}
+          note={`${sum().notEvaluated} not evaluated${t() ? ` · ${sum().significant} significant, ${o().settings.correction === 'max_stat' ? 'max-stat corrected' : 'uncorrected'}` : ''}`}
+        />
+        <Stat label="Time bins" value={sum().bins.toLocaleString()} note={`labeled, of ${o().linear.frames.toLocaleString()} · ${o().params.nFolds} contiguous folds`} />
+        <Stat label="Time bin" value={`${fmt(o().binS)} s`} note="events summed per bin" />
+      </div>
+      <div class="cb-dec-grid cb-dec-grid--lin">
+        <PlotCard class="cb-dec-lin-plot" title="Balanced accuracy per behavior" help={HELP_BALACC}>
+          {(size) => <Show when={size().w > 0 && size().h > 0}><RecallBars rows={rows()} label="Balanced accuracy (chance 0.5)" w={size().w} h={size().h} /></Show>}
+        </PlotCard>
+        <section class="cb-plot cb-dec-lin-table">
+          <div class="cb-plot__head">
+            <h3>Per-behavior results</h3>
+          </div>
+          <div class="cb-dec-tablewrap">
+            <table class="cb-auroc-table cb-as-tbl">
+              <thead>
+                <tr>
+                  <th>Behavior</th>
+                  <th class="cb-as-num">Bins</th>
+                  <th class="cb-as-num">Balanced accuracy</th>
+                  <th class="cb-as-num">Null 95th pct</th>
+                  <th class="cb-as-num">p</th>
+                  <th class="cb-as-num">p {o().settings.correction === 'max_stat' ? '(max-stat)' : '(uncorrected)'}</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={rows()}>
+                  {(r, i) => (
+                    <tr classList={{ 'cb-muted': r.status === 'not evaluated' }}>
+                      <td>
+                        <span class="cb-dot" style={{ background: behaviorColor(i()) }} /> {r.name}
+                      </td>
+                      <td class="cb-as-num">{r.frames}</td>
+                      <td class="cb-as-num">{fmt(r.value)}</td>
+                      <td class="cb-as-num">{fmt(r.nullHi)}</td>
+                      <td class="cb-as-num">{formatP(r.pRaw, o().settings.nShuffles)}</td>
+                      <td class="cb-as-num">{formatP(r.pAdj, o().settings.nShuffles)}</td>
+                      <td>{status[r.status]}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </div>
+          <p class="cb-muted cb-pe-small">
+            Classifier: scikit-learn's L2 logistic regression objective, balanced class weights, cells standardized with the training fold; solved
+            here with L-BFGS, so a bin on the decision boundary can differ from scikit-learn's own solver. Events are unsmoothed deconvolved events
+            summed per bin. Behaviors with fewer than {o().params.minFramesPerClass} bins, or whose training folds lack a class, are not evaluated.
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/** The behavior target: its setup, or after a run its results, for the chosen decoder. */
 export function DecodingBehaviorPanel(): JSX.Element {
   return (
-    <Show when={behaviorShowResults() && behaviorOutcome()} keyed fallback={<BehaviorSetup />}>
-      {(out) => <BehaviorResults out={out} onEdit={() => setBehaviorShowResults(false)} />}
+    <Show
+      when={decodeSettings.behavior.decoder === 'bayes'}
+      fallback={
+        <Show when={linearShowResults() && linearOutcome()} keyed fallback={<BehaviorSetup />}>
+          {(out) => <LinearResults out={out} onEdit={() => setLinearShowResults(false)} />}
+        </Show>
+      }
+    >
+      <Show when={behaviorShowResults() && behaviorOutcome()} keyed fallback={<BehaviorSetup />}>
+        {(out) => <BehaviorResults out={out} onEdit={() => setBehaviorShowResults(false)} />}
+      </Show>
     </Show>
   );
 }

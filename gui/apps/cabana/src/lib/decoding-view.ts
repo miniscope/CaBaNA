@@ -2,7 +2,15 @@
 
 import { prepChanges } from './prep-deps.ts';
 import { overallStatistic } from './decode-test.ts';
-import { behaviorOutcome, decodeOutcome, decodeSettings, type BehaviorOutcome, type DecodeOutcome } from './decoding-run.ts';
+import {
+  behaviorOutcome,
+  decodeOutcome,
+  decodeSettings,
+  linearOutcome,
+  type BehaviorOutcome,
+  type DecodeOutcome,
+  type LinearOutcome,
+} from './decoding-run.ts';
 
 /** Preprocess settings changed since the last run, in words. Empty when there is no run or nothing changed. */
 export function decodingChanges(): string[] {
@@ -162,4 +170,43 @@ export function confusionShares(o: BehaviorOutcome): Float64Array {
     if (tot > 0) for (let d = 0; d < n; d++) if (Number.isFinite(c[r * n + d])) out[r * n + d] = c[r * n + d] / tot;
   }
   return out;
+}
+
+/** Settings that differ from the last logistic-regression run; empty when there is no run. */
+export function linearSettingChanges(): string[] {
+  const o = linearOutcome();
+  if (!o) return [];
+  return JSON.stringify(o.settings) === JSON.stringify(decodeSettings) ? [] : ['decoding settings'];
+}
+
+/** One row per state for a logistic-regression run: balanced accuracy of the behavior against the others. */
+export function linearRows(o: LinearOutcome): BehaviorRow[] {
+  const ns = o.data.names.length;
+  return o.data.names.map((name, state) => {
+    const value = o.observed.values[state];
+    const kept = Number.isFinite(value);
+    const pAdj = o.test?.pAdj[state] ?? NaN;
+    let nullHi = NaN;
+    if (o.nullValues) {
+      const col: number[] = [];
+      for (let i = 0; i < o.nullValues.length / ns; i++) {
+        const v = o.nullValues[i * ns + state];
+        if (Number.isFinite(v)) col.push(v);
+      }
+      nullHi = percentile(col, 0.95);
+    }
+    const status: StateStatus = !kept ? 'not evaluated' : !o.test ? 'untested' : pAdj <= o.settings.alpha ? 'significant' : 'not significant';
+    return { state, name, frames: o.observed.nFrames[state], value, nullHi, pRaw: o.test?.pRaw[state] ?? NaN, pAdj, status };
+  });
+}
+
+export function summarizeLinear(o: LinearOutcome) {
+  const rows = linearRows(o);
+  return {
+    meanBalancedAccuracy: o.observed.overall,
+    evaluated: rows.filter((r) => r.status !== 'not evaluated').length,
+    notEvaluated: rows.filter((r) => r.status === 'not evaluated').length,
+    significant: rows.filter((r) => r.status === 'significant').length,
+    bins: o.linear.labels.reduce((n, l) => n + (l >= 0 ? 1 : 0), 0),
+  };
 }

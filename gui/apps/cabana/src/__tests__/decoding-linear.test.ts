@@ -22,6 +22,7 @@ function setup(L: Ref) {
     neural: Float64Array.from(nan((L.neural as (number | null)[][]).flat())),
     cells: ref.cells,
     frames: L.frames,
+    fs: L.fs,
     labels: Int32Array.from(L.labels),
     mask: new Uint8Array(L.frames).fill(1),
     nStates: L.n_states,

@@ -14,6 +14,7 @@
 // one run, and not to the overall test.
 
 import { labelShuffle, roundHalfEven } from './decode-shared.ts';
+import { decodeLinear, type LinearInput, type LinearParams } from './decode-linear.ts';
 import { makeBayesDecoder, type BayesInput, type BayesOut, type BayesParams } from './decode-bayes.ts';
 import { makeRng } from './placecells.ts';
 
@@ -176,6 +177,28 @@ export function runShuffles(
     const out = decoder(shuffledLabels(input.labels, input.mask, block, seed, i));
     values.set(out.values, (i - from) * input.nStates);
     overall[i - from] = overallStatistic(out, spatial);
+    onProgress?.(i - from + 1);
+  }
+  return { values, overall };
+}
+
+/** The logistic-regression decoder on shuffles `from` to `to - 1`: balanced accuracy per behavior (shuffles x states) and the mean over behaviors. */
+export function runLinearShuffles(
+  input: LinearInput,
+  params: LinearParams,
+  blockS: number,
+  seed: number,
+  from: number,
+  to: number,
+  onProgress?: (done: number) => void,
+): { values: Float64Array; overall: Float64Array } {
+  const block = blockFrames(blockS, input.fs);
+  const values = new Float64Array((to - from) * input.nStates);
+  const overall = new Float64Array(to - from);
+  for (let i = from; i < to; i++) {
+    const out = decodeLinear(input, params, shuffledLabels(input.labels, input.mask, block, seed, i));
+    values.set(out.values, (i - from) * input.nStates);
+    overall[i - from] = out.overall;
     onProgress?.(i - from + 1);
   }
   return { values, overall };

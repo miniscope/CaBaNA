@@ -61,11 +61,12 @@ export function TargetSelector(): JSX.Element {
 }
 
 /** The explanation of the neural input, beside the setup of either target. */
-export function InputNote(props: { cells: number }): JSX.Element {
+export function InputNote(props: { cells: number; summed?: boolean }): JSX.Element {
   return (
     <div class="cb-dec-input">
-      <b>Neural input:</b> unsmoothed deconvolved events of {props.cells} cells, binarized (any event above 0 counts as 1). The
-      Preprocess event smoothing is not used, because smoothing would spread each event over many frames.
+      <b>Neural input:</b> unsmoothed deconvolved events of {props.cells} cells,{' '}
+      {props.summed ? 'summed in each time bin and standardized with the training fold' : 'binarized (any event above 0 counts as 1)'}. The Preprocess event
+      smoothing is not used, because smoothing would spread each event over many frames.
     </div>
   );
 }

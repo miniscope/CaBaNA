@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BAYES, makeBayesDecoder } from '../lib/decode-bayes.ts';
-import { decodeTest, overallStatistic, runShuffles } from '../lib/decode-test.ts';
+import { decodeTest, overallStatistic, runLinearShuffles, runShuffles } from '../lib/decode-test.ts';
+import { decodeLinear, DEFAULT_LINEAR } from '../lib/decode-linear.ts';
 import {
   behaviorConfusionCsv,
   behaviorMetadata,
@@ -8,10 +9,12 @@ import {
   decodingBinsCsv,
   decodingFramesCsv,
   decodingMetadata,
+  linearMetadata,
+  linearStatesCsv,
 } from '../lib/decoding-export.ts';
-import { DEFAULT_DECODE_SETTINGS, type BehaviorOutcome, type DecodeOutcome } from '../lib/decoding-run.ts';
+import { DEFAULT_DECODE_SETTINGS, type BehaviorOutcome, type DecodeOutcome, type LinearOutcome } from '../lib/decoding-run.ts';
 import { DEFAULT_PREP } from '../lib/preprocess.ts';
-import { behaviorRows, confusionShares, formatP, stateRows, summarizeBehavior, summarizeRun } from '../lib/decoding-view.ts';
+import { behaviorRows, confusionShares, formatP, linearRows, summarizeLinear, stateRows, summarizeBehavior, summarizeRun } from '../lib/decoding-view.ts';
 import ref from './decoding_reference.json';
 
 const nan = (a: (number | null)[]) => a.map((x) => (x === null ? NaN : x));
@@ -158,6 +161,50 @@ describe('behavior decoding results', () => {
     const m = behaviorMetadata(out);
     expect(m.departures_from_framework.length).toBe(3);
     expect(m.decoder_settings.sigma).toBe('pooled');
+    expect(m.shuffle_test?.tail).toBe('upper');
+  });
+});
+
+describe('logistic-regression results', () => {
+  const L = ref.linear;
+  const input = {
+    neural: Float64Array.from(nan((L.neural as (number | null)[][]).flat())),
+    cells: ref.cells,
+    frames: L.frames,
+    fs: L.fs,
+    labels: Int32Array.from(L.labels),
+    mask: new Uint8Array(L.frames).fill(1),
+    nStates: L.n_states,
+  };
+  const obs = decodeLinear(input, DEFAULT_LINEAR);
+  const sh = runLinearShuffles(input, DEFAULT_LINEAR, 5, 0, 0, 12);
+  const test = decodeTest(obs.values, obs.overall, sh.values, sh.overall, 'upper', 'max_stat');
+  const out = {
+    target: 'behavior',
+    decoder: 'logistic',
+    data: { names: ['A', 'B', 'C', 'D'], cellIds: [0, 1], overlap: { final: [1, 1, 1, 1] } },
+    linear: input,
+    binS: 0.5,
+    params: DEFAULT_LINEAR,
+    observed: obs,
+    test,
+    nullValues: sh.values,
+    nullOverall: sh.overall,
+    blockFrames: 10,
+    seconds: 1,
+    settings: { ...structuredClone(DEFAULT_DECODE_SETTINGS), nShuffles: 12, blockS: 5 },
+    prep: { ...DEFAULT_PREP },
+  } as unknown as LinearOutcome;
+  it('rows and summary: the rare behavior is not evaluated, the others beat their null', () => {
+    const rows = linearRows(out);
+    expect(rows[3].status).toBe('not evaluated');
+    rows.slice(0, 3).forEach((r) => expect(r.value).toBeGreaterThan(r.nullHi));
+    expect(summarizeLinear(out).evaluated).toBe(3);
+  });
+  it('exports the statistic, classifier and departure', () => {
+    expect(linearStatesCsv(out)).toContain('balanced accuracy');
+    const m = linearMetadata(out);
+    expect(m.decoder).toBe('logistic_regression');
     expect(m.shuffle_test?.tail).toBe('upper');
   });
 });

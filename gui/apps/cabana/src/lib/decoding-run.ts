@@ -6,10 +6,13 @@ import { createStore } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
 import { effectiveBin } from './arena.ts';
 import { DEFAULT_BAYES, type BayesInput, type BayesOut, type BayesParams } from './decode-bayes.ts';
+import type { LinearInput, LinearOut, LinearParams } from './decode-linear.ts';
 import {
   behaviorDecodeData,
+  linearDecodeData,
   positionDecodeData,
   type BehaviorDecodeData,
+  type LinearDecodeData,
   type PositionDecodeData,
 } from './decode-data.ts';
 import { blockFrames, decodeTest, overallStatistic, type DecodeTestResult, type Tail } from './decode-test.ts';
@@ -44,6 +47,11 @@ export const DEFAULT_DECODE_SETTINGS = {
     order: [] as string[],
     /** Behaviors left out of the decoding. */
     unselected: [] as string[],
+    /** `bayes`: Bayesian decoder; `logistic`: logistic regression on summed events per time bin. */
+    decoder: 'bayes' as 'bayes' | 'logistic',
+    /** Logistic regression only: the time bin (s) the events are summed in, and the inverse regularisation strength. */
+    binS: 0.5,
+    C: 1,
     /** Add a state for annotated frames with none of the selected behaviors. When off those frames are left out. */
     other: false,
   },
@@ -169,18 +177,27 @@ export function decodeRunIssue(d: PositionDecodeData | { error: string } | undef
 /** The test settings both targets use. */
 type TestConfig = Pick<DecodeSettings, 'test' | 'nShuffles' | 'blockS' | 'seed' | 'correction'>;
 
+/** The job kinds of one decoder: its observed decode and its shuffle batches. */
+interface Jobs {
+  observed: 'observed' | 'linear-observed';
+  shuffles: 'shuffles' | 'linear-shuffles';
+}
+
 /**
  * The observed decode and, with the test on, the shuffled decodes on the pool, then the p-values.
- * `tail` is lower for position (error) and upper for behaviors (recall). Each shuffle has its own seed,
- * so the result does not depend on how shuffles are split across workers.
+ * `tail` is lower for position (error) and upper for behaviors (recall, balanced accuracy). `overallOf` is the
+ * overall statistic of the observed result. Each shuffle has its own seed, so the result does not depend on
+ * how shuffles are split across workers.
  */
-async function runBayesTest(
-  input: BayesInput,
-  params: BayesParams,
+async function runTest<O extends { values: Float64Array }>(
+  jobs: Jobs,
+  input: { fs: number },
+  params: unknown,
   cfg: TestConfig,
   tail: Tail,
   what: string,
-): Promise<Pick<RunCommon, 'observed' | 'test' | 'nullValues' | 'nullOverall' | 'blockFrames'>> {
+  overallOf: (o: O) => number,
+): Promise<{ observed: O; test?: DecodeTestResult; nullValues?: Float64Array; nullOverall?: Float64Array; blockFrames: number }> {
   const mine = pool!;
   const test = cfg.test === 'shuffle';
   const progress = (step: string, done = 0, total = 1) => setDecodeStatus({ kind: 'running', step, done, total });
@@ -189,11 +206,11 @@ async function runBayesTest(
   const size = Math.max(1, Math.ceil(cfg.nShuffles / (mine.size * 3)));
   const batches: { from: number; to: number }[] = [];
   if (test) for (let from = 0; from < cfg.nShuffles; from += size) batches.push({ from, to: Math.min(from + size, cfg.nShuffles) });
-  const observedP = submit<BayesOut>((onComplete) => ({ kind: 'observed', input, params, onComplete }));
+  const observedP = submit<O>((onComplete) => ({ kind: jobs.observed, input, params, onComplete }));
   const shuffleP = Promise.all(
     batches.map(({ from, to }) =>
       submit<ShuffleBatch>((onComplete, jobId) => ({
-        kind: 'shuffles',
+        kind: jobs.shuffles,
         input,
         params,
         blockS: cfg.blockS,
@@ -221,9 +238,13 @@ async function runBayesTest(
     at += p.values.length;
     k += p.overall.length;
   }
-  const overall = overallStatistic(observed, !!input.centers);
-  return { ...common, nullValues, nullOverall, test: decodeTest(observed.values, overall, nullValues, nullOverall, tail, cfg.correction) };
+  return { ...common, nullValues, nullOverall, test: decodeTest(observed.values, overallOf(observed), nullValues, nullOverall, tail, cfg.correction) };
 }
+
+const runBayesTest = (input: BayesInput, params: BayesParams, cfg: TestConfig, tail: Tail, what: string) =>
+  runTest<BayesOut>({ observed: 'observed', shuffles: 'shuffles' }, input, params, cfg, tail, what, (o) =>
+    overallStatistic(o, !!input.centers),
+  );
 
 /** Runs `body` on a fresh pool, reporting a failure in the status and ignoring a cancelled run. */
 async function withPool(body: () => Promise<void>, show: (v: boolean) => void): Promise<void> {
@@ -292,4 +313,63 @@ export async function runBehaviorDecoding(): Promise<void> {
     const r = await runBayesTest(data.input, params, cfg, 'upper', 'behaviors');
     setBehaviorOutcome({ ...r, target: 'behavior', data, params, seconds: (performance.now() - t0) / 1000, settings: cfg, prep: prepUsed });
   }, setBehaviorShowResults);
+}
+
+/** The logistic-regression settings from the behavior settings. */
+export const linearParamsOf = (s: DecodeSettings['behavior']): LinearParams => ({
+  nFolds: s.nFolds,
+  C: s.C,
+  minFramesPerClass: s.minFrames,
+});
+
+/** What a finished logistic-regression run used and found. */
+export interface LinearOutcome {
+  target: 'behavior';
+  decoder: 'logistic';
+  data: BehaviorDecodeData;
+  /** The binned input the decoder ran on, and its time bin in seconds. */
+  linear: LinearInput;
+  binS: number;
+  params: LinearParams;
+  observed: LinearOut;
+  test?: DecodeTestResult;
+  nullValues?: Float64Array;
+  nullOverall?: Float64Array;
+  blockFrames: number;
+  seconds: number;
+  settings: DecodeSettings;
+  prep: typeof DEFAULT_PREP;
+}
+export const [linearOutcome, setLinearOutcome] = createSignal<LinearOutcome | undefined>();
+export const [linearShowResults, setLinearShowResults] = createSignal(false);
+onClear(() => {
+  setLinearOutcome(undefined);
+  setLinearShowResults(false);
+});
+
+/** Why logistic-regression decoding cannot run with these settings, or undefined. */
+export function linearRunIssue(d: LinearDecodeData | { error: string } | undefined, cfg: DecodeSettings): string | undefined {
+  const base = behaviorRunIssue(d, cfg);
+  if (base) return base;
+  if (!d || 'error' in d) return undefined;
+  if (!(cfg.behavior.C > 0)) return 'C must be above 0.';
+  if (d.linear.frames < cfg.behavior.nFolds * 2) return 'Too few time bins: use a shorter time bin.';
+  return undefined;
+}
+
+export async function runLinearDecoding(): Promise<void> {
+  const cfg = snapshot();
+  const data = linearDecodeData(cfg.behavior, cfg.behavior.binS);
+  const issue = linearRunIssue(data, cfg);
+  if (issue || !data || 'error' in data) {
+    setDecodeStatus({ kind: 'error', message: issue ?? 'No data.' });
+    return;
+  }
+  const prepUsed = { ...prep };
+  const params = linearParamsOf(cfg.behavior);
+  const t0 = performance.now();
+  await withPool(async () => {
+    const r = await runTest<LinearOut>({ observed: 'linear-observed', shuffles: 'linear-shuffles' }, data.linear, params, cfg, 'upper', 'behaviors', (o) => o.overall);
+    setLinearOutcome({ ...r, target: 'behavior', decoder: 'logistic', data, linear: data.linear, binS: data.binS, params, seconds: (performance.now() - t0) / 1000, settings: cfg, prep: prepUsed });
+  }, setLinearShowResults);
 }

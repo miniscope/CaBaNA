@@ -1,6 +1,8 @@
 import type { BayesInput, BayesOut, BayesParams } from '../lib/decode-bayes.ts';
+import type { LinearInput, LinearOut, LinearParams } from '../lib/decode-linear.ts';
 
 export type DecodingWorkerInbound =
+  | LinearWorkerInbound
   | { type: 'observed-job'; jobId: number; input: BayesInput; params: BayesParams }
   | {
       type: 'shuffles-job';
@@ -10,6 +12,19 @@ export type DecodingWorkerInbound =
       blockS: number;
       seed: number;
       /** Shuffles `from` to `to - 1`: each one has its own generator, so the split does not change the draws. */
+      from: number;
+      to: number;
+    };
+
+export type LinearWorkerInbound =
+  | { type: 'linear-observed-job'; jobId: number; input: LinearInput; params: LinearParams }
+  | {
+      type: 'linear-shuffles-job';
+      jobId: number;
+      input: LinearInput;
+      params: LinearParams;
+      blockS: number;
+      seed: number;
       from: number;
       to: number;
     };
@@ -25,4 +40,5 @@ export type DecodingWorkerOutbound =
   | { type: 'progress'; jobId: number; done: number }
   | { type: 'observed-complete'; jobId: number; result: BayesOut }
   | { type: 'shuffles-complete'; jobId: number; result: ShuffleBatch }
+  | { type: 'linear-observed-complete'; jobId: number; result: LinearOut }
   | { type: 'error'; jobId: number; message: string };

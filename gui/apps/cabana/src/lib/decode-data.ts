@@ -6,7 +6,8 @@ import { effectiveBin } from './arena.ts';
 import type { BayesInput } from './decode-bayes.ts';
 import { placeFrames, type PlaceFrames } from './prepared.ts';
 import { behaviorFrames } from './auroc.ts';
-import { exclusiveLabels, overlapReport, type OverlapReport } from './decode-shared.ts';
+import type { LinearInput } from './decode-linear.ts';
+import { exclusiveLabels, overlapReport, rebin, type OverlapReport } from './decode-shared.ts';
 import { annotationResults, deconvolved, frameTimes, rejected, samplingRate } from './store.ts';
 
 /**
@@ -176,5 +177,33 @@ export function behaviorDecodeData(choice: BehaviorChoice): BehaviorDecodeData |
       mask: new Uint8Array(ev.frames).fill(1),
       nStates: names.length,
     },
+  };
+}
+
+export interface LinearDecodeData extends BehaviorDecodeData {
+  /** The events summed per time bin, with the label and mask of each bin. */
+  linear: LinearInput;
+  /** The time bin in seconds, after rounding to whole frames. */
+  binS: number;
+}
+
+/**
+ * The input of logistic-regression decoding: the behavior input of `behaviorDecodeData`, with the unsmoothed
+ * events summed in time bins (`rebin`) and a bin labeled by the behavior that covers at least half of it.
+ */
+export function linearDecodeData(choice: BehaviorChoice, binS: number): LinearDecodeData | { error: string } | undefined {
+  const d = behaviorDecodeData(choice);
+  if (!d || 'error' in d) return d;
+  const m = d.input;
+  let r;
+  try {
+    r = rebin(m.neural, m.cells, m.frames, m.labels, m.mask, m.nStates, m.fs, binS);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return {
+    ...d,
+    binS: r.k / m.fs,
+    linear: { neural: r.neural, cells: m.cells, frames: r.frames, fs: r.fs, labels: r.labels, mask: r.mask, nStates: m.nStates },
   };
 }
