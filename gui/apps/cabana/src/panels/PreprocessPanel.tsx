@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX
 import { arena, effectiveBin } from '../lib/arena.ts';
 import { setAnalysisId } from '../lib/analyses.ts';
 import { aurocChanges } from '../lib/auroc-view.ts';
+import { decodingChanges, decodingSettingChanges } from '../lib/decoding-view.ts';
 import { pethChanges } from '../lib/peth-view.ts';
 import { ANALYSIS_LABEL, STEPS, usedBy, type StepId } from '../lib/prep-deps.ts';
 import { PARAM_TIP, STEP_HELP } from '../lib/prep-help.ts';
@@ -48,7 +49,7 @@ const AUTO_LINE: Partial<Record<StepId, () => string>> = {
   boutLabels: () => 'one label per neural frame',
 };
 
-const toAnalysis = (id: 'place' | 'auroc' | 'peth') => {
+const toAnalysis = (id: keyof typeof CHANGES) => {
   setAnalysisId(id);
   goToStep('analyze');
 };
@@ -380,7 +381,12 @@ function Impact(props: { step: StepId }): JSX.Element {
   );
 }
 
-const CHANGES = { place: placeChanges, auroc: aurocChanges, peth: pethChanges };
+const CHANGES = {
+  place: placeChanges,
+  auroc: aurocChanges,
+  peth: pethChanges,
+  decoding: () => [...decodingChanges(), ...decodingSettingChanges()],
+};
 
 function OutOfDate(props: { step: StepId }): JSX.Element {
   const stale = () => usedBy(props.step).filter((u) => CHANGES[u.id]().length);

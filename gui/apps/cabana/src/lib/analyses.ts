@@ -6,7 +6,7 @@ export const ANALYSES = [
   { id: 'place', label: 'Place cells', ready: true },
   { id: 'auroc', label: 'auROC', ready: true },
   { id: 'peth', label: 'PETH', ready: true },
-  { id: 'decoding', label: 'Decoding', ready: false },
+  { id: 'decoding', label: 'Decoding', ready: true },
   { id: 'population', label: 'Population', ready: false },
   { id: 'custom', label: 'Custom analysis', ready: false },
 ] as const;

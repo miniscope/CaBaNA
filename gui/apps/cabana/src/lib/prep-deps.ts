@@ -42,7 +42,7 @@ export const STEPS: Record<StepId, { label: string; kind: 'automatic' | 'optiona
  */
 export type Use = { use: 'required' | 'optional' } | { use: 'conditional'; when: string };
 
-export const DEPS: Record<'place' | 'auroc' | 'peth', Partial<Record<StepId, Use>>> = {
+export const DEPS: Record<'place' | 'auroc' | 'peth' | 'decoding', Partial<Record<StepId, Use>>> = {
   // placeFrames: a frame is used only with a position in an open bin and speed >= minSpeed.
   place: {
     positionOnFrames: { use: 'required' },
@@ -69,9 +69,19 @@ export const DEPS: Record<'place' | 'auroc' | 'peth', Partial<Record<StepId, Use
     boutLabels: { use: 'required' },
     eventSmooth: { use: 'optional' },
   },
+  // Position decoding (decode-data.ts): the spatial bin of each frame as for place cells, but on the
+  // unsmoothed deconvolved events, so event smoothing is not used.
+  decoding: {
+    positionOnFrames: { use: 'conditional', when: 'for position decoding' },
+    speed: { use: 'conditional', when: 'for position decoding' },
+    fillGaps: { use: 'conditional', when: 'for position decoding' },
+    posSmooth: { use: 'conditional', when: 'for position decoding' },
+    speedFilter: { use: 'conditional', when: 'for position decoding' },
+    spatialBins: { use: 'conditional', when: 'for position decoding' },
+  },
 };
 
-export const ANALYSIS_LABEL: Record<keyof typeof DEPS, string> = { place: 'Place cells', auroc: 'auROC', peth: 'PETH' };
+export const ANALYSIS_LABEL: Record<keyof typeof DEPS, string> = { place: 'Place cells', auroc: 'auROC', peth: 'PETH', decoding: 'Decoding' };
 
 /** The analyses that use a step, with the condition when there is one. */
 export const usedBy = (step: StepId) =>
