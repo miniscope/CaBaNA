@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
 import { arena, sizeCm } from './arena.ts';
+import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { createPlaceWorkerPool, type PlacePoolJob } from './place-pool.ts';
 import { placeData, type PlaceData } from './prepared.ts';
 import {
@@ -28,8 +29,6 @@ export const DEFAULT_PLACE_SETTINGS = {
   nShuffles: 1000,
   seed: 0,
   alpha: 0.05,
-  /** Frames slower than this (cm/s) are left out. */
-  minSpeed: 2,
   /** Minimum seconds in a bin, for information and stability. Shared with the arena settings (`arena.minOccupancy`). */
   minOccS: DEFAULT_PLACE.minOccInfoS,
   /** Minimum seconds in a bin for it to count in a place field. */
@@ -54,6 +53,8 @@ export interface PlaceOutcome {
   arenaCm: [number, number];
   /** The settings this run used, to tell when the panel's settings have moved on. */
   settings: typeof DEFAULT_PLACE_SETTINGS;
+  /** The Preprocess settings this run used. */
+  prep: typeof DEFAULT_PREP;
 }
 
 export const [placeStatus, setPlaceStatus] = createSignal<
@@ -106,7 +107,7 @@ const subset = (input: PlaceInput, from: number, to: number): PlaceInput => ({
 });
 
 export async function runPlaceCells(): Promise<void> {
-  const data = placeData(placeSettings.minSpeed);
+  const data = placeData();
   if (!data || 'error' in data) {
     setPlaceStatus({
       kind: 'error',
@@ -116,6 +117,7 @@ export async function runPlaceCells(): Promise<void> {
   }
   const { input } = data;
   const cfg = { ...placeSettings, minOccS: arena.minOccupancy };
+  const prepUsed = { ...prep };
   const t0 = performance.now();
   cancelPlaceRun();
   pool = createPlaceWorkerPool();
@@ -126,7 +128,12 @@ export async function runPlaceCells(): Promise<void> {
     progress('Choosing smoothing and null timescale from the data');
     const [sigmaChoice, timescale] = await Promise.all([
       cfg.sigmaAuto
-        ? submit<SigmaChoice>((onComplete) => ({ kind: 'sigma', input, onComplete }))
+        ? submit<SigmaChoice>((onComplete) => ({
+            kind: 'sigma',
+            input,
+            minOccS: cfg.minOccS,
+            onComplete,
+          }))
         : undefined,
       cfg.shiftAuto
         ? submit<TimescaleChoice>((onComplete) => ({ kind: 'timescale', input, onComplete }))
@@ -190,6 +197,7 @@ export async function runPlaceCells(): Promise<void> {
       seconds: (performance.now() - t0) / 1000,
       arenaCm: sizeCm(),
       settings: cfg,
+      prep: prepUsed,
     });
     setPlaceShowResults(true);
     setPlaceStatus({ kind: 'idle' });

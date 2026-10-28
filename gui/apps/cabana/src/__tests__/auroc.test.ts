@@ -154,3 +154,19 @@ describe('speed-matched null', () => {
     expect(() => acceptShifts(speed, groups, sp.ks.order, 30, opts, makeRng(0))).toThrow(/accepted 0/);
   });
 });
+
+describe('behavior against behavior', () => {
+  // A in frames 0-39, B in 60-109, frames 40-59 and 110-119 in neither. Masking to A or B only
+  // must give the plain Mann-Whitney auROC of A's values against B's.
+  const frames = 120;
+  const x = Float64Array.from({ length: frames }, (_, t) => Math.sin(t / 3) + (t % 7) / 10);
+  const a = Uint8Array.from({ length: frames }, (_, t) => (t < 40 ? 1 : 0));
+  const b = Uint8Array.from({ length: frames }, (_, t) => (t >= 60 && t < 110 ? 1 : 0));
+  const mask = a.map((v, t) => (v !== b[t] ? 1 : 0));
+  it('equals the A-versus-B Mann-Whitney statistic', () => {
+    const got = observedAuroc({ neural: x, cells: 1, frames, fs: 10, behaviors: a, nBehaviors: 1, mask }, 20)[0];
+    let wins = 0;
+    for (let i = 0; i < 40; i++) for (let j = 60; j < 110; j++) wins += x[i] > x[j] ? 1 : x[i] === x[j] ? 0.5 : 0;
+    expect(got).toBeCloseTo(wins / (40 * 50), 12);
+  });
+});

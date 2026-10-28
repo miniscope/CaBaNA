@@ -8,7 +8,7 @@ import type {
 
 export type PlaceWorkerInbound =
   | { type: 'cancel' }
-  | { type: 'sigma-job'; jobId: number; input: PlaceInput }
+  | { type: 'sigma-job'; jobId: number; input: PlaceInput; minOccS: number }
   | { type: 'timescale-job'; jobId: number; input: PlaceInput }
   | {
       type: 'cells-job';

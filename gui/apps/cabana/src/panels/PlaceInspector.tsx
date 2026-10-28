@@ -8,6 +8,7 @@ import { cell } from '../lib/store.ts';
 import { FootprintStrip } from './FootprintStrip.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { MapAppearance } from './MapAppearance.tsx';
+import type { PlaceOutcome } from '../lib/place-run.ts';
 import { num, outcomeClass, p3, pText, testsOf, type ResultsCtx } from './place-ctx.ts';
 import { ShuffleHistogram } from './PlaceCharts.tsx';
 import { RateMap } from './RateMap.tsx';
@@ -158,6 +159,148 @@ function Stat(props: {
   );
 }
 
+type CellProps = { out: PlaceOutcome; i: number };
+
+/** The two tests of the place-cell call for one cell. */
+export function TestStats(props: CellProps): JSX.Element {
+  const r = () => props.out.result;
+  const i = () => props.i;
+  const alpha = () => props.out.settings.alpha;
+  const out = () => props.out;
+  return (
+    <div class="cb-tests">
+      <Stat
+        name="Spatial information"
+        info={`How concentrated this cell’s events are across bins. It is significant when it is higher than the value from shifted copies of the cell’s neural data (p < ${alpha()}).`}
+        test={testsOf(out(), i()).info}
+        value={num(r().information[i()], 3)}
+        unit="bits/event"
+        p={r().pInformation[i()]}
+        why={whyUndefined(out(), i(), 'information')}
+      />
+      <Stat
+        name="Spatial stability"
+        info={`How well the first-half and second-half maps correlate. It is significant when the correlation is higher than the one from shifted copies of the cell’s neural data (p < ${alpha()}).`}
+        test={testsOf(out(), i()).stab}
+        value={num(r().stability[i()])}
+        unit="r"
+        p={r().pStability[i()]}
+        why={whyUndefined(out(), i(), 'stability')}
+      />
+    </div>
+  );
+}
+
+/** Field outlines measured for one cell, folded. Descriptive only. */
+export function FieldDetails(props: CellProps): JSX.Element {
+  const r = () => props.out.result;
+  const i = () => props.i;
+  const s = () => props.out.settings;
+  const out = () => props.out;
+  const nf = () => r().nFields[i()];
+  return (
+    <details class="cb-notebox cb-fold">
+      <summary>
+        <strong>Field measurements</strong>{' '}
+        <span class="cb-muted">Descriptive · Not used for classification</span>
+      </summary>
+      <div>
+        <div class="cb-fieldstats">
+          <div>
+            <div class="cb-muted">Outlined regions</div>
+            <strong>{Number.isNaN(nf()) ? '–' : nf()}</strong>
+          </div>
+          <div>
+            <div class="cb-muted">Inside / outside rate</div>
+            <strong>{num(r().inOut[i()])}</strong>
+          </div>
+          <div>
+            <div class="cb-muted">Ratio p-value</div>
+            <strong>{p3(r().pFields[i()])}</strong>
+          </div>
+        </div>
+        <Show when={whyUndefined(out(), i(), 'inOut')}>{(w) => <p class="cb-muted">{w()}</p>}</Show>
+        <p class="cb-muted">
+          Outlines mark connected bins above {s().fieldThreshold * 100}% of this cell’s peak rate,
+          at least {s().minFieldBins} bins in size. Regions are not tested one by one, and a cell
+          can have outlines without meeting the place-cell criteria.
+        </p>
+        <details class="cb-notebox">
+          <summary>How fields are defined</summary>
+          <div class="cb-muted">
+            <p>
+              Bins visited for under {s().minOccFieldsS} s are left out. Bins at or above{' '}
+              {s().fieldThreshold * 100}% of the cell’s peak rate that touch each other form one
+              region; regions under {s().minFieldBins} bins are dropped. The cross marks the center
+              of the largest region.
+            </p>
+            <p>
+              The inside / outside rate is the mean rate inside all outlines over the mean outside.
+              Its p-value comes from the same shifted copies as the two tests, and it is not used
+              for the place-cell call.
+            </p>
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
+/** The cell's real scores against its shifted copies, folded. */
+export function ShuffleDetails(props: CellProps): JSX.Element {
+  const r = () => props.out.result;
+  const i = () => props.i;
+  const alpha = () => props.out.settings.alpha;
+  const nulls = (a: Float32Array) => a.subarray(i() * r().nShifts, (i() + 1) * r().nShifts);
+  return (
+    <details class="cb-notebox cb-fold">
+      <summary>Compare observed and shuffled scores</summary>
+      <div>
+        <div class="cb-hists">
+          <ShuffleHistogram
+            title="Spatial information"
+            unit="bits/event"
+            nullValues={nulls(r().nullInformation)}
+            observed={r().information[i()]}
+            alpha={alpha()}
+            p={p3(r().pInformation[i()])}
+          />
+          <ShuffleHistogram
+            title="Spatial stability"
+            unit="r"
+            nullValues={nulls(r().nullStability)}
+            observed={r().stability[i()]}
+            alpha={alpha()}
+            p={p3(r().pStability[i()])}
+          />
+          <ShuffleHistogram
+            title="In/out ratio (not in the call)"
+            unit=""
+            nullValues={nulls(r().nullInOut)}
+            observed={r().inOut[i()]}
+            alpha={alpha()}
+            p={p3(r().pFields[i()])}
+          />
+        </div>
+        <HowToRead>
+          <p>
+            Each plot compares one real score with the scores obtained after circular time shifts of
+            the cell’s neural data. Grey bars show how often each shifted score occurred. The red
+            line is the real score. A red line to the right of the dashed line means the real score
+            is higher than almost all shifted scores, which is what p &lt; {alpha()} means here. The
+            in/out ratio is shown for reference and is not used for the call.
+          </p>
+        </HowToRead>
+        <div class="cb-muted">
+          Grey bars: this cell’s value after each of {r().nShifts} circular shifts of its neural
+          data. Red line: the real value. Dashed line: the value only {alpha() * 100}% of shifted
+          values reach, so a red line to its right means p &lt; {alpha()}.
+        </div>
+      </div>
+    </details>
+  );
+}
+
 /** The cell list beside the selected cell: scores, maps, field measurements, footprint, shuffled scores. */
 export function PlaceInspector(props: {
   ctx: ResultsCtx;
@@ -168,7 +311,6 @@ export function PlaceInspector(props: {
   const out = () => c().out;
   const r = () => out().result;
   const i = () => c().selected();
-  const alpha = () => out().settings.alpha;
   const s = () => out().settings;
   const { nx, ny, open, bin } = props.ctx.out.data.grid;
   const mapProps = { nx, ny, open, bin, arenaCm: props.ctx.out.arenaCm };
@@ -184,12 +326,10 @@ export function PlaceInspector(props: {
   const max = (m: Float32Array) => (placeDisplay.scale === 'shared' ? shared() : maxOf(m));
   const fields = () => r().fieldLabels.subarray(i() * r().nStates, (i() + 1) * r().nStates);
   const centroid = () => fieldCentroid(slice(r().rate, i()), fields(), nx);
-  const nulls = (a: Float32Array) => a.subarray(i() * r().nShifts, (i() + 1) * r().nShifts);
   const overall = () =>
     c()
       .rows()
       .find((row) => row.i === i())!.overall;
-  const nf = () => r().nFields[i()];
   const sizeCm = (b: number) => num(b * bin, 1);
 
   return (
@@ -221,26 +361,7 @@ export function PlaceInspector(props: {
             <p class="cb-muted">This cell is hidden by the current filter or search.</p>
           </Show>
 
-          <div class="cb-tests">
-            <Stat
-              name="Spatial information"
-              info={`How concentrated this cell’s events are across bins. It is significant when it is higher than the value from shifted copies of the cell’s neural data (p < ${alpha()}).`}
-              test={testsOf(out(), i()).info}
-              value={num(r().information[i()], 3)}
-              unit="bits/event"
-              p={r().pInformation[i()]}
-              why={whyUndefined(out(), i(), 'information')}
-            />
-            <Stat
-              name="Spatial stability"
-              info={`How well the first-half and second-half maps correlate. It is significant when the correlation is higher than the one from shifted copies of the cell’s neural data (p < ${alpha()}).`}
-              test={testsOf(out(), i()).stab}
-              value={num(r().stability[i()])}
-              unit="r"
-              p={r().pStability[i()]}
-              why={whyUndefined(out(), i(), 'stability')}
-            />
-          </div>
+          <TestStats out={out()} i={i()} />
 
           <div class="cb-mapbar">
             <span class="cb-muted">Whole session and the two halves</span>
@@ -295,113 +416,27 @@ export function PlaceInspector(props: {
 
           <HowToRead>
             <p>
-              Each map is the arena seen from above. Color shows the cell’s event rate in each bin: events divided by the time
-              spent there, then smoothed. The large map uses the whole session; the two small maps use the first and second half.
-              A stable place cell has a similar pattern in both halves. Grey bins were visited too little to estimate a rate, and
-              outlines mark connected bins above the chosen fraction of the cell’s peak rate.
+              Each map is the arena seen from above. Color shows the cell’s event rate in each bin:
+              events divided by the time spent there, then smoothed. The large map uses the whole
+              session; the two small maps use the first and second half. A stable place cell has a
+              similar pattern in both halves. Grey bins were visited too little to estimate a rate,
+              and outlines mark connected bins above the chosen fraction of the cell’s peak rate.
             </p>
           </HowToRead>
 
-          <details class="cb-notebox cb-fold">
-            <summary>
-              <strong>Field measurements</strong>{' '}
-              <span class="cb-muted">Descriptive · Not used for classification</span>
-            </summary>
-            <div>
-              <div class="cb-fieldstats">
-                <div>
-                  <div class="cb-muted">Outlined regions</div>
-                  <strong>{Number.isNaN(nf()) ? '–' : nf()}</strong>
-                </div>
-                <div>
-                  <div class="cb-muted">Inside / outside rate</div>
-                  <strong>{num(r().inOut[i()])}</strong>
-                </div>
-                <div>
-                  <div class="cb-muted">Ratio p-value</div>
-                  <strong>{p3(r().pFields[i()])}</strong>
-                </div>
-              </div>
-              <Show when={whyUndefined(out(), i(), 'inOut')}>
-                {(w) => <p class="cb-muted">{w()}</p>}
-              </Show>
-              <p class="cb-muted">
-                Outlines mark connected bins above {s().fieldThreshold * 100}% of this cell’s peak
-                rate, at least {s().minFieldBins} bins in size. Regions are not tested one by one,
-                and a cell can have outlines without meeting the place-cell criteria.
-              </p>
-              <details class="cb-notebox">
-                <summary>How fields are defined</summary>
-                <div class="cb-muted">
-                  <p>
-                    Bins visited for under {s().minOccFieldsS} s are left out. Bins at or above{' '}
-                    {s().fieldThreshold * 100}% of the cell’s peak rate that touch each other form
-                    one region; regions under {s().minFieldBins} bins are dropped. The cross marks
-                    the center of the largest region.
-                  </p>
-                  <p>
-                    The inside / outside rate is the mean rate inside all outlines over the mean
-                    outside. Its p-value comes from the same shifted copies as the two tests, and it
-                    is not used for the place-cell call.
-                  </p>
-                </div>
-              </details>
-            </div>
-          </details>
+          <FieldDetails out={out()} i={i()} />
 
           <FootprintStrip out={out()} i={i()} />
           <HowToRead>
             <p>
-              The small image is the cell’s footprint in the field of view. The trace is its signal over the whole recording; shaded
-              columns are frames left out of the analysis (no position, or below the speed threshold). Open the strip to choose
-              among the traces that were loaded.
+              The small image is the cell’s footprint in the field of view. The trace is its signal
+              over the whole recording; shaded columns are frames left out of the analysis (no
+              position, or below the speed threshold). Open the strip to choose among the traces
+              that were loaded.
             </p>
           </HowToRead>
 
-          <details class="cb-notebox cb-fold">
-            <summary>Compare observed and shuffled scores</summary>
-            <div>
-              <div class="cb-hists">
-                <ShuffleHistogram
-                  title="Spatial information"
-                  unit="bits/event"
-                  nullValues={nulls(r().nullInformation)}
-                  observed={r().information[i()]}
-                  alpha={alpha()}
-                  p={p3(r().pInformation[i()])}
-                />
-                <ShuffleHistogram
-                  title="Spatial stability"
-                  unit="r"
-                  nullValues={nulls(r().nullStability)}
-                  observed={r().stability[i()]}
-                  alpha={alpha()}
-                  p={p3(r().pStability[i()])}
-                />
-                <ShuffleHistogram
-                  title="In/out ratio (not in the call)"
-                  unit=""
-                  nullValues={nulls(r().nullInOut)}
-                  observed={r().inOut[i()]}
-                  alpha={alpha()}
-                  p={p3(r().pFields[i()])}
-                />
-              </div>
-              <HowToRead>
-                <p>
-                  Each plot compares one real score with the scores obtained after circular time shifts of the cell’s neural data.
-                  Grey bars show how often each shifted score occurred. The red line is the real score. A red line to the right of the
-                  dashed line means the real score is higher than almost all shifted scores, which is what p &lt; {alpha()} means here.
-                  The in/out ratio is shown for reference and is not used for the call.
-                </p>
-              </HowToRead>
-              <div class="cb-muted">
-                Grey bars: this cell’s value after each of {r().nShifts} circular shifts of its
-                neural data. Red line: the real value. Dashed line: the value only {alpha() * 100}%
-                of shifted values reach, so a red line to its right means p &lt; {alpha()}.
-              </div>
-            </div>
-          </details>
+          <ShuffleDetails out={out()} i={i()} />
         </div>
       </Show>
     </div>

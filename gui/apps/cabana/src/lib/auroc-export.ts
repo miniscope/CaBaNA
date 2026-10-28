@@ -2,7 +2,7 @@
 
 import { MIN_FRAMES } from './auroc.ts';
 import type { AurocOutcome } from './auroc-run.ts';
-import { aurocOf, pAdjOf, pRawOf, responseAt, RESPONSE_LABEL, summarize } from './auroc-view.ts';
+import { aurocOf, pAdjOf, pRawOf, responseAt, RESPONSE_CSV, summarize } from './auroc-view.ts';
 
 const CORRECTION_TEXT = {
   max_stat:
@@ -16,6 +16,8 @@ export function aurocCsv(out: AurocOutcome): string {
   const head = [
     `# correction: ${CORRECTION_TEXT[s.correction]}; alpha=${s.alpha}; two-sided`,
     `# behaviors in the family: ${out.labels.join(', ')}`,
+    `# compared against: ${out.against ?? 'all other included frames'}`,
+    `# frames excluded below a minimum speed: ${s.speedFilter ? `${s.minSpeed} cm/s (behavior and reference frames; frames with missing speed are also excluded)` : 'no speed filter'}`,
     `# shuffles=${s.nShuffles}; minimum_shift_s=${out.minShiftS}; seed=${s.seed}; method=${s.method === 'speed' ? 'speed-matched circular shift' : 'circular shift'}`,
     'cell,behavior,auroc,p_unadjusted,p_adjusted,response',
   ];
@@ -30,7 +32,7 @@ export function aurocCsv(out: AurocOutcome): string {
           v(aurocOf(out, c, b)),
           v(pRawOf(out, c, b)),
           v(pAdjOf(out, c, b)),
-          RESPONSE_LABEL[responseAt(out, c, b)],
+          RESPONSE_CSV[responseAt(out, c, b)],
         ].join(','),
       ),
     ),
@@ -56,7 +58,12 @@ export function aurocMetadata(out: AurocOutcome) {
       tested: i.during >= MIN_FRAMES && i.outside >= MIN_FRAMES,
     })),
     min_frames: MIN_FRAMES,
+    frame_selection: {
+      speed_filter: s.speedFilter,
+      minimum_speed_cm_s: s.speedFilter ? s.minSpeed : undefined,
+    },
     comparison: {
+      against: out.against ?? 'all_other_frames',
       method: s.method === 'speed' ? 'covariate_matched_shift (speed)' : 'circular_shift',
       minimum_shift_s: out.minShiftS,
       minimum_shift_auto: s.shiftAuto,

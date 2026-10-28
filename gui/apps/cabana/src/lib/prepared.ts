@@ -3,18 +3,35 @@
 
 import { createMemo } from 'solid-js';
 import { binGrid, effectiveBin, positionsCm, type BinGrid } from './arena.ts';
-import { resampleLinear, smoothNeural, smoothSignal, speedOver } from './framework.ts';
+import {
+  interpolateGaps,
+  resampleLinear,
+  smoothNeural,
+  smoothSignal,
+  speedOver,
+} from './framework.ts';
 import type { PlaceInput } from './placecells.ts';
 import { prep } from './preprocess.ts';
 import {
   cameraTimes,
   deconvolved,
   frameTimes,
+  loaded,
   positionResult,
   rejected,
   samplingRate,
   source,
 } from './store.ts';
+
+/** Why position is not available, or undefined when it is. `onNeural` also needs the neural frame times. */
+export function positionIssue(onNeural = false): string | undefined {
+  if (!loaded.position?.summary) return 'Position needs a position file.';
+  if (!loaded.behavior_timestamps?.summary) return 'Position needs camera timestamps.';
+  const p = positionResult();
+  if (!p || 'error' in p || !cameraTimes()) return 'Position failed QC: see Behavior QC.';
+  if (onNeural && !frameTimes()) return 'Position needs neural timestamps.';
+  return undefined;
+}
 
 /** The tracked position, when a position file and its timestamps are loaded and valid. */
 export const trackedPosition = () => {
@@ -32,8 +49,8 @@ export const positionCm = createMemo(() => {
 });
 
 /**
- * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over 0.5 s stay lost),
- * then smooth_signal, then speed.
+ * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over `maxGapS` stay lost),
+ * then interpolate_gaps, smooth_signal, then speed.
  */
 export const positionOnNeural = createMemo(() => {
   const c = positionCm();
@@ -42,25 +59,32 @@ export const positionOnNeural = createMemo(() => {
   if (!c || !ct || !nt) return undefined;
   const ok = ct.map((v, i) => Number.isFinite(v) && (i === 0 || v > ct[i - 1]));
   const tb = ct.filter((_, i) => ok[i]);
-  const x = resampleLinear(
-    tb,
-    c.x.filter((_, i) => ok[i]),
-    nt,
-    0.5,
-  );
-  const y = resampleLinear(
-    tb,
-    c.y.filter((_, i) => ok[i]),
-    nt,
-    0.5,
-  );
+  const onFrames = (v: number[]) =>
+    resampleLinear(
+      tb,
+      v.filter((_, i) => ok[i]),
+      nt,
+      prep.maxGapS,
+    );
   const f = samplingRate() ?? 30;
+  const fill = (v: Float64Array) =>
+    prep.fillGapS > 0 ? interpolateGaps(v, f, prep.fillGapS) : { out: v, filled: 0 };
+  // Kept before filling so Preprocess can show what gap filling adds.
+  const rx = onFrames(c.x);
+  const ry = onFrames(c.y);
+  const fx = fill(rx);
+  const fy = fill(ry);
+  const [x, y] = [fx.out, fy.out];
   const smooth = (v: Float64Array) =>
     prep.posWindowS > 0 ? smoothSignal(v, f, prep.posMethod, prep.posWindowS) : v;
   const sx = smooth(x);
   const sy = smooth(y);
   return {
+    rx,
+    ry,
     x,
+    y,
+    filled: fx.filled,
     sx,
     sy,
     speedBefore: speedOver(x, y, nt, f, prep.speedWindowS),
@@ -96,12 +120,9 @@ export interface PlaceFrames {
 
 /**
  * For each neural frame, the grid bin the animal was in, or -1 when the frame is not used: no position,
- * below the speed gate, or in a bin outside the arena. `minSpeedCmS` is raised to the Preprocess gate if that is higher.
+ * below the Preprocess speed gate, or in a bin outside the arena.
  */
-export function placeFrames(
-  minSpeedCmS: number,
-  bin = effectiveBin(),
-): PlaceFrames | { error: string } | undefined {
+export function placeFrames(bin = effectiveBin()): PlaceFrames | { error: string } | undefined {
   const p = positionOnNeural();
   const n = placeNeural();
   if (!p || !n) return undefined;
@@ -109,7 +130,7 @@ export function placeFrames(
   if (!grid) return { error: 'Set the arena size in Experimental Setup first.' };
   if (p.sx.length !== n.frames)
     return { error: 'Position and neural data have different numbers of frames.' };
-  const minSpeed = Math.max(minSpeedCmS, prep.minSpeed);
+  const { minSpeed } = prep;
   const labels = new Int32Array(n.frames).fill(-1);
   let used = 0;
   for (let t = 0; t < n.frames; t++) {
@@ -130,8 +151,8 @@ export interface PlaceData extends PlaceFrames {
 }
 
 /** What the place-cell analysis takes: the neural data and the frames in use. */
-export function placeData(minSpeedCmS: number): PlaceData | { error: string } | undefined {
-  const f = placeFrames(minSpeedCmS);
+export function placeData(): PlaceData | { error: string } | undefined {
+  const f = placeFrames();
   const n = placeNeural();
   if (!f || !n) return undefined;
   if ('error' in f) return f;
@@ -148,4 +169,27 @@ export function placeData(minSpeedCmS: number): PlaceData | { error: string } | 
       fs: n.fs,
     },
   };
+}
+
+/**
+ * Runs of missing position on the neural frames (before gap filling), sorted into those that
+ * `interpolateGaps` fills at `maxGapS` and those it leaves: too long, or touching the session
+ * start or end. Same frame rounding as interpolateGaps. Missing x or y counts as missing.
+ */
+export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, maxGapS: number) {
+  const maxFrames = maxGapS > 0 ? Math.floor(maxGapS * fs + 1e-9) : -1;
+  const n = x.length;
+  const runs: { start: number; len: number; fate: 'filled' | 'long' | 'edge' }[] = [];
+  for (let a = 0; a < n; ) {
+    if (Number.isFinite(x[a] + y[a])) {
+      a++;
+      continue;
+    }
+    let b = a;
+    while (b < n && !Number.isFinite(x[b] + y[b])) b++;
+    const len = b - a;
+    runs.push({ start: a, len, fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long' });
+    a = b;
+  }
+  return runs;
 }

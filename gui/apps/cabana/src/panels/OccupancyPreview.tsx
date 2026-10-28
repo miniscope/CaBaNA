@@ -15,9 +15,9 @@ type Which = 'tuning' | 'fields';
  * The arena tiled with the chosen bins, colored by the time spent in each, so the effect of the bin
  * size, speed filter and minimum times is visible before the analysis runs.
  */
-export function OccupancyPreview(): JSX.Element {
+export function OccupancyPreview(props: { which: Which }): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
-  const [which, setWhich] = createSignal<Which>('tuning');
+  const which = () => props.which;
   const [showZones, setShowZones] = createSignal(true);
   const cov = createMemo(() => coverage(effectiveBin()));
   const top = createMemo(() => {
@@ -101,30 +101,12 @@ export function OccupancyPreview(): JSX.Element {
   return (
     <section class="cb-group cb-card-box cb-occupancy">
       <div class="cb-occupancy__head">
-        <h3>Occupancy preview</h3>
-        <div class="cb-controls">
-          <span class="cb-muted">Preview for:</span>
-          <div class="cb-seg" role="group" aria-label="Preview for">
-            <For
-              each={
-                [
-                  ['tuning', 'Spatial tuning'],
-                  ['fields', 'Place-field boundaries'],
-                ] as const
-              }
-            >
-              {([id, label]) => (
-                <button classList={{ 'cb-seg__on': which() === id }} onClick={() => setWhich(id)}>
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
+        <h3>Occupancy for {which() === 'tuning' ? 'the tuning tests' : 'place-field outlines'}</h3>
+        <span class="cb-muted">Follows the open settings section</span>
       </div>
       <p class="cb-muted">
         Time spent in each spatial bin, using the current bin size and minimum speed. Grey bins are
-        under the minimum time.
+        under the minimum time{which() === 'tuning' ? ' for the tests' : ' for outlining fields'}.
       </p>
       <Show
         when={cov()}
@@ -134,8 +116,8 @@ export function OccupancyPreview(): JSX.Element {
           <div>
             <canvas
               ref={canvas}
-              class="cb-map cb-map--fluid"
-              style={{ 'aspect-ratio': `${sizeCm()[0]} / ${sizeCm()[1]}`, 'max-width': `${PX}px` }}
+              class="cb-map cb-occupancy__map"
+              style={{ 'aspect-ratio': `${sizeCm()[0]} / ${sizeCm()[1]}` }}
             />
             <div class="cb-legend">
               <span class="cb-legend__item">0 s</span>
@@ -147,9 +129,10 @@ export function OccupancyPreview(): JSX.Element {
             </div>
             <HowToRead>
               <p>
-                Each square is one spatial bin of the arena, seen from above. Darker bins are where the animal spent more
-                time; grey bins were visited for less than the minimum time and are left out of the maps. Use this to check
-                that the arena is sampled evenly before reading the maps: bins with little time give unreliable event rates.
+                Each square is one spatial bin of the arena, seen from above. Darker bins are where
+                the animal spent more time; grey bins were visited for less than the minimum time
+                and are left out of the maps. Use this to check that the arena is sampled evenly
+                before reading the maps: bins with little time give unreliable event rates.
               </p>
             </HowToRead>
             <Show when={arena.zones.length}>
@@ -163,13 +146,12 @@ export function OccupancyPreview(): JSX.Element {
               </label>
             </Show>
           </div>
-          <div>
+          <div class="cb-occupancy__stats">
             <For each={stats()}>
               {([label, value, text]) => (
                 <div class="cb-statbox">
-                  <div class="cb-setting__title">
-                    {label} — {value}
-                  </div>
+                  <div class="cb-muted">{label}</div>
+                  <div class="cb-statbox__value">{value}</div>
                   <div class="cb-muted">{text}</div>
                 </div>
               )}

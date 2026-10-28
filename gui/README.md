@@ -38,13 +38,15 @@ The sidebar provides access to both implemented analyses. A step-by-step layout 
 | Stage | Available features |
 | --- | --- |
 | **Load data** | Load files, a folder, or example data; preview inputs; assign unrecognized files; specify the experimental paradigm, source software, and units. An input checklist distinguishes required, recommended, and optional files. |
-| **Experimental setup** | Describe subjects and session structure, check frame rates and duration, configure arena geometry and scale, review tracking coordinates, and record stimuli and neural-acquisition information. Export `config.yaml`. |
+| **Experimental setup** | Describe subjects and session structure, check frame rates and duration, configure arena geometry and scale, review tracking coordinates, and record stimuli and neural-acquisition information. Set the behavior clock offset and scale. Import and export `config.yaml` (see [Config files](#config-files)). |
 | **Data visualization** | Explore cells and footprints, inspect neural and behavioral signals on a shared timeline, and view trajectories and occupancy maps. |
-| **Data QC** | Review neural and behavioral checks separately, adjust thresholds, and apply supported corrections. Some checks remain placeholders; see [validation details](#framework-correspondence-and-validation). |
+| **Data QC** | Review neural and behavioral checks separately (behavior QC includes timing and alignment between the miniscope and camera clocks), adjust thresholds, and apply supported corrections. Some checks remain placeholders; see [validation details](#framework-correspondence-and-validation). |
 | **Preprocess** | Configure neural smoothing, position smoothing and speed filtering, behavior-bout padding, and spatial-map settings. Review previews and the data passed to analysis. Export `preprocess.yaml`. |
 | **Analyze** | Open a dedicated place-cell or auROC workspace to configure a run, inspect results, and export results and metadata. |
 
 ### Corrections and visualization
+
+The clock offset and scale from Experimental Setup are applied to every camera time (scale × (time − offset)), so position lines up with the neural frames. Annotation times are not shifted; they are treated as already on the session clock.
 
 Available corrections include median filtering and gap filling for position, rejecting selected cells, and merging nearby behavioral epochs or removing short ones. Analyses use corrected inputs and exclude rejected cells.
 
@@ -98,7 +100,7 @@ The analysis foundation is Daniel's CaBaNA framework demo on the `framework-demo
 | Preprocessing, position corrections, and timing utilities | Browser implementations in `apps/cabana/src/lib/framework.ts` | Reference tests compare outputs for covered inputs and edge cases. |
 | Place-cell analysis | Browser calculations in `apps/cabana/src/lib/placecells.ts` | Framework reference comparisons; these do not establish validation of the full workflow on real recordings. |
 | auROC and speed matching | Browser calculations in `apps/cabana/src/lib/auroc.ts` and `speed-match.ts` | Compared with framework outputs on synthetic data. Real-recording validation remains outstanding. |
-| Session and preprocessing configuration | `apps/cabana/src/lib/session-config.ts` exports framework-format YAML | Uses framework step and field names. Import support is currently partial. |
+| Session and preprocessing configuration | `session-config.ts` exports and `config-read.ts` reads the framework's `config.yaml` layout (`SessionDirConfig`); `preprocess.yaml` is exported | Uses framework step and field names. A config exported with a `metadata:` block does not load in `load_session_dir` yet (see [Config files](#config-files)). |
 | Remaining QC checks | Placeholder calculations | Not validated for scientific reporting. |
 | Arena, bin, and occupancy calculations | Provisional spatial calculations | Require further verification, including real-data coordinate handling. These calculations affect spatial results. |
 
@@ -114,9 +116,17 @@ Reference-generation scripts are in `apps/cabana/src/__tests__/`:
 
 Run these using a Python environment containing the corresponding `framework-demo` checkout to regenerate reference outputs.
 
+## Config files
+
+Loading a `config.yaml` fills in Experimental Setup: session name, frame rate, behavior clock offset and scale, position units, annotation merge gap and minimum length, head-orientation offset, subject, arena size and zones, and the metadata fields below. It also decides which loaded file goes in which slot. Values typed by hand afterwards replace the imported ones. Zones wait in cm until the arena is outlined or a blank arena is used.
+
+The config report appears under Settings on Load data and at the top of Experimental Setup. It lists what was read, files the config names that are not the ones loaded, missing or incompatible settings, keys outside the framework's layout, and framework settings the GUI does not use. Those unused settings are written back unchanged when the config is downloaded. The older flat layout (`arena_cm`) is not read.
+
+The `metadata:` block holds GUI-only fields: species, brain region, group, date, miniscope, tracked body part, likelihood threshold, arena shape, body length, and stimuli. The framework (`load_session_dir`) does not accept `metadata:` yet, so a config exported with it will not load there until the framework adds the block.
+
 ## Example data
 
-Four simulated sessions are provided in [`../example_data/`](../example_data/). Each has a README documenting its files and simulated conditions. Sessions are generated by `../example_data/make_examples.py`.
+Four simulated sessions are provided in [`../example_data/`](../example_data/). Each has a README documenting its files and simulated conditions, and a `config.yaml` in the framework layout (without a `metadata:` block, so they also load in `load_session_dir`). Sessions are generated by `../example_data/make_examples.py`.
 
 | Session | Purpose |
 | --- | --- |
@@ -139,7 +149,7 @@ The GUI accesses these files through `apps/cabana/public/example_data`, a symlin
 - A Plotting workspace and combined Export step are planned. Current exports are per-analysis CSV and run metadata; plot appearance controls are available within place-cell results.
 - Direct readers for DeepLabCut CSV, BORIS, BENTO, CaImAn, and Minian outputs are not implemented. Experimental setup provides conversion guidance.
 - Sidebar icons, multi-session selection, and arena zoom controls from design concepts are not implemented.
-- Existing `config.yaml` imports currently read only `arena_cm`; zones and other fields are not restored.
+- Config import reads one neural file and one zone and one behavior annotation file. Extra epoch files are kept but not loaded, and arena units other than cm are not read.
 - The trace-smoothing setting is recorded as a note in `preprocess.yaml`; current analyses use events rather than traces.
 - auROC is currently available only through the sidebar layout.
 

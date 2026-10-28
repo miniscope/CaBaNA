@@ -1,5 +1,14 @@
-import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
-import { OVERALL } from '../lib/place-outcome.ts';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from 'solid-js';
+import { OVERALL, OVERALL_ORDER } from '../lib/place-outcome.ts';
 import { downloadText, placeCsv } from '../lib/place-export.ts';
 import { cancelPlaceRun, placeStatus, runPlaceCells, type PlaceOutcome } from '../lib/place-run.ts';
 import {
@@ -10,23 +19,41 @@ import {
   type SortKey,
 } from '../lib/place-table.ts';
 import { cell, selectCell } from '../lib/store.ts';
+import { MapAppearance } from './MapAppearance.tsx';
+import { PlaceCellPanel } from './PlaceCellPanel.tsx';
 import { PlaceGallery } from './PlaceGallery.tsx';
 import { PlaceInspector } from './PlaceInspector.tsx';
 import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlacePopulation } from './PlacePopulation.tsx';
 import { PlaceRunDetails } from './PlaceRunDetails.tsx';
 import { FILTERS, type ResultsCtx } from './place-ctx.ts';
+import { fitToWindow } from './QcPanel.tsx';
 
-type Tab = 'inspector' | 'gallery' | 'population';
-const TABS: [Tab, string][] = [
-  ['inspector', 'Cell inspector'],
-  ['gallery', 'Map gallery'],
-  ['population', 'Population overview'],
-];
+// Outcome names short enough for the summary bar; the full names are in each segment's title.
+const SHORT = {
+  both: 'Both tests',
+  info: 'Information only',
+  stab: 'Stability only',
+  neither: 'Neither test',
+  cannot: 'Not evaluated',
+};
+
+type View = 'gallery' | 'population' | 'inspector';
+
+// Kept outside the page so the view, filter, sort and folds survive a visit to the settings.
+const [view, setView] = createSignal<View>('gallery');
+const [filter, setFilter] = createSignal<Filter>('all');
+const [query, setQuery] = createSignal('');
+const [sortKey, setSortKey] = createSignal<SortKey>('information');
+const [desc, setDesc] = createSignal(true);
+const [outlines, setOutlines] = createSignal(true);
+const [method, setMethod] = createSignal(false);
+const [panelOpen, setPanelOpen] = createSignal(true);
 
 /**
- * The page after a run: a summary, then three views of the same cells (inspector, gallery, population),
- * with the filter, the sort, and the selected cell shared between them.
+ * The page after a run: a summary that filters, then the map gallery with the selected cell beside it.
+ * The full inspector and the population plots replace the gallery on request, sharing its filter,
+ * sort and selected cell.
  * `changes` lists the settings that differ from this run, so the page can say its results are older.
  */
 export function PlaceResults(props: {
@@ -34,13 +61,6 @@ export function PlaceResults(props: {
   changes: string[];
   onEdit: () => void;
 }): JSX.Element {
-  const [tab, setTab] = createSignal<Tab>('inspector');
-  const [filter, setFilter] = createSignal<Filter>('all');
-  const [query, setQuery] = createSignal('');
-  const [sortKey, setSortKey] = createSignal<SortKey>('information');
-  const [desc, setDesc] = createSignal(true);
-  const [outlines, setOutlines] = createSignal(true);
-  const [method, setMethod] = createSignal(false);
   const [drawer, setDrawer] = createSignal(false);
   let detailsButton: HTMLButtonElement | undefined;
 
@@ -85,9 +105,12 @@ export function PlaceResults(props: {
     },
     selected,
     position,
-    pick: (i) => selectCell(ids()[i]),
+    pick: (i) => {
+      selectCell(ids()[i]);
+      setPanelOpen(true);
+    },
     step,
-    openInspector: () => setTab('inspector'),
+    openInspector: () => setView('inspector'),
   };
 
   const running = () => {
@@ -102,18 +125,12 @@ export function PlaceResults(props: {
     setDrawer(false);
     detailsButton?.focus();
   };
-  const onTabKey = (e: KeyboardEvent) => {
-    const k = TABS.findIndex(([t]) => t === tab());
-    const to = e.key === 'ArrowRight' ? k + 1 : e.key === 'ArrowLeft' ? k - 1 : undefined;
-    if (to === undefined) return;
-    e.preventDefault();
-    const [next] = TABS[(to + TABS.length) % TABS.length];
-    setTab(next);
-    document.getElementById(`pc-tab-${next}`)?.focus();
-  };
+  let root!: HTMLDivElement;
+  onMount(() => onCleanup(fitToWindow(root)));
+  const total = () => rows().length;
 
   return (
-    <div class="cb-results">
+    <div class="cb-results" ref={root}>
       <div class="cb-resbar">
         <h2 class="cb-restitle">Place cell results</h2>
         <span class="cb-muted">
@@ -123,6 +140,15 @@ export function PlaceResults(props: {
           <span class="cb-pill cb-pill--warn">Settings differ from this run</span>
         </Show>
         <span class="cb-resbar__sp" />
+        <button
+          ref={detailsButton}
+          class="cb-link"
+          aria-haspopup="dialog"
+          aria-expanded={drawer()}
+          onClick={() => setDrawer(true)}
+        >
+          Run details ›
+        </button>
         <button class="btn-secondary btn-small" onClick={() => props.onEdit()}>
           Edit settings
         </button>
@@ -163,90 +189,134 @@ export function PlaceResults(props: {
       </Show>
 
       <div class="cb-sumbox">
-        <div>
-          <div>
-            <span class="cb-sumbox__n">
-              {counts().both} of {rows().length}
-            </span>{' '}
-            cells meet place-cell criteria
+        <div class="cb-sumbox__count">
+          <span class="cb-sumbox__n">
+            {counts().both} / {total()}
+          </span>{' '}
+          meet place-cell criteria
+          <div class="cb-muted">
+            Significant spatial information and stability, p &lt; {alpha()}{' '}
+            <button class="cb-link" aria-expanded={method()} onClick={() => setMethod(!method())}>
+              Method note {method() ? '▴' : '▾'}
+            </button>
           </div>
-          <div class="cb-muted">Both tests require p &lt; {alpha()}</div>
         </div>
-        <span class="cb-resbar__sp" />
-        <button class="cb-link" aria-expanded={method()} onClick={() => setMethod(!method())}>
-          Method note {method() ? '▴' : '▾'}
-        </button>
-        <button
-          ref={detailsButton}
-          class="btn-secondary btn-small"
-          aria-haspopup="dialog"
-          aria-expanded={drawer()}
-          onClick={() => setDrawer(true)}
-        >
-          Run details ›
-        </button>
+        <div class="cb-obar" role="group" aria-label="Filter cells by test outcome">
+          <For each={OVERALL_ORDER.filter((k) => counts()[k] > 0)}>
+            {(k) => (
+              <button
+                class={`cb-obar__seg cb-obar__seg--${k}`}
+                classList={{ 'cb-obar__seg--on': filter() === k }}
+                style={{ 'flex-grow': counts()[k] }}
+                aria-pressed={filter() === k}
+                title={`${OVERALL[k].label}. ${filter() === k ? 'Click to show all cells.' : 'Click to show only these cells.'}`}
+                onClick={() => setFilter(filter() === k ? 'all' : k)}
+              >
+                <span class="cb-obar__n">{counts()[k]}</span>
+                <span class="cb-obar__label">
+                  <span aria-hidden="true">{OVERALL[k].icon}</span> {SHORT[k]}
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
       </div>
       <Show when={method()}>
         <div class="cb-notebox cb-method cb-muted">
           <PlaceIntro />
           <PlaceMethodText interpretation notEvaluated={counts().cannot > 0} />
+          <Show when={counts().cannot > 0}>
+            <p>
+              “{OVERALL.cannot.label}” means a test had no defined result (for example a silent
+              cell); it is not the same as failing.
+            </p>
+          </Show>
         </div>
       </Show>
 
-      <div class="cb-tabs" role="tablist" aria-label="Results views" onKeyDown={onTabKey}>
-        <For each={TABS}>
-          {([id, label]) => (
-            <button
-              id={`pc-tab-${id}`}
-              role="tab"
-              aria-selected={tab() === id}
-              aria-controls="pc-panel"
-              tabindex={tab() === id ? 0 : -1}
-              classList={{ 'cb-tab--on': tab() === id }}
-              onClick={() => setTab(id)}
-            >
-              {label}
-            </button>
-          )}
-        </For>
-      </div>
-
-      <div id="pc-panel" role="tabpanel" aria-labelledby={`pc-tab-${tab()}`}>
-        <Show when={tab() !== 'population'}>
-          <div class="cb-filterhead">Significant tests</div>
-          <div class="cb-filters" role="group" aria-label="Filter cells by significant tests">
-            <For each={FILTERS}>
-              {([k, label]) => (
-                <button
-                  classList={{ 'cb-filter--on': filter() === k }}
-                  aria-pressed={filter() === k}
-                  onClick={() => setFilter(k)}
-                >
-                  {label}{' '}
-                  <span class="cb-chip__n">{k === 'all' ? rows().length : counts()[k]}</span>
-                </button>
-              )}
-            </For>
+      <div class="cb-resview">
+        <Show
+          when={view() !== 'inspector'}
+          fallback={
+            <div class="cb-resview__bar">
+              <button class="btn-secondary btn-small" onClick={() => setView('gallery')}>
+                ‹ Back to gallery
+              </button>
+              <span class="cb-muted">Full cell inspector</span>
+            </div>
+          }
+        >
+          <div class="cb-resview__bar">
+            <h3>Browse cells</h3>
+            <span class="cb-seg" role="group" aria-label="Results view">
+              <button
+                classList={{ 'cb-seg__on': view() === 'gallery' }}
+                aria-pressed={view() === 'gallery'}
+                onClick={() => setView('gallery')}
+              >
+                Maps
+              </button>
+              <button
+                classList={{ 'cb-seg__on': view() === 'population' }}
+                aria-pressed={view() === 'population'}
+                onClick={() => setView('population')}
+              >
+                Population plots
+              </button>
+            </span>
+            <label class="cb-sortpick">
+              Show
+              <select
+                value={ctx.filter()}
+                onChange={(e) =>
+                  ctx.setFilter(e.currentTarget.value as ReturnType<ResultsCtx['filter']>)
+                }
+              >
+                <For each={FILTERS}>
+                  {([k, label]) => (
+                    <option value={k}>
+                      {label} ({k === 'all' ? ctx.rows().length : ctx.counts()[k]})
+                    </option>
+                  )}
+                </For>
+              </select>
+            </label>
+            <input
+              class="cb-search"
+              type="search"
+              inputmode="numeric"
+              placeholder="Find cell…"
+              aria-label="Find cell number"
+              value={ctx.query()}
+              onInput={(e) => ctx.setQuery(e.currentTarget.value.replace(/\D/g, ''))}
+            />
+            <MapAppearance />
           </div>
-          <p class="cb-muted">
-            Cells must have significant spatial information and stability to meet place-cell
-            criteria.
-            <Show when={counts().cannot > 0}>
-              {' '}
-              “{OVERALL.cannot.label}” means a test had no defined result (for example a silent
-              cell); it is not the same as failing.
-            </Show>
-          </p>
         </Show>
-        <Show when={tab() === 'inspector'}>
-          <PlaceInspector ctx={ctx} outlines={outlines()} setOutlines={setOutlines} />
-        </Show>
-        <Show when={tab() === 'gallery'}>
-          <PlaceGallery ctx={ctx} />
-        </Show>
-        <Show when={tab() === 'population'}>
-          <PlacePopulation ctx={ctx} />
-        </Show>
+        <div class="cb-resview__body">
+          <Show when={view() === 'gallery'}>
+            <div class="cb-galwrap" classList={{ 'cb-galwrap--panel': panelOpen() }}>
+              <PlaceGallery ctx={ctx} />
+              <Show when={panelOpen()}>
+                <PlaceCellPanel
+                  ctx={ctx}
+                  onClose={() => setPanelOpen(false)}
+                  onInspector={() => setView('inspector')}
+                />
+              </Show>
+            </div>
+          </Show>
+          <Show when={view() === 'inspector'}>
+            <PlaceInspector ctx={ctx} outlines={outlines()} setOutlines={setOutlines} />
+          </Show>
+          <Show when={view() === 'population'}>
+            <PlacePopulation ctx={ctx} />
+          </Show>
+        </div>
+      </div>
+      <div class="cb-place-foot cb-muted">
+        Click a map to inspect a cell. The selected cell, filter, sort and page are kept when you
+        open the inspector, the population plots or the settings.
       </div>
 
       <Show when={drawer()}>

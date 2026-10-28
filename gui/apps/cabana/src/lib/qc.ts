@@ -27,6 +27,10 @@ export interface PositionQc {
   /** Position per frame, NaN where the tracker lost the animal. */
   x: number[];
   y: number[];
+  /** Camera time of each frame in seconds, NaN where the frame has no timestamp. */
+  frameT: number[];
+  /** Mean time between camera frames, in seconds. */
+  dtFrame: number;
   /** Frame index of each speed sample. */
   idx: number[];
   /** Speed between consecutive tracked frames. */
@@ -83,6 +87,8 @@ export function positionQc(
     t,
     speed,
     idx,
+    frameT: frame.map((f) => timeOf.get(f) ?? NaN),
+    dtFrame,
     x: x.map((v, i) => (lost(i) ? NaN : v)),
     y: y.map((v, i) => (lost(i) ? NaN : v)),
     checks: [
@@ -94,7 +100,7 @@ export function positionQc(
         value: `${missingPct.toFixed(1)}%`,
         limit: `allow ${tol.lostPct}%`,
         detail: `${missingPct.toFixed(1)}% of ${frame.length.toLocaleString()} frames are lost (allowed: ${tol.lostPct}%).`,
-        fix: 'Fill short gaps below. Long dropouts cannot be filled: re-run tracking or exclude that stretch.',
+        fix: 'Short gaps can be filled in Preprocess. Long dropouts cannot be filled: re-run tracking or exclude that stretch.',
       },
       {
         id: 'gap',
@@ -112,7 +118,7 @@ export function positionQc(
         status: failIfOver((100 * jumps) / Math.max(speed.length, 1), tol.jumpPct),
         value: `${jumps} of ${speed.length.toLocaleString()}`,
         detail: `${jumps} of ${speed.length.toLocaleString()} frame steps (${((100 * jumps) / Math.max(speed.length, 1)).toFixed(3)}%) are faster than ${maxSpeed} cm/s (allowed: ${tol.jumpPct}%). Fastest: ${Math.max(0, ...speed).toFixed(1)} cm/s.`,
-        fix: 'Apply the median filter below, or fix the tracker (identity swaps, reflections) and re-run tracking.',
+        fix: 'Smooth position with a median in Preprocess, or fix the tracker (identity swaps, reflections) and re-run tracking.',
       },
     ],
   };
@@ -134,6 +140,73 @@ export function timingChecks(name: string, r: TimingReport): Check[] {
       fix: 'Dropped frames shift the clock. Check the acquisition log, and align the two clocks again if the camera and miniscope drifted apart.',
     },
   ];
+}
+
+/**
+ * Neural–behavior alignment. The miniscope timestamps need one row per frame of each neural file,
+ * and the behavior camera should be recording for the whole miniscope recording, or the frames
+ * outside it get no position. `cameraT` is already on the neural clock.
+ */
+export function alignmentChecks(
+  neuralT: number[] | undefined,
+  frames: [name: string, n: number][],
+  cameraT: number[] | undefined,
+  offsetS: number,
+): Check[] {
+  const out: Check[] = [];
+  if (neuralT && frames.length) {
+    const off = frames.filter(([, n]) => n !== neuralT.length);
+    out.push({
+      id: 'align-frames',
+      group: 'Behavior',
+      title: 'Timestamps match the neural data',
+      status: off.length ? 'fail' : 'pass',
+      value: off.length ? `${off.length} of ${frames.length} files differ` : 'match',
+      limit: `${neuralT.length.toLocaleString()} timestamps`,
+      detail: `The miniscope timestamps have ${neuralT.length.toLocaleString()} rows. ${frames.map(([name, n]) => `${name}: ${n.toLocaleString()} frames`).join('; ')}.`,
+      fix: 'Load the timestamps file from the same recording, and check that no frames were cut from the neural data or the timestamps.',
+    });
+  }
+  if (neuralT?.length && cameraT?.length) {
+    const [n0, n1] = [neuralT[0], neuralT[neuralT.length - 1]];
+    const [c0, c1] = [cameraT[0], cameraT[cameraT.length - 1]];
+    const outside = neuralT.filter((t) => t < c0 || t > c1).length;
+    const pct = (100 * outside) / neuralT.length;
+    const s = (t: number) => (Math.round(10 * t) / 10 || 0).toFixed(1);
+    const fr = outside === 1 ? 'frame' : 'frames';
+    out.push({
+      id: 'align-span',
+      group: 'Behavior',
+      title: 'Camera covers the miniscope recording',
+      status: pct > 1 ? 'warn' : 'pass',
+      value: `${outside.toLocaleString()} ${fr} outside, ${pct.toFixed(2)}%`,
+      limit: 'allow 1%',
+      detail: `Miniscope ${s(n0)} to ${s(n1)} s (${s(n1 - n0)} s). Camera ${s(c0)} to ${s(c1)} s (${s(c1 - c0)} s) after the ${offsetS} s clock offset. Miniscope frames outside the camera recording, which get no position: ${outside.toLocaleString()} (${pct.toFixed(2)}%, limit 1%).`,
+      fix: 'If the camera started before or after the miniscope, enter the difference as the behavior clock offset in Experimental Setup. Otherwise check that the right video and timestamps were loaded.',
+    });
+  }
+  return out;
+}
+
+/**
+ * Both clocks on one time axis, for plotting: each frame's place in its own recording, 0 to 100%.
+ * Where only the other clock has a frame the value is undefined, which uPlot draws across.
+ */
+export function clockProgress(
+  a: number[],
+  b: number[],
+): [number[], (number | undefined)[], (number | undefined)[]] {
+  const [ka, kb] = [100 / Math.max(a.length - 1, 1), 100 / Math.max(b.length - 1, 1)];
+  const t: number[] = [];
+  const pa: (number | undefined)[] = [];
+  const pb: (number | undefined)[] = [];
+  for (let i = 0, j = 0; i < a.length || j < b.length;) {
+    const takeA = j >= b.length || (i < a.length && a[i] <= b[j]);
+    t.push(takeA ? a[i] : b[j]);
+    pa.push(takeA ? ka * i++ : undefined);
+    pb.push(takeA ? undefined : kb * j++);
+  }
+  return [t, pa, pb];
 }
 
 export interface CellQc {

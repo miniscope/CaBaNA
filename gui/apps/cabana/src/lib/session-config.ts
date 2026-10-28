@@ -3,7 +3,10 @@
 // steps of a `cabana.Pipeline`, in the order they run). Names and fields are the
 // framework's; the GUI's own words stay on screen.
 
-import { arena, cmPts, effectiveBin, sizeCm, type Zone } from './arena.ts';
+import { Document, isMap, visit } from 'yaml';
+import { arena, cmPts, effectiveBin, pendingZones, sizeCm } from './arena.ts';
+import { configReport } from './config-import.ts';
+import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
 import {
@@ -11,7 +14,6 @@ import {
   annotationResults,
   loaded,
   override,
-  positionSteps,
   rejected,
   sessionName,
   source,
@@ -19,15 +21,28 @@ import {
 } from './store.ts';
 import type { SlotId } from './slots.ts';
 
+type Obj = Record<string, unknown>;
 const file = (id: SlotId) => loaded[id]?.name;
 /** A flow-style YAML value (JSON is valid YAML). */
 const flow = (v: unknown) => JSON.stringify(v);
 const round = (v: number) => Math.round(v * 100) / 100;
-const pts = (z: Zone) => cmPts(z).map((p) => p.map(round));
+const rounded = (z: CmZone) => z.pts.map((p) => p.map(round));
+
+/** Zones in cm: the drawn ones, and any from a config still waiting for the arena outline. With y down they are written in the position file's frame. */
+const cmZones = (): CmZone[] => {
+  const h = sizeCm()[1];
+  const back = source.yDown && source.positionUnit === 'cm';
+  return [
+    ...arena.zones.map((z) => ({ ...z, pts: cmPts(z) as [number, number][] })),
+    ...(pendingZones() ?? []),
+  ].map((z) =>
+    back ? { ...z, pts: z.pts.map(([x, y]): [number, number] => [x, flipY(y, h)]) } : z,
+  );
+};
 
 /** The framework has rectangles and polygons; a circle becomes a 32-sided polygon. */
-function zoneShape(z: Zone): number[] | number[][] {
-  const p = pts(z);
+function zoneShape(z: CmZone): number[] | number[][] {
+  const p = rounded(z);
   if (z.shape === 'rect') {
     const [a, b] = p;
     return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
@@ -44,8 +59,8 @@ function zoneShape(z: Zone): number[] | number[][] {
 }
 
 /** A rectangle's four corners; a polygon's own. */
-function corners(z: Zone): number[][] {
-  const p = pts(z);
+function corners(z: CmZone): number[][] {
+  const p = rounded(z);
   if (z.shape !== 'rect') return p;
   const [[x0, y0], [x1, y1]] = p;
   return [
@@ -56,10 +71,17 @@ function corners(z: Zone): number[][] {
   ];
 }
 
-/** The session config: which file is what, the clocks, and the arena. */
-export function sessionYaml(): string {
-  const out = ['# session config made in CaBaNA. Paths are relative to this file.'];
-  if (sessionName()) out.push(`name: ${flow(sessionName())}`);
+const HEADER = [
+  ' Session config made in CaBaNA, for cabana.loaders.load_session_dir. Paths are relative to this file.',
+  " Arena coordinates are cm from the arena's lower left corner, y up. Zones are rectangles",
+  ' [x0, y0, x1, y1] or polygons; enclosures and dividers are regions the animal cannot enter.',
+  ' metadata holds settings from CaBaNA that the framework does not use.',
+].join('\n');
+
+/** The session config as an object in the framework's layout. */
+function sessionConfig(): Obj {
+  const cfg: Obj = {};
+  if (sessionName()) cfg.name = sessionName();
 
   const layers = (
     [
@@ -70,100 +92,100 @@ export function sessionYaml(): string {
   ).filter(([, id]) => file(id));
   if (layers.length) {
     const [kind, id] = layers[0];
-    out.push('neural:', `  file: ${flow(file(id))}`, `  kind: ${kind}`);
-    if (file('neural_timestamps')) out.push(`  timestamps: ${flow(file('neural_timestamps'))}`);
-    else if (override.neuralFps) out.push(`  fs: ${override.neuralFps}`);
-    else out.push('  # fs: give the miniscope frame rate when there is no timestamps file');
+    const neural: Obj = { file: file(id), kind };
+    if (file('neural_timestamps')) neural.timestamps = file('neural_timestamps');
+    else if (override.neuralFps) neural.fs = override.neuralFps;
     if (layers.length > 1)
-      out.push(
-        `  alternatives: ${flow(Object.fromEntries(layers.slice(1).map(([k, i]) => [k, file(i)])))}`,
-      );
-  } else out.push('# neural: add a traces file in the Load step');
+      neural.alternatives = Object.fromEntries(layers.slice(1).map(([k, i]) => [k, file(i)]));
+    cfg.neural = neural;
+  }
 
-  const beh: string[] = [];
-  if (file('behavior_timestamps')) beh.push(`  timestamps: ${flow(file('behavior_timestamps'))}`);
-  if (source.clockOffsetS) beh.push(`  clock: {offset_s: ${source.clockOffsetS}}`);
+  const beh: Obj = {};
+  if (file('behavior_timestamps')) beh.timestamps = file('behavior_timestamps');
+  if (source.clockOffsetS || source.clockScale !== 1)
+    beh.clock = {
+      offset_s: source.clockOffsetS,
+      ...(source.clockScale !== 1 && { scale: source.clockScale }),
+    };
   if (file('position'))
-    beh.push(
-      '  position:',
-      `    file: ${flow(file('position'))}`,
-      `    units: ${source.positionUnit}`,
-      '    max_gap_s: 0.5',
-    );
+    beh.position = { file: file('position'), units: source.positionUnit, max_gap_s: prep.maxGapS };
   if (file('head_orientation'))
-    beh.push(
-      '  head_orientation:',
-      `    file: ${flow(file('head_orientation'))}`,
-      `    offset_deg: ${arena.headOffset}`,
-    );
+    beh.head_orientation = { file: file('head_orientation'), offset_deg: arena.headOffset };
+  const names = configReport()?.values.epochNames ?? {};
   const epochs = (
     [
       ['zone_annotations', 'zones', true],
       ['behavior_annotations', 'behavior', false],
     ] as const
   ).filter(([id]) => file(id));
-  if (epochs.length) {
-    beh.push('  epochs:');
-    for (const [id, name, exclusive] of epochs) {
-      const e: Record<string, unknown> = { file: file(id), exclusive };
-      if (annotationFixed().merge) e.merge_gap_s = tol.mergeGapS;
-      if (annotationFixed().drop) e.min_duration_s = tol.minBoutS;
-      beh.push(`    ${name}: ${flow(e)}`);
-    }
-  }
-  if (beh.length) out.push('behavior:', ...beh);
+  if (epochs.length)
+    beh.epochs = Object.fromEntries(
+      epochs.map(([id, name, exclusive]) => [
+        names[id] ?? name,
+        {
+          file: file(id),
+          exclusive,
+          ...(annotationFixed().merge && { merge_gap_s: tol.mergeGapS }),
+          ...(annotationFixed().drop && { min_duration_s: tol.minBoutS }),
+        },
+      ]),
+    );
+  if (Object.keys(beh).length) cfg.behavior = beh;
 
   const [w, h] = sizeCm();
-  out.push('arena:', `  size: [${round(w)}, ${round(h)}]`, '  units: cm');
-  const named = (kind: Zone['kind']) => arena.zones.filter((z) => z.kind === kind);
-  if (named('zone').length)
-    out.push(
-      '  zones:  # cm from the arena lower left corner; rectangle [x0, y0, x1, y1] or polygon',
-      ...named('zone').map((z) => `    ${flow(z.name)}: ${flow(zoneShape(z))}`),
-    );
-  const enclosures = named('exclude').filter((z) => z.shape === 'circle');
+  const a: Obj = { size: [round(w), round(h)], units: 'cm' };
+  const zs = cmZones();
+  const zones = zs.filter((z) => z.kind === 'zone');
+  const enclosures = zs.filter((z) => z.kind === 'exclude' && z.shape === 'circle');
+  const dividers = zs.filter((z) => z.kind === 'exclude' && z.shape !== 'circle');
+  if (zones.length) a.zones = Object.fromEntries(zones.map((z) => [z.name, zoneShape(z)]));
   if (enclosures.length)
-    out.push(
-      '  enclosures:  # regions the animal cannot enter',
-      ...enclosures.map((z) => {
-        const [c, e] = pts(z);
-        return `    ${flow(z.name)}: {center: ${flow(c)}, radius: ${round(Math.hypot(e[0] - c[0], e[1] - c[1]))}}`;
+    a.enclosures = Object.fromEntries(
+      enclosures.map((z) => {
+        const [c, e] = rounded(z);
+        return [z.name, { center: c, radius: round(Math.hypot(e[0] - c[0], e[1] - c[1])) }];
       }),
     );
-  const walls = named('exclude').filter((z) => z.shape !== 'circle');
-  if (walls.length)
-    out.push(
-      '  dividers:  # other excluded regions, as polygons. The framework keeps these but does not use them yet',
-      ...walls.map((z) => `    ${flow(z.name)}: ${flow(corners(z))}`),
-    );
-  const info = [
-    ['subject', source.subjectId],
-    ['species', source.species],
-    ['brain region', source.brainRegion],
-    ['group', source.group],
-    ['date', source.sessionDate],
-    ['miniscope', source.device],
-    ['tracked body part', source.bodyPart],
-    ['likelihood threshold', source.likelihoodMin],
-    ...source.stimuli
-      .filter((s) => s.name)
-      .map((s) => ['stimulus', `${s.name} (${s.kind}${s.durationS ? `, ${s.durationS} s` : ''})`]),
-  ].filter(([, v]) => v !== '' && v !== undefined);
-  if (info.length)
-    out.push(
-      `# Set in CaBaNA, with no field in the framework: ${info.map(([k, v]) => `${k} ${v}`).join('; ')}.`,
-    );
-  const extra = [
-    arena.bodyLength && `body length ${round(arena.bodyLength)} cm (nose tip to tail base)`,
-    `minimum time per bin ${arena.minOccupancy} s (spatial information and stability), ${placeSettings.minOccFieldsS} s (place-field boundaries)`,
-  ].filter(Boolean);
-  out.push(`# Set in CaBaNA, with no field in the framework: ${extra.join('; ')}.`);
-  return out.join('\n') + '\n';
+  if (dividers.length) a.dividers = Object.fromEntries(dividers.map((z) => [z.name, corners(z)]));
+  cfg.arena = a;
+
+  if (source.subjectId) cfg.subjects = { focal: source.subjectId };
+
+  const meta: Obj = {};
+  for (const [key, field] of META_FIELDS)
+    if (source[field] !== '' && source[field] !== undefined) meta[key] = source[field];
+  if (arena.shape === 'circle') meta.arena_shape = 'circle';
+  if (source.yDown && source.positionUnit === 'cm') meta.y_increases = 'down';
+  if (arena.bodyLength) meta.body_length_cm = round(arena.bodyLength);
+  const stimuli = source.stimuli.filter((s) => s.name);
+  if (stimuli.length)
+    meta.stimuli = stimuli.map((s) => ({
+      name: s.name,
+      kind: s.kind,
+      ...(s.durationS && { duration_s: s.durationS }),
+      ...(s.note && { note: s.note }),
+    }));
+  if (Object.keys(meta).length) cfg.metadata = meta;
+
+  restoreKept(cfg, configReport()?.kept ?? []);
+  return cfg;
+}
+
+/** The session config as YAML. Lists of numbers are written on one line. */
+export function sessionYaml(): string {
+  const doc = new Document(sessionConfig());
+  visit(doc, {
+    Seq(_, node) {
+      if (!node.items.some(isMap)) node.flow = true;
+    },
+  });
+  doc.commentBefore = HEADER;
+  return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
 
 /** The preprocessing steps, in the order the framework runs them. */
 export function preprocessYaml(): string {
-  const transforms: Record<string, unknown>[] = [...positionSteps()];
+  const transforms: Record<string, unknown>[] = [];
   if (source.positionUnit === 'px')
     transforms.unshift({
       name: 'arena_transform',
@@ -171,6 +193,8 @@ export function preprocessYaml(): string {
       scale: round(1 / source.pxPerCm),
       // The framework names the unit mm after a scale; the values here are cm.
     });
+  if (prep.fillGapS > 0)
+    transforms.push({ name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: prep.fillGapS });
   if (prep.posWindowS > 0)
     transforms.push({
       name: 'smooth_signal',
@@ -189,8 +213,7 @@ export function preprocessYaml(): string {
       exclude_ids: [...rejected()].sort((a, b) => a - b).map(String),
     });
   if (prep.eventSigmaS > 0) steps.push({ name: 'smooth_activity', sigma_s: prep.eventSigmaS });
-  if (prep.minSpeed > 0)
-    steps.push({ name: 'speed_threshold', signal: 'speed', min_speed: prep.minSpeed });
+  steps.push({ name: 'speed_threshold', signal: 'speed', min_speed: prep.minSpeed });
   if (prep.labelPadS > 0) {
     const labels = new Set(
       annotationResults()
@@ -215,6 +238,9 @@ export function preprocessYaml(): string {
     ...list('transforms', transforms),
     ...list('preprocess', steps),
   ];
+  out.push(
+    `# Place cells: minimum time per bin ${arena.minOccupancy} s for spatial information and stability, ${placeSettings.minOccFieldsS} s for place-field boundaries.`,
+  );
   if (prep.traceSigmaS > 0)
     out.push(
       `# For the raw or denoised traces, run smooth_activity with sigma_s: ${prep.traceSigmaS} on that layer.`,

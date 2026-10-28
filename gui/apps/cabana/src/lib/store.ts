@@ -15,6 +15,7 @@ import {
   type Table,
 } from './parse.ts';
 import {
+  alignmentChecks,
   cellQc,
   footprintCentroids,
   footprintChecks,
@@ -23,7 +24,6 @@ import {
 } from './qc.ts';
 import { NEIGHBOR_PX, cellChecks, eventFractions, scoreCells } from './cells.ts';
 import { annotationQc, dropShortBouts, mergeBouts, readEpochs, type Epoch } from './behavior.ts';
-import { fillPositionGaps, medianSmoothPosition } from './corrections.ts';
 import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 
@@ -125,10 +125,15 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
     '/',
   )[0];
   if (folder) setSessionName(folder);
+  // A config is read first, so the file names it gives decide where the other files go.
+  const config = slot ? undefined : files.find((f) => matchSlot(f.name) === 'config');
+  if (config) await load('config', config);
+  const named = new Map(Object.entries(configFiles()).map(([id, n]) => [n, id as SlotId]));
   const rest: File[] = [];
   await Promise.all(
     files.map((f) => {
-      const id = slot ?? matchSlot(f.name);
+      if (f === config) return;
+      const id = slot ?? named.get(f.name) ?? matchSlot(f.name);
       if (id) return load(id, f);
       rest.push(f);
     }),
@@ -158,43 +163,8 @@ export function togglePending(c: number): void {
 }
 export const setPendingTo = (cells: number[]) => setPending(new Set(cells));
 
-let originalPosition: Table | undefined;
-const [positionLog, setPositionLog] = createSignal<string[]>([]);
-/** The framework steps behind the position corrections, in the order they were applied. */
-const [positionSteps, setPositionSteps] = createSignal<Record<string, unknown>[]>([]);
-export { positionLog, positionSteps };
-
-/** `median`: smooth_signal with a median window of `seconds`. `fill`: interpolate_gaps for lost stretches up to `seconds`. */
-export function correctPosition(kind: 'median' | 'fill', seconds: number): void {
-  const t = data.position as Table | undefined;
-  if (!t) return;
-  originalPosition ??= t;
-  const fps = cameraFps();
-  const { table: next, changed } =
-    kind === 'median' ? medianSmoothPosition(t, seconds, fps) : fillPositionGaps(t, seconds, fps);
-  data.position = next;
-  setPositionSteps((l) => [
-    ...l,
-    kind === 'median'
-      ? { name: 'smooth_signal', signal: ['x', 'y'], method: 'median', window_s: seconds }
-      : { name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: seconds },
-  ]);
-  setPositionLog((l) => [
-    ...l,
-    kind === 'median'
-      ? `Median filter (${seconds} s window): ${changed} frames changed.`
-      : `Filled lost stretches of ${seconds} s or less: ${changed} frames filled.`,
-  ]);
-  setVersion((v) => v + 1);
-}
-
-export function undoPositionCorrections(): void {
-  if (originalPosition) data.position = originalPosition;
-  originalPosition = undefined;
-  setPositionLog([]);
-  setPositionSteps([]);
-  setVersion((v) => v + 1);
-}
+/** The file name a loaded config.yaml gives for each slot. */
+export const [configFiles, setConfigFiles] = createSignal<Partial<Record<SlotId, string>>>({});
 
 const configHooks: ((text: string) => void)[] = [];
 /** Run `f` with the text of a config.yaml when one is loaded. */
@@ -205,6 +175,7 @@ export const onClear = (f: () => void) => clearHooks.push(f);
 
 export function clearAll(): void {
   setSessionName(undefined);
+  setConfigFiles({});
   setOverride({ neuralFps: undefined, cameraFps: undefined, durationS: undefined });
   clearHooks.forEach((f) => f());
   setAnnotationEdits({});
@@ -212,9 +183,6 @@ export function clearAll(): void {
   setExampleMedia(undefined);
   setRejected(new Set<number>());
   setPending(new Set<number>());
-  originalPosition = undefined;
-  setPositionLog([]);
-  setPositionSteps([]);
   setAnnotationFixed({ merge: false, drop: false });
   for (const k of ['position', 'annotations', 'cells', 'decon'] as const) setProceed(k, false);
   for (const s of SLOTS) {
@@ -346,9 +314,13 @@ export const [source, setSource] = createStore({
   stimuli: [] as { name: string; kind: string; durationS?: number; note: string }[],
   positionTool: 'other',
   positionUnit: 'cm' as 'cm' | 'px',
+  /** Position in cm with y growing downward, as in camera images: y is flipped to the arena's y-up frame. */
+  yDown: false,
   pxPerCm: 10,
-  /** Seconds the behavior video ran before the miniscope started: t_neural = t_video - offset. */
+  /** Seconds the behavior video ran before the miniscope started: t_neural = scale * (t_video - offset). */
   clockOffsetS: 0,
+  /** Ratio of the neural clock's rate to the camera clock's, for clocks that drift apart. Usually 1. */
+  clockScale: 1,
   annotationTool: 'other',
   annotationUnit: 'seconds' as 'seconds' | 'milliseconds' | 'camera frames' | 'miniscope frames',
   extractionTool: 'other',
@@ -388,15 +360,29 @@ export const frameTimes = createMemo(() => {
   return ts ? column(ts, 'time stamp').map((v) => v / 1000) : undefined;
 });
 
-/** Time in seconds of each row of the position file, from the camera timestamps. */
+/**
+ * Behavior camera frame times in seconds on the neural clock, with the clock offset and scale
+ * from Experimental Setup: the framework's `scale * (t - offset_s)`.
+ */
+export const cameraClock = createMemo(() => {
+  const ts = table('behavior_timestamps');
+  if (!ts) return undefined;
+  try {
+    const { clockOffsetS: off, clockScale: k } = source;
+    return column(ts, 'time stamp').map((v) => k * (v / 1000 - off));
+  } catch {
+    return undefined;
+  }
+});
+
+/** Time in seconds of each row of the position file, on the neural clock. */
 export const cameraTimes = createMemo(() => {
   const pos = table('position');
   const ts = table('behavior_timestamps');
-  if (!pos || !ts) return undefined;
+  const t = cameraClock();
+  if (!pos || !ts || !t) return undefined;
   try {
-    const at = new Map(
-      column(ts, 'frame number').map((f, i) => [f, column(ts, 'time stamp')[i] / 1000]),
-    );
+    const at = new Map(column(ts, 'frame number').map((f, i) => [f, t[i]]));
     return column(pos, 'frame').map((f) => at.get(f) ?? NaN);
   } catch {
     return undefined;
@@ -431,6 +417,25 @@ export const timingResults = createMemo(() =>
       return []; // the timestamps files are checked where they are loaded
     }
   }),
+);
+
+/** Whether the neural data, its timestamps and the behavior camera line up. */
+export const alignmentResults = createMemo(() =>
+  alignmentChecks(
+    frameTimes(),
+    (
+      [
+        ['Raw traces', 'neural_raw'],
+        ['Denoised traces', 'neural_denoised'],
+        ['Deconvolved events', 'neural_deconvolved'],
+      ] as const
+    ).flatMap(([name, id]) => {
+      const m = matrix(id);
+      return m ? [[name, m.frames] as [string, number]] : [];
+    }),
+    cameraClock(),
+    source.clockOffsetS,
+  ),
 );
 
 const centroids = createMemo(() => {

@@ -377,19 +377,40 @@ def main():
     head_orientation.to_csv(HERE / "headOrientation.csv", index=False, float_format="%.6f")
     zone_annotations.to_csv(HERE / "zone_annotations.csv", index=False, float_format="%.3f")
     investigation_annotations.to_csv(HERE / "investigation_annotations.csv", index=False, float_format="%.3f")
+    def wall(xd, y0, y1):  # a divider as the polygon of its 1 cm wall
+        a, b = xd - WALL_CM / 2, xd + WALL_CM / 2
+        return f"[[{a:g}, {y0:g}], [{b:g}, {y0:g}], [{b:g}, {y1:g}], [{a:g}, {y1:g}]]"
+
     (HERE / "config.yaml").write_text(
-        "# arena and zone settings for the simulated three-chamber task\n"
-        f"arena_cm: [{ARENA_CM[0]:g}, {ARENA_CM[1]:g}]\n"
-        "zones:  # on x, cm\n"
-        f"  left: [0, {ZONE_EDGES_CM[0]:g}]\n"
-        f"  center: [{ZONE_EDGES_CM[0]:g}, {ZONE_EDGES_CM[1]:g}]\n"
-        f"  right: [{ZONE_EDGES_CM[1]:g}, {ARENA_CM[0]:g}]\n"
-        "enclosures:  # half-discs against the end walls; the subject cannot enter (centre x, centre y, radius in cm)\n"
-        + "".join(f"  {side}: [{cx:g}, {cy:g}, {r:g}]  # {CONTAINS[side]}\n" for side, (cx, cy, r) in ENCLOSURES_CM.items())
-        + "dividers:  # walls between the chambers; the subject goes around the end that stops short (x, y from, y to in cm)\n"
-        + "".join(f"  {side}: [{xd:g}, {y0:g}, {y1:g}]\n" for side, (xd, y0, y1) in DIVIDERS_CM.items())
-        + "head_orientation: quaternion (qw, qx, qy, qz) from the miniscope IMU; yaw about z, 0 = east, counterclockwise\n"
-        f"investigation: within {NEAR_CM:g} cm of an enclosure with the head pointing at it (within {FACING_DEG:g} degrees)\n"
+        "# Session config for the simulated three-chamber task, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# Head orientation: quaternion (qw, qx, qy, qz) from the miniscope IMU; yaw about z, 0 = east, counterclockwise.\n"
+        f"# Investigation: within {NEAR_CM:g} cm of an enclosure with the head pointing at it (within {FACING_DEG:g} degrees).\n"
+        "neural:\n"
+        "  file: neural_deconvolved.npy\n"
+        "  kind: deconvolved\n"
+        "  timestamps: neural_timestamps.csv\n"
+        "  alternatives: {denoised: neural_denoised.npy, raw: neural_raw.npy}\n"
+        "behavior:\n"
+        "  timestamps: behavior_timestamps.csv\n"
+        "  position: {file: position.csv, units: cm}\n"
+        "  head_orientation: {file: headOrientation.csv}\n"
+        "  epochs:\n"
+        "    zones: {file: zone_annotations.csv, exclusive: true}\n"
+        "    investigation: {file: investigation_annotations.csv, exclusive: false}\n"
+        "arena:\n"
+        f"  size: [{ARENA_CM[0]:g}, {ARENA_CM[1]:g}]\n"
+        "  units: cm\n"
+        "  zones:  # x-ranges [x0, x1], each across the full height\n"
+        f"    left: [0, {ZONE_EDGES_CM[0]:g}]\n"
+        f"    center: [{ZONE_EDGES_CM[0]:g}, {ZONE_EDGES_CM[1]:g}]\n"
+        f"    right: [{ZONE_EDGES_CM[1]:g}, {ARENA_CM[0]:g}]\n"
+        "  enclosures:  # half-discs against the end walls; the subject cannot enter\n"
+        + "".join(
+            f"    {side}: {{center: [{cx:g}, {cy:g}], radius: {r:g}, contents: {CONTAINS[side]}}}\n"
+            for side, (cx, cy, r) in ENCLOSURES_CM.items()
+        )
+        + "  dividers:  # walls between the chambers; each stops short of one arena wall, leaving a doorway\n"
+        + "".join(f"    {side}: {wall(*d)}\n" for side, d in DIVIDERS_CM.items())
     )
 
     print(f"coverage of the open arena: {coverage(xy_b):.0%} of 2 cm bins; lost frames {lost.mean():.1%}")

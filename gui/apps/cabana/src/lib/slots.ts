@@ -1,8 +1,8 @@
 // The files CaBaNA can take. Each slot is one thing the user brings; the Load
-// panel shows them as a checklist and files are matched to slots by name.
+// panel lists them in one tab per group and files are matched to slots by name.
 
 export type Level = 'required' | 'recommended' | 'optional' | 'unused';
-export type Group = 'Neural' | 'Behavior' | 'Settings';
+export type Group = 'Neural' | 'Behavioral' | 'Configuration';
 export type SlotId =
   | 'neural_timestamps'
   | 'neural_deconvolved'
@@ -77,7 +77,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'behavior_timestamps',
-    group: 'Behavior',
+    group: 'Behavioral',
     label: 'Behavior camera timestamps',
     level: 'recommended',
     file: 'behavior_timestamps.csv',
@@ -86,7 +86,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'position',
-    group: 'Behavior',
+    group: 'Behavioral',
     label: 'Position',
     level: 'recommended',
     file: 'position.csv',
@@ -95,7 +95,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'head_orientation',
-    group: 'Behavior',
+    group: 'Behavioral',
     label: 'Head orientation',
     level: 'optional',
     file: 'headOrientation.csv',
@@ -104,7 +104,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'zone_annotations',
-    group: 'Behavior',
+    group: 'Behavioral',
     label: 'Zone annotations',
     level: 'optional',
     file: 'zone_annotations.csv',
@@ -113,7 +113,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'behavior_annotations',
-    group: 'Behavior',
+    group: 'Behavioral',
     label: 'Behavior annotations',
     level: 'optional',
     file: 'behavior_annotations.csv',
@@ -122,7 +122,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'config',
-    group: 'Settings',
+    group: 'Configuration',
     label: 'Experimental setup',
     level: 'recommended',
     file: 'config.yaml',
@@ -132,7 +132,7 @@ export const SLOTS: Slot[] = [
   },
 ];
 
-export const GROUPS: Group[] = ['Neural', 'Behavior', 'Settings'];
+export const GROUPS: Group[] = ['Neural', 'Behavioral', 'Configuration'];
 
 /** Slots are tested in list order, so a zone file is not taken for behavior annotations. */
 export function matchSlot(name: string): SlotId | undefined {

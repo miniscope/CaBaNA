@@ -1,9 +1,12 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
+import { configReport } from '../lib/config-import.ts';
+import { CARDS, setSetupCard, setupCard, setupSnapshot, statusOf, type CardId } from '../lib/setup-status.ts';
 import { arena, arenaSummary, setArena } from '../lib/arena.ts';
 import { INDICATORS } from '../lib/decon.ts';
 import { indicatorId, setIndicator } from '../lib/decon-state.ts';
 import { PARADIGMS } from '../lib/experiments.ts';
 import { downloadConfig } from '../lib/session-config.ts';
+import { ConfigReport, setupItems } from './ConfigReport.tsx';
 import {
   derivedCameraFps,
   derivedDuration,
@@ -11,6 +14,8 @@ import {
   markConfigProvided,
   experiment,
   experimentId,
+  goToStep,
+  loaded,
   override,
   sessionName,
   setExperiment,
@@ -187,7 +192,7 @@ function ExperimentTab(): JSX.Element {
   return (
     <section class="cb-group">
       <p class="cb-muted">
-        Everything on these tabs is optional. What you fill in is saved with the config and helps QC
+        Everything in this section is optional. What you fill in is saved with the config and helps QC
         and the analyses.
       </p>
       <div class="cb-setup-grid">
@@ -291,10 +296,23 @@ function SessionTab(): JSX.Element {
             onInput={(e) => setSource('clockOffsetS', +e.currentTarget.value || 0)}
           />
         </label>
+        <label class="cb-setup-field">
+          Behavior clock scale
+          <input
+            type="number"
+            step="0.0001"
+            min="0"
+            value={source.clockScale}
+            onInput={(e) => setSource('clockScale', +e.currentTarget.value || 1)}
+          />
+        </label>
       </div>
       <Note>
-        The clock offset is how long the behavior video ran before the miniscope started. It lines
-        the two clocks up in the saved config.
+        The clock offset is how long the behavior video ran before the miniscope started. The clock
+        scale corrects a camera clock that runs at a slightly different rate; leave it at 1 unless
+        the two clocks drift apart. Camera times become scale x (time - offset), so position lines
+        up with the neural frames everywhere in CaBaNA and in the saved config. Check the result
+        under Timing and alignment in Data QC.
       </Note>
     </section>
   );
@@ -326,6 +344,18 @@ function TrackingTab(): JSX.Element {
                 value={source.pxPerCm}
                 onInput={(e) => setSource('pxPerCm', Math.max(0.01, +e.currentTarget.value))}
               />
+            </label>
+          </Show>
+          <Show when={source.positionUnit === 'cm'}>
+            <label class="cb-setup-field">
+              y increases
+              <select
+                value={source.yDown ? 'down' : 'up'}
+                onChange={(e) => setSource('yDown', e.currentTarget.value === 'down')}
+              >
+                <option value="up">Up</option>
+                <option value="down">Down</option>
+              </select>
             </label>
           </Show>
           <Text
@@ -364,7 +394,11 @@ function TrackingTab(): JSX.Element {
         <Note>
           Position frames below the likelihood threshold are treated as lost. The head direction
           offset is added to the head orientation so that 0 degrees points to the right of the
-          picture and angles grow counterclockwise. It only matters for head direction.
+          picture and angles grow counterclockwise. It only matters for head direction. Maps and
+          zones put y up, with 0 at the arena's bottom edge. Camera tracking often has y growing
+          downward instead; choose Down for position files like that, and y is flipped using the
+          arena height. Zones in a loaded config are flipped the same way. Pixel positions are
+          already read with y down, so this applies to centimeters only.
         </Note>
       </section>
       <section class="cb-group">
@@ -503,59 +537,101 @@ function UpdateConfig(): JSX.Element {
   );
 }
 
-const TABS = [
-  { id: 'experiment', label: 'Experiment & subjects' },
-  { id: 'session', label: 'Session structure' },
-  { id: 'spatial', label: 'Spatial setup' },
-  { id: 'tracking', label: 'Tracking & coordinates' },
-  { id: 'stimuli', label: 'Stimuli & cues' },
-  { id: 'neural', label: 'Neural acquisition' },
-] as const;
+/** What the config file filled in, as one line with the warnings and an expandable review. */
+function ImportedConfig(): JSX.Element {
+  return (
+    <Show when={configReport()}>
+      {(r) => (
+        <div class="cb-cfgsum cb-setup-import">
+          <div class="cb-cfgsum__part">
+            <strong>Configuration loaded</strong>
+            <span class="cb-muted">
+              {r().read.length} settings filled in from {loaded.config?.name ?? 'config.yaml'}; anything changed
+              by hand replaces them.
+            </span>
+            <details>
+              <summary>Review details</summary>
+              <ConfigReport />
+            </details>
+          </div>
+          <Show when={setupItems().length}>
+            <ul class="cb-warn cb-setup-warns">
+              <For each={setupItems()}>
+                {(w) => (
+                  <li>
+                    {w.text}{' '}
+                    <Show when={w.card}>
+                      <button class="cb-link" onClick={() => setSetupCard(w.card!)}>
+                        Open {CARDS.find((c) => c.id === w.card)!.title}
+                      </button>
+                    </Show>
+                    <Show when={w.step}>
+                      <button class="cb-link" onClick={() => goToStep(w.step!)}>
+                        Go to Load data
+                      </button>
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </div>
+      )}
+    </Show>
+  );
+}
 
 /** Where the user describes the experiment, the session, the arena and how the data was made. */
 export function SetupPanel(): JSX.Element {
-  const [tab, setTab] = createSignal<(typeof TABS)[number]['id']>('experiment');
+  const tab = setupCard;
   const only = (id: string) => ({ display: tab() === id ? 'block' : 'none' });
+  const status = (id: CardId) => statusOf(id, setupSnapshot());
   return (
     <div class="cb-panel cb-panel--wide">
-      <h2>Experimental Setup</h2>
-      <p class="cb-lead">
-        Describe your experiment, including the experimental design, subjects, and spatial setup.
-        Most settings are optional but recommended, as they help CaBaNA interpret your data and
-        determine which analyses are available.{' '}
-        <b>Spatial settings are required for many analyses</b>.
-      </p>
-      <p class="cb-lead">
-        Fill in the sections relevant to your experiment, then click <b>Download Config</b> to save
-        your settings as a <code>config.yaml</code> file. You can reuse or modify this file for
-        future sessions.
-      </p>
-      <div class="cb-controls">
+      <div class="cb-setup-head">
+        <div>
+          <h2>Experimental Setup</h2>
+          <p class="cb-lead">
+            Describe your experiment so CaBaNA can interpret your data and identify available analyses. Spatial setup
+            is required for many spatial analyses. Complete the other sections when they apply to your experiment;
+            some settings may be required for particular analyses.
+          </p>
+        </div>
         <button class="btn-primary" onClick={downloadConfig}>
           Download Config
         </button>
       </div>
-      <div class="cb-tabs" role="tablist">
-        <For each={TABS}>
-          {(t) => (
+      <ImportedConfig />
+      <div class="cb-setup-cards" role="tablist" aria-label="Setup sections">
+        <For each={CARDS}>
+          {(c) => (
             <button
               role="tab"
-              aria-selected={tab() === t.id}
-              classList={{ 'cb-tab--on': tab() === t.id }}
-              onClick={() => setTab(t.id)}
+              class="cb-setup-card"
+              aria-selected={tab() === c.id}
+              classList={{ 'cb-setup-card--on': tab() === c.id }}
+              onClick={() => setSetupCard(c.id)}
             >
-              {t.label}
+              <span class="cb-setup-card__title">{c.title}</span>
+              <span class="cb-setup-card__meta">
+                <span class={`cb-pill cb-pill--${c.priority === 'Required' ? 'warn' : 'plain'}`}>{c.priority}</span>
+                <span class={`cb-setup-status cb-setup-status--${status(c.id).toLowerCase()}`}>
+                  {status(c.id) === 'Complete' ? '✓ ' : status(c.id) === 'Incomplete' ? '◐ ' : '○ '}
+                  {status(c.id)}
+                </span>
+              </span>
             </button>
           )}
         </For>
       </div>
+      <h3 class="cb-setup-title">{CARDS.find((c) => c.id === tab())!.title}</h3>
       <div style={only('experiment')}>
         <ExperimentTab />
       </div>
       <div style={only('session')}>
         <SessionTab />
       </div>
-      {/* Kept mounted so the picture and tools survive a tab change. */}
+      {/* Kept mounted so the picture and tools survive a change of section. */}
       <div style={only('spatial')}>
         <SpatialSetup />
       </div>

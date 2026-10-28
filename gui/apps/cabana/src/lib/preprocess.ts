@@ -11,13 +11,17 @@ export const DEFAULT_PREP = {
   eventSigmaS: 0,
   /** smooth_activity on raw and denoised traces: Gaussian width (s). */
   traceSigmaS: 0,
+  /** resample_signal: position gaps longer than this (s) stay lost when put on the neural frames (max_gap_s). */
+  maxGapS: 0.5,
+  /** interpolate_gaps on position, after the resample: lost stretches up to this long (s) are filled. */
+  fillGapS: 0.5,
   /** smooth_signal on position: filter, and the full window width (s). */
   posMethod: 'median' as 'median' | 'gaussian',
   posWindowS: 0.25,
   /** speed: window (s) of the finite difference. */
   speedWindowS: 0.25,
   /** speed_threshold: frames with speed below this (cm/s) are left out. */
-  minSpeed: 0,
+  minSpeed: 2,
   /** clean_mask dilate_s: each behavior bout is widened by this many seconds on both sides. */
   labelPadS: 0,
 };

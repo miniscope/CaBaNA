@@ -9,8 +9,11 @@ import {
   samplingRate,
 } from '../lib/store.ts';
 
-/** The selected cell's raw, denoised and deconvolved traces, one labeled panel each. */
-export function CellTraces(): JSX.Element {
+/**
+ * The selected cell's raw, denoised and deconvolved traces, one labeled panel each (`height` per
+ * panel). `mark` bolds the label of one of them.
+ */
+export function CellTraces(props: { height?: number; mark?: string }): JSX.Element {
   const frames = () => (rawTrace() ?? denoisedTrace() ?? deconvolved())?.frames ?? 0;
   const t = createMemo(
     () =>
@@ -40,14 +43,14 @@ export function CellTraces(): JSX.Element {
     <For each={panels()}>
       {(p) => (
         <Show when={p.v}>
-          <div class="cb-label">
+          <div class="cb-label" classList={{ 'cb-label--on': props.mark === p.label }}>
             <i style={{ background: p.stroke }} />
             {p.label}
           </div>
           <TracePanel
             data={() => [t(), p.v!] as [number[], ...number[][]]}
             series={[{}, { label: p.label, stroke: p.stroke, width: 1 }]}
-            height={110}
+            height={props.height ?? 110}
             syncKey="cabana-cell"
             xLabel="Time (s)"
           />

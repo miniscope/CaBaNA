@@ -2,10 +2,11 @@
 // kept in pixels of the arena picture and converted to cm (origin at the arena's
 // lower left corner, y up) when it is used or saved.
 
-import { createMemo, createSignal } from 'solid-js';
+import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { FrameSource } from './frame.ts';
-import { cameraFps, onClear, onConfig, positionResult, source } from './store.ts';
+import { flipY, type CmZone } from './config-read.ts';
+import { cameraFps, onClear, positionResult, source } from './store.ts';
 
 export type Pt = [number, number];
 export interface Zone {
@@ -57,11 +58,8 @@ onClear(() => {
   });
 });
 
-// config.yaml: `arena_cm: [width, height]`, or one number for a circular arena.
-onConfig((text) => {
-  const m = text.match(/^arena_cm:\s*\[\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\]/m);
-  if (m) setArena({ width: +m[1], height: +(m[2] ?? m[1]), shape: m[2] ? 'rectangle' : 'circle' });
-});
+/** Zones from a config.yaml, in cm, waiting for the arena outline so they can be put on the picture. */
+export const [pendingZones, setPendingZones] = createSignal<CmZone[]>();
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -90,6 +88,20 @@ export const toPx = (c: Pt): Pt | undefined => {
   const b = arena.box;
   return s && b ? [b.x + c[0] * s, b.y + b.h - c[1] * s] : undefined;
 };
+
+// Placed after toPx and pxPerCm, which the effect reads as soon as it is created.
+onClear(() => setPendingZones(undefined));
+createRoot(() =>
+  createEffect(() => {
+    const z = pendingZones();
+    if (!z || !pxPerCm() || !arena.box) return;
+    setArena('zones', [
+      ...arena.zones.filter((a) => !z.some((b) => b.name === a.name)),
+      ...z.map((c) => ({ ...c, pts: c.pts.map((p) => toPx(p)!) })),
+    ]);
+    setPendingZones(undefined);
+  }),
+);
 
 function inPolygon(p: Pt, poly: Pt[]): boolean {
   let inside = false;
@@ -147,7 +159,10 @@ export function binGrid(bin: number): BinGrid | undefined {
 export const positionsCm = createMemo<{ x: number[]; y: number[] }>(() => {
   const p = positionResult();
   if (!p || !('x' in p)) return { x: [], y: [] };
-  if (source.positionUnit === 'cm') return { x: p.x, y: p.y };
+  if (source.positionUnit === 'cm') {
+    const h = sizeCm()[1];
+    return { x: p.x, y: source.yDown ? p.y.map((v) => flipY(v, h)) : p.y };
+  }
   const f = frame();
   const s = pxPerCm();
   const b = arena.box;
@@ -173,6 +188,10 @@ export function occupancy(grid: BinGrid): Float64Array {
 /** Bin size used until one is chosen. A starting value only: it depends on the arena, animal and frame rate. */
 export const DEFAULT_BIN_CM = 3;
 export const effectiveBin = () => arena.binCm ?? DEFAULT_BIN_CM;
+/** Set the bin size: at least 0.5 cm, at most half the smaller arena side. */
+export function setBinCm(v: number): void {
+  if (Number.isFinite(v)) setArena('binCm', Math.min(Math.min(...sizeCm()) / 2, Math.max(0.5, v)));
+}
 
 const r = (v: number) => Math.round(v * 100) / 100;
 export const cmPts = (z: Zone) => z.pts.map((p) => toCm(p)!.map(r));

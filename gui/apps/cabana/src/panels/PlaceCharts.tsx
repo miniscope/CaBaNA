@@ -1,4 +1,4 @@
-import { createEffect, For, type JSX } from 'solid-js';
+import { createEffect, createMemo, For, type JSX } from 'solid-js';
 import { colorAt } from '../lib/place-display.ts';
 import type { Overall } from '../lib/place-outcome.ts';
 
@@ -141,24 +141,27 @@ export function MetricStrip(props: {
   const W = 420;
   const H = 200;
   const [L, R, T, B] = [46, 8, 8, 34];
-  const order = () =>
+  const order = createMemo(() =>
     Array.from(props.values.keys())
       .filter((i) => Number.isFinite(props.values[i]))
-      .sort((a, b) => props.values[b] - props.values[a]);
-  const band = () =>
+      .sort((a, b) => props.values[b] - props.values[a]),
+  );
+  const band = createMemo(() =>
     order().map((i) => {
       const s = finiteSorted(props.nullValues.subarray(i * props.nShifts, (i + 1) * props.nShifts));
       return [quantile(s, 0.5), quantile(s, 1 - props.alpha)] as const;
-    });
-  const top = () =>
+    }),
+  );
+  const top = createMemo(() =>
     Math.max(
       1e-9,
       ...order().map((i) => props.values[i]),
       ...band()
         .map((b) => b[1])
         .filter(Number.isFinite),
-    );
-  const bottom = () => Math.min(0, ...order().map((i) => props.values[i]));
+    ),
+  );
+  const bottom = createMemo(() => Math.min(0, ...order().map((i) => props.values[i])));
   const px = (k: number) => L + (k / Math.max(1, order().length - 1)) * (W - L - R);
   const py = (v: number) => T + (1 - (v - bottom()) / (top() - bottom() || 1)) * (H - T - B);
   const fmt = (v: number) => (Math.abs(v) >= 10 ? v.toFixed(0) : +v.toFixed(2)).toString();
@@ -295,7 +298,7 @@ export function PopulationTuning(props: {
   onPick: (i: number) => void;
 }): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
-  const order = () => tuningOrder(props);
+  const order = createMemo(() => tuningOrder(props));
   const ROW = () => Math.max(1, Math.min(4, Math.round(540 / Math.max(1, order().length))));
   createEffect(() => {
     const ctx = canvas?.getContext('2d');

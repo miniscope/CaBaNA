@@ -19,7 +19,7 @@ import type { PlaceWorkerOutbound } from '../workers/place-types.ts';
 
 export type PlacePoolJob = BaseJob &
   (
-    | { kind: 'sigma'; input: PlaceInput; onComplete(r: SigmaChoice): void }
+    | { kind: 'sigma'; input: PlaceInput; minOccS: number; onComplete(r: SigmaChoice): void }
     | { kind: 'timescale'; input: PlaceInput; onComplete(r: TimescaleChoice): void }
     | {
         kind: 'cells';
@@ -67,7 +67,9 @@ const router: MessageRouter<PlacePoolJob, PlaceWorkerOutbound> = {
     const msg =
       job.kind === 'cells'
         ? { type: 'cells-job', jobId: job.jobId, input, params: job.params, shifts: job.shifts }
-        : { type: `${job.kind}-job`, jobId: job.jobId, input };
+        : job.kind === 'sigma'
+          ? { type: 'sigma-job', jobId: job.jobId, input, minOccS: job.minOccS }
+          : { type: 'timescale-job', jobId: job.jobId, input };
     return [msg, [input.neural.buffer, input.labels.buffer]];
   },
 };

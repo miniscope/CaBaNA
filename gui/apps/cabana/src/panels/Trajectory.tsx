@@ -14,15 +14,25 @@ import {
 } from '../lib/arena.ts';
 import { arenaOutline, drawZones } from '../lib/draw.ts';
 import { cameraTimes, positionResult } from '../lib/store.ts';
-import { span, win } from '../lib/viz.ts';
+import { lowerBound } from '../lib/framework.ts';
+import { hoverT, span, win } from '../lib/viz.ts';
+
+/** Whether the arena is set up, so positions can be drawn on its picture. */
+export const placed = () => !!(pxPerCm() && arena.box && frame());
 
 /** The path of the animal over the arena, colored by time, or the time spent in each bin. */
 /** `bare` leaves out the heading and the choice of view; `mode` then picks the view. */
-export function Trajectory(props: { bare?: boolean; mode?: 'path' | 'time' }): JSX.Element {
+/** `linked` fills its box with a gray path, the session window in blue and a red dot at the hovered time. */
+export function Trajectory(props: {
+  bare?: boolean;
+  mode?: 'path' | 'time';
+  linked?: boolean;
+}): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
+  let dot: HTMLCanvasElement | undefined;
+  const [drawn, setDrawn] = createSignal<{ pts: (Pt | undefined)[]; w: number; h: number }>();
   const [chosen, setMode] = createSignal<'path' | 'time'>('path');
   const mode = () => props.mode ?? chosen();
-  const placed = () => !!(pxPerCm() && arena.box && frame());
 
   createEffect(() => {
     const c = canvas;
@@ -99,7 +109,7 @@ export function Trajectory(props: { bare?: boolean; mode?: 'path' | 'time' }): J
         const a = pts[i - 1];
         const b = pts[i];
         if (!a || !b) continue;
-        const [r, g, bl] = viridisRGB(i / n);
+        const [r, g, bl] = props.linked ? [190, 196, 205] : viridisRGB(i / n);
         ctx.strokeStyle = `rgba(${r},${g},${bl},0.75)`;
         ctx.beginPath();
         ctx.moveTo(a[0], a[1]);
@@ -109,7 +119,7 @@ export function Trajectory(props: { bare?: boolean; mode?: 'path' | 'time' }): J
       // The time window of the session view, drawn thick.
       if (t) {
         const [w0, w1] = win();
-        ctx.strokeStyle = '#e8590c';
+        ctx.strokeStyle = props.linked ? '#2171b5' : '#e8590c';
         ctx.lineWidth = lw * 2.2;
         ctx.beginPath();
         let pen = false;
@@ -126,11 +136,32 @@ export function Trajectory(props: { bare?: boolean; mode?: 'path' | 'time' }): J
         ctx.stroke();
       }
     }
+    setDrawn({ pts, w: c.width, h: c.height });
+  });
+
+  // The red dot at the hovered time, on its own canvas so hovering does not redraw the path.
+  createEffect(() => {
+    const d = drawn();
+    const ctx = dot?.getContext('2d');
+    if (!dot || !ctx || !d) return;
+    if (dot.width !== d.w) dot.width = d.w;
+    dot.height = d.h;
+    const t = cameraTimes();
+    const ht = hoverT();
+    const q = t && ht !== undefined ? d.pts[Math.min(lowerBound(t, ht), t.length - 1)] : undefined;
+    if (!q) return;
+    ctx.beginPath();
+    ctx.arc(q[0], q[1], Math.max(5, d.w / 90), 0, 2 * Math.PI);
+    ctx.fillStyle = '#d32f2f';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = Math.max(1.5, d.w / 400);
+    ctx.stroke();
   });
 
   return (
     <Show when={positionResult() && 'x' in positionResult()!}>
-      <section class="cb-group">
+      <section classList={{ 'cb-group': !props.linked, 'cb-trajfill': props.linked }}>
         <Show when={!props.bare}>
           <h3>Position</h3>
         </Show>
@@ -156,8 +187,17 @@ export function Trajectory(props: { bare?: boolean; mode?: 'path' | 'time' }): J
             </label>
           </div>
         </Show>
-        <canvas ref={canvas} class="cb-arena-canvas cb-traj" aria-label="Position of the animal" />
-        <div class="cb-legend">
+        <div classList={{ 'cb-trajfill__box': props.linked }}>
+          <canvas
+            ref={canvas}
+            class="cb-arena-canvas cb-traj"
+            aria-label="Position of the animal"
+          />
+          <Show when={props.linked}>
+            <canvas ref={dot} class="cb-traj__dot" aria-hidden="true" />
+          </Show>
+        </div>
+        <div class="cb-legend" hidden={props.linked}>
           <Show when={mode() === 'path' || !placed()}>
             <span>Path, start</span>
             <span class="cb-legend__bar cb-legend__bar--viridis" />

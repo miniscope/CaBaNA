@@ -8,6 +8,7 @@ import {
   frame,
   frameVersion,
   occupancy,
+  pendingZones,
   positionsCm,
   pxPerCm,
   setArena,
@@ -356,9 +357,11 @@ export function SpatialSetup(): JSX.Element {
         Describe the arena so later steps can place the animal in it: its outline, its scale and its
         zones. If you loaded a config file you can skip this. Nothing here is required.
       </p>
-      <Show when={loaded.config?.summary && loaded.config.size > 0}>
+      <Show when={pendingZones()?.length}>
         <div class="cb-note">
-          Arena settings loaded from {loaded.config!.name}: {loaded.config!.summary}
+          Zones and excluded regions from {loaded.config?.name} waiting to be placed:{' '}
+          {pendingZones()!.length}. Outline the arena below, or use a blank arena, and they appear
+          in place.
         </div>
       </Show>
       <div class="cb-arena-grid">

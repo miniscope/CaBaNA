@@ -16,7 +16,11 @@ onmessage = (e: MessageEvent<PlaceWorkerInbound>) => {
   if (msg.type === 'cancel') return;
   try {
     if (msg.type === 'sigma-job') {
-      post({ type: 'sigma-complete', jobId: msg.jobId, result: selectSigma(msg.input) });
+      post({
+        type: 'sigma-complete',
+        jobId: msg.jobId,
+        result: selectSigma(msg.input, undefined, { minOccS: msg.minOccS }),
+      });
     } else if (msg.type === 'timescale-job') {
       post({ type: 'timescale-complete', jobId: msg.jobId, result: selectMinShift(msg.input) });
     } else {
