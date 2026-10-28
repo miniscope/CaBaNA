@@ -225,5 +225,69 @@ for tail in ("lower", "upper"):
     tests[tail] = {"p_raw": nn(p_raw), "p_adj": nn(p_adj)}
 ref["pvalues"] = {"observed": nn(obs), "null": nn(null), "tails": tests}
 
+# ---- linear decoder: logistic regression, one-vs-rest, on 0.5 s bins ---------------------------------
+from sklearn.linear_model import LogisticRegression  # noqa: E402
+
+from cabana._metrics._decode import DecodeStates  # noqa: E402
+from cabana._metrics._ratemap import contiguous_folds  # noqa: E402
+
+def linear_reference(activity, states):
+    sess_c = Session(
+        activity=np.nan_to_num(activity), t=t_s, fs=fs, activity_kind="deconvolved", states={"beh": states}
+    ).rebin(0.5)
+    st_c = sess_c.states["beh"]
+    lab_c = st_c.labels()
+    use_c = lab_c >= 0
+    xb = sess_c.activity[:, use_c].T  # (frames, cells), the frames DecodeStates uses
+    yb = lab_c[use_c]
+    dec = DecodeStates(classifier="logistic", mode="one_vs_rest", n_folds=5)
+    out_c = dec._run(sess_c.activity, st_c, np.ones(sess_c.n_time, bool))
+    pred_by_state = {}
+    for s_ in range(states.n_states):
+        y1 = (yb == s_).astype(np.int64)
+        if y1.sum() < 20 or (y1.size - y1.sum()) < 20:
+            continue
+        pred_by_state[s_] = dec._cv_predict(xb, y1).tolist()
+    # the exact optimum of the first fold's training problem (tight tolerance), for weights
+    folds_c = contiguous_folds(xb.shape[0], 5)
+    tr0 = folds_c != 0
+    y_s1 = (yb == 1).astype(np.int64)
+    mu0, sd0 = xb[tr0].mean(axis=0), xb[tr0].std(axis=0)
+    sd0 = np.where(sd0 > 1e-12, sd0, 1.0)
+    fits = [
+        LogisticRegression(C=C, class_weight="balanced", tol=1e-12, max_iter=200000).fit(
+            (xb[tr0] - mu0) / sd0, y_s1[tr0]
+        )
+        for C in (1.0, 0.05)
+    ]
+    return {
+        "frames": int(sess_c.n_time),
+        "fs": float(sess_c.fs),
+        "n_states": states.n_states,
+        "neural": nn(sess_c.activity),
+        "labels": lab_c.tolist(),
+        "values": nn(out_c.values),
+        "overall": float(out_c.overall),
+        "confusion": nn(out_c.confusion),
+        "n_frames": out_c.n_frames.tolist(),
+        "predictions": {str(k): v for k, v in pred_by_state.items()},
+        "fit": {
+            "state": 1,
+            "fold": 0,
+            "C": [1.0, 0.05],
+            "coef": [f.coef_[0].tolist() for f in fits],
+            "intercept": [float(f.intercept_[0]) for f in fits],
+        },
+    }
+
+
+ref["linear"] = linear_reference(cat_act, beh)
+# a harder problem: the arena quadrant the animal is in, decoded from the place-tuned cells
+quad = np.where(tracked, (lab // nx >= ny // 2) * 2 + (lab % nx >= nx // 2), -1)
+quad_oh = np.zeros((n, 4), bool)
+quad_oh[np.flatnonzero(tracked), quad[tracked]] = True
+quad_ss = StateSpace(name="beh", onehot=quad_oh, state_names=list("abcd"), kind="categorical", exclusive=True)
+ref["linear_hard"] = linear_reference(act, quad_ss)
+
 Path(__file__).with_name("decoding_reference.json").write_text(json.dumps(ref))
 print("written", {k: (len(v) if hasattr(v, "__len__") else v) for k, v in ref.items() if k in ("shuffle", "position")})
