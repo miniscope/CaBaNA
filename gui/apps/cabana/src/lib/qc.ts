@@ -27,6 +27,10 @@ export interface PositionQc {
   /** Position per frame, NaN where the tracker lost the animal. */
   x: number[];
   y: number[];
+  /** Camera time of each frame in seconds, NaN where the frame has no timestamp. */
+  frameT: number[];
+  /** Mean time between camera frames, in seconds. */
+  dtFrame: number;
   /** Frame index of each speed sample. */
   idx: number[];
   /** Speed between consecutive tracked frames. */
@@ -83,6 +87,8 @@ export function positionQc(
     t,
     speed,
     idx,
+    frameT: frame.map((f) => timeOf.get(f) ?? NaN),
+    dtFrame,
     x: x.map((v, i) => (lost(i) ? NaN : v)),
     y: y.map((v, i) => (lost(i) ? NaN : v)),
     checks: [
