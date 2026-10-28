@@ -209,5 +209,21 @@ ref["exclusive"] = {
     "cases": bts,
 }
 
+# ---- p-values and max-stat correction across states for a fixed null ----------------------------
+from cabana._shuffle import _max_stat_p, _p_values  # noqa: E402
+
+nr = np.random.default_rng(9)
+n_shuf, n_st = 60, 7
+null = np.round(nr.normal(2.0, 0.6, (n_shuf, n_st)), 1)  # rounded, so ties occur
+null[:, 5] = nr.normal(0.0, 5.0, n_shuf)  # a state with a much wider null
+null[:12, 6] = np.nan  # a state undefined on some shuffles
+obs = np.array([0.6, 1.2, 2.0, 2.4, 3.9, -7.0, 0.3])
+tests = {}
+for tail in ("lower", "upper"):
+    p_raw = _p_values(obs, null, tail)
+    p_adj = _max_stat_p(obs[None], null[:, None, :], tail, p_raw[None])[0]
+    tests[tail] = {"p_raw": nn(p_raw), "p_adj": nn(p_adj)}
+ref["pvalues"] = {"observed": nn(obs), "null": nn(null), "tails": tests}
+
 Path(__file__).with_name("decoding_reference.json").write_text(json.dumps(ref))
 print("written", {k: (len(v) if hasattr(v, "__len__") else v) for k, v in ref.items() if k in ("shuffle", "position")})
