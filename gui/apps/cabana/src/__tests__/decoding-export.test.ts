@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BAYES, makeBayesDecoder } from '../lib/decode-bayes.ts';
 import { decodeTest, overallStatistic, runShuffles } from '../lib/decode-test.ts';
-import { decodingBinsCsv, decodingFramesCsv, decodingMetadata } from '../lib/decoding-export.ts';
-import { DEFAULT_DECODE_SETTINGS, type DecodeOutcome } from '../lib/decoding-run.ts';
+import {
+  behaviorConfusionCsv,
+  behaviorMetadata,
+  behaviorStatesCsv,
+  decodingBinsCsv,
+  decodingFramesCsv,
+  decodingMetadata,
+} from '../lib/decoding-export.ts';
+import { DEFAULT_DECODE_SETTINGS, type BehaviorOutcome, type DecodeOutcome } from '../lib/decoding-run.ts';
 import { DEFAULT_PREP } from '../lib/preprocess.ts';
-import { formatP, stateRows, summarizeRun } from '../lib/decoding-view.ts';
+import { behaviorRows, confusionShares, formatP, stateRows, summarizeBehavior, summarizeRun } from '../lib/decoding-view.ts';
 import ref from './decoding_reference.json';
 
 const nan = (a: (number | null)[]) => a.map((x) => (x === null ? NaN : x));
@@ -79,5 +86,78 @@ describe('decoding exports and summaries', () => {
     expect(formatP(1 / 1001, 1000)).toBe('< 0.001');
     expect(formatP(0.0452, 1000)).toBe('0.0452');
     expect(formatP(NaN, 1000)).toBe('');
+  });
+});
+
+describe('behavior decoding results', () => {
+  const catInput = {
+    neural: Float64Array.from(nan((ref.cat_neural as (number | null)[][]).flat())),
+    cells: ref.cells,
+    frames: ref.frames,
+    fs: ref.fs,
+    labels: Int32Array.from(ref.cat_labels),
+    mask: new Uint8Array(ref.frames).fill(1),
+    nStates: 4,
+  };
+  const cp = { ...DEFAULT_BAYES, sigma: 'pooled' as const, windowS: 0.25 };
+  const obs = makeBayesDecoder(catInput, cp)();
+  const sh = runShuffles(catInput, cp, 1, 0, 0, 20);
+  const bt = decodeTest(obs.values, overallStatistic(obs, false), sh.values, sh.overall, 'upper', 'max_stat');
+  const out = {
+    target: 'behavior',
+    data: {
+      input: catInput,
+      cellIds: Array.from({ length: ref.cells }, (_, i) => i),
+      names: ['A', 'B', 'C', 'D'],
+      rowOf: [0, 1, 2, 3],
+      overlap: { labeled: 0, overlapping: 5, won: [], lost: [], final: [1, 1, 1, 1], pairs: [{ winner: 0, loser: 1, frames: 5 }] },
+      scoredFrames: ref.frames,
+      fs: ref.fs,
+    },
+    params: cp,
+    observed: obs,
+    test: bt,
+    nullValues: sh.values,
+    nullOverall: sh.overall,
+    blockFrames: 20,
+    seconds: 1,
+    settings: { ...structuredClone(DEFAULT_DECODE_SETTINGS), nShuffles: 20, blockS: 1 },
+    prep: { ...DEFAULT_PREP },
+  } as unknown as BehaviorOutcome;
+
+  it('marks the rare behavior Not evaluated and gives the rest recall, a null range and p-values', () => {
+    const rows = behaviorRows(out);
+    expect(rows[3].status).toBe('not evaluated'); // 12 frames
+    rows.slice(0, 3).forEach((r) => {
+      expect(r.value).toBeGreaterThan(0.5);
+      expect(r.nullHi).toBeLessThan(r.value);
+      expect(r.pAdj).toBeGreaterThanOrEqual(r.pRaw);
+    });
+  });
+  it('balanced accuracy is the mean recall over evaluated behaviors', () => {
+    const s = summarizeBehavior(out);
+    const mean = (obs.values[0] + obs.values[1] + obs.values[2]) / 3;
+    expect(s.balancedAccuracy).toBeCloseTo(mean, 12);
+    expect(s.evaluated).toBe(3);
+  });
+  it('confusion shares sum to one per evaluated row', () => {
+    const c = confusionShares(out);
+    for (let r = 0; r < 3; r++) {
+      const sum = [0, 1, 2].reduce((a, d) => a + c[r * 4 + d], 0);
+      expect(sum).toBeCloseTo(1, 12);
+    }
+    expect(c[3 * 4 + 0]).toBeNaN();
+  });
+  it('exports the statistic, the priority order, the correction and the departures', () => {
+    const csv = behaviorStatesCsv(out);
+    expect(csv).toContain('recall');
+    expect(csv).toContain('A > B > C > D');
+    expect(csv).toContain('Westfall-Young');
+    expect(csv.split('\n').filter((l) => !l.startsWith('#')).length).toBe(1 + 4);
+    expect(behaviorConfusionCsv(out).split('\n').length).toBe(2 + 4);
+    const m = behaviorMetadata(out);
+    expect(m.departures_from_framework.length).toBe(3);
+    expect(m.decoder_settings.sigma).toBe('pooled');
+    expect(m.shuffle_test?.tail).toBe('upper');
   });
 });

@@ -5,7 +5,9 @@ import { createMemo } from 'solid-js';
 import { effectiveBin } from './arena.ts';
 import type { BayesInput } from './decode-bayes.ts';
 import { placeFrames, type PlaceFrames } from './prepared.ts';
-import { deconvolved, rejected, samplingRate } from './store.ts';
+import { behaviorFrames } from './auroc.ts';
+import { exclusiveLabels, overlapReport, type OverlapReport } from './decode-shared.ts';
+import { annotationResults, deconvolved, frameTimes, rejected, samplingRate } from './store.ts';
 
 /**
  * Deconvolved events of the accepted cells, exactly as loaded: the Preprocess event smoothing is not applied.
@@ -88,6 +90,91 @@ export function positionDecodeData(bin = effectiveBin()): PositionDecodeData | {
       nStates: grid.nx * grid.ny,
       shape: [grid.ny, grid.nx],
       centers,
+    },
+  };
+}
+
+/** Every annotated behavior as a 0/1 row per label (unpadded frame labels), and the annotated span. */
+export const annotatedBehaviors = createMemo<
+  { labels: string[]; rows: Uint8Array; frames: number; scored: Uint8Array; bouts: Map<string, number> } | { error: string }
+>(() => {
+  const t = frameTimes();
+  const ev = decodeEvents();
+  const ann = annotationResults().find((r) => r.id === 'behavior_annotations');
+  if (!t) return { error: 'Load neural timestamps that match the neural data.' };
+  if (!ann || ann.error) return { error: ann?.error ?? 'Load behavior annotations first.' };
+  if (!('error' in ev) && t.length !== ev.frames) return { error: 'Load neural timestamps that match the neural data.' };
+  const labels = [...new Set(ann.epochs.map((e) => e.label))];
+  const first = Math.min(...ann.epochs.map((e) => e.start));
+  const last = Math.max(...ann.epochs.map((e) => e.stop));
+  const bouts = new Map(labels.map((l) => [l, ann.epochs.filter((e) => e.label === l).length]));
+  return {
+    labels,
+    rows: behaviorFrames(ann.epochs, labels, t),
+    frames: t.length,
+    // The framework scores the span given with the annotations; this file has none, so the span from the
+    // first annotated bout to the end of the last one is taken as scored.
+    scored: Uint8Array.from(t, (v) => (v >= first && v < last ? 1 : 0)),
+    bouts,
+  };
+});
+
+export interface BehaviorChoice {
+  order: string[];
+  unselected: string[];
+  other: boolean;
+}
+
+/** The priority order to use: the saved one, completed with any loaded behavior it lacks, in the loaded order. */
+export const orderOf = (loaded: string[], saved: string[]): string[] => [
+  ...saved.filter((l) => loaded.includes(l)),
+  ...loaded.filter((l) => !saved.includes(l)),
+];
+
+export const OTHER_NAME = 'Other / none of the selected behaviors';
+
+export interface BehaviorDecodeData {
+  input: BayesInput;
+  cellIds: number[];
+  /** State names in priority order, Other last when on. */
+  names: string[];
+  /** Loaded behavior index of each selected state (by position in `names`, without Other). */
+  rowOf: number[];
+  overlap: OverlapReport;
+  /** Frames in the annotated span. */
+  scoredFrames: number;
+  fs: number;
+}
+
+/**
+ * The input of behavior decoding: unsmoothed events and one label per frame. Overlapping behaviors are
+ * resolved by the priority order (the earlier one wins); frames with none of the selected behaviors are
+ * left out, or are the Other state.
+ */
+export function behaviorDecodeData(choice: BehaviorChoice): BehaviorDecodeData | { error: string } | undefined {
+  const ev = decodeEvents();
+  if ('error' in ev) return ev;
+  const b = annotatedBehaviors();
+  if ('error' in b) return b;
+  const order = orderOf(b.labels, choice.order).filter((l) => !choice.unselected.includes(l));
+  const rowOf = order.map((l) => b.labels.indexOf(l));
+  const labels = exclusiveLabels(b.rows, b.frames, rowOf, choice.other, b.scored);
+  const names = choice.other ? [...order, OTHER_NAME] : order;
+  return {
+    cellIds: ev.cellIds,
+    names,
+    rowOf,
+    overlap: overlapReport(b.rows, b.frames, rowOf, choice.other, b.scored),
+    scoredFrames: b.scored.reduce((n, v) => n + v, 0),
+    fs: ev.fs,
+    input: {
+      neural: ev.neural,
+      cells: ev.cells,
+      frames: ev.frames,
+      fs: ev.fs,
+      labels,
+      mask: new Uint8Array(ev.frames).fill(1),
+      nStates: names.length,
     },
   };
 }

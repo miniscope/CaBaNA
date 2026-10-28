@@ -5,6 +5,7 @@ import { formatP, stateRows, summarizeRun } from '../lib/decoding-view.ts';
 import { downloadText } from '../lib/place-export.ts';
 import { goToStep } from '../lib/store.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { TargetSelector } from './DecodingParts.tsx';
 import { Modal } from './AurocResults.tsx';
 import { DecodedTrace, ErrorHistogram, ErrorMap, selectedBin, setSelectedBin, TimeControls } from './DecodingPlots.tsx';
 import { fitToWindow } from './QcPanel.tsx';
@@ -20,7 +21,7 @@ const STATUS_TEXT = {
   'not evaluated': 'Not evaluated',
 } as const;
 
-function Stat(props: { label: string; value: JSX.Element; note?: JSX.Element; tip?: JSX.Element }): JSX.Element {
+export function Stat(props: { label: string; value: JSX.Element; note?: JSX.Element; tip?: JSX.Element }): JSX.Element {
   return (
     <div class="cb-dec-stat">
       <div class="cb-dec-stat__label">
@@ -245,6 +246,7 @@ export function DecodingResults(props: { out: DecodeOutcome; onEdit: () => void 
             Bayesian decoder, {o().params.likelihood === 'gaussian' ? 'Gaussian' : 'Poisson'} likelihood; each frame decoded by a model trained on the other folds.
           </p>
         </div>
+        <TargetSelector />
         <div class="cb-controls">
           <button class="btn-secondary" aria-haspopup="dialog" onClick={() => setDetails(true)}>
             Run details

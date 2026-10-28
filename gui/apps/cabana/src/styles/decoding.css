@@ -137,3 +137,9 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+.cb-dec-move {
+  white-space: nowrap;
+}
+.cb-dec-move .cb-ib {
+  padding: 0 4px;
+}

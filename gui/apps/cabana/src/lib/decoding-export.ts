@@ -1,8 +1,9 @@
 // What the Decoding results screen exports: a CSV of the per-bin results, a CSV of the decoded position of
 // every used frame, and the run's settings as JSON.
 
-import { summarizeRun, stateRows } from './decoding-view.ts';
-import type { DecodeOutcome } from './decoding-run.ts';
+import { behaviorRows, summarizeBehavior, summarizeRun, stateRows } from './decoding-view.ts';
+import type { BehaviorOutcome, DecodeOutcome } from './decoding-run.ts';
+import { OTHER_NAME } from './decode-data.ts';
 
 const v = (x: number) => (Number.isFinite(x) ? x : '');
 
@@ -139,6 +140,99 @@ export function decodingMetadata(o: DecodeOutcome) {
           correction_text: CORRECTION_TEXT[s.correction],
           corrected_p_label: s.correction === 'none' ? 'uncorrected' : 'max-stat corrected',
           significant_bins: sum.significant,
+        }
+      : null,
+    seconds: o.seconds,
+  };
+}
+
+/** One row per behavior state. The `#` lines state the statistic, the test and the correction, which the p-values depend on. */
+export function behaviorStatesCsv(o: BehaviorOutcome): string {
+  const s = o.settings;
+  const sum = summarizeBehavior(o);
+  const head = [
+    '# value = recall: the share of the frames of this behavior that were decoded as it, on held-out frames; larger is better',
+    `# bayesian decoder: ${o.params.likelihood}${o.params.likelihood === 'gaussian' ? ', sigma pooled (one per cell)' : ''}; window_s=${o.params.windowS}; folds=${o.params.nFolds} contiguous time blocks`,
+    `# one state per frame: overlapping behaviors resolved by priority order (${o.data.names.filter((n) => n !== OTHER_NAME).join(' > ')}); frames with none of them ${s.behavior.other ? 'form the state Other' : 'are left out'}`,
+    o.test
+      ? `# label shuffle test: block_s=${s.blockS}; shuffles=${s.nShuffles}; seed=${s.seed}; upper tail; correction: ${CORRECTION_TEXT[s.correction]}; alpha=${s.alpha}`
+      : '# no shuffle test: p-values and significance are not computed',
+    o.test
+      ? `# overall (GUI extension to the framework): balanced accuracy ${v(sum.balancedAccuracy)}, p=${v(o.test.pOverall)}`
+      : `# overall: balanced accuracy ${v(sum.balancedAccuracy)}`,
+    'behavior,frames,recall,null_95th_percentile,p_unadjusted,p_adjusted,status',
+  ];
+  const rows = behaviorRows(o).map((r) =>
+    [JSON.stringify(r.name), r.frames, v(r.value), v(r.nullHi), v(r.pRaw), v(r.pAdj), r.status].join(','),
+  );
+  return [...head, ...rows].join('\n');
+}
+
+/** The confusion matrix in frame counts, rows true and columns decoded. */
+export function behaviorConfusionCsv(o: BehaviorOutcome): string {
+  const n = o.data.names.length;
+  const head = ['# frames of each true behavior (rows) decoded as each behavior (columns); empty for states not evaluated', ['true', ...o.data.names].map((x) => JSON.stringify(x)).join(',')];
+  const rows = o.data.names.map((name, r) =>
+    [JSON.stringify(name), ...Array.from({ length: n }, (_, d) => v(o.observed.confusion[r * n + d]))].join(','),
+  );
+  return [...head, ...rows].join('\n');
+}
+
+/** Everything the behavior run used and chose, for reproducing it. */
+export function behaviorMetadata(o: BehaviorOutcome) {
+  const s = o.settings;
+  const sum = summarizeBehavior(o);
+  return {
+    analysis: 'decoding',
+    target: 'behavior',
+    decoder: 'bayesian',
+    framework: 'miniscope/CaBaNA framework-demo, commit 57c0c4b, BayesianDecoder',
+    departures_from_framework: DEPARTURES,
+    neural_input: 'unsmoothed deconvolved events, binarized (> 0 becomes 1), regardless of Preprocess event smoothing',
+    cells: o.data.cellIds.map((c) => c + 1),
+    frames: { total: o.data.input.frames, labeled: sum.labeledFrames, decoded: sum.decodedFrames, sampling_rate_hz: o.data.fs },
+    behaviors: {
+      priority_order: o.data.names,
+      overlap_rule: 'the earlier behavior in the priority order wins',
+      frames_with_two_or_more_selected_behaviors: o.data.overlap.overlapping,
+      overlap_pairs: o.data.overlap.pairs.map((p) => ({ winner: o.data.names[p.winner], loser: o.data.names[p.loser], frames: p.frames })),
+      other_state: s.behavior.other,
+      annotated_span_frames: o.data.scoredFrames,
+      annotated_span_note: 'from the first annotated bout to the end of the last one',
+      minimum_frames_per_state: o.params.minFramesPerClass,
+      evaluated: sum.evaluated,
+      not_evaluated: sum.notEvaluated,
+    },
+    decoder_settings: {
+      likelihood: o.params.likelihood,
+      sigma: o.params.likelihood === 'gaussian' ? 'pooled' : null,
+      integration_window_s: o.params.windowS,
+      folds: o.params.nFolds,
+      fold_type: 'contiguous time blocks over the labeled frames',
+      prior: o.params.prior,
+      window_clipped_at_fold_boundary: o.params.clipWindowToFold,
+      data_derived_parameters: 'map means, s.d. and occupancy prior come from training folds only',
+    },
+    overall: {
+      statistic: 'balanced accuracy (mean recall over the evaluated behaviors)',
+      value: v(sum.balancedAccuracy),
+      p_overall: o.test ? v(o.test.pOverall) : null,
+      p_overall_note: o.test ? 'extension to the framework: overall balanced accuracy against that of every shuffle' : null,
+    },
+    shuffle_test: o.test
+      ? {
+          method: 'label_shuffle',
+          block_s: s.blockS,
+          block_frames: o.blockFrames,
+          shuffles: s.nShuffles,
+          seed: s.seed,
+          preset_note: 'block length and shuffle count are a starting preset, not validated optima',
+          alpha: s.alpha,
+          tail: 'upper',
+          correction: s.correction,
+          correction_text: CORRECTION_TEXT[s.correction],
+          corrected_p_label: s.correction === 'none' ? 'uncorrected' : 'max-stat corrected',
+          significant_behaviors: sum.significant,
         }
       : null,
     seconds: o.seconds,

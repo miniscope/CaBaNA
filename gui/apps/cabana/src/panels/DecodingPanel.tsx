@@ -1,4 +1,4 @@
-import { createMemo, For, Show, onCleanup, onMount, type JSX } from 'solid-js';
+import { createMemo, Show, onCleanup, onMount, type JSX } from 'solid-js';
 import { DEFAULT_BIN_CM, effectiveBin, setBinCm } from '../lib/arena.ts';
 import { positionDecodeData } from '../lib/decode-data.ts';
 import {
@@ -9,7 +9,6 @@ import {
   decodeShowResults,
   decodeStatus,
   DEFAULT_DECODE_SETTINGS,
-  QUICK_SHUFFLES,
   runDecoding,
   setDecodeSettings,
   setDecodeShowResults,
@@ -17,6 +16,8 @@ import {
 import { decodingChanges, decodingSettingChanges } from '../lib/decoding-view.ts';
 import { prep } from '../lib/preprocess.ts';
 import { goToStep } from '../lib/store.ts';
+import { DecodingBehaviorPanel } from './DecodingBehavior.tsx';
+import { Choice, InputNote, PresetBar, Row, TargetSelector, TestSection } from './DecodingParts.tsx';
 import { DecodingResults } from './DecodingResults.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { NumField } from './PethFields.tsx';
@@ -27,51 +28,6 @@ import '../styles/decoding.css';
 const D = DEFAULT_DECODE_SETTINGS;
 const P = () => decodeSettings.position;
 const setP = <K extends keyof typeof D.position>(k: K, v: (typeof D.position)[K]) => setDecodeSettings('position', k, v);
-
-function Row(props: { label: string; tip?: JSX.Element; children: JSX.Element }): JSX.Element {
-  return (
-    <div class="cb-dec-row">
-      <span class="cb-pe-small">
-        {props.label}
-        <Show when={props.tip}>
-          <InfoTip label={`About ${props.label.toLowerCase()}`}>{props.tip}</InfoTip>
-        </Show>
-      </span>
-      {props.children}
-    </div>
-  );
-}
-
-function Choice<T extends string>(props: { label: string; value: T; options: [T, string][]; onSet: (v: T) => void }): JSX.Element {
-  return (
-    <div class="cb-seg" role="group" aria-label={props.label}>
-      <For each={props.options}>
-        {([v, text]) => (
-          <button type="button" classList={{ 'cb-seg__on': props.value === v }} aria-pressed={props.value === v} onClick={() => props.onSet(v)}>
-            {text}
-          </button>
-        )}
-      </For>
-    </div>
-  );
-}
-
-/** The decoding target. Behavior decoding is not built yet, so it is shown as unavailable with the reason. */
-function TargetSelector(): JSX.Element {
-  return (
-    <div class="cb-dec-target">
-      <span class="cb-dec-target__label">Target</span>
-      <div class="cb-seg" role="group" aria-label="Decoding target">
-        <button type="button" class="cb-seg__on" aria-pressed="true">
-          Position
-        </button>
-        <button type="button" disabled title="Behavior decoding is not available yet in this build." aria-pressed="false">
-          Behavior
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function DecodingSetup(): JSX.Element {
   const data = createMemo(() => positionDecodeData());
@@ -102,7 +58,6 @@ function DecodingSetup(): JSX.Element {
       }
     return { used, bins: per.size, enough: [...per.values()].filter((n) => n >= P().minFrames).length };
   });
-  const isPreset = () => JSON.stringify(decodeSettings) === JSON.stringify(D);
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
 
@@ -140,19 +95,10 @@ function DecodingSetup(): JSX.Element {
       </Show>
 
       <Show when={ok()}>
-        <div class="cb-dec-input">
-          <b>Neural input:</b> unsmoothed deconvolved events of {ok()!.input.cells} cells, binarized (any event above 0 counts as 1).{' '}
-          The Preprocess event smoothing is not used, because smoothing would spread each event over many frames.
-        </div>
-        <div class="cb-dec-preset">
-          <span>
-            <b>Starting preset:</b> integration window {D.position.windowS} s, map smoothing off, {D.blockS} s blocks, {D.nShuffles.toLocaleString()}{' '}
-            shuffles. A practical starting point, not a validated optimum; every value can be changed and is saved with the results.
-          </span>
-          <button class="btn-secondary" disabled={isPreset()} onClick={() => setDecodeSettings(structuredClone(D))}>
-            Reset to preset
-          </button>
-        </div>
+        <InputNote cells={ok()!.input.cells} />
+        <PresetBar>
+          integration window {D.position.windowS} s, map smoothing off, {D.blockS} s blocks, {D.nShuffles.toLocaleString()} shuffles.
+        </PresetBar>
         <div class="cb-pe-body">
           <section class="cb-setgroup cb-pe-left">
             <h3>1 · Frames and held-out blocks</h3>
@@ -228,36 +174,7 @@ function DecodingSetup(): JSX.Element {
               <Choice label="Prior" value={P().prior} options={[['occupancy', 'Occupancy'], ['uniform', 'Uniform']]} onSet={(v) => setP('prior', v)} />
             </Row>
 
-            <h3 class="cb-dec-h3">3 · Significance test</h3>
-            <Row label="Shuffle test" tip="The decoder is run again on labels shuffled in blocks. The real result is compared with the shuffled ones: overall (an extension to the framework) and for each bin.">
-              <Choice label="Shuffle test" value={decodeSettings.test} options={[['shuffle', 'Label shuffle'], ['none', 'Off']]} onSet={(v) => setDecodeSettings('test', v)} />
-            </Row>
-            <Show when={decodeSettings.test === 'shuffle'}>
-              <Row label="Shuffles" tip={`Each shuffle is a full cross-validated run. The smallest possible p-value is 1 / (shuffles + 1). ${QUICK_SHUFFLES} shuffles is a quick preview only.`}>
-                <NumField label="Shuffles" value={decodeSettings.nShuffles} def={D.nShuffles} min={1} step={50} onSet={(v) => setDecodeSettings('nShuffles', Math.max(1, Math.round(v)))} />
-                <button class="cb-link" onClick={() => setDecodeSettings('nShuffles', QUICK_SHUFFLES)}>
-                  Quick preview ({QUICK_SHUFFLES})
-                </button>
-              </Row>
-              <Row
-                label="Block length"
-                tip="Labels are cut into blocks of this length and the blocks are permuted, which keeps the slow drift of position. 5 s is a practical starting point, not a validated optimum."
-              >
-                <NumField label="Block length (s)" value={decodeSettings.blockS} def={D.blockS} min={0.05} step={0.5} unit="s" onSet={(v) => setDecodeSettings('blockS', Math.max(0.05, v))} />
-              </Row>
-              <Row
-                label="Correction"
-                tip="Max-stat (minimum p) compares each bin with the best-looking bin of every shuffle, across the tested bins of this run. None leaves p-values uncorrected. The overall test is not corrected."
-              >
-                <Choice label="Correction" value={decodeSettings.correction} options={[['max_stat', 'Max-stat'], ['none', 'None']]} onSet={(v) => setDecodeSettings('correction', v)} />
-              </Row>
-              <Row label="Significance level">
-                <NumField label="Alpha" value={decodeSettings.alpha} def={D.alpha} min={0} max={1} step={0.01} onSet={(v) => setDecodeSettings('alpha', v)} />
-              </Row>
-              <Row label="Random seed">
-                <NumField label="Random seed" value={decodeSettings.seed} def={D.seed} step={1} onSet={(v) => setDecodeSettings('seed', Math.round(v))} />
-              </Row>
-            </Show>
+            <TestSection what="bin" />
           </section>
         </div>
 
@@ -295,11 +212,13 @@ function DecodingSetup(): JSX.Element {
   );
 }
 
-/** The Decoding page: its setup, or after a run its results. */
+/** The Decoding page: the Target selector, then the setup or results of the chosen target. */
 export function DecodingPanel(): JSX.Element {
   return (
-    <Show when={decodeShowResults() && decodeOutcome()} keyed fallback={<DecodingSetup />}>
-      {(out) => <DecodingResults out={out} onEdit={() => setDecodeShowResults(false)} />}
+    <Show when={decodeSettings.target === 'position'} fallback={<DecodingBehaviorPanel />}>
+      <Show when={decodeShowResults() && decodeOutcome()} keyed fallback={<DecodingSetup />}>
+        {(out) => <DecodingResults out={out} onEdit={() => setDecodeShowResults(false)} />}
+      </Show>
     </Show>
   );
 }
