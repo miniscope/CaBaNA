@@ -1,33 +1,53 @@
 import { createSignal, Show, type JSX } from 'solid-js';
+import { Popover } from './Popover.tsx';
 
 let nextId = 1;
 
-/** An ⓘ button that opens a short explanation. Escape or moving focus away closes it. */
+/**
+ * An ⓘ button with a short explanation. It opens on hover or keyboard focus and closes when the
+ * pointer or focus leaves; a click or tap keeps it open until Escape or a click elsewhere.
+ */
 export function InfoTip(props: { label: string; children: JSX.Element }): JSX.Element {
   const [open, setOpen] = createSignal(false);
+  const [pinned, setPinned] = createSignal(false);
   const id = `cb-tip-${nextId++}`;
+  let btn!: HTMLButtonElement;
+  const close = () => {
+    setOpen(false);
+    setPinned(false);
+  };
   return (
-    <span
-      class="cb-tip"
-      onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
-      onFocusOut={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
-      }}
-    >
+    <span class="cb-tip">
       <button
+        ref={btn}
         type="button"
         class="cb-tip__btn"
         aria-label={props.label}
         aria-expanded={open()}
-        aria-controls={id}
-        onClick={() => setOpen(!open())}
+        aria-describedby={open() ? id : undefined}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => !pinned() && setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => !pinned() && setOpen(false)}
+        onClick={() => {
+          const pin = !pinned();
+          setPinned(pin);
+          setOpen(pin);
+        }}
       >
         <span aria-hidden="true">ⓘ</span>
       </button>
       <Show when={open()}>
-        <span id={id} role="note" class="cb-tip__body">
+        <Popover
+          anchor={btn}
+          onClose={close}
+          id={id}
+          role="tooltip"
+          width={280}
+          class="cb-tip__body"
+        >
           {props.children}
-        </span>
+        </Popover>
       </Show>
     </span>
   );
