@@ -69,15 +69,21 @@ export const positionOnNeural = createMemo(() => {
   const f = samplingRate() ?? 30;
   const fill = (v: Float64Array) =>
     prep.fillGapS > 0 ? interpolateGaps(v, f, prep.fillGapS) : { out: v, filled: 0 };
-  const fx = fill(onFrames(c.x));
-  const fy = fill(onFrames(c.y));
+  // Kept before filling so Preprocess can show what gap filling adds.
+  const rx = onFrames(c.x);
+  const ry = onFrames(c.y);
+  const fx = fill(rx);
+  const fy = fill(ry);
   const [x, y] = [fx.out, fy.out];
   const smooth = (v: Float64Array) =>
     prep.posWindowS > 0 ? smoothSignal(v, f, prep.posMethod, prep.posWindowS) : v;
   const sx = smooth(x);
   const sy = smooth(y);
   return {
+    rx,
+    ry,
     x,
+    y,
     filled: fx.filled,
     sx,
     sy,
@@ -163,4 +169,27 @@ export function placeData(): PlaceData | { error: string } | undefined {
       fs: n.fs,
     },
   };
+}
+
+/**
+ * Runs of missing position on the neural frames (before gap filling), sorted into those that
+ * `interpolateGaps` fills at `maxGapS` and those it leaves: too long, or touching the session
+ * start or end. Same frame rounding as interpolateGaps. Missing x or y counts as missing.
+ */
+export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, maxGapS: number) {
+  const maxFrames = maxGapS > 0 ? Math.floor(maxGapS * fs + 1e-9) : -1;
+  const n = x.length;
+  const runs: { start: number; len: number; fate: 'filled' | 'long' | 'edge' }[] = [];
+  for (let a = 0; a < n; ) {
+    if (Number.isFinite(x[a] + y[a])) {
+      a++;
+      continue;
+    }
+    let b = a;
+    while (b < n && !Number.isFinite(x[b] + y[b])) b++;
+    const len = b - a;
+    runs.push({ start: a, len, fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long' });
+    a = b;
+  }
+  return runs;
 }
