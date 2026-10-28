@@ -1,10 +1,29 @@
 // What the auROC results screens show, derived from a finished run.
 
 import { responseOf, type Response } from './auroc.ts';
-import type { AurocOutcome } from './auroc-run.ts';
+import { aurocOutcome, aurocSettings, type AurocOutcome } from './auroc-run.ts';
+import { prepChanges } from './prep-deps.ts';
+
+/** Preprocess settings changed since the last run, in words. Empty when there is no run or nothing changed. */
+export function aurocChanges(): string[] {
+  const o = aurocOutcome();
+  if (!o) return [];
+  const filterOn = o.settings.speedFilter || aurocSettings.speedFilter;
+  const out = prepChanges('auroc', o.prep, filterOn);
+  if (o.settings.speedFilter !== aurocSettings.speedFilter) out.push('speed filter choice');
+  return out;
+}
 
 export const RESPONSES: Response[] = ['excited', 'inhibited', 'not significant', 'not evaluated'];
+/** Direction is named only for significant results; the symbol keeps it readable without color. */
 export const RESPONSE_LABEL: Record<Response, string> = {
+  excited: '▲ Higher (excited)',
+  inhibited: '▼ Lower (inhibited)',
+  'not significant': 'Not significant',
+  'not evaluated': 'Not evaluated',
+};
+/** The response names in the exported CSV, which stay as they were. */
+export const RESPONSE_CSV: Record<Response, string> = {
   excited: 'Excited',
   inhibited: 'Inhibited',
   'not significant': 'Not significant',

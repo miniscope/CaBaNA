@@ -1,4 +1,5 @@
-import { createEffect, createMemo, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { matchGroupsOf, MIN_FRAMES } from '../lib/auroc.ts';
 import {
   aurocData,
@@ -17,10 +18,12 @@ import {
   setAurocShowResults,
   type AurocData,
 } from '../lib/auroc-run.ts';
-import { aurocColor } from '../lib/auroc-view.ts';
+import { aurocChanges, aurocColor } from '../lib/auroc-view.ts';
 import { prep } from '../lib/preprocess.ts';
 import { annotationResults, goToStep } from '../lib/store.ts';
-import { HowToRead, Note } from './parts.tsx';
+import { InfoTip } from './InfoTip.tsx';
+import { fitToWindow } from './QcPanel.tsx';
+import { createSize, PopButton } from './QcParts.tsx';
 import { AurocResults } from './AurocResults.tsx';
 
 const PALETTE = ['#1f77b4', '#2ca02c', '#8c6d3f', '#c9a227', '#9467bd', '#d62728', '#17becf'];
@@ -56,15 +59,20 @@ export function AurocScale(): JSX.Element {
 
 /**
  * Each behavior's bouts over the recording, with the excluded frames hatched. Bars, bands and the time
- * axis share one scale (seconds to pixels), so a bar always sits at its own time.
+ * axis share one scale (seconds to pixels), so a bar always sits at its own time. It is drawn at the
+ * given pixel size, so text keeps its size and the rows share the height.
  */
-function Timeline(props: { data: AurocData }): JSX.Element {
-  const W = 560;
-  const [L, R, T, ROW] = [110, 10, 6, 22];
+let nextHatch = 1;
+function Timeline(props: { data: AurocData; w: number; h: number }): JSX.Element {
+  const hatch = `cb-hatch-${nextHatch++}`;
+  const [R, T] = [10, 6];
   const d = () => props.data;
+  const n = () => d().labels.length;
+  const L = Math.min(220, 16 + 7 * Math.max(...props.data.labels.map((l) => l.length)));
+  const ROW = () => Math.min(36, Math.max(14, Math.floor((props.h - T - 38) / n())));
+  const H = () => Math.max(props.h, T + n() * ROW() + 38);
   const dur = () => d().frames / d().fs;
-  const x = (s: number) => L + (s / dur()) * (W - L - R);
-  const H = () => T + d().labels.length * ROW + 24;
+  const x = (s: number) => L + (s / dur()) * (props.w - L - R);
   const bouts = (label: string) =>
     (annotationResults().find((r) => r.id === 'behavior_annotations')?.epochs ?? []).filter(
       (e) => e.label === label,
@@ -88,16 +96,18 @@ function Timeline(props: { data: AurocData }): JSX.Element {
     const step = dur() > 600 ? 120 : dur() > 120 ? 60 : 20;
     return Array.from({ length: Math.floor(dur() / step) + 1 }, (_, i) => i * step);
   };
+  const axisY = () => T + n() * ROW();
   return (
     <svg
       class="cb-auroc-timeline"
-      viewBox={`0 0 ${W} ${H()}`}
+      style={{ width: `${props.w}px`, height: `${H()}px` }}
+      viewBox={`0 0 ${props.w} ${H()}`}
       role="img"
       aria-label="Behavior bouts over time; hatched bands are excluded frames"
     >
       <defs>
         <pattern
-          id="cb-hatch"
+          id={hatch}
           width="5"
           height="5"
           patternUnits="userSpaceOnUse"
@@ -114,7 +124,7 @@ function Timeline(props: { data: AurocData }): JSX.Element {
             <g opacity={tooFew() ? 0.55 : 1}>
               <text
                 x={L - 8}
-                y={T + i() * ROW + 14}
+                y={T + i() * ROW() + ROW() / 2 + 4}
                 text-anchor="end"
                 font-size="12"
                 fill="currentColor"
@@ -125,9 +135,9 @@ function Timeline(props: { data: AurocData }): JSX.Element {
                 {(e) => (
                   <rect
                     x={x(e.start)}
-                    y={T + i() * ROW + 3}
+                    y={T + i() * ROW() + 3}
                     width={Math.max(2, x(e.stop) - x(e.start))}
-                    height={ROW - 8}
+                    height={ROW() - 6}
                     fill={tooFew() ? '#999' : behaviorColor(i())}
                   />
                 )}
@@ -142,42 +152,96 @@ function Timeline(props: { data: AurocData }): JSX.Element {
             x={x(a)}
             y={T}
             width={Math.max(2, x(b) - x(a))}
-            height={d().labels.length * ROW}
-            fill="url(#cb-hatch)"
+            height={n() * ROW()}
+            fill={`url(#${hatch})`}
             opacity="0.6"
           />
         )}
       </For>
-      <line
-        x1={L}
-        x2={W - R}
-        y1={T + d().labels.length * ROW}
-        y2={T + d().labels.length * ROW}
-        stroke="#999"
-      />
+      <line x1={L} x2={props.w - R} y1={axisY()} y2={axisY()} stroke="#999" />
       <For each={ticks()}>
         {(s) => (
-          <text
-            x={x(s)}
-            y={T + d().labels.length * ROW + 15}
-            text-anchor="middle"
-            font-size="11"
-            fill="currentColor"
-          >
+          <text x={x(s)} y={axisY() + 15} text-anchor="middle" font-size="11" fill="currentColor">
             {s}
           </text>
         )}
       </For>
-      <text
-        x={W - R}
-        y={T + d().labels.length * ROW + 15}
-        text-anchor="end"
-        font-size="11"
-        fill="currentColor"
-      >
-        s
+      <text x={(L + props.w - R) / 2} y={axisY() + 30} text-anchor="middle" font-size="11" fill="currentColor">
+        Time (s)
       </text>
     </svg>
+  );
+}
+
+/** The timeline filling its box, redrawn when the box is resized. */
+function FitTimeline(props: { data: AurocData }): JSX.Element {
+  const [size, measure] = createSize();
+  return (
+    <div class="cb-as-tl" ref={measure}>
+      <Show when={size().w > 0}>
+        <Timeline data={props.data} w={size().w} h={size().h} />
+      </Show>
+    </div>
+  );
+}
+
+/** A dialog over the page. Escape or a click on the backdrop closes it; Tab stays inside. */
+function Modal(props: {
+  title: string;
+  onClose: () => void;
+  big?: boolean;
+  children: JSX.Element;
+}): JSX.Element {
+  let box!: HTMLDivElement;
+  let close!: HTMLButtonElement;
+  const key = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') return props.onClose();
+    if (e.key !== 'Tab') return;
+    const f = [
+      ...box.querySelectorAll<HTMLElement>('button, input, select, a[href], [tabindex="0"]'),
+    ].filter((el) => !(el as HTMLButtonElement).disabled);
+    if (!f.length) return;
+    const [first, last] = [f[0], f[f.length - 1]];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  onMount(() => {
+    close.focus();
+    document.addEventListener('keydown', key);
+  });
+  onCleanup(() => document.removeEventListener('keydown', key));
+  return (
+    <Portal>
+      <div class="cb-overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+        <div
+          ref={box}
+          class="cb-overlay__box"
+          classList={{ 'cb-as-modal': !props.big }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={props.title}
+        >
+          <div class="cb-plot__head">
+            <h3>{props.title}</h3>
+            <button
+              ref={close}
+              type="button"
+              class="cb-ib cb-as-close"
+              aria-label="Close"
+              onClick={props.onClose}
+            >
+              ✕
+            </button>
+          </div>
+          {props.children}
+        </div>
+      </div>
+    </Portal>
   );
 }
 
@@ -185,34 +249,61 @@ function Timeline(props: { data: AurocData }): JSX.Element {
 const changed = (k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS') =>
   aurocSettings[k] !== DEFAULT_AUROC_SETTINGS[k];
 
+/** A setting's name with its explanation in a tooltip. */
+const Title = (props: { text: string; children: JSX.Element }): JSX.Element => (
+  <div class="cb-setting__title">
+    {props.text}
+    <InfoTip label={`About ${props.text.toLowerCase()}`}>{props.children}</InfoTip>
+  </div>
+);
+
+type NumKey = 'nShuffles' | 'alpha' | 'seed' | 'minShiftS';
+
+function NumInput(props: {
+  k: NumKey;
+  step: number;
+  min?: number;
+  max?: number;
+  unit?: string;
+  label?: string;
+}): JSX.Element {
+  return (
+    <label class="cb-prep-field" classList={{ 'cb-prep-field--changed': changed(props.k) }}>
+      <input
+        type="number"
+        aria-label={props.label}
+        min={props.min ?? 0}
+        max={props.max}
+        step={props.step}
+        value={aurocSettings[props.k]}
+        onInput={(e) => {
+          const v = +e.currentTarget.value;
+          if (Number.isFinite(v)) setAurocSettings(props.k, v);
+        }}
+      />
+      {props.unit}
+    </label>
+  );
+}
+
 function NumberBox(props: {
-  k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS';
+  k: NumKey;
   step: number;
   min?: number;
   max?: number;
   label: string;
   unit?: string;
+  children: JSX.Element;
 }): JSX.Element {
   return (
     <div class="cb-setting">
-      <div class="cb-setting__title">{props.label}</div>
-      <label class="cb-prep-field" classList={{ 'cb-prep-field--changed': changed(props.k) }}>
-        <input
-          type="number"
-          min={props.min ?? 0}
-          max={props.max}
-          step={props.step}
-          value={aurocSettings[props.k]}
-          onInput={(e) => {
-            const v = +e.currentTarget.value;
-            if (Number.isFinite(v)) setAurocSettings(props.k, v);
-          }}
-        />
-        {props.unit}
-      </label>
+      <Title text={props.label}>{props.children}</Title>
+      <NumInput {...props} />
     </div>
   );
 }
+
+const PER_PAGE = 8;
 
 function AurocSetup(): JSX.Element {
   const data = createMemo(() => aurocData());
@@ -226,9 +317,7 @@ function AurocSetup(): JSX.Element {
   };
   const error = () => {
     const s = aurocStatus();
-    if (s.kind === 'error') return s.message;
-    const x = data();
-    return 'error' in x ? undefined : undefined;
+    return s.kind === 'error' ? s.message : undefined;
   };
   const plan = createMemo(() =>
     ok()
@@ -272,6 +361,30 @@ function AurocSetup(): JSX.Element {
     return selected().map((label, i) => ({ label, matched: matched[i] }));
   });
 
+  const [page, setPage] = createSignal(0);
+  const nPages = () => Math.max(1, Math.ceil((ok()?.labels.length ?? 0) / PER_PAGE));
+  const first = () => Math.min(page(), nPages() - 1) * PER_PAGE;
+  const rows = () => (ok()?.info ?? []).map((b, i) => ({ b, i })).slice(first(), first() + PER_PAGE);
+
+  /** What the table shows for one behavior: its frame counts and whether they are enough. */
+  const counts = (i: number) => {
+    if (!pairMode()) return { n: ok()!.info[i], enough: !tooFew(i) };
+    if (i !== pair()[0]) return undefined;
+    const n = plan()!.info[0];
+    return { n, enough: Math.min(n.during, n.outside) >= MIN_FRAMES };
+  };
+  const insufficient = () =>
+    pairMode()
+      ? plan()!.info.filter((b) => Math.min(b.during, b.outside) < MIN_FRAMES)
+      : ok()!.info.filter((_, i) => tooFew(i));
+
+  const [advanced, setAdvanced] = createSignal(false);
+  const [big, setBig] = createSignal(false);
+  let advBtn!: HTMLButtonElement;
+  let bigBtn!: HTMLButtonElement;
+  let root!: HTMLDivElement;
+  onMount(() => onCleanup(fitToWindow(root)));
+
   const runButton = () => (
     <Show
       when={!running()}
@@ -290,39 +403,59 @@ function AurocSetup(): JSX.Element {
       </button>
     </Show>
   );
-  const nShuf = () => aurocSettings.nShuffles;
-  const minP = () => 2 / (nShuf() + 1);
+  const minP = () => 2 / (aurocSettings.nShuffles + 1);
+  const included = () => ok()!.mask.reduce((a, b) => a + b, 0);
+  const smoothing = () => (prep.eventSigmaS ? `Gaussian σ = ${prep.eventSigmaS} s` : 'none');
 
   return (
-    <>
+    <div class="cb-place cb-as" ref={root}>
       <div class="cb-place-head">
         <div>
           <h2>auROC analysis</h2>
-          <p>
-            Identify cells with higher or lower activity during each behavior. auROC measures how
-            consistently activity is higher during one group of frames than another: a behavior
-            against all other frames, or against a second behavior. Time-shifted data are used to
-            test significance.
+          <p class="cb-muted">
+            Identify cells with higher or lower neural events during each behavior.
           </p>
-          <Show when={ok()}>
-            <p class="cb-muted">
-              {ok()!.cells} cells selected · Deconvolved events
-              <Show when={ok()!.cellsMissing.length}>
-                {' '}
-                · {ok()!.cellsMissing.length} with missing neural values (not evaluated)
-              </Show>
-            </p>
-          </Show>
         </div>
+        <Show when={ok()}>
+          <div class="cb-place-head__side">
+            <span>
+              {ok()!.cells} cells ·{' '}
+              {pairMode()
+                ? `${ok()!.labels[pair()[0]]} against ${ok()!.labels[pair()[1]]}`
+                : `${selected().length} of ${ok()!.labels.length} behaviors selected`}
+            </span>
+            <Show when={ok()!.cellsMissing.length}>
+              <PopButton
+                label="Cells that cannot be evaluated"
+                title="Cells that cannot be evaluated"
+                width={380}
+                class="cb-link"
+                button={`${ok()!.cellsMissing.length} of ${ok()!.cells} cells cannot be evaluated`}
+              >
+                <p>
+                  These cells have a missing neural value in the included frames, so their auROC is
+                  undefined. They are kept in the results as Not evaluated and are left out of the
+                  evaluated-cell counts.
+                </p>
+                <p>Cells: {ok()!.cellsMissing.map((c) => ok()!.cellIds[c] + 1).join(', ')}</p>
+              </PopButton>
+            </Show>
+          </div>
+        </Show>
         <div class="cb-controls">
           <Show when={aurocOutcome()}>
             <button class="btn-secondary" onClick={() => setAurocShowResults(true)}>
-              View results
+              {aurocChanges().length ? 'View previous results' : 'View results'}
             </button>
           </Show>
           {runButton()}
         </div>
       </div>
+      <Show when={aurocOutcome() && aurocChanges().length}>
+        <div class="cb-muted">
+          Changed since the last run: {aurocChanges().join(', ')}. Run again to update.
+        </div>
+      </Show>
       <Show when={running()}>
         <progress class="cb-progress" value={running()!.done} max={running()!.total} />
         <div class="cb-muted">{running()!.step}</div>
@@ -338,16 +471,427 @@ function AurocSetup(): JSX.Element {
       </Show>
 
       <Show when={ok()}>
-        <details class="cb-notebox cb-place-method">
-          <summary>How the analysis works</summary>
-          <div class="cb-muted">
+        <div class="cb-as-body">
+          <div class="cb-as-left">
+            <section class="cb-setgroup cb-as-sec">
+              <h3>1 · Comparison</h3>
+              <div class="cb-setting">
+                <Title text="Compare with">
+                  Against all other included frames, each selected behavior is compared with every
+                  included frame outside it, including unlabeled frames. Against another behavior,
+                  the comparison group is that behavior's frames only; frames in neither behavior,
+                  and frames in both, are left out. Frames excluded in Preprocess are left out of
+                  both groups.
+                </Title>
+                <select
+                  aria-label="Compare with"
+                  value={pairMode() ? 'behavior' : 'rest'}
+                  onChange={(e) =>
+                    setAurocSettings('compare', e.currentTarget.value as 'rest' | 'behavior')
+                  }
+                >
+                  <option value="rest">All other included frames</option>
+                  <option value="behavior" disabled={ok()!.labels.length < 2}>
+                    Another behavior
+                  </option>
+                </select>
+              </div>
+              <Show when={pairMode()}>
+                <div class="cb-controls">
+                  <For each={[0, 1]}>
+                    {(k) => (
+                      <label class="cb-prep-field">
+                        {k === 0 ? 'Behavior' : 'against'}{' '}
+                        <select
+                          value={ok()!.labels[pair()[k]]}
+                          onChange={(e) =>
+                            setAurocSettings(k === 0 ? 'pairA' : 'pairB', e.currentTarget.value)
+                          }
+                        >
+                          <For each={ok()!.labels}>
+                            {(l, i) => (
+                              <option
+                                value={l}
+                                selected={i() === pair()[k]}
+                                disabled={i() === pair()[1 - k]}
+                              >
+                                {l}
+                              </option>
+                            )}
+                          </For>
+                        </select>
+                      </label>
+                    )}
+                  </For>
+                </div>
+                <div class="cb-muted">
+                  auROC above 0.5 means higher neural events during {ok()!.labels[pair()[0]]} than
+                  during {ok()!.labels[pair()[1]]}.
+                </div>
+              </Show>
+            </section>
+
+            <section class="cb-setgroup cb-as-sec">
+              <h3>2 · Frame selection</h3>
+              <label class="cb-as-check">
+                <input
+                  type="checkbox"
+                  checked={aurocSettings.speedFilter}
+                  onChange={(e) => setAurocSettings('speedFilter', e.currentTarget.checked)}
+                />
+                Leave out frames slower than{' '}
+                <b>{prep.minSpeed} cm/s</b>
+                <InfoTip label="About the speed filter">
+                  auROC does not use position, so every frame is kept unless the speed filter is
+                  chosen. The minimum speed is shared with Place cells: one value for both, set on
+                  Preprocess.
+                </InfoTip>
+              </label>
+              <div class="cb-muted">
+                Threshold set on Preprocess (shared with Place cells). Off: every frame is kept.
+              </div>
+            </section>
+
+            <section class="cb-setgroup cb-as-sec">
+              <h3>3 · Significance testing</h3>
+              <div class="cb-as-stack">
+                <Title text="Null method">
+                  Shift neural events in time relative to behavior and recalculate auROC to
+                  estimate chance associations.
+                  {aurocSettings.method === 'speed' &&
+                    ' Only shifts that keep the speed distribution during each behavior similar to the original are used.'}{' '}
+                  The neural data are shifted around the whole recording first, wrapping at its
+                  end, and the frame selection is applied afterwards, so excluded frames keep their
+                  time positions. The recording is treated as one continuous session.
+                </Title>
+                <select
+                  aria-label="Null method"
+                  value={aurocSettings.method}
+                  onChange={(e) =>
+                    setAurocSettings('method', e.currentTarget.value as 'circular' | 'speed')
+                  }
+                >
+                  <option value="circular">Time-shifted data (circular shift)</option>
+                  <option value="speed">Speed-matched time-shifted data</option>
+                </select>
+                <Show when={aurocSettings.method === 'speed' && !ok()!.speed}>
+                  <div class="cb-note">Speed matching needs a loaded position file.</div>
+                </Show>
+              </div>
+              <div class="cb-setting">
+                <Title text="Minimum shift">
+                  Minimum time offset between neural events and behavior in the shifted
+                  comparisons. Auto sets it to 3 times the longer of the neural and behavior
+                  autocorrelation times, between 5 s and a quarter of the recording.
+                </Title>
+                <div class="cb-controls">
+                  <For each={[true, false]}>
+                    {(a) => (
+                      <label class="cb-radio">
+                        <input
+                          type="radio"
+                          name="auroc-shift"
+                          checked={aurocSettings.shiftAuto === a}
+                          onChange={() => setAurocSettings('shiftAuto', a)}
+                        />
+                        {a ? 'Auto' : 'Manual'}
+                      </label>
+                    )}
+                  </For>
+                  <Show
+                    when={aurocSettings.shiftAuto}
+                    fallback={
+                      <NumInput k="minShiftS" label="Minimum shift (s)" unit="s" step={0.5} min={0.5} />
+                    }
+                  >
+                    <span class="cb-pill">
+                      {autoShift() ? `${autoShift()!.minShiftS} s` : 'Working it out…'}
+                    </span>
+                  </Show>
+                </div>
+              </div>
+              <div class="cb-as-pair">
+                <NumberBox k="nShuffles" label="Shuffles" step={100} min={1}>
+                  Number of time-shifted copies used to estimate chance. Minimum unadjusted p-value:
+                  approximately {minP().toFixed(3)}.
+                </NumberBox>
+                <NumberBox k="alpha" label="α" step={0.01} min={0.001} max={0.5}>
+                  Significance level. The test is two-sided: it detects higher or lower neural
+                  events.
+                </NumberBox>
+              </div>
+              <div class="cb-setting">
+                <Title text="Correction">
+                  Maximum statistic (max-stat) corrects across the {selected().length} selected
+                  behaviors within each cell. It does not correct across cells. With none, p-values
+                  are not adjusted for the number of behaviors or cells tested. Changing the
+                  behaviors included in a new analysis can change adjusted p-values and response
+                  classifications.
+                </Title>
+                <select
+                  aria-label="Correction method"
+                  value={aurocSettings.correction}
+                  onChange={(e) =>
+                    setAurocSettings('correction', e.currentTarget.value as 'none' | 'max_stat')
+                  }
+                >
+                  <option value="max_stat">Max-stat</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <div class="cb-as-scope">
+                {aurocSettings.correction === 'max_stat'
+                  ? 'Across the selected behaviors within each cell. Not corrected across cells.'
+                  : 'No correction for multiple comparisons.'}
+              </div>
+            </section>
+
+            <button
+              ref={advBtn}
+              type="button"
+              class="btn-secondary cb-as-adv"
+              aria-haspopup="dialog"
+              onClick={() => setAdvanced(true)}
+            >
+              <span>Advanced options…</span>
+              <span class="cb-muted">seed {aurocSettings.seed}</span>
+            </button>
+          </div>
+
+          <div class="cb-as-right">
+            <section class="cb-plot cb-plot--table cb-as-table">
+              <div class="cb-plot__head">
+                <h3>4 · Behaviors</h3>
+                <InfoTip label="About behaviors">
+                  Frame counts include only frames retained for analysis. Overlapping behaviors are
+                  tested independently: a frame in two behaviors counts as inside for both. Merging
+                  behaviors is done in annotation setup, not here.
+                </InfoTip>
+                <span class="cb-as-spacer" />
+                <Show when={!pairMode()}>
+                  <button
+                    class="btn-secondary btn-small"
+                    onClick={() => setAurocSettings('unselected', [])}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    class="btn-secondary btn-small"
+                    onClick={() => setAurocSettings('unselected', [...ok()!.labels])}
+                  >
+                    Clear
+                  </button>
+                </Show>
+              </div>
+              <table class="cb-auroc-table cb-as-tbl">
+                <thead>
+                  <tr>
+                    <th aria-label="Selected" />
+                    <th>Behavior</th>
+                    <th class="cb-as-num">Annotated (s)</th>
+                    <th class="cb-as-num">Bouts</th>
+                    <th class="cb-as-num">Behavior frames</th>
+                    <th class="cb-as-num">Reference frames</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={rows()}>
+                    {({ b, i }) => {
+                      const c = () => counts(i);
+                      return (
+                        <tr classList={{ 'cb-muted': pairMode() && !pair().includes(i) }}>
+                          <td>
+                            <Show when={!pairMode()}>
+                              <input
+                                type="checkbox"
+                                aria-label={`Include ${b.label}`}
+                                checked={!aurocSettings.unselected.includes(b.label)}
+                                onChange={() => toggle(b.label)}
+                              />
+                            </Show>
+                          </td>
+                          <td>
+                            <span
+                              class="cb-dot"
+                              style={{ background: tooFew(i) ? '#999' : behaviorColor(i) }}
+                            />{' '}
+                            {b.label}
+                          </td>
+                          <td class="cb-as-num">{b.duration.toFixed(1)}</td>
+                          <td class="cb-as-num">{b.bouts}</td>
+                          <td class="cb-as-num">{c() ? c()!.n.during.toLocaleString() : '–'}</td>
+                          <td class="cb-as-num">{c() ? c()!.n.outside.toLocaleString() : '–'}</td>
+                          <td>
+                            <Show
+                              when={c()}
+                              fallback={
+                                <span class="cb-muted">
+                                  {pairMode() && i === pair()[1] ? 'Reference' : '–'}
+                                </span>
+                              }
+                            >
+                              <Show
+                                when={c()!.enough}
+                                fallback={<span class="cb-pill cb-pill--warn">Insufficient data</span>}
+                              >
+                                <span class="cb-pill cb-pill--good">OK</span>
+                              </Show>
+                            </Show>
+                          </td>
+                        </tr>
+                      );
+                    }}
+                  </For>
+                </tbody>
+              </table>
+              <div class="cb-pager">
+                <span class="cb-muted">
+                  <Show
+                    when={insufficient().length}
+                    fallback={`${MIN_FRAMES} frames required during and outside each behavior.`}
+                  >
+                    {insufficient()
+                      .map(
+                        (b) =>
+                          `${b.label}: ${Math.min(b.during, b.outside)} frames; ${MIN_FRAMES} required during and outside`,
+                      )
+                      .join(' · ')}
+                  </Show>
+                </span>
+                <Show when={nPages() > 1}>
+                  <span>
+                    {first() + 1}–{Math.min(first() + PER_PAGE, ok()!.labels.length)} of{' '}
+                    {ok()!.labels.length}
+                  </span>
+                  <button
+                    class="btn-secondary btn-small"
+                    aria-label="Previous behaviors"
+                    disabled={first() === 0}
+                    onClick={() => setPage(Math.max(0, page() - 1))}
+                  >
+                    ‹
+                  </button>
+                  <button
+                    class="btn-secondary btn-small"
+                    aria-label="Next behaviors"
+                    disabled={first() + PER_PAGE >= ok()!.labels.length}
+                    onClick={() => setPage(Math.min(nPages() - 1, page() + 1))}
+                  >
+                    ›
+                  </button>
+                </Show>
+              </div>
+            </section>
+
+            <div class="cb-as-groups">
+              <div class="cb-as-group">
+                <b>Behavior group</b>
+                <span class="cb-muted">
+                  {pairMode() ? `Frames in ${ok()!.labels[pair()[0]]} only` : 'Frames annotated with the behavior'}{' '}
+                  (label padding {prep.labelPadS} s)
+                </span>
+              </div>
+              <span aria-hidden="true">⟷</span>
+              <div class="cb-as-group">
+                <b>Reference group</b>
+                <span class="cb-muted">
+                  {pairMode()
+                    ? `Frames in ${ok()!.labels[pair()[1]]} only`
+                    : 'All other included frames, including unlabeled'}
+                </span>
+              </div>
+              <div class="cb-as-incl">
+                <b>
+                  {included().toLocaleString()} / {ok()!.frames.toLocaleString()}
+                </b>{' '}
+                frames included
+                <PopButton
+                  label="View exclusions"
+                  title="Excluded frames"
+                  width={340}
+                  class="cb-link"
+                  button="View exclusions"
+                >
+                  <p>
+                    {ok()!.excluded.minSpeed !== undefined
+                      ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position (speed unknown) and ${ok()!.excluded.slow.toLocaleString()} frames below ${ok()!.excluded.minSpeed} cm/s excluded`
+                      : 'No speed filter · Frames without position are kept'}
+                  </p>
+                  <p>
+                    auROC does not use position, so every frame is kept unless the speed filter is
+                    chosen.
+                  </p>
+                </PopButton>
+              </div>
+            </div>
+
+            <section class="cb-plot cb-as-timeline">
+              <div class="cb-plot__head">
+                <h3>5 · Behavior timeline</h3>
+                <PopButton
+                  label="How to read this plot"
+                  title="How to read: behavior timeline"
+                  width={400}
+                  class="cb-link"
+                  button="How to read this plot"
+                >
+                  <p>
+                    Each row represents a behavior; colored bars mark its bouts. Hatched bands show
+                    excluded frames. Check whether enough included data remain during and outside
+                    each behavior.
+                  </p>
+                </PopButton>
+                <span class="cb-plot__legend">Hatched: excluded frames · Gray: not tested</span>
+                <button
+                  ref={bigBtn}
+                  type="button"
+                  class="cb-ib"
+                  aria-label="Expand behavior timeline"
+                  title="Expand plot"
+                  onClick={() => setBig(true)}
+                >
+                  ⤢
+                </button>
+              </div>
+              <div class="cb-plot__body">
+                <FitTimeline data={ok()!} />
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="cb-place-foot cb-muted cb-as-foot">
+          <span>
+            Neural input: deconvolved events · {ok()!.cells} cells · {Number(ok()!.fs.toFixed(2))} Hz
+          </span>
+          <span>
+            Preprocess: smoothing {smoothing()} · label padding {prep.labelPadS} s · speed filter{' '}
+            {aurocSettings.speedFilter ? `on (${prep.minSpeed} cm/s)` : 'off'}{' '}
+            <button class="cb-link" onClick={() => goToStep('prep')}>
+              Go to Preprocess
+            </button>
+          </span>
+          <PopButton
+            label="How this analysis works"
+            title="How this analysis works"
+            width={520}
+            class="cb-link cb-as-how"
+            button="How this analysis works"
+          >
             <p>
-              <strong>Compare activity:</strong> For each cell, auROC is the probability that a
-              randomly chosen frame during the behavior has higher neural activity than a randomly
-              chosen frame in the comparison group. Against all other frames, the comparison group
-              is every frame outside the behavior, including unlabeled frames. Against another
-              behavior, it is that behavior's frames only; frames in neither behavior, and frames in
-              both, are left out. Frames excluded in Preprocess are left out of both groups.
+              auROC measures how consistently neural events are higher during one group of frames
+              than another: a behavior against all other frames, or against a second behavior.
+              Time-shifted data are used to test significance.
+            </p>
+            <p>
+              <strong>Compare neural events:</strong> For each cell, auROC is the probability that
+              a randomly chosen frame during the behavior has higher neural activity than a
+              randomly chosen frame in the comparison group. Against all other frames, the
+              comparison group is every frame outside the behavior, including unlabeled frames.
+              Against another behavior, it is that behavior's frames only; frames in neither
+              behavior, and frames in both, are left out. Frames excluded in Preprocess are left
+              out of both groups.
             </p>
             <AurocScale />
             <p>
@@ -366,388 +910,129 @@ function AurocSetup(): JSX.Element {
             <p>
               <strong>Direction alone does not establish significance.</strong>
             </p>
-          </div>
-        </details>
+          </PopButton>
+        </div>
 
-        <section class="cb-setgroup">
-          <h3>1 · Behaviors and included data</h3>
-          <div class="cb-setting">
-            <div class="cb-setting__title">Compare against</div>
-            <div class="cb-seg">
-              <button
-                classList={{ 'cb-seg__on': !pairMode() }}
-                onClick={() => setAurocSettings('compare', 'rest')}
+        <Show when={advanced()}>
+          <Modal
+            title="Advanced options"
+            onClose={() => {
+              setAdvanced(false);
+              advBtn.focus();
+            }}
+          >
+            <div class="cb-as-adv-body">
+              <NumberBox k="seed" label="Random seed" step={1}>
+                The same seed, settings and data give the same shifts and results.
+              </NumberBox>
+              <Show
+                when={aurocSettings.method === 'speed'}
+                fallback={
+                  <p class="cb-muted">
+                    Speed-matching settings appear here when the null method is speed-matched.
+                  </p>
+                }
               >
-                All other frames
-              </button>
-              <button
-                classList={{ 'cb-seg__on': pairMode() }}
-                disabled={ok()!.labels.length < 2}
-                onClick={() => setAurocSettings('compare', 'behavior')}
-              >
-                Another behavior
-              </button>
-            </div>
-            <Show
-              when={pairMode()}
-              fallback={
-                <div class="cb-muted">
-                  Each selected behavior is compared with every included frame outside it, including
-                  unlabeled frames.
+                <h4>Speed matching</h4>
+                <div class="cb-setting">
+                  <Title text="Balance measure">
+                    How the speed distributions of the shifted and original frames are compared.
+                  </Title>
+                  <select
+                    aria-label="Balance measure"
+                    value={aurocSettings.match.statistic}
+                    onChange={(e) =>
+                      setAurocSettings('match', 'statistic', e.currentTarget.value as 'ks' | 'mean')
+                    }
+                  >
+                    <option value="ks">KS distance</option>
+                    <option value="mean">Difference in means</option>
+                  </select>
                 </div>
-              }
-            >
-              <div class="cb-controls">
-                <For each={[0, 1]}>
-                  {(k) => (
-                    <label class="cb-prep-field">
-                      {k === 0 ? 'Behavior' : 'against'}{' '}
-                      <select
-                        value={ok()!.labels[pair()[k]]}
-                        onChange={(e) =>
-                          setAurocSettings(k === 0 ? 'pairA' : 'pairB', e.currentTarget.value)
-                        }
-                      >
-                        <For each={ok()!.labels}>
-                          {(l, i) => (
-                            <option
-                              value={l}
-                              selected={i() === pair()[k]}
-                              disabled={i() === pair()[1 - k]}
-                            >
-                              {l}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    </label>
+                <div class="cb-setting">
+                  <Title text="Tolerance">
+                    The largest balance-measure value at which a shift is accepted as matched.
+                  </Title>
+                  <label
+                    class="cb-prep-field"
+                    classList={{ 'cb-prep-field--changed': aurocSettings.match.tolerance !== 0.1 }}
+                  >
+                    <input
+                      type="number"
+                      aria-label="Tolerance"
+                      min="0.01"
+                      step="0.01"
+                      value={aurocSettings.match.tolerance}
+                      onInput={(e) =>
+                        +e.currentTarget.value > 0 &&
+                        setAurocSettings('match', 'tolerance', +e.currentTarget.value)
+                      }
+                    />
+                  </label>
+                </div>
+                <div class="cb-setting">
+                  <Title text="Candidates per shift">
+                    The most candidate shifts tried when looking for one that matches.
+                  </Title>
+                  <label
+                    class="cb-prep-field"
+                    classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}
+                  >
+                    <input
+                      type="number"
+                      aria-label="Candidates per shift"
+                      min="1"
+                      step="1"
+                      value={aurocSettings.match.maxTries}
+                      onInput={(e) =>
+                        +e.currentTarget.value >= 1 &&
+                        setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))
+                      }
+                    />
+                  </label>
+                </div>
+                <p class="cb-muted">
+                  KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s
+                  starting settings, not validated standards. There is no cut-off for a low
+                  acceptance rate; the run stops if no shift can be matched, and does not fall back
+                  to unmatched shifts.
+                </p>
+                <Show when={!ok()!.speed}>
+                  <div class="cb-note">Speed matching needs a loaded position file.</div>
+                </Show>
+                <Title text="Behaviors eligible for speed matching">
+                  Behaviors with enough included frames for speed matching.
+                </Title>
+                <For each={eligible()}>
+                  {(e) => (
+                    <div class="cb-muted">
+                      {e.label}:{' '}
+                      {e.matched
+                        ? 'matched'
+                        : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
+                    </div>
                   )}
                 </For>
-              </div>
-              <div class="cb-muted">
-                auROC above 0.5 means higher activity during {ok()!.labels[pair()[0]]} than during{' '}
-                {ok()!.labels[pair()[1]]}. Frames in neither behavior, or in both, are left out.
-              </div>
-            </Show>
-          </div>
-          <table class="cb-auroc-table">
-            <thead>
-              <tr>
-                <th>Behavior</th>
-                <th>Annotated duration (s)</th>
-                <th>Frames during behavior</th>
-                <th>Frames outside behavior</th>
-                <th>Bouts</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={ok()!.info}>
-                {(b, i) => (
-                  <tr classList={{ 'cb-muted': pairMode() && !pair().includes(i()) }}>
-                    <td>
-                      <label>
-                        <Show when={!pairMode()}>
-                          <input
-                            type="checkbox"
-                            checked={!aurocSettings.unselected.includes(b.label)}
-                            onChange={() => toggle(b.label)}
-                          />
-                        </Show>
-                        <span
-                          class="cb-dot"
-                          style={{ background: tooFew(i()) ? '#999' : behaviorColor(i()) }}
-                        />{' '}
-                        {b.label}
-                      </label>
-                    </td>
-                    <td>{b.duration.toFixed(1)}</td>
-                    <td>{b.during.toLocaleString()}</td>
-                    <td>{b.outside.toLocaleString()}</td>
-                    <td>{b.bouts}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-          <For
-            each={
-              pairMode()
-                ? plan()!.info.filter((i) => Math.min(i.during, i.outside) < MIN_FRAMES)
-                : ok()!.info.filter((_, i) => tooFew(i))
-            }
+              </Show>
+            </div>
+          </Modal>
+        </Show>
+        <Show when={big()}>
+          <Modal
+            big
+            title="Behavior timeline"
+            onClose={() => {
+              setBig(false);
+              bigBtn.focus();
+            }}
           >
-            {(b) => (
-              <p class="cb-muted">
-                <span class="cb-pill cb-pill--warn">Insufficient data</span> {b.label}:{' '}
-                {Math.min(b.during, b.outside)} frames; {MIN_FRAMES} required during and outside.
-              </p>
-            )}
-          </For>
-          <h4>Behavior timeline</h4>
-          <Timeline data={ok()!} />
-          <div class="cb-muted">Hatched: excluded frames · Gray: not tested</div>
-          <HowToRead>
-            <p>
-              Each row represents a behavior; colored bars mark its bouts. Hatched bands show
-              excluded frames. Check whether enough included data remain during and outside each
-              behavior.
-            </p>
-          </HowToRead>
-          <p class="cb-muted">
-            Frame counts include only frames retained for analysis.{' '}
-            {pairMode()
-              ? `Compared: ${plan()!.info[0].during.toLocaleString()} frames in ${ok()!.labels[pair()[0]]} only, ${plan()!.info[0].outside.toLocaleString()} in ${ok()!.labels[pair()[1]]} only.`
-              : 'Each behavior is compared with all other included frames, including unlabeled frames.'}
-          </p>
-          <Note>
-            <p>
-              Overlapping behaviors are tested independently: a frame in two behaviors counts as
-              inside for both. Merging behaviors is done in annotation setup, not here.
-            </p>
-          </Note>
-          <div class="cb-statbox">
-            <div class="cb-setting__title">
-              {ok()!
-                .mask.reduce((a, b) => a + b, 0)
-                .toLocaleString()}{' '}
-              of {ok()!.frames.toLocaleString()} frames included in analysis
+            <div class="cb-plot__body">
+              <FitTimeline data={ok()!} />
             </div>
-            <label class="cb-muted">
-              <input
-                type="checkbox"
-                checked={aurocSettings.speedFilter}
-                onChange={(e) => setAurocSettings('speedFilter', e.currentTarget.checked)}
-              />{' '}
-              Leave out frames slower than {prep.minSpeed} cm/s (set in{' '}
-              <button class="cb-link" onClick={() => goToStep('prep')}>
-                Preprocess
-              </button>
-              )
-            </label>
-            <div class="cb-muted">
-              {ok()!.excluded.minSpeed !== undefined
-                ? `${ok()!.excluded.noPosition.toLocaleString()} frames without position (speed unknown) and ${ok()!.excluded.slow.toLocaleString()} frames below ${ok()!.excluded.minSpeed} cm/s excluded`
-                : 'No speed filter · Frames without position are kept'}
-            </div>
-            <div class="cb-muted">
-              auROC does not use position, so every frame is kept unless the speed filter is chosen.
-            </div>
-          </div>
-          <div class="cb-muted">
-            Neural signal: deconvolved events · Smoothing from Preprocess (Gaussian, σ ={' '}
-            {prep.eventSigmaS} s)
-          </div>
-          <Show when={ok()!.cellsMissing.length}>
-            <details class="cb-notebox">
-              <summary>
-                {ok()!.cellsMissing.length} of {ok()!.cells} cells cannot be evaluated
-              </summary>
-              <div class="cb-muted">
-                <p>
-                  These cells have a missing neural value in the included frames, so their auROC is
-                  undefined. They are kept in the results as Not evaluated and are left out of the
-                  evaluated-cell counts.
-                </p>
-                <p>
-                  Cells:{' '}
-                  {ok()!
-                    .cellsMissing.map((c) => ok()!.cellIds[c] + 1)
-                    .join(', ')}
-                </p>
-              </div>
-            </details>
-          </Show>
-        </section>
-
-        <section class="cb-setgroup">
-          <h3>2 · Comparison method</h3>
-          <div class="cb-setting">
-            <div class="cb-setting__title">Method</div>
-            <div class="cb-seg">
-              <button
-                classList={{ 'cb-seg__on': aurocSettings.method === 'circular' }}
-                onClick={() => setAurocSettings('method', 'circular')}
-              >
-                Time-shifted data (circular shift)
-              </button>
-              <button
-                classList={{ 'cb-seg__on': aurocSettings.method === 'speed' }}
-                onClick={() => setAurocSettings('method', 'speed')}
-              >
-                Speed-matched time-shifted data
-              </button>
-            </div>
-            <div class="cb-muted">
-              Shift neural activity in time relative to behavior and recalculate auROC to estimate
-              chance associations.
-              {aurocSettings.method === 'speed' &&
-                ' Only shifts that keep the speed distribution during each behavior similar to the original are used.'}
-            </div>
-          </div>
-          <div class="cb-setting">
-            <div class="cb-setting__title">Minimum shift</div>
-            <div class="cb-controls">
-              <For each={[true, false]}>
-                {(a) => (
-                  <label class="cb-radio">
-                    <input
-                      type="radio"
-                      name="auroc-shift"
-                      checked={aurocSettings.shiftAuto === a}
-                      onChange={() => setAurocSettings('shiftAuto', a)}
-                    />
-                    {a ? 'Auto' : 'Manual'}
-                  </label>
-                )}
-              </For>
-              <Show when={aurocSettings.shiftAuto}>
-                <span class="cb-pill">
-                  {autoShift() ? `Using ${autoShift()!.minShiftS} s` : 'Working it out…'}
-                </span>
-              </Show>
-              <Show when={!aurocSettings.shiftAuto}>
-                <NumberBox k="minShiftS" label="" unit="s" step={0.5} min={0.5} />
-              </Show>
-            </div>
-            <div class="cb-muted">
-              Minimum time offset between neural activity and behavior in the shifted comparisons.
-            </div>
-          </div>
-          <Show when={aurocSettings.method === 'speed'}>
-            <div class="cb-setting">
-              <div class="cb-setting__title">Balance measure</div>
-              <div class="cb-seg">
-                <button
-                  classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'ks' }}
-                  onClick={() => setAurocSettings('match', 'statistic', 'ks')}
-                >
-                  KS distance
-                </button>
-                <button
-                  classList={{ 'cb-seg__on': aurocSettings.match.statistic === 'mean' }}
-                  onClick={() => setAurocSettings('match', 'statistic', 'mean')}
-                >
-                  Difference in means
-                </button>
-              </div>
-            </div>
-            <div class="cb-controls">
-              <div class="cb-setting">
-                <div class="cb-setting__title">Tolerance</div>
-                <label
-                  class="cb-prep-field"
-                  classList={{ 'cb-prep-field--changed': aurocSettings.match.tolerance !== 0.1 }}
-                >
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={aurocSettings.match.tolerance}
-                    onInput={(e) =>
-                      +e.currentTarget.value > 0 &&
-                      setAurocSettings('match', 'tolerance', +e.currentTarget.value)
-                    }
-                  />
-                </label>
-              </div>
-              <div class="cb-setting">
-                <div class="cb-setting__title">Candidates per shift</div>
-                <label
-                  class="cb-prep-field"
-                  classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}
-                >
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={aurocSettings.match.maxTries}
-                    onInput={(e) =>
-                      +e.currentTarget.value >= 1 &&
-                      setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))
-                    }
-                  />
-                </label>
-              </div>
-            </div>
-            <div class="cb-muted">
-              KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s starting
-              settings, not validated standards. There is no cut-off for a low acceptance rate; the
-              run stops if no shift can be matched, and does not fall back to unmatched shifts.
-            </div>
-            <Show when={!ok()!.speed}>
-              <div class="cb-note">Speed matching needs a loaded position file.</div>
-            </Show>
-            <div class="cb-setting">
-              <div class="cb-setting__title">Behaviors eligible for speed matching</div>
-              <For each={eligible()}>
-                {(e) => (
-                  <div class="cb-muted">
-                    {e.label}:{' '}
-                    {e.matched
-                      ? 'matched'
-                      : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Note>
-            <p>
-              The neural data are shifted around the whole recording first, wrapping at its end, and
-              the frame selection is applied afterwards, so excluded frames keep their time
-              positions. The recording is treated as one continuous session.
-            </p>
-            <p>
-              <em>Auto</em> sets the minimum shift to 3 times the longer of the neural and behavior
-              autocorrelation times, between 5 s and a quarter of the recording.
-            </p>
-          </Note>
-        </section>
-
-        <section class="cb-setgroup">
-          <h3>3 · Statistical settings</h3>
-          <div class="cb-controls">
-            <NumberBox k="nShuffles" label="Shuffles" step={100} min={1} />
-            <NumberBox k="alpha" label="Significance level (α)" step={0.01} min={0.001} max={0.5} />
-          </div>
-          <div class="cb-setting">
-            <div class="cb-setting__title">Correction method</div>
-            <div class="cb-seg">
-              <button
-                classList={{ 'cb-seg__on': aurocSettings.correction === 'max_stat' }}
-                onClick={() => setAurocSettings('correction', 'max_stat')}
-              >
-                Maximum statistic (max-stat)
-              </button>
-              <button
-                classList={{ 'cb-seg__on': aurocSettings.correction === 'none' }}
-                onClick={() => setAurocSettings('correction', 'none')}
-              >
-                None
-              </button>
-            </div>
-          </div>
-          <div class="cb-muted">
-            {aurocSettings.correction === 'max_stat'
-              ? `Corrects across the ${selected().length} selected behaviors within each cell. It does not correct across cells.`
-              : 'No correction: p-values are not adjusted for the number of behaviors or cells tested.'}
-          </div>
-          <div class="cb-muted">
-            Changing the behaviors included in a new analysis can change adjusted p-values and
-            response classifications.
-          </div>
-          <div class="cb-muted">Two-sided · Detects higher or lower activity.</div>
-          <div class="cb-muted">Minimum unadjusted p-value: approximately {minP().toFixed(3)}</div>
-          <details class="cb-notebox">
-            <summary>Advanced options (random seed)</summary>
-            <NumberBox k="seed" label="Random seed" step={1} />
-            <div class="cb-muted">
-              The same seed, settings and data give the same shifts and results.
-            </div>
-          </details>
-        </section>
+          </Modal>
+        </Show>
       </Show>
-    </>
+    </div>
   );
 }
 

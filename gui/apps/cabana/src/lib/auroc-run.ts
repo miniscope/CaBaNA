@@ -16,7 +16,7 @@ import {
 import { createAurocWorkerPool, type AurocPoolJob } from './auroc-pool.ts';
 import { dilateMask } from './framework.ts';
 import { placeNeural, positionOnNeural } from './prepared.ts';
-import { prep } from './preprocess.ts';
+import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from './speed-match.ts';
 import { annotationResults, frameTimes, onClear } from './store.ts';
 
@@ -175,6 +175,8 @@ export interface AurocOutcome {
   against?: string;
   seconds: number;
   settings: AurocSettings;
+  /** The Preprocess settings this run used. */
+  prep: typeof DEFAULT_PREP;
 }
 
 export const [aurocStatus, setAurocStatus] = createSignal<
@@ -272,6 +274,7 @@ export async function runAuroc(): Promise<void> {
     setAurocStatus({ kind: 'error', message: data.error });
     return;
   }
+  const prepUsed = { ...prep };
   const cfg = {
     ...aurocSettings,
     unselected: [...aurocSettings.unselected],
@@ -366,6 +369,7 @@ export async function runAuroc(): Promise<void> {
       excluded: data.excluded,
       seconds: (performance.now() - t0) / 1000,
       settings: cfg,
+      prep: prepUsed,
     });
     cache.clear();
     setAurocShowResults(true);

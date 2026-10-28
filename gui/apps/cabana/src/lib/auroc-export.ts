@@ -2,7 +2,7 @@
 
 import { MIN_FRAMES } from './auroc.ts';
 import type { AurocOutcome } from './auroc-run.ts';
-import { aurocOf, pAdjOf, pRawOf, responseAt, RESPONSE_LABEL, summarize } from './auroc-view.ts';
+import { aurocOf, pAdjOf, pRawOf, responseAt, RESPONSE_CSV, summarize } from './auroc-view.ts';
 
 const CORRECTION_TEXT = {
   max_stat:
@@ -31,7 +31,7 @@ export function aurocCsv(out: AurocOutcome): string {
           v(aurocOf(out, c, b)),
           v(pRawOf(out, c, b)),
           v(pAdjOf(out, c, b)),
-          RESPONSE_LABEL[responseAt(out, c, b)],
+          RESPONSE_CSV[responseAt(out, c, b)],
         ].join(','),
       ),
     ),
