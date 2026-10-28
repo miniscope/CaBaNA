@@ -37,3 +37,9 @@ export const setWinStartClamped = (s: number) => setWinStart(s);
 
 /** A time under the mouse in the session plots. */
 export const [hoverT, setHoverT] = createSignal<number | undefined>();
+
+/** Seconds as m:ss. */
+export const mss = (s: number): string => {
+  const n = Math.abs(Math.trunc(s));
+  return `${s <= -1 ? '-' : ''}${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+};
