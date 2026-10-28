@@ -2,7 +2,7 @@
 
 import { arena, effectiveBin } from './arena.ts';
 import { DEFAULT_PLACE_SETTINGS, placeOutcome, placeSettings } from './place-run.ts';
-import { prep } from './preprocess.ts';
+import { prepChanges } from './prep-deps.ts';
 
 const LABELS: Partial<Record<keyof typeof DEFAULT_PLACE_SETTINGS, string>> = {
   nShuffles: 'number of shuffles',
@@ -20,7 +20,7 @@ export function placeChanges(): string[] {
   const a = o.settings;
   const b = placeSettings;
   const out: string[] = [];
-  if (prep.minSpeed !== o.data.minSpeed) out.push('minimum speed');
+  out.push(...prepChanges('place', o.prep, true));
   if (effectiveBin() !== o.data.grid.bin) out.push('bin size');
   if (a.minOccS !== arena.minOccupancy) out.push('minimum time per bin (spatial tuning)');
   if (a.sigmaAuto !== b.sigmaAuto || (!b.sigmaAuto && a.sigma !== b.sigma)) out.push('smoothing');

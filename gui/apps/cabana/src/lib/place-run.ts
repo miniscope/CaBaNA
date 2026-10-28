@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
 import { arena, sizeCm } from './arena.ts';
+import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { createPlaceWorkerPool, type PlacePoolJob } from './place-pool.ts';
 import { placeData, type PlaceData } from './prepared.ts';
 import {
@@ -52,6 +53,8 @@ export interface PlaceOutcome {
   arenaCm: [number, number];
   /** The settings this run used, to tell when the panel's settings have moved on. */
   settings: typeof DEFAULT_PLACE_SETTINGS;
+  /** The Preprocess settings this run used. */
+  prep: typeof DEFAULT_PREP;
 }
 
 export const [placeStatus, setPlaceStatus] = createSignal<
@@ -114,6 +117,7 @@ export async function runPlaceCells(): Promise<void> {
   }
   const { input } = data;
   const cfg = { ...placeSettings, minOccS: arena.minOccupancy };
+  const prepUsed = { ...prep };
   const t0 = performance.now();
   cancelPlaceRun();
   pool = createPlaceWorkerPool();
@@ -193,6 +197,7 @@ export async function runPlaceCells(): Promise<void> {
       seconds: (performance.now() - t0) / 1000,
       arenaCm: sizeCm(),
       settings: cfg,
+      prep: prepUsed,
     });
     setPlaceShowResults(true);
     setPlaceStatus({ kind: 'idle' });
