@@ -1,6 +1,7 @@
 import { Show, type JSX } from 'solid-js';
 import { analysisId } from '../lib/analyses.ts';
 import { AurocPanel } from './AurocPanel.tsx';
+import { DecodingPanel } from './DecodingPanel.tsx';
 import { PethPanel } from './PethPanel.tsx';
 import { PlaceCellsPanel } from './PlaceCellsPanel.tsx';
 
@@ -16,6 +17,9 @@ export function AnalyzePanel(): JSX.Element {
       </Show>
       <Show when={analysisId() === 'peth'}>
         <PethPanel />
+      </Show>
+      <Show when={analysisId() === 'decoding'}>
+        <DecodingPanel />
       </Show>
     </div>
   );

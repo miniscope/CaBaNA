@@ -1,0 +1,139 @@
+/* Decoding pages. Reuses the PETH setup and results classes; only what they lack is here. */
+.cb-dec-target {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.cb-dec-target__label {
+  font-weight: var(--font-weight-medium);
+}
+.cb-dec-target .cb-seg button {
+  font-size: 14px;
+  padding: 6px 16px;
+}
+.cb-dec-target .cb-seg button:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+.cb-dec-input,
+.cb-dec-preset {
+  font-size: 13px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.cb-dec-preset {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+.cb-dec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 30px;
+}
+.cb-dec-row .cb-seg button {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.cb-dec-h3 {
+  margin-top: var(--space-md);
+}
+.cb-dec-counts {
+  font-size: 13px;
+  padding: 4px 0;
+}
+.cb-dec-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+}
+.cb-dec-setup .cb-pe-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Results */
+.cb-dec-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+}
+.cb-dec-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+.cb-dec-stat {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  min-width: 0;
+}
+.cb-dec-stat__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cb-dec-stat__value {
+  font-size: 20px;
+  font-weight: var(--font-weight-semibold);
+}
+.cb-dec-stat__note {
+  font-size: 11px;
+}
+.cb-dec-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-sm);
+}
+.cb-dec-map {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.cb-dec-hist {
+  grid-column: 2;
+  grid-row: 1;
+}
+.cb-dec-trace {
+  grid-column: 2;
+  grid-row: 2;
+}
+.cb-dec-table {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cb-dec-tablewrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cb-dec-tablewrap tr {
+  cursor: pointer;
+}
+.cb-dec-sel {
+  background: var(--accent-muted);
+}
+.cb-dec-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 12px;
+}
+@media (max-width: 1300px) {
+  .cb-dec-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
