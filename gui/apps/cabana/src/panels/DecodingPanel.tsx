@@ -186,8 +186,8 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
         </div>
       </div>
       <div class="cb-note" role="status">
-        <b>Browser engine.</b> {BROWSER_DECODING_ENGINE_TEXT}. {r().shuffles.toLocaleString()}{' '}
-        shuffles, {r().seconds.toFixed(0)} s.{' '}
+        <b>Engine:</b> {BROWSER_DECODING_ENGINE_TEXT}. {r().shuffles.toLocaleString()} shuffles,{' '}
+        {r().seconds.toFixed(0)} s.{' '}
         <Show when={r().overallP !== null}>
           Overall {r().overallName} against the shuffled null: p = {r().overallP!.toFixed(4)}.
         </Show>
@@ -195,7 +195,7 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
           <For each={r().notes}>{(n) => <li>{n}</li>}</For>
         </ul>
       </div>
-      <DecodingResults source={r().source} />
+      <DecodingResults source={r().source} overallTested />
     </div>
   );
 }

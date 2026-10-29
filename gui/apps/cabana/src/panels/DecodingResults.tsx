@@ -681,12 +681,14 @@ export function DecodingResults(props: {
   fixture?: string;
   match?: Match;
   saved?: boolean;
+  /** The engine tested the overall value itself (the browser engine does); default: the framework capability. */
+  overallTested?: boolean;
 }): JSX.Element {
   const [loaded] = createResource(
     () => props.source,
     async (src) => {
       const manifest = await src.manifest();
-      const has = hasCapability('decoding_overall_test');
+      const has = props.overallTested ?? hasCapability('decoding_overall_test');
       return {
         manifest,
         pos: await loadPositionDecoding(src, manifest, has),
