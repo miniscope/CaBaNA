@@ -48,7 +48,8 @@ def test_pvo_pattern(sim):
         assert out[0, 2] == pytest.approx(0.0, abs=1e-12)
         assert out[2, 3] == pytest.approx(0.0, abs=1e-12)
     else:
-        assert abs(out[0, 2]) < 0.5 and out[0, 2] < 0
+        # centred (1,1,0,0,0,0) vs (0,0,1,1,0,0) gives r = -0.5 exactly
+        assert out[0, 2] == pytest.approx(-0.5)
     np.testing.assert_allclose(out, out.T, atol=1e-12)
     rm = m.extras(act, _states(oh), np.ones(oh.shape[0], bool), fs)["rate_map"]
     assert rm.shape == (6, 4) and rm.max() == pytest.approx(1.0)
