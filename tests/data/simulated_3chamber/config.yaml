@@ -1,0 +1,14 @@
+# arena and zone settings for the simulated three-chamber task
+arena_cm: [60, 30]
+zones:  # on x, cm
+  left: [0, 20]
+  center: [20, 40]
+  right: [40, 60]
+enclosures:  # half-discs against the end walls; the subject cannot enter (centre x, centre y, radius in cm)
+  left: [0, 15, 9]  # stimulus
+  right: [60, 15, 9]  # empty
+dividers:  # walls between the chambers; the subject goes around the end that stops short (x, y from, y to in cm)
+  left: [20, 9, 30]
+  right: [40, 0, 21]
+head_orientation: quaternion (qw, qx, qy, qz) from the miniscope IMU; yaw about z, 0 = east, counterclockwise
+investigation: within 4 cm of an enclosure with the head pointing at it (within 45 degrees)

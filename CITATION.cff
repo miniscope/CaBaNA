@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it"
+title: CaBaNA
+type: software
+authors:
+  - family-names: Aharoni
+    given-names: Daniel
+    affiliation: UCLA
+repository-code: "https://github.com/miniscope/CaBaNA"
+license: AGPL-3.0

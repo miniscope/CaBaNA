@@ -1,0 +1,21 @@
+recipe:
+  name: event_response
+  title: Event-triggered response
+  description: >-
+    Peri-event time histogram around the onsets of each state, with the descriptive null band
+    and response latency, with no shuffle test: the band is the per-bin null of the PETH
+    itself, so there is no n_shuffles or min_shift_s here (passing them raises). A shuffle
+    test of the response needs a custom recipe with a shuffle: block on the analysis; see
+    "A PETH with a shuffle test" in docs/RECIPES.md.
+  targets:
+    states: a StateSpace whose state onsets are the events (e.g. bouts of a behavior)
+  defaults:
+    seed: 0
+pipeline:
+  analyses:
+  - name: peth
+    metric:
+      name: peth
+      null_band: true
+      null_seed: ${seed}
+    states: ${states}

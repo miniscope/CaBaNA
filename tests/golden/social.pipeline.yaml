@@ -1,0 +1,311 @@
+transforms:
+- name: resample_signal
+  source: position
+  channels: null
+  method: linear
+  max_gap_s: null
+- name: speed
+  signals:
+  - x
+  - y
+  window_s: 0.25
+  output: speed
+- name: bouts_to_states
+  source: social
+  behaviors: null
+  exclusive: false
+  add_rest: false
+  rest_name: rest
+  output: social
+  min_duration_s: 0.0
+  min_gap_s: 0.0
+  merge_gap_s: 0.0
+  point_event_window_s: null
+- name: bouts_to_states
+  source: social
+  behaviors: null
+  exclusive: true
+  add_rest: false
+  rest_name: rest
+  output: social_x
+  min_duration_s: 0.0
+  min_gap_s: 0.0
+  merge_gap_s: 0.0
+  point_event_window_s: null
+- name: design_matrix
+  states:
+  - social
+  signals:
+  - speed
+  basis: null
+  drop_rest: false
+  reference: auto
+  output: design
+preprocess: []
+analyses:
+- name: auroc
+  metric:
+    name: auroc
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: auroc_bout_shuffle
+  metric:
+    name: auroc
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null':
+      name: bout_shuffle
+      refractory_s: 2.0
+    min_shift_s: 10.0
+    seed: 14
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: auroc_label_shuffle
+  metric:
+    name: auroc
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null':
+      name: label_shuffle
+      block_s: 1.0
+    min_shift_s: 10.0
+    seed: 15
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: mean
+  metric:
+    name: mean_per_state
+    statistic: mean
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: bonferroni
+    correction_scope: states
+  masks: null
+- name: mi
+  metric:
+    name: mutual_information
+    n_levels: 5
+    binning: quantile
+    units: bits
+    min_occupancy_s: 0.05
+    bias_correction: none
+  states: social_x
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: peth
+  metric:
+    name: peth
+    pre_s: 4.0
+    post_s: 4.0
+    baseline_s:
+    - -4.0
+    - -1.0
+    response_s:
+    - 0.0
+    - 2.0
+    bin_s: null
+    min_duration_s: 0.0
+    min_gap_s: 0.0
+    min_events: 3
+    baseline_subtract: true
+    null_band: false
+    n_null: 200
+    null_seed: 0
+    min_shift_s: 20.0
+    min_latency_bins: 2
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: pv_overlap
+  metric:
+    name: population_vector_overlap
+    similarity: cosine
+    min_occupancy_s: 0.05
+    normalize_cells: true
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: pv_stab
+  metric:
+    name: pv_stability
+    n_blocks: 2
+    min_occupancy_s: 0.05
+  states: social
+  signal: null
+  shuffle: null
+  masks: null
+- name: pop_dist
+  metric:
+    name: population_distance
+    zscore: true
+    distance: euclidean
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: pca
+  metric:
+    name: pca_population
+    n_components: 10
+    zscore: true
+    distance: euclidean
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle: null
+  masks: null
+- name: decode
+  metric:
+    name: decode_states
+    classifier: linear_svm
+    n_folds: 5
+    zscore: true
+    balance: class_weight
+    min_frames_per_class: 20
+    C: 1.0
+    max_iter: 2000
+    mode: one_vs_rest
+    seed: 0
+  states: social_x
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: glm
+  metric:
+    name: glm_encoding
+    family: auto
+    alpha: 1.0
+    n_folds: 5
+    max_iter: 50
+    tol: 1.0e-06
+    regressor_names: null
+    groups: prefix
+    basis: null
+    min_frames: 100
+  states: null
+  signal: design
+  shuffle:
+    n_shuffles: 20
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null

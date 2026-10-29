@@ -1,0 +1,304 @@
+transforms:
+- name: resample_signal
+  source: position
+  channels: null
+  method: linear
+  max_gap_s: null
+- name: speed
+  signals:
+  - x
+  - y
+  window_s: 0.25
+  output: speed
+- name: bin_grid
+  signals:
+  - x
+  - y
+  bin_size: 100.0
+  n_bins: null
+  extent: null
+  output: position
+preprocess:
+- name: speed_threshold
+  signal: speed
+  min_speed: 5.0
+  max_speed: null
+  output: speed
+- name: rebin_time
+  bin_s: 0.25
+  activity_method: auto
+  min_fraction: 0.5
+analyses:
+- name: info
+  metric:
+    name: information_content
+    units: bits_per_event
+    weight: amplitude
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 0.0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: info_smooth_maxstat
+  metric:
+    name: information_content
+    units: bits_per_event
+    weight: amplitude
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 1.0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 12
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: max_stat
+    correction_scope: states
+  masks:
+  - speed
+- name: split_half
+  metric:
+    name: split_half_stability
+    n_blocks: 2
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 0.0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: mi
+  metric:
+    name: mutual_information
+    n_levels: 5
+    binning: quantile
+    units: bits
+    min_occupancy_s: 0.05
+    bias_correction: none
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: none
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: mean_bh
+  metric:
+    name: mean_per_state
+    statistic: mean
+    min_frames: 20
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: bh
+    correction_scope: states
+  masks:
+  - speed
+- name: bayes
+  metric:
+    name: bayesian_decoder
+    likelihood: gaussian
+    binarize: true
+    window_s: 0.25
+    smooth_sigma_bins: 0.0
+    n_folds: 5
+    n_trial_blocks: 10
+    sigma: per_state
+    prior: occupancy
+    min_frames_per_class: 20
+    n_levels: 5
+    binning: quantile
+    pseudocount: 0.1
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: decode
+  metric:
+    name: decode_states
+    classifier: linear_svm
+    n_folds: 5
+    zscore: true
+    balance: class_weight
+    min_frames_per_class: 20
+    C: 1.0
+    max_iter: 2000
+    mode: one_vs_rest
+    seed: 0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: pv_overlap
+  metric:
+    name: population_vector_overlap
+    similarity: cosine
+    min_occupancy_s: 0.05
+    normalize_cells: true
+  states: position
+  signal: null
+  shuffle: null
+  masks:
+  - speed
+- name: pv_stab
+  metric:
+    name: pv_stability
+    n_blocks: 2
+    min_occupancy_s: 0.05
+  states: position
+  signal: null
+  shuffle: null
+  masks:
+  - speed
+- name: speed_tuning
+  metric:
+    name: signal_tuning
+    n_bins: 20
+    extent: null
+    min_occupancy_s: 0.1
+    smooth_sigma_bins: 0.0
+    statistic: information
+  states: null
+  signal: speed
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed
+- name: speed_corr
+  metric:
+    name: signal_correlation
+    method: pearson
+    max_lag_s: 0.0
+    min_frames: 50
+  states: null
+  signal: speed
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: info_label_shuffle
+  metric:
+    name: information_content
+    units: bits_per_event
+    weight: amplitude
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 0.0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null':
+      name: label_shuffle
+      block_s: 1.0
+    min_shift_s: 10.0
+    seed: 13
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks:
+  - speed

@@ -1,0 +1,273 @@
+{
+  "cabana_version": "0.1.0.dev0",
+  "generated": "2026-10-18T00:53:52+00:00",
+  "cases": {
+    "grid": {
+      "info": {
+        "metric": "information_content",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "info_smooth_maxstat": {
+        "metric": "information_content",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "max_stat"
+      },
+      "split_half": {
+        "metric": "split_half_stability",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "mi": {
+        "metric": "mutual_information",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "none",
+        "correction": "none"
+      },
+      "mean_bh": {
+        "metric": "mean_per_state",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "bh"
+      },
+      "bayes": {
+        "metric": "bayesian_decoder",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "decode": {
+        "metric": "decode_states",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pv_overlap": {
+        "metric": "population_vector_overlap",
+        "target": "position",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
+      },
+      "pv_stab": {
+        "metric": "pv_stability",
+        "target": "position",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
+      },
+      "speed_tuning": {
+        "metric": "signal_tuning",
+        "target": "speed",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "speed_corr": {
+        "metric": "signal_correlation",
+        "target": "speed",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "info_label_shuffle": {
+        "metric": "information_content",
+        "target": "position",
+        "null": "label_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      }
+    },
+    "social": {
+      "auroc": {
+        "metric": "auroc",
+        "target": "social",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "auroc_bout_shuffle": {
+        "metric": "auroc",
+        "target": "social",
+        "null": "bout_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "auroc_label_shuffle": {
+        "metric": "auroc",
+        "target": "social",
+        "null": "label_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "mean": {
+        "metric": "mean_per_state",
+        "target": "social",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "bonferroni"
+      },
+      "mi": {
+        "metric": "mutual_information",
+        "target": "social_x",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "peth": {
+        "metric": "peth",
+        "target": "social",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pv_overlap": {
+        "metric": "population_vector_overlap",
+        "target": "social",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pv_stab": {
+        "metric": "pv_stability",
+        "target": "social",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
+      },
+      "pop_dist": {
+        "metric": "population_distance",
+        "target": "social",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pca": {
+        "metric": "pca_population",
+        "target": "social",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
+      },
+      "decode": {
+        "metric": "decode_states",
+        "target": "social_x",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "glm": {
+        "metric": "glm_encoding",
+        "target": "design",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      }
+    },
+    "phase_e": {
+      "fields": {
+        "metric": "place_fields",
+        "target": "position",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "selectivity": {
+        "metric": "tuning_selectivity",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "auroc_speed_matched": {
+        "metric": "auroc",
+        "target": "social",
+        "null": "covariate_matched_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pairwise": {
+        "metric": "pairwise_correlation",
+        "target": "syllables",
+        "null": "cell_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "pr": {
+        "metric": "participation_ratio",
+        "target": "syllables",
+        "null": "cell_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "split_half_within": {
+        "metric": "split_half_stability",
+        "target": "position",
+        "null": "within_state_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "decode_x": {
+        "metric": "decode_signal",
+        "target": "x",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "peth_band": {
+        "metric": "peth",
+        "target": "social",
+        "null": "none",
+        "keep_null": null,
+        "correction": null
+      }
+    },
+    "syllables": {
+      "mean": {
+        "metric": "mean_per_state",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "auroc": {
+        "metric": "auroc",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "bh"
+      },
+      "auroc_label_shuffle": {
+        "metric": "auroc",
+        "target": "syllables",
+        "null": "label_shuffle",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "mi": {
+        "metric": "mutual_information",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      },
+      "bayes": {
+        "metric": "bayesian_decoder",
+        "target": "syllables",
+        "null": "circular_shift",
+        "keep_null": "full",
+        "correction": "none"
+      }
+    }
+  }
+}

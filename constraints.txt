@@ -1,0 +1,12 @@
+# Pinned versions of CaBaNA's direct dependencies, taken from the development venv.
+# Used by CI and lab machines for a reproducible install:
+#   pip install -c constraints.txt -e .[dev,loaders]
+# numpy and scipy of these versions require Python >= 3.12, so they are pinned only there.
+numpy==2.5.4; python_version >= "3.12"
+scipy==1.18.1; python_version >= "3.12"
+pydantic==2.14.1
+numpydantic==1.10.0
+pandas==3.0.6
+matplotlib==3.11.2
+scikit-learn==1.9.1
+PyYAML==6.0.3

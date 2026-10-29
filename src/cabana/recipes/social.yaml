@@ -1,0 +1,30 @@
+recipe:
+  name: social
+  title: Social behavior bouts
+  description: >-
+    Cell responses to scored behavior bouts (one state per behavior): auROC of activity inside
+    versus outside each behavior, and the mean activity difference, against a circular-shift
+    null with a max-statistic correction across behaviors. See social_speed_matched when a
+    behavior is confounded with locomotion speed.
+  targets:
+    states: a bout StateSpace, one state per behavior (e.g. built by bouts_to_states)
+  defaults:
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  selectors:
+  - name: auto_null_timescale
+  analyses:
+  - name: auroc
+    metric: {name: auroc}
+    states: ${states}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+      correction: max_stat
+  - name: mean_difference
+    metric: {name: mean_per_state, statistic: difference}
+    states: ${states}
+    shuffle: *shuffle

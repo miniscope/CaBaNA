@@ -1,0 +1,82 @@
+# Glossary
+
+- **Session**: one recording: activity, behavior, derived signals, states and masks on a shared clock. Immutable by convention; `Session.replace` returns a modified copy.
+- **cell_meta**: `Session.cell_meta`, a dict of per-cell columns (length `n_cells`; numeric, bool or string) such as `snr`, `r_values`, `cnn_preds`, `accepted`, `pve`, `alpha`, `baseline`, `tau_rise_s`, `tau_decay_s`, `centroid_x`, `centroid_y`, `n_events`, `mean_rate_hz`. `cell_table()` returns it as a DataFrame.
+- **footprints**: `Session.footprints`, optional dense `(n_cells, H, W)` spatial footprints; `footprint_centroids()` gives `(x, y)` per cell.
+- **select_cells / select_frames**: subset a session by cell (ints, bool mask or cell ids) or by frame (slice, ints, bool mask), slicing every dependent array together; `select_cells` logs `meta["cell_selection"]`.
+- **SessionInfo**: `Session.info`, the structured identity of a recording (animal, date, condition, group, sex, genotype, rig, session_id, extra); read by `SessionSet.from_sessions`.
+- **activity**: the `(n_cells, n_time)` neural array (deconvolved calcium, dF/F, or binned spikes).
+- **activity_kind**: label recording what the activity values are (`deconvolved`, `dff`, `spike_counts`, `raw`, `zscored`; `zscore_activity` sets the last). Used for rebinning (summed or averaged) and recorded with results; metrics do not currently enforce it.
+- **neural clock / t**: the frame times of the activity. Everything per-frame (signals, masks, states) is resampled onto it, and `fs` (Hz) is its rate.
+- **behavior**: raw behavioral data in its own timebase (position, scored bouts, syllable labels) before transforms put it on the neural clock.
+- **signal**: a continuous per-frame variable (speed, x, y) on the neural clock; the target of signal metrics such as `signal_correlation`.
+- **state space**: a named set of behavioral states, with an `onehot` matrix, a `kind`, an `exclusive` flag and optionally a `topology`.
+- **onehot**: the `(n_time, n_states)` boolean matrix saying which state(s) the animal is in at each frame.
+- **exclusive**: True when at most one state is active per frame (bins, syllables); False when bouts may overlap.
+- **kind**: how a state space was made and is drawn: `grid` (binned continuous variable), `categorical` (labels), or `bouts` (scored intervals).
+- **topology**: for a grid, the shape and neighbor structure of the bins, used for smoothing and for drawing maps and computing distances.
+- **occupancy**: time spent in each state (frames or seconds) over the frames that count; the denominator of rate maps.
+- **support**: the frames where a state space is defined (a `(n_time,)` boolean on `StateSpace.support`): tracked and in-extent for a grid, the scored span for bouts, the labelled span for categorical labels. Applied automatically to every analysis on that space; an unscored frame is unknown, not "rest".
+- **mask**: `(n_time,)` boolean array of extra frames to include (speed above threshold). Chosen per analysis, on top of the target's support; `masks=None` or `[]` means support only.
+- **mask expression**: a boolean formula over mask names for `combine_masks`, using `~` (not), `&` (and), `|` (or) and parentheses, e.g. `speed & ~sniff`. `~` binds tighter than `&`, which binds tighter than `|`.
+- **target**: what a metric is computed against: a state space (`states=`) or a signal (`signal=`); an `AnalysisSpec` takes exactly one.
+- **analysis name**: the unique key of one analysis in a `ResultSet`, `AnalysisSpec.name`; if not given it is `metric[target]`, with `#<null>` or `#2` added when names collide. Look results up with `results["auroc[social]"]` or `results.get(name=...)`; the tidy table's `analysis` column holds it.
+- **provenance**: the dict on each `MetricResult` recording how it was made (version, seed, null, number of shuffles, alpha, tail, masks, frames used, fs, activity kind, target parameters, timestamp).
+- **metric**: a registered plugin that turns activity and a target into values (information content, AUROC, decoder, ...).
+- **level**: whether a metric yields one value per cell (`cell`) or per population (`population`).
+- **null**: the plugin that defines how the activity-behavior link is broken: `circular_shift`, `label_shuffle`, `bout_shuffle`, `covariate_matched_shift`, `cell_shift` or `within_state_shuffle`.
+- **surrogate**: one dataset produced by a null; the metric is recomputed on each to build the null distribution.
+- **n_jobs**: `ShuffleConfig.n_jobs`, worker threads over batches of shuffles (`-1` = all cores); results are bit-identical for any value. `run_set(n_jobs=)` is the separate process-level knob across sessions.
+- **shuffle**: the whole test (`ShuffleConfig`): `n_shuffles` surrogates, the null, `alpha`, `tail`, `seed`.
+- **tail**: which side of the null counts as extreme: `upper`, `lower` or `two`.
+- **p floor**: the smallest attainable p-value, `1 / (n_shuffles + 1)`.
+- **extras**: additional named arrays a metric returns with its values (rate maps, confusion matrix, null bounds).
+- **result set**: `ResultSet`, the collection of metric results from a pipeline run; `to_dataframe()` gives a tidy table.
+- **cohort**: a set of sessions grouped by animal, so statistics can use the animal as the unit.
+- **cell match**: a mapping of cell identities between two sessions (for example from CellReg [107]) used for cross-session comparisons.
+- **correction**: the multiple-comparison adjustment chosen in `ShuffleConfig.correction` (`none`, `bh`, `bonferroni`, `max_stat`) over a `correction_scope` (`states`, `cells`, `all`). `max_stat` is a max-statistic across a cell's states computed from the null draws (states scope only).
+- **p_adj**: the adjusted p-value stored in `ShuffleResult.p_adj` (and the `p_adj` table column); `significant_adj` is `p_adj < alpha`. With no correction it equals `p_value`. See `STATISTICS.md`.
+- **clause**: one test on one analysis in the criteria layer (`Clause`): significant, a value threshold, or a null percentile, for a given state (or `"any"`), with an optional sign.
+- **criteria**: `Criteria`, a named combination of clauses and nested criteria (`all_of`, `any_of`, `none_of`) that defines a cell class such as a place cell; serialises to dict and YAML.
+- **classification**: the result of `classify(results, criteria)`: a boolean membership per cell and class (`ClassificationResult`), optionally exclusive with an `unclassified` class.
+- **run context**: `RunContext`, the object passed to `Pipeline.run(..., context=)` or `run_set` carrying the progress callback, cancellation check, error handling (`raise` or `record`), warning capture and log function. A run that is cancelled or has recorded errors returns a `ResultSet` with `status` `cancelled` or `partial`.
+- **loader**: a function in `cabana.loaders` that reads one file format (Minian, CaImAn, CaMAP, BORIS, DeepLabCut, Keypoint-MoSeq) into a `Session`, `BoutTable`, `ContinuousSignal` or `LabelSeries`; behavior loaders convert video time to the neural clock with `t_neural = t_video - t_offset_s`.
+- **Selection**: `cabana.Selection`, the record of how one parameter value was chosen (path, value, method, criterion, candidates and scores, data split, `informed_by_significance`); stored in `Pipeline.selections` and copied to each result's `provenance["selections"]`. See `STATISTICS.md`.
+- **parameter path**: a dotted address of one pipeline field, such as `analyses.place.metric.smooth_sigma_bins` or `transforms.position.bin_size`, used by `Pipeline.get_param` / `set_param`; the key may be an index, an output or analysis name, or `*`.
+- **autocorrelation time**: the smallest lag, in seconds, at which a series' normalised autocorrelation first falls below 1/e, computed over the analysis's effective frames. `auto_null_timescale` multiplies it (by 3) to set `min_shift_s` and uses the behaviour's value for `block_s`.
+- **selector**: a registered plugin (`Pipeline.selectors`) that chooses analysis parameters from the data before analyses run and returns `Selection` records; it must not look at shuffle nulls or p-values. Example: `auto_smooth_sigma`.
+- **one-standard-error rule**: among candidates, pick the simplest (here the smallest sigma) whose cross-validated score is within one standard error of the best score.
+- **held-out likelihood**: the likelihood (here a Poisson scoring rule) of data not used to fit the model, e.g. rate maps estimated on other time blocks; unlike reliability it penalises over-smoothing.
+- **sweep**: `cabana.sweep(session, pipeline, over={path: [values]})`, the Cartesian product of candidate values for one or more parameter paths, run as one pipeline per grid point and returned as a `SweepResult` (tidy `table`, `summary`, `stability`, `pick`, `apply`). `shuffle=False` runs observed values only.
+- **plateau rule**: `SweepResult.pick(rule="plateau")`: take the longest run of adjacent candidates whose criterion is within one standard error of the best, and choose its middle value. Recorded as `method="sweep_stability"`.
+- **flip count**: for one cell (or cell and state), the number of times its `significant` flag changes between adjacent grid points of a sweep, summed over the swept parameters; a cell with at least one flip is `unstable` in `SweepResult.stability`.
+- **dF/F**: fluorescence relative to baseline, `(F - F0) / F0`; produced by `ComputeDff` (kind `dff`), averaged on re-binning.
+- **denoised**: an `activity_kind` for a model-smoothed fluorescence trace (Minian and CaImAn `C`); trace-like (averaged on re-binning), not dF/F and not spikes.
+- **noise estimate**: the per-cell standard deviation of the measurement noise, here `diff_mad` (1.4826 x MAD of first differences / sqrt(2), robust to slow baseline and transients), `mad` or `psd` (high-frequency Welch average); recorded by `DetectEvents` in `meta["detect_events"]`.
+- **event detection**: `DetectEvents`, thresholding each cell at `median + k x noise` (or a percentile / absolute value), with minimum duration and refractory period, into a `binary` series (frames in event), onsets, or amplitudes (`deconvolved`). Event-like kinds are summed on re-binning.
+- **head direction**: the heading angle from `head_direction`, `atan2(front - back)` or the yaw of a w,x,y,z quaternion; 0 = +x (east), counter-clockwise (y up), wrapped to (-pi, pi] unless `unwrap`. A quaternion's zero is arbitrary until calibrated with `offset_deg`.
+- **head orientation**: roll, pitch and yaw from a w,x,y,z quaternion (`head_orientation`), intrinsic Z-Y'-X'' aerospace angles in degrees by default; pitch in [-90, 90] (nose-up positive, positive roll right ear down), yaw and roll ill-defined near pitch = +-90 (gimbal lock). Axes are the sensor's, so check signs against a known movement such as rearing.
+- **zone occupancy**: `zone_occupancy` turns a position into a state space with one state per polygon or rectangle (chamber, cup area); frames in no zone are in no state, frames with a lost position are outside the support.
+- **mode filter**: `labels_to_states(mode_filter_s=...)`, a sliding-window majority vote on per-frame integer labels that removes flicker; unlabelled (-1) frames are ignored and stay unlabelled.
+- **merge gap**: `bouts_to_states(merge_gap_s=...)` / `states_to_bouts`, joining same-behavior bouts separated by a shorter gap; applied before the minimum-duration filter.
+- **SNR**: per-cell signal-to-noise ratio, here CaImAn's `SNR_comp` in `cell_meta["snr"]`; compare against a threshold in `select_cells(min_snr=...)`. Not comparable across tools.
+- **accepted component**: a CaImAn component in `estimates/idx_components` that passed its quality evaluation (SNR, spatial correlation, CNN); stored as the bool `cell_meta["accepted"]`. `load_caiman(accepted_only=True)` keeps only these.
+- **alpha**: CaLab's per-cell amplitude scale (fluorescence per unit of deconvolved activity), `cell_meta["alpha"]`. Because it differs per cell, deconvolved amplitudes are not comparable across cells; use binary or z-scored activity or divide by alpha.
+- **dropped frame**: a frame the camera or miniscope never wrote, seen as an interval above 1.5 times the median between stamps; `timing_report` estimates how many each gap hides (`round(dt / median) - 1`).
+- **clock offset / scale**: the two numbers of `fit_clock`, `t_b = scale * (t_a - offset_s)`; the offset is how long clock A had run when clock B started, the scale corrects drift. `apply_clock` applies them; with `scale = 1` it is `t_neural = t_video - t_offset_s`.
+- **timing report**: the dict from `timing_report(t, fs_nominal)` (frame count, `fs_median` / `fs_mean`, dropped frames and gap positions, jitter, first stamp); the `timing_check` step stores it in `meta["timing"]`.
+- **zone**: a named region of the arena (rect, polygon, or x-range expanded to a rect); `zone_occupancy` or an annotated zone file turns it into a categorical `StateSpace`. Stored in `meta["arena"]["zones"]`.
+- **enclosure**: a cup or cage the subject cannot enter, a disc with `center`, `radius` and `contents` (`stimulus`, `empty`); `meta["enclosures"]`. Distances to it are measured to its edge.
+- **investigation bout**: a run of frames in which the animal is close to an enclosure and facing it, either scored by a person (epochs) or derived by `investigation_from_geometry` (distance to the edge at most `max_distance`, heading within `max_angle_deg` of the bearing to the target; merge gap and minimum duration as in `bouts_to_states`).
+- **focal animal / stimulus animal**: the recorded animal and the animal(s) in the enclosures; `meta["subjects"]`, `info.animal` (focal) and `info.extra["stimulus"]`.
+- **epoch**: one row `label, start_s, stop_s` of an annotation file, on the session clock; a table of them is a `BoutTable` (`load_epochs_csv`).
+- **frame labels**: a per-frame categorical annotation; as epochs it becomes states with `bouts_to_states`, as integers with `labels_to_states`.
+- **session folder config**: the `session.yaml` / `config.yaml` read by `load_session_dir` (schema `SessionDirConfig`) that names the files, orientation, clocks, arena and subjects of one recording; `write_session_dir_template` writes a commented example.
+- **covariate-matched null**: `covariate_matched_shift`, a circular shift restricted to offsets under which each state's covariate (usually speed) has the same distribution as observed (KS distance or standardised mean difference at most `tolerance`). Use it when a state is confounded with speed. `ShuffleResult.null_info` holds `acceptance_rate` and `balance_max`.
+- **cell shift**: `cell_shift`, a null that rolls every cell by its own random offset (distinct across cells), keeping each cell's autocorrelation and removing cell-to-cell coordination; the null for population metrics, where a common shift changes nothing.
+- **within-state shuffle**: `within_state_shuffle`, a null that permutes activity frames (or blocks of `block_s`) inside each state of an exclusive state space. State means are invariant; use it for order-dependent metrics such as split-half stability.
+- **participation ratio**: `(sum lambda)^2 / sum lambda^2` of the covariance eigenvalues of the population; 1 for activity along one axis, up to the number of cells for independent, equal-variance cells. An effective dimension (`participation_ratio`).
+- **mean vector length**: MVL, `|sum_b r_b exp(i theta_b)| / sum_b r_b` over the bins of a circular tuning curve; 0 for a flat curve, 1 for activity in one direction (`circular_tuning`).
+- **place field (as detected here)**: a connected group of at least `min_field_bins` grid bins whose occupancy-normalised rate passes a threshold (default half of the cell's peak); `place_fields` reports count, area, centroid and the ratio of mean rate inside fields to outside. A threshold-defined summary, not a test of spatial tuning by itself.
+- **z-score (null-normalised)**: `ShuffleResult.z_score`, `(observed - null_mean) / null_std`; an effect size on one scale across cells and metrics that does not hit the p floor. NaN when the null is constant or undefined.
+- **latency (PETH)**: `latency_s` of `peth(null_band=True)`, the first time at or after event onset at which the observed response lies outside the circular-shift band for `min_latency_bins` consecutive bins; NaN if it never does.

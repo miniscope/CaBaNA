@@ -1,0 +1,37 @@
+recipe:
+  name: syllables
+  title: Behavioral syllables
+  description: >-
+    Exclusive behavior labels (one syllable per frame): Skaggs information of each cell about
+    the label, per-syllable auROC with a max-statistic correction, and mutual information, all
+    against a circular-shift null.
+  targets:
+    states: an exclusive categorical StateSpace (e.g. built by labels_to_states)
+  defaults:
+    n_shuffles: 1000
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  selectors:
+  - name: auto_null_timescale
+  analyses:
+  - name: information
+    metric: {name: information_content}
+    states: ${states}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+      correction: none
+  - name: auroc
+    metric: {name: auroc}
+    states: ${states}
+    shuffle:
+      n_shuffles: ${n_shuffles}
+      min_shift_s: ${min_shift_s}
+      seed: ${seed}
+      correction: max_stat
+  - name: mutual_information
+    metric: {name: mutual_information}
+    states: ${states}
+    shuffle: *shuffle

@@ -1,0 +1,54 @@
+recipe:
+  name: population
+  title: Population structure
+  description: >-
+    Population-level analyses on a state space: population-vector stability and overlap,
+    state decoding and the participation ratio. The PV, pairwise and participation metrics use
+    cell_shift (every cell rolled by its own offset, at least 1 s apart), which breaks
+    cell-to-cell coordination; a common circular shift would leave them unchanged. The decoder
+    uses label_shuffle instead: it asks whether the activity predicts the states, so the
+    states are permuted in blocks (block length from auto_null_timescale) with the activity
+    intact. Activity is re-binned to 0.5 s first (population decoding at the full frame rate
+    is slow); override with preprocess.rebin_time.bin_s.
+  targets:
+    states: a StateSpace to characterize (grid bins, syllables or behaviors)
+  defaults:
+    n_shuffles: 200
+    seed: 0
+    min_shift_s: 20.0
+pipeline:
+  preprocess:
+  - name: rebin_time
+    bin_s: 0.5
+  selectors:
+  - name: auto_null_timescale
+    analyses: [decoding]
+    set_min_shift: false
+  analyses:
+  - name: pv_stability
+    metric: {name: pv_stability}
+    states: ${states}
+    shuffle: &shuffle
+      n_shuffles: ${n_shuffles}
+      'null':
+        name: cell_shift
+        min_shift_s: ${min_shift_s}
+        min_pair_separation_s: 1.0
+      seed: ${seed}
+  - name: pv_overlap
+    metric: {name: population_vector_overlap}
+    states: ${states}
+    shuffle: *shuffle
+  - name: decoding
+    metric: {name: decode_states}
+    states: ${states}
+    shuffle:
+      n_shuffles: ${n_shuffles}
+      'null':
+        name: label_shuffle
+        block_s: 1.0
+      seed: ${seed}
+  - name: participation_ratio
+    metric: {name: participation_ratio}
+    states: ${states}
+    shuffle: *shuffle

@@ -1,0 +1,242 @@
+transforms:
+- name: resample_signal
+  source: position
+  channels: null
+  method: linear
+  max_gap_s: null
+- name: speed
+  signals:
+  - x
+  - y
+  window_s: 0.25
+  output: speed
+- name: bin_grid
+  signals:
+  - x
+  - y
+  bin_size: 100.0
+  n_bins: null
+  extent: null
+  output: position
+- name: bouts_to_states
+  source: social
+  behaviors: null
+  exclusive: false
+  add_rest: false
+  rest_name: rest
+  output: social
+  min_duration_s: 0.0
+  min_gap_s: 0.0
+  merge_gap_s: 0.0
+  point_event_window_s: null
+- name: labels_to_states
+  source: syllables
+  output: syllables
+  mode_filter_s: 0.0
+  min_run_s: 0.0
+preprocess: []
+analyses:
+- name: fields
+  metric:
+    name: place_fields
+    smooth_sigma_bins: 1.0
+    min_occupancy_s: 0.1
+    threshold: 0.5
+    threshold_mode: peak_fraction
+    min_field_bins: 1
+    connectivity: 1
+    statistic: in_out_ratio
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: selectivity
+  metric:
+    name: tuning_selectivity
+    statistic: selectivity_index
+    min_occupancy_s: 0.1
+    smooth_sigma_bins: 0.0
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 50
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: auroc_speed_matched
+  metric:
+    name: auroc
+    min_frames: 20
+  states: social
+  signal: null
+  shuffle:
+    n_shuffles: 20
+    'null':
+      name: covariate_matched_shift
+      min_shift_s: 10.0
+      covariate: speed
+      channel: null
+      statistic: mean
+      tolerance: 0.5
+      max_tries: 100
+      min_frames: 100
+    min_shift_s: 10.0
+    seed: 16
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: pairwise
+  metric:
+    name: pairwise_correlation
+    kind: noise
+    method: pearson
+    min_frames: 50
+    states_as: all
+    zscore: true
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 20
+    'null':
+      name: cell_shift
+      min_shift_s: 20.0
+      min_pair_separation_s: 0.0
+    min_shift_s: 10.0
+    seed: 17
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: pr
+  metric:
+    name: participation_ratio
+    zscore: true
+    min_frames: 50
+    per_state: false
+  states: syllables
+  signal: null
+  shuffle:
+    n_shuffles: 20
+    'null':
+      name: cell_shift
+      min_shift_s: 20.0
+      min_pair_separation_s: 0.0
+    min_shift_s: 10.0
+    seed: 18
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: split_half_within
+  metric:
+    name: split_half_stability
+    n_blocks: 2
+    min_occupancy_s: 0.05
+    smooth_sigma_bins: 0.0
+  states: position
+  signal: null
+  shuffle:
+    n_shuffles: 20
+    'null':
+      name: within_state_shuffle
+      block_s: 0.0
+    min_shift_s: 10.0
+    seed: 19
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: decode_x
+  metric:
+    name: decode_signal
+    method: ridge
+    alpha: 1.0
+    k: 10
+    n_folds: 3
+    zscore: true
+    lag_s: 0.0
+    statistic: r2
+    min_frames: 100
+  states: null
+  signal: x
+  shuffle:
+    n_shuffles: 20
+    'null': null
+    min_shift_s: 10.0
+    seed: 11
+    derive_seeds: true
+    alpha: 0.05
+    tail: null
+    batch_size: 100
+    n_jobs: 1
+    keep_null: full
+    correction: none
+    correction_scope: states
+  masks: null
+- name: peth_band
+  metric:
+    name: peth
+    pre_s: 5.0
+    post_s: 5.0
+    baseline_s:
+    - -5.0
+    - -2.0
+    response_s:
+    - 0.0
+    - 2.0
+    bin_s: null
+    min_duration_s: 0.0
+    min_gap_s: 0.0
+    min_events: 3
+    baseline_subtract: true
+    null_band: true
+    n_null: 50
+    null_seed: 0
+    min_shift_s: 20.0
+    min_latency_bins: 2
+  states: social
+  signal: null
+  shuffle: null
+  masks: null
