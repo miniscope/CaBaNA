@@ -1,0 +1,14 @@
+# Session config for the simulated tone and TTL session, in the layout cabana.loaders.load_session_dir reads.
+# time_markers.csv is not listed: the framework does not read a `markers:` key yet.
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  epochs:
+    behavior: {file: behavior_annotations.csv, exclusive: false}
+arena:
+  size: [25, 25]
+  units: cm

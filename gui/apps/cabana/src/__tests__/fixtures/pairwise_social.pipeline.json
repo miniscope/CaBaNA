@@ -1,0 +1,18 @@
+{
+ "session": "simulated_social_interaction",
+ "pipeline": {
+  "analyses": [
+   {
+    "name": "pairwise",
+    "metric": {
+     "name": "pairwise_correlation",
+     "kind": "total",
+     "method": "pearson",
+     "min_frames": 50,
+     "zscore": true
+    },
+    "states": "social"
+   }
+  ]
+ }
+}

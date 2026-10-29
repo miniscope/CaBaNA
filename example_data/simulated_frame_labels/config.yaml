@@ -1,0 +1,13 @@
+# Session config for the simulated frame-label session, in the layout cabana.loaders.load_session_dir reads.
+# frame_labels.csv is not listed: the framework does not read a `frame_labels:` key yet.
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  position: {file: frame_labels.csv, units: cm}
+arena:
+  size: [30, 30]
+  units: cm

@@ -1,0 +1,14 @@
+# Session config for the simulated fear conditioning session, in the layout cabana.loaders.load_session_dir reads.
+# Tones: 5 x 30 s, starting at 150 s and every 120 s. Shocks: 2 s at the end of tones 3 to 5.
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  epochs:
+    behavior: {file: behavior_annotations.csv, exclusive: false}
+arena:
+  size: [25, 25]
+  units: cm

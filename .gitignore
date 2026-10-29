@@ -1,0 +1,61 @@
+# Regenerable output — never committed (see README)
+outputs/
+
+# Scratch copies of the notebook
+*-Copy[0-9].ipynb
+*-checkpoint.ipynb
+
+# hatch-vcs generated version file
+cabana/_version.py
+
+# Byte-compiled
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# Testing / linting caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# uv
+uv.lock
+
+# macOS
+.DS_Store
+
+# Large media — keep binaries out of git
+*.mov
+*.mp4
+*.isxd
+# ...except the tiny arena videos in the simulated example sets
+!example_data/simulated_*/arena_video.mp4
+
+# Real data stays out of the repo for now
+example_data/hipp CA2 social behavior/
+
+# Secrets
+.secrets
+
+gui/.project-dev/

@@ -1,0 +1,138 @@
+{
+ "session": "simulated_open_field",
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "interpolate_gaps",
+    "signal": [
+     "x",
+     "y"
+    ],
+    "max_gap_s": 0.5
+   },
+   {
+    "name": "smooth_signal",
+    "signal": [
+     "x",
+     "y"
+    ],
+    "method": "median",
+    "window_s": 0.25
+   },
+   {
+    "name": "speed",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "window_s": 0.25
+   },
+   {
+    "name": "bin_grid",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "bin_size": 3,
+    "extent": [
+     [
+      0,
+      40
+     ],
+     [
+      0,
+      40
+     ]
+    ]
+   }
+  ],
+  "preprocess": [
+   {
+    "name": "smooth_activity",
+    "sigma_s": 0.1
+   },
+   {
+    "name": "speed_threshold",
+    "signal": "speed",
+    "min_speed": 2
+   }
+  ],
+  "selectors": [
+   {
+    "name": "auto_smooth_sigma",
+    "states": "position"
+   },
+   {
+    "name": "auto_null_timescale"
+   }
+  ],
+  "analyses": [
+   {
+    "name": "information",
+    "metric": {
+     "name": "information_content",
+     "min_occupancy_s": 0.05,
+     "smooth_sigma_bins": 0
+    },
+    "states": "position",
+    "masks": [
+     "speed"
+    ],
+    "shuffle": {
+     "n_shuffles": 25,
+     "min_shift_s": 20,
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "stability",
+    "metric": {
+     "name": "split_half_stability",
+     "n_blocks": 2,
+     "min_occupancy_s": 0.05,
+     "smooth_sigma_bins": 0
+    },
+    "states": "position",
+    "masks": [
+     "speed"
+    ],
+    "shuffle": {
+     "n_shuffles": 25,
+     "min_shift_s": 20,
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "fields",
+    "metric": {
+     "name": "place_fields",
+     "smooth_sigma_bins": 1,
+     "min_occupancy_s": 0.1,
+     "threshold": 0.5,
+     "min_field_bins": 2
+    },
+    "states": "position",
+    "masks": [
+     "speed"
+    ],
+    "shuffle": {
+     "n_shuffles": 25,
+     "min_shift_s": 20,
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   }
+  ]
+ }
+}

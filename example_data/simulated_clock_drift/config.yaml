@@ -1,0 +1,14 @@
+# Session config for the simulated clock drift session, in the layout cabana.loaders.load_session_dir reads.
+# The camera clock runs 0.35 s late and 0.04% fast: neural time = scale * (camera time - offset_s).
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  clock: {offset_s: 0.35, scale: 1.0004}
+  position: {file: position.csv, units: cm}
+arena:
+  size: [30, 30]
+  units: cm

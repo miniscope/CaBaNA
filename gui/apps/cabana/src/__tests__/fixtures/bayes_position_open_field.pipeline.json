@@ -1,0 +1,64 @@
+{
+ "session": "simulated_open_field",
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "speed",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "window_s": 0.5
+   },
+   {
+    "name": "bin_grid",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "bin_size": 3.0,
+    "output": "position"
+   }
+  ],
+  "preprocess": [
+   {
+    "name": "speed_threshold",
+    "signal": "speed",
+    "min_speed": 2.0,
+    "output": "speed"
+   }
+  ],
+  "analyses": [
+   {
+    "name": "decoding_position",
+    "metric": {
+     "name": "bayesian_decoder",
+     "likelihood": "gaussian",
+     "binarize": true,
+     "window_s": 0.25,
+     "smooth_sigma_bins": 0,
+     "n_folds": 5,
+     "sigma": "per_state",
+     "prior": "occupancy",
+     "min_frames_per_class": 20
+    },
+    "states": "position",
+    "masks": [
+     "speed"
+    ],
+    "shuffle": {
+     "n_shuffles": 20,
+     "null": {
+      "name": "label_shuffle",
+      "block_s": 1.0
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "max_stat",
+     "n_jobs": -1,
+     "correction_scope": "states"
+    }
+   }
+  ]
+ }
+}
