@@ -1,0 +1,106 @@
+import { describe, it, expect } from 'vitest';
+import { computeKernel, kernelShapeRmse, KERNEL_RMSE_MIN_SAMPLES } from '@calab/compute';
+
+describe('computeKernel', () => {
+  const tauRise = 0.02;
+  const tauDecay = 0.4;
+  const fs = 30;
+
+  it('normalizes peak value to 1.0', () => {
+    const { y } = computeKernel(tauRise, tauDecay, fs);
+    const peak = Math.max(...y);
+    expect(peak).toBeCloseTo(1.0, 10);
+  });
+
+  it('first value is approximately 0 (exp(0)-exp(0) = 0)', () => {
+    const { y } = computeKernel(tauRise, tauDecay, fs);
+    // At t=0: exp(0/decay) - exp(0/rise) = 1 - 1 = 0
+    expect(y[0]).toBeCloseTo(0, 5);
+  });
+
+  it('kernel length matches ceil(durationMultiple * tauDecay * fs)', () => {
+    const durationMultiple = 5;
+    const { x, y } = computeKernel(tauRise, tauDecay, fs, durationMultiple);
+    const expectedLength = Math.ceil(durationMultiple * tauDecay * fs);
+    expect(y.length).toBe(expectedLength);
+    expect(x.length).toBe(expectedLength);
+  });
+
+  it('larger tauDecay produces wider kernel', () => {
+    const narrowKernel = computeKernel(tauRise, 0.2, fs);
+    const wideKernel = computeKernel(tauRise, 0.8, fs);
+    expect(wideKernel.y.length).toBeGreaterThan(narrowKernel.y.length);
+  });
+
+  it('returns matching x and y array lengths', () => {
+    const { x, y } = computeKernel(tauRise, tauDecay, fs);
+    expect(x.length).toBe(y.length);
+  });
+
+  it('uses default durationMultiple of 5', () => {
+    const { y } = computeKernel(tauRise, tauDecay, fs);
+    const expectedLength = Math.ceil(5 * tauDecay * fs);
+    expect(y.length).toBe(expectedLength);
+  });
+
+  it('x values represent time in seconds with correct spacing', () => {
+    const { x } = computeKernel(tauRise, tauDecay, fs);
+    const dt = 1 / fs;
+    expect(x[0]).toBeCloseTo(0, 10);
+    expect(x[1]).toBeCloseTo(dt, 10);
+    expect(x[2]).toBeCloseTo(2 * dt, 10);
+  });
+
+  it('kernel has correct double-exponential shape (rises then decays)', () => {
+    const { y } = computeKernel(tauRise, tauDecay, fs);
+
+    // Find peak index
+    let peakIdx = 0;
+    for (let i = 1; i < y.length; i++) {
+      if (y[i] > y[peakIdx]) peakIdx = i;
+    }
+
+    // Values should generally increase to peak, then decrease
+    expect(peakIdx).toBeGreaterThan(0);
+    expect(peakIdx).toBeLessThan(y.length - 1);
+    expect(y[peakIdx]).toBe(1.0);
+
+    // Last value should be much smaller than peak
+    expect(y[y.length - 1]).toBeLessThan(0.05);
+  });
+});
+
+describe('kernelShapeRmse', () => {
+  const fs = 30;
+
+  it('is 0 for identical kernels', () => {
+    expect(kernelShapeRmse(0.05, 0.5, 0.05, 0.5, fs)).toBe(0);
+  });
+
+  it('is symmetric', () => {
+    const a = kernelShapeRmse(0.05, 0.5, 0.06, 0.55, fs);
+    const b = kernelShapeRmse(0.06, 0.55, 0.05, 0.5, fs);
+    expect(a).toBeCloseTo(b, 12);
+  });
+
+  it('grows with the size of the shape change', () => {
+    const small = kernelShapeRmse(0.05, 0.5, 0.05, 0.505, fs); // 1% tau_decay change
+    const large = kernelShapeRmse(0.05, 0.5, 0.05, 0.55, fs); // 10% tau_decay change
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeGreaterThan(small);
+  });
+
+  it('reports a small change as a small fraction of peak', () => {
+    // ~2% tau_decay change should land near the 0.005 default tolerance scale.
+    const d = kernelShapeRmse(0.05, 0.5, 0.05, 0.51, fs);
+    expect(d).toBeGreaterThan(0.001);
+    expect(d).toBeLessThan(0.02);
+  });
+
+  it('densifies the grid to KERNEL_RMSE_MIN_SAMPLES for a fast kernel at low fs', () => {
+    // At 10 Hz with tau_decay 0.2 s the native window is only ~10 samples; the
+    // floor keeps the RMS estimate stable (identical kernels still give 0).
+    expect(kernelShapeRmse(0.02, 0.2, 0.02, 0.2, 10)).toBe(0);
+    expect(KERNEL_RMSE_MIN_SAMPLES).toBe(24);
+  });
+});

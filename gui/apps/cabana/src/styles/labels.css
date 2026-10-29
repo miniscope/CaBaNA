@@ -1,0 +1,162 @@
+/* Label tables: Load data mapping and conflict review, Experimental setup label roles. */
+.cb-lbl-select {
+  min-width: 11.5rem;
+  max-width: 100%;
+  padding: 2px 24px 2px 8px;
+  font-size: 13px;
+  text-overflow: clip;
+}
+.cb-lbl-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.cb-lbl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cb-lbl-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.cb-lbl-table td {
+  padding: 1px 6px;
+  height: 26px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+/* Cells that hold selects must not clip them; long text cells are truncated instead. */
+.cb-lbl-table td:has(select) {
+  overflow: visible;
+  white-space: nowrap;
+}
+.cb-lbl-name {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-lbl-row--on td {
+  background: var(--accent-muted);
+}
+.cb-lbl-fixed {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.cb-lbl-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.cb-lbl-pager .cb-muted {
+  margin-right: auto;
+  font-size: 12px;
+}
+.cb-lbl-pager .cb-linkbtn {
+  margin-right: 8px;
+  font-size: 12.5px;
+}
+.cb-lbl-map {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cb-lbl-map__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cb-lbl-summary p {
+  margin: 0 0 3px;
+  font-size: 12.5px;
+}
+.cb-lbl-summary .cb-lbl-conflict {
+  font-size: 13px;
+}
+.cb-lbl-conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cb-lbl-reason {
+  font-size: 12.5px;
+}
+.cb-load__missing {
+  margin: 0;
+  font-size: 13px;
+}
+.cb-load__review {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-lbl-review {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+}
+.cb-lbl-review__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.cb-lbl-review__head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+/* The only scrolling here: a page can hold 50 rows. Header stays in view. */
+.cb-lbl-review__table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cb-lbl-review__table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+}
+.cb-lbl-roles {
+  margin-top: 8px;
+}
+.cb-lbl-roles__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-lbl-roles__head h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.cb-lbl-table--roles .cb-lbl-name {
+  max-width: 170px;
+}
+.cb-lbl-viewbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.cb-lbl-viewbar .cb-tabs {
+  margin: 0;
+  flex: none;
+}
+.cb-lbl-viewbar > .cb-muted {
+  font-size: 12.5px;
+}

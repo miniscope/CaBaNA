@@ -1,0 +1,48 @@
+{
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "bouts_to_states",
+    "source": "social_epochs",
+    "behaviors": [
+     "follow",
+     "sniff_anogenital",
+     "sniff_face"
+    ],
+    "exclusive": false,
+    "output": "auroc_target"
+   }
+  ],
+  "preprocess": [
+   {
+    "name": "smooth_activity",
+    "sigma_s": 0.1
+   }
+  ],
+  "selectors": [
+   {
+    "name": "auto_null_timescale"
+   }
+  ],
+  "analyses": [
+   {
+    "name": "auroc",
+    "metric": {
+     "name": "auroc",
+     "min_frames": 20
+    },
+    "states": "auroc_target",
+    "shuffle": {
+     "n_shuffles": 1000,
+     "min_shift_s": 20,
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "max_stat",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   }
+  ]
+ },
+ "problems": []
+}

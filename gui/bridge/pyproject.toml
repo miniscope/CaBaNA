@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cabana-bridge"
+version = "0.1.0"
+description = "Local HTTP bridge between the CaBaNA GUI and the CaBaNA framework."
+requires-python = ">=3.11"
+dependencies = ["cabana", "pyyaml>=6.0", "numpy>=1.26", "pandas>=2.0"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+cabana-bridge = "cabana_bridge.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cabana_bridge"]
+
+# The framework is pinned to a commit so results are reproducible. For a local checkout run
+#   uv run --project gui/bridge --with-editable "$CABANA_FRAMEWORK_PATH" cabana-bridge ...
+[tool.uv.sources]
+cabana = { git = "https://github.com/miniscope/CaBaNA", rev = "57c0c4b9013eb16eeca286bd7b7e1acf6f486109" }
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: needs a full framework run"]

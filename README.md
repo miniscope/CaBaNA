@@ -234,6 +234,16 @@ pipeline headlessly; `cabana run study.yaml` runs a whole study; `cabana describ
 `cabana schema NAME` and `cabana validate` print machine-readable information.
 See [docs/CLI.md](docs/CLI.md).
 
+## GUI
+
+`gui/` holds a browser interface for CaBaNA: load data, set up the experiment, check data
+quality, preprocess, and run analyses. See [gui/README.md](gui/README.md) for how to run it.
+`gui/bridge/` is the local server that lets the GUI run this package. `decoding/` holds the
+browser decoders the GUI can use when the Python engine is off, with tests that check them
+against this package.
+
+`example_data/` holds simulated sessions for trying the GUI. Each has its own README.
+
 ## Documentation
 
 - [`docs/RECIPES.md`](docs/RECIPES.md): the bundled recipes behind `cabana.analyze`, their placeholders, and how to write your own.

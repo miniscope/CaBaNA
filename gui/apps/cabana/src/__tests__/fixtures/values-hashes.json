@@ -1,0 +1,12 @@
+{
+ "bayes_position_open_field": "cdd14dc3d8c7070f3fc4510549e2cad70891d7d592ff4a9816b1449fd2babcb7",
+ "decode_logistic_social": "887b210f1fa9d4c778caac1d969cf0cbb66b146c0994fc964c3838e96044e76d",
+ "gui_auroc_circular": "9e7b62c84598293041a390e3d4c57cf21805f4b8dec1f6aa98bc5d5cddb6ab1e",
+ "gui_auroc_speed_matched": "9e7b62c84598293041a390e3d4c57cf21805f4b8dec1f6aa98bc5d5cddb6ab1e",
+ "gui_place_cells": "5f4ab80f4cf33e37c3daf10d86aca6e29de3c95b2b59ec9f2551364d0044462c",
+ "pairwise_social": "ede3277acafa022074e0d7a488898ee404a6c5bcd6231d2e18ecf0e7f3746cbe",
+ "pca_population": "f8e46042f72f3b42df67686c2f847477f4648f04e46fc691bc59dd2f2c2e5d56",
+ "place_cell_open_field": "45401df95b5de49f832c222f14dfc2e92d7bb5217716e4e9e1bd05b4e66f7984",
+ "population_social": "634010be921cf0e546f034831a3600ac2d0355beb61e9d469805cc1265c26ece",
+ "social_auroc": "266da1abc8ec7645e69e624a5333f61e756ca5ec91dee4b642327400325f9e56"
+}

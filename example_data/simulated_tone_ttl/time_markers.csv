@@ -1,0 +1,11 @@
+label,time_s
+tone,40.0
+tone,80.0
+tone,120.0
+tone,160.0
+shock,179.0
+tone,200.0
+shock,219.0
+tone,240.0
+shock,259.0
+tone,315.0

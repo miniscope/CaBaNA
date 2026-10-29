@@ -1,0 +1,28 @@
+{
+ "session": "simulated_social_interaction",
+ "pipeline": {
+  "analyses": [
+   {
+    "name": "decoding_behavior",
+    "metric": {
+     "name": "decode_states",
+     "classifier": "logistic",
+     "n_folds": 5,
+     "mode": "one_vs_rest"
+    },
+    "states": "social",
+    "shuffle": {
+     "n_shuffles": 20,
+     "null": {
+      "name": "label_shuffle",
+      "block_s": 1.0
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "n_jobs": -1
+    }
+   }
+  ]
+ }
+}
