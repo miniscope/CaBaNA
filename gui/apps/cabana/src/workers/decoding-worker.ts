@@ -41,16 +41,26 @@ onmessage = (e: MessageEvent<DecodingWorkerInbound>) => {
       const result = runLinearShuffles(input, params, blockS, seed, from, to, (done) =>
         post({ type: 'progress', jobId: msg.jobId, done }),
       );
-      post({ type: 'shuffles-complete', jobId: msg.jobId, result }, [result.values.buffer, result.overall.buffer]);
+      post({ type: 'shuffles-complete', jobId: msg.jobId, result }, [
+        result.values.buffer,
+        result.overall.buffer,
+      ]);
     } else {
       const { input, params, blockS, seed, from, to } = msg;
       const result = runShuffles(input, params, blockS, seed, from, to, (done) =>
         post({ type: 'progress', jobId: msg.jobId, done }),
       );
-      post({ type: 'shuffles-complete', jobId: msg.jobId, result }, [result.values.buffer, result.overall.buffer]);
+      post({ type: 'shuffles-complete', jobId: msg.jobId, result }, [
+        result.values.buffer,
+        result.overall.buffer,
+      ]);
     }
   } catch (err) {
-    post({ type: 'error', jobId: msg.jobId, message: err instanceof Error ? err.message : String(err) });
+    post({
+      type: 'error',
+      jobId: msg.jobId,
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 };
 

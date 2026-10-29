@@ -43,7 +43,8 @@ export function rebin(
   const k = roundHalfEven(binS * fs);
   if (k < 1) throw new Error('The time bin is shorter than one frame.');
   const nNew = Math.floor(frames / k);
-  if (k > 1 && nNew < 2) throw new Error('The time bin is too large: fewer than two bins would remain.');
+  if (k > 1 && nNew < 2)
+    throw new Error('The time bin is too large: fewer than two bins would remain.');
   const out = new Float64Array(cells * nNew);
   for (let c = 0; c < cells; c++)
     for (let b = 0; b < nNew; b++) {
@@ -194,7 +195,11 @@ export function labelShuffle(
   const out = labels.slice();
   if (!idx.length) return out;
   const b = Math.max(1, block);
-  const perm = blockPermutation(idx.length, b, order ?? randomOrder(Math.ceil(idx.length / b), rng));
+  const perm = blockPermutation(
+    idx.length,
+    b,
+    order ?? randomOrder(Math.ceil(idx.length / b), rng),
+  );
   for (let i = 0; i < idx.length; i++) out[idx[i]] = labels[idx[perm[i]]];
   return out;
 }

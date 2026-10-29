@@ -14,7 +14,9 @@ import ref from './decoding_reference.json';
 // make_decoding_reference.py). The browser versions must give the same numbers.
 
 const nan = (a: (number | null)[]) => a.map((x) => (x === null ? NaN : x));
-const neural = Float64Array.from(nan((ref.neural as (number | null)[][]).flat()).map((x) => (Number.isNaN(x) ? 0 : x)));
+const neural = Float64Array.from(
+  nan((ref.neural as (number | null)[][]).flat()).map((x) => (Number.isNaN(x) ? 0 : x)),
+);
 const labels = Int32Array.from(ref.labels);
 const mask = Uint8Array.from(ref.mask);
 
@@ -26,7 +28,16 @@ describe('roundHalfEven', () => {
 
 describe('rebin', () => {
   it('matches Session.rebin: summed neural data, 50% rule for labels and mask', () => {
-    const r = rebin(neural, ref.cells, ref.frames, labels, mask, ref.shape[0] * ref.shape[1], ref.fs, 0.5);
+    const r = rebin(
+      neural,
+      ref.cells,
+      ref.frames,
+      labels,
+      mask,
+      ref.shape[0] * ref.shape[1],
+      ref.fs,
+      0.5,
+    );
     expect(r.k).toBe(ref.rebin.k);
     expect(r.frames).toBe(ref.frames / ref.rebin.k);
     const want = nan(ref.rebin.neural.flat() as (number | null)[]);
@@ -53,12 +64,23 @@ describe('exclusiveLabels', () => {
   );
   it('matches BoutsToStates with priority order and a rest state', () => {
     const c = ex.cases.order_abc_rest;
-    const got = exclusiveLabels(rows, ex.frames, c.behaviors.map((b) => names.indexOf(b)), true, scored);
+    const got = exclusiveLabels(
+      rows,
+      ex.frames,
+      c.behaviors.map((b) => names.indexOf(b)),
+      true,
+      scored,
+    );
     expect(Array.from(got)).toEqual(c.labels);
   });
   it('matches BoutsToStates with another priority order and no rest state', () => {
     const c = ex.cases.order_cba;
-    const got = exclusiveLabels(rows, ex.frames, c.behaviors.map((b) => names.indexOf(b)), false);
+    const got = exclusiveLabels(
+      rows,
+      ex.frames,
+      c.behaviors.map((b) => names.indexOf(b)),
+      false,
+    );
     expect(Array.from(got)).toEqual(c.labels);
   });
   it('reports the overlap and the final frame counts', () => {

@@ -117,7 +117,8 @@ export function buildFeatures(m: BayesInput, p: BayesParams, used: Uint8Array): 
   const folds = contiguousFolds(n, p.nFolds);
   const x = new Uint8Array(n * m.cells);
   for (let j = 0; j < n; j++)
-    for (let c = 0; c < m.cells; c++) x[j * m.cells + c] = m.neural[c * m.frames + idx[j]] > 0 ? 1 : 0;
+    for (let c = 0; c < m.cells; c++)
+      x[j * m.cells + c] = m.neural[c * m.frames + idx[j]] > 0 ? 1 : 0;
   const w = windowFrames(p.windowS, m.fs);
   const half = (w - 1) / 2;
   // Window over used frames within `half` frames of the centre, within the fold when clipped.
@@ -190,7 +191,8 @@ function blockMaps(
     // `rate_maps_from_sums` with fs = 1 and no minimum occupancy: valid where the state was visited.
     const mapper = makeMapper(occ, 1, 0, shape, p.smoothSigmaBins);
     const r = new Float64Array(m.cells * m.nStates);
-    for (let c = 0; c < m.cells; c++) r.set(mapper.rate(sums.subarray(c * m.nStates, (c + 1) * m.nStates)), c * m.nStates);
+    for (let c = 0; c < m.cells; c++)
+      r.set(mapper.rate(sums.subarray(c * m.nStates, (c + 1) * m.nStates)), c * m.nStates);
     rates.push(r);
     for (let s = 0; s < m.nStates; s++) total[s] += occ[s];
   }
@@ -198,7 +200,13 @@ function blockMaps(
 }
 
 /** Maps over all training frames as one block (`_maps`): cells x states. */
-function trainingMap(m: BayesInput, p: BayesParams, f: Features, lab: Int32Array, train: number[]): Float64Array {
+function trainingMap(
+  m: BayesInput,
+  p: BayesParams,
+  f: Features,
+  lab: Int32Array,
+  train: number[],
+): Float64Array {
   return blockMaps(m, p, f, lab, train, 1).rates[0];
 }
 
@@ -221,7 +229,8 @@ function logLikGaussian(
   for (let i = 0; i < cells * nStates; i++) {
     let n = 0;
     let s = 0;
-    for (const r of rates) if (Number.isFinite(r[i])) {
+    for (const r of rates)
+      if (Number.isFinite(r[i])) {
         n++;
         s += r[i];
       }
@@ -257,8 +266,7 @@ function logLikGaussian(
     const pooled = Math.max(Math.sqrt(wVar / Math.max(wts, 1)), tiny);
     for (let s = 0; s < nStates; s++) {
       const i = c * nStates + s;
-      const sigma =
-        p.sigma === 'pooled' ? pooled : cnt[i] >= 2 ? Math.max(sd[i], floor) : floor;
+      const sigma = p.sigma === 'pooled' ? pooled : cnt[i] >= 2 ? Math.max(sd[i], floor) : floor;
       const a = 1 / (2 * sigma * sigma);
       lin[s * cells + c] = 2 * a * mu[i];
       quad[s * cells + c] = a;
@@ -327,7 +335,8 @@ export function makeBayesDecoder(m: BayesInput, p: BayesParams) {
     const valid = new Uint8Array(nStates);
     for (let s = 0; s < nStates; s++) valid[s] = nFrames[s] >= p.minFramesPerClass ? 1 : 0;
     const used = new Uint8Array(frames);
-    for (let t = 0; t < frames; t++) used[t] = m.mask[t] && labels[t] >= 0 && valid[labels[t]] ? 1 : 0;
+    for (let t = 0; t < frames; t++)
+      used[t] = m.mask[t] && labels[t] >= 0 && valid[labels[t]] ? 1 : 0;
     const nUsed = used.reduce((s, v) => s + v, 0);
     const nValid = valid.reduce((s, v) => s + v, 0);
 
@@ -372,7 +381,8 @@ export function makeBayesDecoder(m: BayesInput, p: BayesParams) {
             }
           }
           let z = 0;
-          for (let s = 0; s < nStates; s++) if (cand[s]) z += Math.exp(ll[r * nStates + s] + logPrior[s] - bestV);
+          for (let s = 0; s < nStates; s++)
+            if (cand[s]) z += Math.exp(ll[r * nStates + s] + logPrior[s] - bestV);
           const t = f.idx[j];
           decoded[t] = best;
           confPost[t] = 1 / z;
@@ -406,7 +416,10 @@ function summarize(
   let nDec = 0;
   let post = 0;
   const dist = (a: number, b: number) =>
-    Math.hypot(m.centers![2 * a] - m.centers![2 * b], m.centers![2 * a + 1] - m.centers![2 * b + 1]);
+    Math.hypot(
+      m.centers![2 * a] - m.centers![2 * b],
+      m.centers![2 * a + 1] - m.centers![2 * b + 1],
+    );
   for (let t = 0; t < frames; t++) {
     if (decoded[t] < 0) continue;
     nDec++;

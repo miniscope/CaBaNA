@@ -25,7 +25,14 @@ describe('p-values and max-stat correction against the framework', () => {
     const want = ref.pvalues.tails[tail];
     it(`${tail} tail: raw p`, () => {
       const got = Array.from(obs, (o, s) =>
-        pTail(o, Float64Array.from({ length: nullFlat.length / nStates }, (_, i) => nullFlat[i * nStates + s]), tail),
+        pTail(
+          o,
+          Float64Array.from(
+            { length: nullFlat.length / nStates },
+            (_, i) => nullFlat[i * nStates + s],
+          ),
+          tail,
+        ),
       );
       nan(want.p_raw).forEach((w, s) => expect(got[s]).toBeCloseTo(w, 12));
     });
@@ -77,7 +84,14 @@ describe('shuffle test on the simulated place cells', () => {
   it('shuffled labels carry no position: a shuffled run is not better than the shuffle null', () => {
     const labels = shuffledLabels(position.labels, position.mask, 20, seed, 999);
     const dec = makeBayesDecoder({ ...position, labels }, params)();
-    const fake = decodeTest(dec.values, overallStatistic(dec, true), values, overall, 'lower', 'max_stat');
+    const fake = decodeTest(
+      dec.values,
+      overallStatistic(dec, true),
+      values,
+      overall,
+      'lower',
+      'max_stat',
+    );
     expect(fake.pOverall).toBeGreaterThan(0.05);
   });
   it('gives the same shuffles whatever the split across workers', () => {

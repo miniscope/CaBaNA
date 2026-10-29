@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { cvPredict, DEFAULT_LINEAR, decodeLinear, fitLogistic, type LinearInput } from '../lib/decode-linear.ts';
+import {
+  cvPredict,
+  DEFAULT_LINEAR,
+  decodeLinear,
+  fitLogistic,
+  type LinearInput,
+} from '../lib/decode-linear.ts';
 import { contiguousFolds } from '../lib/placecells.ts';
 import ref from './decoding_reference.json';
 
@@ -31,7 +37,8 @@ function setup(L: Ref) {
   const n = idx.length;
   const x = new Float64Array(n * input.cells); // labeled frames x cells
   idx.forEach((t, i) => {
-    for (let c = 0; c < input.cells; c++) x[i * input.cells + c] = (input.neural as Float64Array)[c * input.frames + t];
+    for (let c = 0; c < input.cells; c++)
+      x[i * input.cells + c] = (input.neural as Float64Array)[c * input.frames + t];
   });
   return { input, idx, n, x };
 }
@@ -44,12 +51,16 @@ function foldZero(L: Ref) {
   const tr = [...folds].flatMap((f, i) => (f !== 0 ? [i] : []));
   const mu = new Float64Array(input.cells);
   const sd = new Float64Array(input.cells);
-  for (const i of tr) for (let c = 0; c < input.cells; c++) mu[c] += x[i * input.cells + c] / tr.length;
-  for (const i of tr) for (let c = 0; c < input.cells; c++) sd[c] += (x[i * input.cells + c] - mu[c]) ** 2 / tr.length;
+  for (const i of tr)
+    for (let c = 0; c < input.cells; c++) mu[c] += x[i * input.cells + c] / tr.length;
+  for (const i of tr)
+    for (let c = 0; c < input.cells; c++)
+      sd[c] += (x[i * input.cells + c] - mu[c]) ** 2 / tr.length;
   for (let c = 0; c < input.cells; c++) sd[c] = Math.sqrt(sd[c]) > 1e-12 ? Math.sqrt(sd[c]) : 1;
   const xt = new Float64Array(tr.length * input.cells);
   tr.forEach((i, r) => {
-    for (let c = 0; c < input.cells; c++) xt[r * input.cells + c] = (x[i * input.cells + c] - mu[c]) / sd[c];
+    for (let c = 0; c < input.cells; c++)
+      xt[r * input.cells + c] = (x[i * input.cells + c] - mu[c]) / sd[c];
   });
   return { input, xt, yt: Uint8Array.from(tr, (i) => y[i]), n: tr.length };
 }
@@ -75,7 +86,9 @@ for (const [name, L] of [
     const out = decodeLinear(input, DEFAULT_LINEAR);
     it('decodes the same behaviors with the same frame counts', () => {
       expect(Array.from(out.nFrames)).toEqual(L.n_frames);
-      nan(L.values as (number | null)[]).forEach((w, s) => expect(Number.isNaN(out.values[s])).toBe(Number.isNaN(w)));
+      nan(L.values as (number | null)[]).forEach((w, s) =>
+        expect(Number.isNaN(out.values[s])).toBe(Number.isNaN(w)),
+      );
     });
     it('held-out predictions differ from scikit-learn on at most one frame per fold', () => {
       const folds = contiguousFolds(n, 5);
@@ -84,7 +97,8 @@ for (const [name, L] of [
         const got = cvPredict(x, y, n, input.cells, DEFAULT_LINEAR)!;
         for (let f = 0; f < 5; f++) {
           let diff = 0;
-          for (let i = 0; i < n; i++) if (folds[i] === f && got[i] !== (want as number[])[i]) diff++;
+          for (let i = 0; i < n; i++)
+            if (folds[i] === f && got[i] !== (want as number[])[i]) diff++;
           expect(diff, `behavior ${state}, fold ${f}`).toBeLessThanOrEqual(1);
         }
       }

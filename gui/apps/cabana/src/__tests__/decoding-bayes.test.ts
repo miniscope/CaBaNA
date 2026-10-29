@@ -105,11 +105,26 @@ describe('Bayesian decoder against the framework (window as the framework makes 
   it('behaviors: Gaussian, pooled sigma, recall per state', () =>
     check(categorical, toParams(ref.categorical.params), ref.categorical as unknown as Case));
   it('behaviors: Poisson', () =>
-    check(categorical, toParams(ref.categorical_poisson.params), ref.categorical_poisson as unknown as Case));
+    check(
+      categorical,
+      toParams(ref.categorical_poisson.params),
+      ref.categorical_poisson as unknown as Case,
+    ));
   it('shuffled labels give the framework result for the same block order', () => {
     const block = Math.round(ref.shuffle.block_s * ref.fs);
-    const labels = labelShuffle(position.labels, position.mask, block, makeRng(0), ref.shuffle.order);
-    check(position, toParams(ref.position.gauss_per_state.params), ref.shuffle.decode as unknown as Case, labels);
+    const labels = labelShuffle(
+      position.labels,
+      position.mask,
+      block,
+      makeRng(0),
+      ref.shuffle.order,
+    );
+    check(
+      position,
+      toParams(ref.position.gauss_per_state.params),
+      ref.shuffle.decode as unknown as Case,
+      labels,
+    );
   });
 });
 

@@ -25,12 +25,16 @@ export type DecodingPoolJob = BaseJob &
     | ({ kind: 'linear-observed'; onComplete(r: LinearOut): void } & Fields<
         Extract<LinearWorkerInbound, { type: 'linear-observed-job' }>
       >)
-    | ({ kind: 'linear-shuffles'; onProgress(done: number): void; onComplete(r: ShuffleBatch): void } & Fields<
-        Extract<LinearWorkerInbound, { type: 'linear-shuffles-job' }>
-      >)
-    | ({ kind: 'shuffles'; onProgress(done: number): void; onComplete(r: ShuffleBatch): void } & Fields<
-        Extract<DecodingWorkerInbound, { type: 'shuffles-job' }>
-      >)
+    | ({
+        kind: 'linear-shuffles';
+        onProgress(done: number): void;
+        onComplete(r: ShuffleBatch): void;
+      } & Fields<Extract<LinearWorkerInbound, { type: 'linear-shuffles-job' }>>)
+    | ({
+        kind: 'shuffles';
+        onProgress(done: number): void;
+        onComplete(r: ShuffleBatch): void;
+      } & Fields<Extract<DecodingWorkerInbound, { type: 'shuffles-job' }>>)
   );
 
 const router: MessageRouter<DecodingPoolJob, DecodingWorkerOutbound> = {
@@ -51,11 +55,16 @@ const router: MessageRouter<DecodingPoolJob, DecodingWorkerOutbound> = {
   buildDispatch(job) {
     const { kind, jobId, ...rest } = job as Record<string, unknown> & typeof job;
     // Callbacks stay on this side; only data goes to the worker.
-    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => typeof v !== 'function'));
+    const data = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => typeof v !== 'function'),
+    );
     const src = (job as { input: BayesInput | LinearInput }).input;
     const input = {
       ...src,
-      neural: src.neural instanceof Float64Array ? src.neural.slice() : Float32Array.from(src.neural as ArrayLike<number>),
+      neural:
+        src.neural instanceof Float64Array
+          ? src.neural.slice()
+          : Float32Array.from(src.neural as ArrayLike<number>),
       labels: src.labels.slice(),
       mask: src.mask.slice(),
       ...('centers' in src && src.centers ? { centers: src.centers.slice() } : {}),

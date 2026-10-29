@@ -63,7 +63,15 @@ export interface LogisticFit {
  * `sw` = n / (2 n_class). `x` is n x d row-major. L-BFGS with a backtracking line search, run until the
  * largest gradient component is below `tol`.
  */
-export function fitLogistic(x: Float64Array, y: Uint8Array, n: number, d: number, C: number, tol = 1e-7, maxIter = 2000): LogisticFit {
+export function fitLogistic(
+  x: Float64Array,
+  y: Uint8Array,
+  n: number,
+  d: number,
+  C: number,
+  tol = 1e-7,
+  maxIter = 2000,
+): LogisticFit {
   const n1 = y.reduce((s, v) => s + v, 0);
   const sw = [n / (2 * (n - n1)), n / (2 * n1)];
   const dim = d + 1;
@@ -84,8 +92,10 @@ export function fitLogistic(x: Float64Array, y: Uint8Array, n: number, d: number
       const margin = s * m;
       const w = C * sw[y[i]];
       // log(1 + exp(-margin)) without overflow, and its derivative -s * sigmoid(-margin)
-      loss += w * (margin > 0 ? Math.log1p(Math.exp(-margin)) : -margin + Math.log1p(Math.exp(margin)));
-      const p = margin > 0 ? Math.exp(-margin) / (1 + Math.exp(-margin)) : 1 / (1 + Math.exp(margin));
+      loss +=
+        w * (margin > 0 ? Math.log1p(Math.exp(-margin)) : -margin + Math.log1p(Math.exp(margin)));
+      const p =
+        margin > 0 ? Math.exp(-margin) / (1 + Math.exp(-margin)) : 1 / (1 + Math.exp(margin));
       const r = -s * p * w;
       for (let j = 0; j < d; j++) g[j] += r * x[row + j];
       g[d] += r;
@@ -111,7 +121,9 @@ export function fitLogistic(x: Float64Array, y: Uint8Array, n: number, d: number
       alpha[k] = rho[k] * dot(S[k], q);
       for (let j = 0; j < dim; j++) q[j] -= alpha[k] * Y[k][j];
     }
-    const gamma = S.length ? dot(S[S.length - 1], Y[S.length - 1]) / dot(Y[S.length - 1], Y[S.length - 1]) : 1 / Math.max(1, maxAbs(grad));
+    const gamma = S.length
+      ? dot(S[S.length - 1], Y[S.length - 1]) / dot(Y[S.length - 1], Y[S.length - 1])
+      : 1 / Math.max(1, maxAbs(grad));
     for (let j = 0; j < dim; j++) q[j] *= gamma;
     for (let k = 0; k < S.length; k++) {
       const beta = rho[k] * dot(Y[k], q);
@@ -159,18 +171,28 @@ export function fitLogistic(x: Float64Array, y: Uint8Array, n: number, d: number
  * training fold's mean and s.d. (a cell with s.d. at most 1e-12 is left unscaled), one logistic fit, and the
  * class predicted for every test frame. Rows are frames.
  */
-export function fitPredict(xTrain: Float64Array, yTrain: Uint8Array, nTrain: number, xTest: Float64Array, nTest: number, d: number, C: number): Uint8Array {
+export function fitPredict(
+  xTrain: Float64Array,
+  yTrain: Uint8Array,
+  nTrain: number,
+  xTest: Float64Array,
+  nTest: number,
+  d: number,
+  C: number,
+): Uint8Array {
   const mu = new Float64Array(d);
   const sd = new Float64Array(d);
   for (let i = 0; i < nTrain; i++) for (let j = 0; j < d; j++) mu[j] += xTrain[i * d + j];
   for (let j = 0; j < d; j++) mu[j] /= nTrain;
-  for (let i = 0; i < nTrain; i++) for (let j = 0; j < d; j++) sd[j] += (xTrain[i * d + j] - mu[j]) ** 2;
+  for (let i = 0; i < nTrain; i++)
+    for (let j = 0; j < d; j++) sd[j] += (xTrain[i * d + j] - mu[j]) ** 2;
   for (let j = 0; j < d; j++) {
     sd[j] = Math.sqrt(sd[j] / nTrain);
     if (!(sd[j] > 1e-12)) sd[j] = 1;
   }
   const xt = new Float64Array(nTrain * d);
-  for (let i = 0; i < nTrain; i++) for (let j = 0; j < d; j++) xt[i * d + j] = (xTrain[i * d + j] - mu[j]) / sd[j];
+  for (let i = 0; i < nTrain; i++)
+    for (let j = 0; j < d; j++) xt[i * d + j] = (xTrain[i * d + j] - mu[j]) / sd[j];
   const fit = fitLogistic(xt, yTrain, nTrain, d, C, FIT_TOL);
   const out = new Uint8Array(nTest);
   for (let i = 0; i < nTest; i++) {
@@ -182,7 +204,13 @@ export function fitPredict(xTrain: Float64Array, yTrain: Uint8Array, nTrain: num
 }
 
 /** `_cv_predict`: out-of-fold predictions of a binary target, or undefined when a training fold lacks a class. */
-export function cvPredict(x: Float64Array, y: Uint8Array, n: number, d: number, p: LinearParams): Uint8Array | undefined {
+export function cvPredict(
+  x: Float64Array,
+  y: Uint8Array,
+  n: number,
+  d: number,
+  p: LinearParams,
+): Uint8Array | undefined {
   const folds = contiguousFolds(n, p.nFolds);
   const pred = new Uint8Array(n);
   for (let f = 0; f < p.nFolds; f++) {
@@ -197,7 +225,15 @@ export function cvPredict(x: Float64Array, y: Uint8Array, n: number, d: number, 
       idx.forEach((i, r) => m.set(x.subarray(i * d, (i + 1) * d), r * d));
       return m;
     };
-    const out = fitPredict(gather(tr), Uint8Array.from(tr, (i) => y[i]), tr.length, gather(te), te.length, d, p.C);
+    const out = fitPredict(
+      gather(tr),
+      Uint8Array.from(tr, (i) => y[i]),
+      tr.length,
+      gather(te),
+      te.length,
+      d,
+      p.C,
+    );
     te.forEach((i, r) => {
       pred[i] = out[r];
     });
@@ -206,7 +242,11 @@ export function cvPredict(x: Float64Array, y: Uint8Array, n: number, d: number, 
 }
 
 /** `DecodeStates._run`, one-vs-rest: the cross-validated balanced accuracy of each behavior. */
-export function decodeLinear(m: LinearInput, p: LinearParams, labels: Int32Array = m.labels): LinearOut {
+export function decodeLinear(
+  m: LinearInput,
+  p: LinearParams,
+  labels: Int32Array = m.labels,
+): LinearOut {
   const idx: number[] = [];
   for (let t = 0; t < m.frames; t++) if (m.mask[t] && labels[t] >= 0) idx.push(t);
   const n = idx.length;

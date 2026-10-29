@@ -15,7 +15,12 @@
 
 import { labelShuffle, roundHalfEven } from './decode-shared.ts';
 import { decodeLinear, type LinearInput, type LinearParams } from './decode-linear.ts';
-import { makeBayesDecoder, type BayesInput, type BayesOut, type BayesParams } from './decode-bayes.ts';
+import {
+  makeBayesDecoder,
+  type BayesInput,
+  type BayesOut,
+  type BayesParams,
+} from './decode-bayes.ts';
 import { makeRng } from './placecells.ts';
 
 /** Lower: smaller is better (error). Upper: larger is better (accuracy, recall). */
@@ -94,10 +99,12 @@ export function maxStatP(
   const nShuf = ns ? nullDraws.length / ns : 0;
   const cols = Array.from({ length: ns }, (_, s) => {
     const v: number[] = [];
-    for (let i = 0; i < nShuf; i++) if (Number.isFinite(nullDraws[i * ns + s])) v.push(nullDraws[i * ns + s]);
+    for (let i = 0; i < nShuf; i++)
+      if (Number.isFinite(nullDraws[i * ns + s])) v.push(nullDraws[i * ns + s]);
     return Float64Array.from(v).sort();
   });
-  const tailP = (ge: number, le: number, n: number) => Math.min((tail === 'upper' ? ge : le) / n, 1);
+  const tailP = (ge: number, le: number, n: number) =>
+    Math.min((tail === 'upper' ? ge : le) / n, 1);
   const minP = new Float64Array(nShuf).fill(Infinity);
   for (let s = 0; s < ns; s++) {
     const n = cols[s].length;
@@ -151,7 +158,8 @@ export function decodeTest(
     for (let i = 0; i < nShuf; i++) col[i] = nullValues[i * ns + s];
     pRaw[s] = pTail(observed[s], col, tail);
   }
-  const pAdj = correction === 'max_stat' && ns > 1 ? maxStatP(observed, nullValues, tail, pRaw) : pRaw.slice();
+  const pAdj =
+    correction === 'max_stat' && ns > 1 ? maxStatP(observed, nullValues, tail, pRaw) : pRaw.slice();
   return { pRaw, pAdj, overall, pOverall: pTail(overall, nullOverall, tail) };
 }
 
@@ -196,7 +204,11 @@ export function runLinearShuffles(
   const values = new Float64Array((to - from) * input.nStates);
   const overall = new Float64Array(to - from);
   for (let i = from; i < to; i++) {
-    const out = decodeLinear(input, params, shuffledLabels(input.labels, input.mask, block, seed, i));
+    const out = decodeLinear(
+      input,
+      params,
+      shuffledLabels(input.labels, input.mask, block, seed, i),
+    );
     values.set(out.values, (i - from) * input.nStates);
     overall[i - from] = out.overall;
     onProgress?.(i - from + 1);
