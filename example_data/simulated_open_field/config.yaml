@@ -1,0 +1,17 @@
+# Session config for the simulated open field, in the layout cabana.loaders.load_session_dir reads.
+# The center zone is the inner 20 x 20 cm; periphery (in the annotations) is the rest.
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {denoised: neural_denoised.npy, raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  position: {file: position.csv, units: cm}
+  epochs:
+    zones: {file: zone_annotations.csv, exclusive: true}
+arena:
+  size: [40, 40]
+  units: cm
+  zones:
+    center: [10, 10, 30, 30]

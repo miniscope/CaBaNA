@@ -1,0 +1,37 @@
+{
+  "name": "cabana",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "calab": {
+    "id": "cabana",
+    "displayName": "CaBaNA",
+    "description": "",
+    "longDescription": "",
+    "features": [],
+    "status": "beta",
+    "hidden": false,
+    "screenshot": ""
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@calab/compute": "*",
+    "@calab/core": "*",
+    "@calab/io": "*",
+    "@calab/tutorials": "*",
+    "@calab/ui": "*",
+    "@dschz/solid-uplot": "^0.5.2",
+    "solid-js": "^1.9.15",
+    "uplot": "^1.6.32",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@calab/vite-config": "*"
+  }
+}

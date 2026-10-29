@@ -1,0 +1,10 @@
+dist/
+apps/*/dist/
+packages/*/dist/
+crates/solver/pkg/
+crates/solver/target/
+.planning/
+package-lock.json
+python/.venv/
+python/docs/_build/
+python/docs/autoapi/

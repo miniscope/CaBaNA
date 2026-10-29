@@ -1,0 +1,15 @@
+# Session config for the simulated social interaction, in the layout cabana.loaders.load_session_dir reads.
+# Sniffing: within 6 cm. Following: within 12 cm and both faster than 8 cm/s.
+neural:
+  file: neural_deconvolved.npy
+  kind: deconvolved
+  timestamps: neural_timestamps.csv
+  alternatives: {denoised: neural_denoised.npy, raw: neural_raw.npy}
+behavior:
+  timestamps: behavior_timestamps.csv
+  position: {file: position.csv, units: cm}
+  epochs:
+    social: {file: social_annotations.csv, exclusive: false}
+arena:
+  size: [50, 50]
+  units: cm
