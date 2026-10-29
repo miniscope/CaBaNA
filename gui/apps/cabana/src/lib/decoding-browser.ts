@@ -34,6 +34,7 @@ import {
   type PositionDecoding,
 } from './decoding-settings.ts';
 import type { ResultSource } from './results-load.ts';
+import { prep } from './preprocess.ts';
 import { onClear } from './store.ts';
 import type { ShuffleBatch } from '../workers/decoding-types.ts';
 
@@ -53,12 +54,22 @@ export interface BrowserDecodingRun {
   overallName: string;
   /** What differs from a framework run with the same settings. */
   notes: string[];
+  /** The settings the run used, to tell when the results are outdated. */
+  settingsKey: string;
 }
 
 export type BrowserStatus =
   | { kind: 'idle' }
   | { kind: 'running'; step: string; done: number; total: number }
   | { kind: 'error'; message: string };
+
+const currentSettingsKey = () =>
+  JSON.stringify([decodeTarget.type, positionDecoding, behaviorDecoding, prep]);
+/** The browser result on screen was made with other settings than the ones now set. */
+export const browserOutdated = () => {
+  const r = browserRun();
+  return !!r && r.settingsKey !== currentSettingsKey();
+};
 
 export const [browserRun, setBrowserRun] = createSignal<BrowserDecodingRun | undefined>();
 export const [browserStatus, setBrowserStatus] = createSignal<BrowserStatus>({ kind: 'idle' });
@@ -292,8 +303,12 @@ export async function runBrowserDecoding(): Promise<boolean> {
   const position = decodeTarget.type === 'position';
   const s = position ? positionDecoding : behaviorDecoding;
   const t0 = performance.now();
+  const settingsKey = currentSettingsKey();
   try {
-    let run: Omit<BrowserDecodingRun, 'seconds' | 'shuffles' | 'target' | 'decoder' | 'notes'>;
+    let run: Omit<
+      BrowserDecodingRun,
+      'seconds' | 'shuffles' | 'target' | 'decoder' | 'notes' | 'settingsKey'
+    >;
     if (position) {
       const d = p.data as PositionDecodeData;
       const params = bayesParams(s);
@@ -378,6 +393,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
         seconds: (performance.now() - t0) / 1000,
         shuffles: s.shuffles,
         notes: NOTES,
+        settingsKey,
       });
       setShownEngine('browser');
       setBrowserStatus({ kind: 'idle' });

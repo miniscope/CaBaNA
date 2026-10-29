@@ -14,6 +14,19 @@ import { reconcile } from 'solid-js/store';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { bridgeState } from '../lib/bridge-status.ts';
 import {
+  BROWSER_DECODING_ENGINE_TEXT,
+  BROWSER_DECODING_RUN_LABEL,
+  browserBlock,
+  browserOutdated,
+  browserRun,
+  browserStatus,
+  cancelBrowserDecoding,
+  runBrowserDecoding,
+  setShownEngine,
+  shownEngine,
+  type BrowserDecodingRun,
+} from '../lib/decoding-browser.ts';
+import {
   behaviorDecoding,
   DEFAULT_BEHAVIOR_DECODING,
   DEFAULT_POSITION_DECODING,
@@ -40,6 +53,7 @@ import {
   setLatest,
 } from '../lib/runs.ts';
 import { DecodingResults } from './DecodingResults.tsx';
+import { RunProgress } from './results/EngineNotice.tsx';
 import './decoding/persist.ts';
 import {
   ChecksView,
@@ -153,6 +167,39 @@ function Results(props: { onBack: () => void }): JSX.Element {
   );
 }
 
+/** A browser-engine result: the same results page, with the engine named above it. */
+function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }): JSX.Element {
+  const r = () => props.run;
+  return (
+    <div class="cb-place cb-dec-page">
+      <div class="cb-place-head">
+        <div>
+          <h2>Decoding results</h2>
+        </div>
+        <div class="cb-controls">
+          <Show when={browserOutdated()}>
+            <span class="cb-badge cb-badge--warn">Results are outdated</span>
+          </Show>
+          <button type="button" class="btn-secondary" onClick={() => props.onBack()}>
+            Back to settings
+          </button>
+        </div>
+      </div>
+      <div class="cb-note" role="status">
+        <b>Browser engine.</b> {BROWSER_DECODING_ENGINE_TEXT}. {r().shuffles.toLocaleString()}{' '}
+        shuffles, {r().seconds.toFixed(0)} s.{' '}
+        <Show when={r().overallP !== null}>
+          Overall {r().overallName} against the shuffled null: p = {r().overallP!.toFixed(4)}.
+        </Show>
+        <ul>
+          <For each={r().notes}>{(n) => <li>{n}</li>}</For>
+        </ul>
+      </div>
+      <DecodingResults source={r().source} />
+    </div>
+  );
+}
+
 /** Test-only route: `?decoding_fixture=<name>` shows a framework test fixture, bannered as such. */
 function FixtureResults(props: { name: string }): JSX.Element {
   const [src] = createResource(async (): Promise<ResultSource | undefined> => {
@@ -183,9 +230,20 @@ function Setup(props: { onResults: () => void }): JSX.Element {
     async () => compareToLatest('decoding'),
   );
   const failure = () => (lastError()?.id === 'decoding' ? lastError()!.message : undefined);
+  // The browser engine is offered, as its own labeled action, when the Python engine cannot run.
+  const browserOffered = () => c().engineOff || c().framework.length > 0;
+  const browserRunning = () => browserStatus().kind === 'running';
+  const browserFailure = () => {
+    const b = browserStatus();
+    return b.kind === 'error' ? b.message : undefined;
+  };
+  const hasResults = () => !!(latest.decoding || browserRun());
+  const onBrowserRun = () => void runBrowserDecoding().then((ok) => ok && props.onResults());
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   const status = () => {
+    if (shownEngine() === 'browser' && browserRun())
+      return browserOutdated() ? 'Results are outdated' : '';
     const r = latest.decoding;
     if (!r) return '';
     if (r.status === 'failed') return 'Last run failed';
@@ -223,9 +281,11 @@ function Setup(props: { onResults: () => void }): JSX.Element {
           <Show when={status()}>
             <span class="cb-badge cb-badge--warn">{status()}</span>
           </Show>
-          <Show when={latest.decoding}>
+          <Show when={hasResults()}>
             <button type="button" class="btn-secondary" onClick={() => props.onResults()}>
-              {match()?.matches === false ? 'View previous results' : 'View results'}
+              {(shownEngine() === 'browser' ? browserOutdated() : match()?.matches === false)
+                ? 'View previous results'
+                : 'View results'}
             </button>
           </Show>
         </div>
@@ -281,6 +341,48 @@ function Setup(props: { onResults: () => void }): JSX.Element {
           The run could not start or failed: {failure()}
         </div>
       </Show>
+      <Show when={browserOffered()}>
+        <div class="cb-note" role="status">
+          <Show
+            when={browserRunning()}
+            fallback={
+              <>
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  disabled={!!run() || browserBlock() !== ''}
+                  title="Runs the TypeScript port in this browser. Random draws differ from the framework, so p-values differ slightly. The fold gap setting is not applied."
+                  onClick={onBrowserRun}
+                >
+                  {BROWSER_DECODING_RUN_LABEL}
+                </button>{' '}
+                <Show when={browserBlock()}>
+                  <span class="cb-dec-block">{browserBlock()}</span>
+                </Show>
+              </>
+            }
+          >
+            {(() => {
+              const b = browserStatus() as Extract<
+                ReturnType<typeof browserStatus>,
+                { kind: 'running' }
+              >;
+              return (
+                <>
+                  <RunProgress done={b.done} total={b.total} />
+                  <span class="cb-muted">{b.step}</span>{' '}
+                  <button type="button" class="btn-secondary" onClick={cancelBrowserDecoding}>
+                    Cancel
+                  </button>
+                </>
+              );
+            })()}
+          </Show>
+          <Show when={browserFailure()}>
+            <p role="alert">The browser run failed: {browserFailure()}</p>
+          </Show>
+        </div>
+      </Show>
       <div class="cb-pe-foot cb-dec-foot">
         <span class="cb-pe-foot__text">
           <Show
@@ -328,17 +430,23 @@ function Setup(props: { onResults: () => void }): JSX.Element {
           <button
             type="button"
             class="btn-secondary"
-            disabled={!canRun()}
+            disabled={!canRun() || browserRunning()}
             title={`${PREVIEW_DECODING_SHUFFLES} shuffles, labeled Preliminary`}
-            onClick={() => void runAnalysis('decoding', 'preview').then(() => props.onResults())}
+            onClick={() => {
+              setShownEngine('framework');
+              void runAnalysis('decoding', 'preview').then(() => props.onResults());
+            }}
           >
             Quick preview ({PREVIEW_DECODING_SHUFFLES} shuffles)
           </button>
           <button
             type="button"
             class="btn-primary"
-            disabled={!canRun()}
-            onClick={() => void runAnalysis('decoding', 'full').then(() => props.onResults())}
+            disabled={!canRun() || browserRunning()}
+            onClick={() => {
+              setShownEngine('framework');
+              void runAnalysis('decoding', 'full').then(() => props.onResults());
+            }}
           >
             {latest.decoding ? 'Run again' : 'Run analysis'} ▶
           </button>
@@ -353,7 +461,12 @@ export function DecodingPanel(): JSX.Element {
   const [results, setResults] = createSignal(false);
   const fixture = new URLSearchParams(window.location.search).get('decoding_fixture');
   // A run that ended without results (failed before saving) stays on the settings page.
-  const open = () => setResults(!!latest.decoding && latest.decoding.status !== 'failed');
+  const open = () =>
+    setResults(
+      shownEngine() === 'browser'
+        ? !!browserRun()
+        : !!latest.decoding && latest.decoding.status !== 'failed',
+    );
   // Without the engine, the newest saved decoding result comes from this browser's copy.
   onMount(async () => {
     if (!latest.decoding && bridgeState().kind !== 'ready') {
@@ -364,13 +477,22 @@ export function DecodingPanel(): JSX.Element {
   createEffect(
     on(
       () => openedRun('decoding'),
-      (id) => id && setResults(true),
+      (id) => {
+        if (!id) return;
+        setShownEngine('framework');
+        setResults(true);
+      },
     ),
   );
   return (
     <Show when={!(import.meta.env.DEV && fixture)} fallback={<FixtureResults name={fixture!} />}>
       <Show when={results()} fallback={<Setup onResults={open} />}>
-        <Results onBack={() => setResults(false)} />
+        <Show
+          when={shownEngine() === 'browser' && browserRun()}
+          fallback={<Results onBack={() => setResults(false)} />}
+        >
+          {(run) => <BrowserResults run={run()} onBack={() => setResults(false)} />}
+        </Show>
       </Show>
     </Show>
   );
