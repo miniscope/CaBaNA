@@ -133,6 +133,10 @@ class PopulationVectorOverlap(Metric):
             flat = ss <= 1e-24 * max(float(ss.max(initial=0.0)), 1.0) + 1e-300
             sim[flat, :] = np.nan
             sim[:, flat] = np.nan
+        # A state compared with itself is exactly 1. Rounding would otherwise make the
+        # diagonal 1 +/- 1e-16, and its shuffle p-values would depend on the machine.
+        defined = ~np.isnan(np.diag(sim))
+        sim[np.diag_indices_from(sim)] = np.where(defined, 1.0, np.nan)
         out[np.ix_(valid, valid)] = sim
         return out
 
