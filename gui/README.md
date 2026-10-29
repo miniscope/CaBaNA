@@ -35,7 +35,7 @@ silently: with the Python engine off, a framework mode says so and offers "Run i
 | auROC, speed-matched | Framework (`covariate_matched_shift`) | The automatic shift does not act on this null in the framework, so the typed minimum shift is used. |
 | auROC, behavior A against behavior B | Browser engine | No framework pipeline yet. |
 | PETH | Browser engine | Needs framework F9 (offset and both alignment, same-direction latency). |
-| Decoding | Framework | Blocked parts are named in the page (F1, F3). |
+| Decoding | Framework; browser engine on request | Blocked parts are named in the page (F1, F3). With the Python engine off or a contract missing, "Run in browser engine" runs the Bayesian and logistic decoders in the browser (no fold gap; the overall value is tested; multiclass logistic regression is not available). |
 | Population analyses | Framework | |
 
 **Migration is not complete while any mode uses the browser engine.** The TypeScript place-cell,
