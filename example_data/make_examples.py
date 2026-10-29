@@ -7,7 +7,8 @@ Generate three simulated example datasets for stress-testing CaBaNA:
     simulated_fear_conditioning/   tone and shock epochs and freezing, no position,
                                    no footprints or denoised traces
 
-    python make_examples.py
+    python make_examples.py        # the three above
+    python make_examples.py new    # simulated_tone_ttl, simulated_frame_labels, simulated_clock_drift
 
 Each folder gets the input files a user would bring. The "deconvolved" and "denoised"
 files are not the true events: they are estimated from the noisy trace (a smoothed
@@ -386,8 +387,149 @@ def fear():
         "arena:\n  size: [25, 25]\n  units: cm\n")
 
 
+# ---------------------------------------------------------------- annotation-import examples
+# Small sessions (5 minutes, 40 cells) for the time-marker, frame-label and clock-drift features.
+# Run with `python make_examples.py new`; the three examples above are not regenerated.
+
+def write_camera_timestamps(path: Path, t_s: np.ndarray):
+    """Miniscope timeStamps.csv format for the given times (s)."""
+    pd.DataFrame({"Frame Number": np.arange(len(t_s)), "Time Stamp (ms)": np.round(t_s * 1000).astype(int),
+                  "Buffer Index": 0}).to_csv(path, index=False)
+
+
+def tone_ttl():
+    rng = np.random.default_rng(404)
+    folder = HERE / "simulated_tone_ttl"
+    dur, N, cam_fps = 300.0, 40, 20.0
+    n_n, n_c = int(dur * FS), int(dur * cam_fps)
+    t_n = write_timestamps((folder.mkdir(exist_ok=True) or folder) / "neural_timestamps.csv", n_n, FS, -0.022, rng)
+    t_c = write_timestamps(folder / "behavior_timestamps.csv", n_c, cam_fps, -0.018, rng)
+    tones = [40.0 + 40.0 * k for k in range(6)]  # tone onsets; each tone lasts 20 s
+    shocks = [t + 19.0 for t in tones[3:]]  # the last three tones end with a shock
+    near_tone = bump(t_c, [(t, t + 20) for t in tones], latency=0, decay=15.0)
+    freeze, frz = np.zeros(n_c, bool), False
+    for i in range(n_c):
+        p_on = (0.004 + 0.03 * near_tone[i]) / cam_fps * 10
+        p_off = (0.15 - 0.1 * near_tone[i]) / cam_fps
+        frz = (rng.random() < p_on) if not frz else not (rng.random() < p_off)
+        freeze[i] = frz
+    write_epochs(folder / "behavior_annotations.csv", [("freezing", a, b) for a, b in epochs(freeze, t_c, 1.0, 0.5)])
+    # A marker file as a TTL log would give it. The last tone marker is after the recording ends, on purpose.
+    markers = [("tone", t) for t in tones] + [("shock", t) for t in shocks] + [("tone", dur + 15.0)]
+    pd.DataFrame(markers, columns=["label", "time_s"]).sort_values("time_s").to_csv(folder / "time_markers.csv", index=False)
+
+    freeze_n = np.interp(t_n, t_c, freeze.astype(float))
+    rate = np.full((n_n, N), 0.3) * rng.lognormal(0, 0.4, N)
+    order = rng.permutation(N)
+    for i in order[:8]:  # tone onset cells
+        rate[:, i] += 4.0 * bump(t_n, [(t, t + 0.5) for t in tones], decay=1.0)
+    for i in order[8:14]:  # shock cells
+        rate[:, i] += 6.0 * bump(t_n, [(t, t + 0.5) for t in shocks], decay=3.0)
+    for i in order[14:24]:
+        rate[:, i] += 2.5 * freeze_n
+    raw, _, dec = neural(rate, rng, (0.05, 0.3), 12, n_bad=2)
+    save(folder, raw=raw, dec=dec)
+    (folder / "config.yaml").write_text(
+        "# Session config for the simulated tone and TTL session, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# time_markers.csv is not listed: the framework does not read a `markers:` key yet.\n"
+        + NEURAL_CONFIG.format(alternatives="raw: neural_raw.npy")
+        + "behavior:\n  timestamps: behavior_timestamps.csv\n"
+        "  epochs:\n    behavior: {file: behavior_annotations.csv, exclusive: false}\n"
+        "arena:\n  size: [25, 25]\n  units: cm\n")
+
+
+def frame_labels():
+    rng = np.random.default_rng(505)
+    folder = HERE / "simulated_frame_labels"
+    dur, N, size, cam_fps = 300.0, 40, (30.0, 30.0), 20.0
+    n_n, n_c = int(dur * FS), int(dur * cam_fps)
+    t_n = write_timestamps((folder.mkdir(exist_ok=True) or folder) / "neural_timestamps.csv", n_n, FS, -0.022, rng)
+    t_c = write_timestamps(folder / "behavior_timestamps.csv", n_c, cam_fps, -0.018, rng)
+    path = random_path(rng, n_c, cam_fps, size)
+
+    # One behavior per frame in bouts: grooming, rearing, or nothing scored (blank).
+    names = np.array(["grooming", "rearing", ""])
+    behavior = np.empty(n_c, dtype=object)
+    i = 0
+    while i < n_c:
+        n = int(rng.integers(30, 160))
+        behavior[i: i + n] = rng.choice(names, p=[0.25, 0.25, 0.5])
+        i += n
+    grooming = (behavior == "grooming").astype(float)
+    rearing = (behavior == "rearing").astype(float)
+
+    table = pd.DataFrame({"frame": np.arange(n_c), "x": path[:, 0].round(4), "y": path[:, 1].round(4),
+                          "grooming": grooming, "rearing": rearing, "behavior": behavior})
+    # Unscored stretches have no binary value for rearing; grooming stays 0 there.
+    table.loc[behavior == "", "rearing"] = np.nan
+    # Five deliberate disagreements: the binary grooming column contradicts the behavior column.
+    labeled = np.flatnonzero(behavior != "")
+    for f in rng.choice(labeled[(labeled > 200) & (labeled < n_c - 200)], 5, replace=False):
+        table.loc[f, "grooming"] = 1.0 - table.loc[f, "grooming"]
+    # A few frames are missing from the file: two stretches and some single frames.
+    drop = np.zeros(n_c, bool)
+    drop[1500:1560] = drop[3800:3830] = True
+    drop[rng.choice(n_c, 8, replace=False)] = True
+    # Keep the deliberate disagreements in the file.
+    conflicts = np.flatnonzero((table.grooming == 1.0) != (table.behavior == "grooming") & (table.behavior != ""))
+    drop[conflicts] = False
+    table[~drop].to_csv(folder / "frame_labels.csv", index=False, float_format="%g")
+
+    g, r = (np.interp(t_n, t_c, v) for v in (grooming, rearing))
+    rate = np.full((n_n, N), 0.3) * rng.lognormal(0, 0.4, N)
+    order = rng.permutation(N)
+    for i in order[:10]:
+        rate[:, i] += 3.5 * g
+    for i in order[10:20]:
+        rate[:, i] += 3.5 * r
+    raw, _, dec = neural(rate, rng, (0.08, 0.5), 10, n_bad=2)
+    save(folder, raw=raw, dec=dec)
+    (folder / "config.yaml").write_text(
+        "# Session config for the simulated frame-label session, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# frame_labels.csv is not listed: the framework does not read a `frame_labels:` key yet.\n"
+        + NEURAL_CONFIG.format(alternatives="raw: neural_raw.npy")
+        + "behavior:\n  timestamps: behavior_timestamps.csv\n  position: {file: frame_labels.csv, units: cm}\n"
+        "arena:\n  size: [30, 30]\n  units: cm\n")
+
+
+def clock_drift():
+    rng = np.random.default_rng(606)
+    folder = HERE / "simulated_clock_drift"
+    offset, scale = 0.35, 1.0004
+    dur, N, size, cam_fps = 300.0, 40, (30.0, 30.0), 30.0
+    n_n, n_c = int(dur * FS), int(dur * cam_fps)
+    t_n = write_timestamps((folder.mkdir(exist_ok=True) or folder) / "neural_timestamps.csv", n_n, FS, -0.022, rng)
+    t_c = -0.018 + np.arange(n_c) / cam_fps + rng.normal(0, 0.0015, n_c)  # true times, on the neural clock
+    # The camera's own clock reads t_cam, and the framework maps it back as scale * (t_cam - offset).
+    write_camera_timestamps(folder / "behavior_timestamps.csv", t_c / scale + offset)
+    path = random_path(rng, n_c, cam_fps, size)
+    x, y = (on_neural_clock(t_c, v, t_n) for v in (path[:, 0], path[:, 1]))
+    rate = np.full((n_n, N), 0.3) * rng.lognormal(0, 0.4, N)
+    for i in range(24):  # place cells, so a wrong clock blurs the fields
+        cx, cy = rng.uniform(4, 26, 2)
+        rate[:, i] += 4.0 * np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * 3.5**2))
+    raw, _, dec = neural(rate, rng, (0.08, 0.5), 10, n_bad=2)
+    save(folder, raw=raw, dec=dec)
+    pd.DataFrame({"frame": np.arange(n_c), "x": path[:, 0].round(4), "y": path[:, 1].round(4)}).to_csv(
+        folder / "position.csv", index=False)
+    (folder / "config.yaml").write_text(
+        "# Session config for the simulated clock drift session, in the layout cabana.loaders.load_session_dir reads.\n"
+        "# The camera clock runs 0.35 s late and 0.04% fast: neural time = scale * (camera time - offset_s).\n"
+        + NEURAL_CONFIG.format(alternatives="raw: neural_raw.npy")
+        + f"behavior:\n  timestamps: behavior_timestamps.csv\n  clock: {{offset_s: {offset}, scale: {scale}}}\n"
+        "  position: {file: position.csv, units: cm}\n"
+        "arena:\n  size: [30, 30]\n  units: cm\n")
+
+
 if __name__ == "__main__":
-    open_field()
-    social()
-    fear()
+    import sys
+
+    if sys.argv[1:] == ["new"]:
+        tone_ttl()
+        frame_labels()
+        clock_drift()
+    else:
+        open_field()
+        social()
+        fear()
     print("done")

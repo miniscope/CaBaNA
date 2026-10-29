@@ -57,3 +57,5 @@ example_data/hipp CA2 social behavior/
 
 # Secrets
 .secrets
+
+gui/.project-dev/
