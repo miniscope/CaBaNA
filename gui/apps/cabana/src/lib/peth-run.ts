@@ -22,8 +22,13 @@ import { createPethWorkerPool, type PethPoolJob } from './peth-pool.ts';
 import { drawShifts, makeRng } from './placecells.ts';
 import { placeNeural } from './prepared.ts';
 import { DEFAULT_PREP, prep } from './preprocess.ts';
-import { annotationResults, frameTimes, onClear } from './store.ts';
+import { preselectUnselected } from './labels.ts';
+import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
 import type { PethCells, ShiftDraw } from '../workers/peth-types.ts';
+
+/** Behaviors to leave out when the panel first opens: those not marked controlled (a preselection only). */
+export const pethPreselected = (labels: string[]) =>
+  preselectUnselected(labels, roleOf, 'controlled');
 
 /** What the analysis takes, from the loaded files and the Preprocess settings. */
 export interface PethData {
@@ -71,6 +76,14 @@ export const DEFAULT_PETH_SETTINGS = {
 };
 export const [pethSettings, setPethSettings] = createStore(structuredClone(DEFAULT_PETH_SETTINGS));
 export type PethSettings = typeof DEFAULT_PETH_SETTINGS;
+
+let pethSeeded = false;
+/** Sets the starting selection once, so other pages show it without the PETH page having been opened. */
+export function seedPethSelection(labels: string[]): void {
+  if (pethSeeded) return;
+  pethSeeded = true;
+  setPethSettings('unselected', pethPreselected(labels));
+}
 
 /** The analysis input, or an explanation of what is missing. */
 export const pethData = createMemo<PethData | { error: string }>(() => {
@@ -121,16 +134,26 @@ export const pethInputOf = (d: PethData): PethInput => ({
 });
 
 /** The alignments a setting runs, in display order. */
-export const alignsOf = (align: PethSettings['align']): Align[] => (align === 'both' ? ['onset', 'offset'] : [align]);
+export const alignsOf = (align: PethSettings['align']): Align[] =>
+  align === 'both' ? ['onset', 'offset'] : [align];
 
 /** Onsets (or offsets) and exclusions of every behavior for these settings, or undefined while the window settings are invalid. */
-export function pethReports(d: PethData, params: PethParams, align: Align = 'onset'): OnsetReport[] | undefined {
-  return windowProblems(params, d.fs).length ? undefined : onsetReport(pethInputOf(d), params, align);
+export function pethReports(
+  d: PethData,
+  params: PethParams,
+  align: Align = 'onset',
+): OnsetReport[] | undefined {
+  return windowProblems(params, d.fs).length
+    ? undefined
+    : onsetReport(pethInputOf(d), params, align);
 }
 
 /** The reports of every alignment a setting runs. */
 export type AlignedReports = Partial<Record<Align, OnsetReport[]>>;
-export function pethAlignedReports(d: PethData, cfg: Pick<PethSettings, 'params' | 'align'>): AlignedReports | undefined {
+export function pethAlignedReports(
+  d: PethData,
+  cfg: Pick<PethSettings, 'params' | 'align'>,
+): AlignedReports | undefined {
   const out: AlignedReports = {};
   for (const a of alignsOf(cfg.align)) {
     const r = pethReports(d, cfg.params, a);
@@ -150,7 +173,8 @@ export interface PethColumn {
 }
 
 /** A column's name: the behavior alone when only one alignment is run, else with the alignment. */
-export const columnLabel = (label: string, align: Align, both: boolean) => (both ? `${label} (${align})` : label);
+export const columnLabel = (label: string, align: Align, both: boolean) =>
+  both ? `${label} (${align})` : label;
 
 /**
  * What one run tests: every behavior that was not left out and every selected alignment, as one input
@@ -162,7 +186,9 @@ export function pethPlan(d: PethData, cfg: PlanSettings, reports: AlignedReports
   const aligns = alignsOf(cfg.align);
   const columns: PethColumn[] = aligns.flatMap((align) => idx.map((b) => ({ b, align })));
   const rows = new Uint8Array(columns.length * d.frames);
-  columns.forEach(({ b }, j) => rows.set(d.behaviors.subarray(b * d.frames, (b + 1) * d.frames), j * d.frames));
+  columns.forEach(({ b }, j) =>
+    rows.set(d.behaviors.subarray(b * d.frames, (b + 1) * d.frames), j * d.frames),
+  );
   const input: PethInput = {
     ...pethInputOf(d),
     behaviors: rows,
@@ -250,7 +276,9 @@ function submit<T>(
 
 /** Joins the per-batch arrays of one quantity, in cell order. */
 function cat<T extends Float64Array | Int8Array>(parts: T[]): T {
-  const out = new (parts[0].constructor as new (n: number) => T)(parts.reduce((n, p) => n + p.length, 0));
+  const out = new (parts[0].constructor as new (n: number) => T)(
+    parts.reduce((n, p) => n + p.length, 0),
+  );
   let at = 0;
   for (const p of parts) {
     out.set(p, at);
@@ -260,14 +288,22 @@ function cat<T extends Float64Array | Int8Array>(parts: T[]): T {
 }
 
 /** Why the current settings cannot run, or undefined. */
-export function pethRunIssue(d: PethData, cfg: PethSettings, reports: AlignedReports | undefined): string | undefined {
+export function pethRunIssue(
+  d: PethData,
+  cfg: PethSettings,
+  reports: AlignedReports | undefined,
+): string | undefined {
   const problems = windowProblems(cfg.params, d.fs);
   if (problems.length) return problems[0];
   if (!reports) return 'Fix the analysis window first.';
   const ready = alignsOf(cfg.align).some((a) =>
-    d.labels.some((l, b) => !cfg.unselected.includes(l) && reports[a]![b].onsets.length >= cfg.params.minEvents),
+    d.labels.some(
+      (l, b) => !cfg.unselected.includes(l) && reports[a]![b].onsets.length >= cfg.params.minEvents,
+    ),
   );
-  return ready ? undefined : `No selected behavior has enough ${cfg.align === 'offset' ? 'offsets' : cfg.align === 'both' ? 'bouts' : 'onsets'}.`;
+  return ready
+    ? undefined
+    : `No selected behavior has enough ${cfg.align === 'offset' ? 'offsets' : cfg.align === 'both' ? 'bouts' : 'onsets'}.`;
 }
 
 export async function runPeth(): Promise<void> {
@@ -284,7 +320,15 @@ export async function runPeth(): Promise<void> {
     setPethStatus({ kind: 'error', message: issue });
     return;
   }
-  const { input, labels, info, reports: used, onsets, columns, families } = pethPlan(data, cfg, reports!);
+  const {
+    input,
+    labels,
+    info,
+    reports: used,
+    onsets,
+    columns,
+    families,
+  } = pethPlan(data, cfg, reports!);
   const test = cfg.test === 'circular';
   const t0 = performance.now();
   cancelPethRun();
@@ -340,7 +384,11 @@ export async function runPeth(): Promise<void> {
           band: bandShifts ? { shifts: bandShifts, latencyBins: cfg.latencyBins } : undefined,
           onProgress: (d: number) => {
             doneBy.set(jobId, d);
-            progress(step, [...doneBy.values()].reduce((a, b) => a + b, 0), input.cells);
+            progress(
+              step,
+              [...doneBy.values()].reduce((a, b) => a + b, 0),
+              input.cells,
+            );
           },
           onComplete,
         }));
@@ -438,4 +486,3 @@ export function estimateMinShift(input: PethInput): void {
     onError: () => p.dispose(),
   } as PethPoolJob);
 }
-

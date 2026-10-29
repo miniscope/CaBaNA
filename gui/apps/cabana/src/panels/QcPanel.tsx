@@ -1,13 +1,6 @@
 import { createMemo, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
 import type { Check } from '../lib/qc.ts';
-import {
-  experiment,
-  goToStep,
-  layout,
-  missingRequired,
-  proceed,
-  type Section,
-} from '../lib/store.ts';
+import { experiment, missingRequired, proceed, type Section } from '../lib/store.ts';
 import {
   qcCategory,
   qcTab,
@@ -151,17 +144,36 @@ export function fitToWindow(el: HTMLElement): () => void {
   const fit = () => {
     const pad =
       parseFloat(getComputedStyle(el.closest('.cb-body') ?? el.parentElement!).paddingBottom) || 0;
-    const below = pad + (layout() === 'steps' ? 72 : 2);
-    el.style.height = `${Math.max(480, innerHeight - el.getBoundingClientRect().top - below)}px`;
+    // The page body ends above the footer with Next, so measure to its bottom edge.
+    const bottom = el.closest('.cb-body')?.getBoundingClientRect().bottom ?? innerHeight;
+    el.style.height = `${Math.max(320, bottom - el.getBoundingClientRect().top - pad - 2)}px`;
   };
   const start = () => {
-    el.closest('.cb-side-main')?.scrollTo(0, 0);
+    el.closest('.cb-body')?.scrollTo(0, 0);
     fit();
   };
   start();
   requestAnimationFrame(start); // again once the page is attached, in case it was not yet
   addEventListener('resize', fit);
-  return () => removeEventListener('resize', fit);
+  // Banners above the workspace (requirements, notices) appear and vanish after it mounts.
+  const watch = new ResizeObserver(fit);
+  const observeAbove = () => {
+    watch.disconnect();
+    for (let s = el.previousElementSibling; s; s = s.previousElementSibling) watch.observe(s);
+    const body = el.closest('.cb-body');
+    if (body) watch.observe(body);
+  };
+  observeAbove();
+  const siblings = new MutationObserver(() => {
+    observeAbove();
+    fit();
+  });
+  if (el.parentElement) siblings.observe(el.parentElement, { childList: true });
+  return () => {
+    removeEventListener('resize', fit);
+    watch.disconnect();
+    siblings.disconnect();
+  };
 }
 
 export function QcPanel(): JSX.Element {
@@ -251,14 +263,6 @@ export function QcPanel(): JSX.Element {
           Warnings and flags don't stop you from continuing. A failed section asks you to continue
           without correction.
         </span>
-        <Show when={layout() === 'sidebar'}>
-          <button class="btn-secondary" onClick={() => goToStep('viz')}>
-            Back to Data visualization
-          </button>
-          <button class="btn-primary" onClick={() => goToStep('prep')}>
-            Continue to Preprocess →
-          </button>
-        </Show>
       </div>
     </div>
   );

@@ -1,4 +1,13 @@
-import { createEffect, For, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from 'solid-js';
 import { HowToRead } from './parts.tsx';
 import { OVERALL, TEST_ICON, whyUndefined, type Test } from '../lib/place-outcome.ts';
 import { displayMap, gradientCss, maxOf, placeDisplay } from '../lib/place-display.ts';
@@ -27,10 +36,33 @@ export const Outcome = (props: { o: keyof typeof OVERALL }): JSX.Element => (
 );
 
 /** The searchable, sortable cell list. */
+const ROW_PX = 28; // one table row, in px
 function CellList(props: { ctx: ResultsCtx }): JSX.Element {
   const c = () => props.ctx;
+  // The list is paged to the rows that fit, so it never scrolls inside its box.
+  const [perPage, setPerPage] = createSignal(7);
+  const [page, setPage] = createSignal(0);
+  const pages = () => Math.max(1, Math.ceil(c().list().length / perPage()));
+  const shown = createMemo(() => {
+    const at = Math.min(page(), pages() - 1);
+    return c()
+      .list()
+      .slice(at * perPage(), (at + 1) * perPage());
+  });
+  // Turn to the page of the selected cell when it changes.
   createEffect(() => {
-    document.getElementById(`pc-row-${cell()}`)?.scrollIntoView({ block: 'nearest' });
+    const k = c()
+      .list()
+      .findIndex((row) => row.id === cell());
+    if (k >= 0) setPage(Math.floor(k / perPage()));
+  });
+  let box!: HTMLDivElement;
+  onMount(() => {
+    const ro = new ResizeObserver(([e]) =>
+      setPerPage(Math.max(3, Math.floor((e.contentRect.height - ROW_PX) / ROW_PX))),
+    );
+    ro.observe(box);
+    onCleanup(() => ro.disconnect());
   });
   const head = (key: SortKey, label: string) => (
     <th
@@ -81,7 +113,7 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
           <For each={SORTS}>{(s) => <option value={s.key}>{s.label}</option>}</For>
         </select>
       </label>
-      <div class="cb-table-scroll">
+      <div class="cb-table-page" ref={box}>
         <table class="cb-stats">
           <thead>
             <tr>
@@ -92,7 +124,7 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
             </tr>
           </thead>
           <tbody onKeyDown={onKey}>
-            <For each={c().list()}>
+            <For each={shown()}>
               {(row) => (
                 <tr
                   id={`pc-row-${row.id}`}
@@ -121,9 +153,32 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
           <div class="cb-empty">No cells match this filter or search.</div>
         </Show>
       </div>
-      <div class="cb-muted">
-        {c().list().length} of {c().rows().length} cells · sorted by {sortLabel().toLowerCase()}{' '}
-        {c().desc() ? '↓' : '↑'}
+      <div class="cb-pager">
+        <span class="cb-muted">
+          {c().list().length} of {c().rows().length} cells · sorted by {sortLabel().toLowerCase()}{' '}
+          {c().desc() ? '↓' : '↑'}
+        </span>
+        <span class="cb-pager__btns">
+          <button
+            class="btn-secondary btn-small"
+            aria-label="Previous cells"
+            disabled={page() === 0}
+            onClick={() => setPage(Math.max(0, page() - 1))}
+          >
+            ‹
+          </button>
+          <span class="cb-muted">
+            {Math.min(page(), pages() - 1) + 1} / {pages()}
+          </span>
+          <button
+            class="btn-secondary btn-small"
+            aria-label="Next cells"
+            disabled={page() >= pages() - 1}
+            onClick={() => setPage(Math.min(pages() - 1, page() + 1))}
+          >
+            ›
+          </button>
+        </span>
       </div>
     </div>
   );
@@ -199,11 +254,8 @@ export function FieldDetails(props: CellProps): JSX.Element {
   const out = () => props.out;
   const nf = () => r().nFields[i()];
   return (
-    <details class="cb-notebox cb-fold">
-      <summary>
-        <strong>Field measurements</strong>{' '}
-        <span class="cb-muted">Descriptive · Not used for classification</span>
-      </summary>
+    <section>
+      <div class="cb-muted">Descriptive · not used for classification</div>
       <div>
         <div class="cb-fieldstats">
           <div>
@@ -242,7 +294,7 @@ export function FieldDetails(props: CellProps): JSX.Element {
           </div>
         </details>
       </div>
-    </details>
+    </section>
   );
 }
 
@@ -253,53 +305,70 @@ export function ShuffleDetails(props: CellProps): JSX.Element {
   const alpha = () => props.out.settings.alpha;
   const nulls = (a: Float32Array) => a.subarray(i() * r().nShifts, (i() + 1) * r().nShifts);
   return (
-    <details class="cb-notebox cb-fold">
-      <summary>Compare observed and shuffled scores</summary>
-      <div>
-        <div class="cb-hists">
-          <ShuffleHistogram
-            title="Spatial information"
-            unit="bits/event"
-            nullValues={nulls(r().nullInformation)}
-            observed={r().information[i()]}
-            alpha={alpha()}
-            p={p3(r().pInformation[i()])}
-          />
-          <ShuffleHistogram
-            title="Spatial stability"
-            unit="r"
-            nullValues={nulls(r().nullStability)}
-            observed={r().stability[i()]}
-            alpha={alpha()}
-            p={p3(r().pStability[i()])}
-          />
-          <ShuffleHistogram
-            title="In/out ratio (not in the call)"
-            unit=""
-            nullValues={nulls(r().nullInOut)}
-            observed={r().inOut[i()]}
-            alpha={alpha()}
-            p={p3(r().pFields[i()])}
-          />
+    <section>
+      <Show when={!props.out.nullKept}>
+        <p class="cb-muted">
+          {props.out.record?.null_not_kept
+            ? 'Null draws were not kept for this run.'
+            : 'Null draws are not in the copy saved in this browser. Start the Python engine to see them.'}
+        </p>
+      </Show>
+      <Show when={props.out.nullKept}>
+        <div>
+          <div class="cb-hists">
+            <ShuffleHistogram
+              title="Spatial information"
+              unit="bits/event"
+              nullValues={nulls(r().nullInformation)}
+              observed={r().information[i()]}
+              alpha={alpha()}
+              p={p3(r().pInformation[i()])}
+            />
+            <ShuffleHistogram
+              title="Spatial stability"
+              unit="r"
+              nullValues={nulls(r().nullStability)}
+              observed={r().stability[i()]}
+              alpha={alpha()}
+              p={p3(r().pStability[i()])}
+            />
+            <ShuffleHistogram
+              title="In/out ratio (not in the call)"
+              unit=""
+              nullValues={nulls(r().nullInOut)}
+              observed={r().inOut[i()]}
+              alpha={alpha()}
+              p={p3(r().pFields[i()])}
+            />
+          </div>
+          <HowToRead>
+            <p>
+              Each plot compares one real score with the scores obtained after circular time shifts
+              of the cell’s neural data. Grey bars show how often each shifted score occurred. The
+              red line is the real score. A red line to the right of the dashed line means the real
+              score is higher than almost all shifted scores, which is what p &lt; {alpha()} means
+              here. The in/out ratio is shown for reference and is not used for the call.
+            </p>
+          </HowToRead>
+          <div class="cb-muted">
+            Grey bars: this cell’s value after each of {r().nShifts} circular shifts of its neural
+            data. Red line: the real value. Dashed line: the value only {alpha() * 100}% of shifted
+            values reach, so a red line to its right means p &lt; {alpha()}.
+          </div>
         </div>
-        <HowToRead>
-          <p>
-            Each plot compares one real score with the scores obtained after circular time shifts of
-            the cell’s neural data. Grey bars show how often each shifted score occurred. The red
-            line is the real score. A red line to the right of the dashed line means the real score
-            is higher than almost all shifted scores, which is what p &lt; {alpha()} means here. The
-            in/out ratio is shown for reference and is not used for the call.
-          </p>
-        </HowToRead>
-        <div class="cb-muted">
-          Grey bars: this cell’s value after each of {r().nShifts} circular shifts of its neural
-          data. Red line: the real value. Dashed line: the value only {alpha() * 100}% of shifted
-          values reach, so a red line to its right means p &lt; {alpha()}.
-        </div>
-      </div>
-    </details>
+      </Show>
+    </section>
   );
 }
+
+const INSPECTOR_VIEWS = [
+  ['tests', 'Tests'],
+  ['maps', 'Maps'],
+  ['fields', 'Fields'],
+  ['trace', 'Footprint & trace'],
+  ['shuffles', 'Shuffled scores'],
+] as const;
+const [part, setPart] = createSignal<(typeof INSPECTOR_VIEWS)[number][0]>('tests');
 
 /** The cell list beside the selected cell: scores, maps, field measurements, footprint, shuffled scores. */
 export function PlaceInspector(props: {
@@ -361,82 +430,87 @@ export function PlaceInspector(props: {
             <p class="cb-muted">This cell is hidden by the current filter or search.</p>
           </Show>
 
-          <TestStats out={out()} i={i()} />
-
-          <div class="cb-mapbar">
-            <span class="cb-muted">Whole session and the two halves</span>
-            <MapAppearance limits />
-          </div>
-          <div class="cb-inspect-maps">
-            <For each={maps()}>
-              {([title, values], k) => (
-                <figure classList={{ 'cb-inspect-maps__main': k() === 0 }}>
-                  <figcaption>{title}</figcaption>
-                  <RateMap
-                    values={values}
-                    max={max(values)}
-                    size={k() === 0 ? 440 : 220}
-                    fields={props.outlines && k() === 0 ? fields() : undefined}
-                    centroid={props.outlines && k() === 0 ? centroid() : undefined}
-                    {...mapProps}
-                  />
-                </figure>
+          <div class="cb-seg" role="tablist" aria-label="Cell inspector views">
+            <For each={INSPECTOR_VIEWS}>
+              {([id, label]) => (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={part() === id}
+                  classList={{ 'cb-seg__on': part() === id }}
+                  onClick={() => setPart(id)}
+                >
+                  {label}
+                </button>
               )}
             </For>
           </div>
-          <div class="cb-legend" role="img" aria-label="Color scale">
-            <span class="cb-legend__item">Event rate</span>
-            <span class="cb-legend__item">0</span>
-            <span class="cb-legend__bar" style={{ background: gradientCss('right') }} />
-            <span class="cb-legend__item">
-              {num(shared(), 1)} events/s
-              {placeDisplay.scale === 'own' ? ' (each map on its own scale)' : ''}
-            </span>
-            <span class="cb-legend__item">
-              <i style={{ background: '#d4d4d0' }} /> Below minimum sampling time
-            </span>
-            <span class="cb-legend__item">
-              <i style={{ background: '#fff' }} /> Outside arena
-            </span>
-            <label class="cb-check-inline">
-              <input
-                type="checkbox"
-                checked={props.outlines}
-                onChange={(e) => props.setOutlines(e.currentTarget.checked)}
-              />
-              Show field outlines
-            </label>
+
+          <div class="cb-inspect__part">
+            <Show when={part() === 'tests'}>
+              <TestStats out={out()} i={i()} />
+            </Show>
+
+            <Show when={part() === 'maps'}>
+              <div class="cb-inspect-maps">
+                <For each={maps()}>
+                  {([title, values], k) => (
+                    <figure classList={{ 'cb-inspect-maps__main': k() === 0 }}>
+                      <figcaption>{title}</figcaption>
+                      <RateMap
+                        values={values}
+                        max={max(values)}
+                        size={k() === 0 ? 122 : 58}
+                        fields={props.outlines && k() === 0 ? fields() : undefined}
+                        centroid={props.outlines && k() === 0 ? centroid() : undefined}
+                        {...mapProps}
+                      />
+                    </figure>
+                  )}
+                </For>
+              </div>
+              <div class="cb-legend" role="img" aria-label="Color scale">
+                <span class="cb-legend__item">Event rate 0</span>
+                <span class="cb-legend__bar" style={{ background: gradientCss('right') }} />
+                <span class="cb-legend__item">
+                  {num(shared(), 1)} events/s
+                  {placeDisplay.scale === 'own' ? ' (each map on its own scale)' : ''}
+                </span>
+                <label class="cb-check-inline">
+                  <input
+                    type="checkbox"
+                    checked={props.outlines}
+                    onChange={(e) => props.setOutlines(e.currentTarget.checked)}
+                  />
+                  Show field outlines
+                </label>
+                <MapAppearance limits />
+                <HowToRead>
+                  <p>
+                    Each map is the arena seen from above. Color shows the cell’s event rate in each
+                    bin: events divided by the time spent there, then smoothed. The large map uses
+                    the whole session; the two small maps use the first and second half. A stable
+                    place cell has a similar pattern in both halves. Grey bins (visited under{' '}
+                    {s().minOccFieldsS} s in the whole session, {s().minOccS} s in each half) have
+                    no rate; white bins are outside the arena. Bins are {num(bin, 1)} cm; maps are
+                    smoothed by {out().sigma} bins ({sizeCm(out().sigma)} cm)
+                    {placeDisplay.sigma > 0 ? `, drawn with ${placeDisplay.sigma} more` : ''}.
+                    Outlines mark connected bins above the chosen fraction of the cell’s peak rate.
+                  </p>
+                </HowToRead>
+              </div>
+            </Show>
+
+            <Show when={part() === 'fields'}>
+              <FieldDetails out={out()} i={i()} />
+            </Show>
+            <Show when={part() === 'trace'}>
+              <FootprintStrip out={out()} i={i()} />
+            </Show>
+            <Show when={part() === 'shuffles'}>
+              <ShuffleDetails out={out()} i={i()} />
+            </Show>
           </div>
-          <p class="cb-muted">
-            Grey: visited under {s().minOccFieldsS} s (whole session) or {s().minOccS} s (each
-            half). Bins are {num(bin, 1)} cm; maps are smoothed by {out().sigma} bins (
-            {sizeCm(out().sigma)} cm)
-            {placeDisplay.sigma > 0 ? `, drawn with ${placeDisplay.sigma} more` : ''}.
-          </p>
-
-          <HowToRead>
-            <p>
-              Each map is the arena seen from above. Color shows the cell’s event rate in each bin:
-              events divided by the time spent there, then smoothed. The large map uses the whole
-              session; the two small maps use the first and second half. A stable place cell has a
-              similar pattern in both halves. Grey bins were visited too little to estimate a rate,
-              and outlines mark connected bins above the chosen fraction of the cell’s peak rate.
-            </p>
-          </HowToRead>
-
-          <FieldDetails out={out()} i={i()} />
-
-          <FootprintStrip out={out()} i={i()} />
-          <HowToRead>
-            <p>
-              The small image is the cell’s footprint in the field of view. The trace is its signal
-              over the whole recording; shaded columns are frames left out of the analysis (no
-              position, or below the speed threshold). Open the strip to choose among the traces
-              that were loaded.
-            </p>
-          </HowToRead>
-
-          <ShuffleDetails out={out()} i={i()} />
         </div>
       </Show>
     </div>

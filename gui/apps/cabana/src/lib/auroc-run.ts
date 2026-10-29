@@ -1,9 +1,16 @@
 // Running the auROC analysis: the data it takes (neural data, behavior frame labels, the frames
 // kept by Preprocess), settings, the run on the worker pool, and the results the panel reads.
 
-import { createMemo, createSignal } from 'solid-js';
+import { createEffect, createMemo, createRoot, createSignal, on } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
+import type { RunRecord } from './bridge-client.ts';
+import { START_COMMAND } from './bridge-status.ts';
+import { engineFor, frameworkReady, secondsBetween, type EngineId } from './engine.ts';
+import { aurocFromFramework, savedDrawsOfCell, type SavedDraws } from './auroc-results.ts';
+import { openedRun } from './results-nav.ts';
+import { runSource } from './results-store.ts';
+import { active, cancelRun, history, lastError, latest, runAnalysis } from './runs.ts';
 import {
   behaviorFrames,
   frameCounts,
@@ -18,7 +25,12 @@ import { dilateMask } from './framework.ts';
 import { placeNeural, positionOnNeural } from './prepared.ts';
 import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from './speed-match.ts';
-import { annotationResults, frameTimes, onClear } from './store.ts';
+import { preselectUnselected } from './labels.ts';
+import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
+
+/** Behaviors to leave out when the panel first opens: those not marked measured (a preselection only). */
+export const aurocPreselected = (labels: string[]) =>
+  preselectUnselected(labels, roleOf, 'measured');
 
 export interface BehaviorInfo {
   label: string;
@@ -78,6 +90,23 @@ export const [aurocSettings, setAurocSettings] = createStore({
   match: { ...DEFAULT_MATCH },
 });
 export type AurocSettings = typeof DEFAULT_AUROC_SETTINGS;
+
+/** The behaviors left out at first: not marked measured, or with too few frames to test. */
+export const aurocDefaultUnselected = (d: Pick<AurocData, 'labels' | 'info'>): string[] => {
+  const notMeasured = aurocPreselected(d.labels);
+  return d.labels.filter(
+    (l, i) =>
+      notMeasured.includes(l) || d.info[i].during < MIN_FRAMES || d.info[i].outside < MIN_FRAMES,
+  );
+};
+
+let aurocSeeded = false;
+/** Sets the starting selection once, so other pages show it without the auROC page having been opened. */
+export function seedAurocSelection(d: Pick<AurocData, 'labels' | 'info'>): void {
+  if (aurocSeeded) return;
+  aurocSeeded = true;
+  setAurocSettings('unselected', aurocDefaultUnselected(d));
+}
 
 /** The analysis input, or an explanation of what is missing. */
 export const aurocData = createMemo<AurocData | { error: string }>(() => {
@@ -184,20 +213,49 @@ export interface AurocOutcome {
   settings: AurocSettings;
   /** The Preprocess settings this run used. */
   prep: typeof DEFAULT_PREP;
+  /** Which engine made the numbers. */
+  engine: EngineId;
+  /** The saved run behind a framework outcome. */
+  record?: RunRecord;
+  /** The shifted values a framework run saved (shuffle x cell x behavior); the null histograms read these. */
+  draws?: SavedDraws;
+  /** False when the shifted values were not kept, so the null histograms cannot be drawn. */
+  nullKept: boolean;
 }
 
-export const [aurocStatus, setAurocStatus] = createSignal<
+export type AurocStatus =
   | { kind: 'idle' }
-  | { kind: 'running'; step: string; done: number; total: number }
-  | { kind: 'error'; message: string }
->({ kind: 'idle' });
+  | {
+      kind: 'running';
+      step: string;
+      done: number;
+      total: number;
+      unit?: 'cells' | 'shuffles' | 'percent';
+    }
+  | { kind: 'error'; message: string };
+export const [aurocStatus, setAurocStatus] = createSignal<AurocStatus>({ kind: 'idle' });
+
+/** "3 of 12 cells" style progress text; empty when the run cannot say how far along it is. */
+export const aurocProgressText = (s: Extract<AurocStatus, { kind: 'running' }>): string =>
+  s.total <= 1
+    ? ''
+    : s.unit === 'percent'
+      ? `${s.done}%`
+      : `${s.done} of ${s.total} ${s.unit ?? 'cells'}`;
 export const [aurocOutcome, setAurocOutcome] = createSignal<AurocOutcome | undefined>();
 export const [aurocShowResults, setAurocShowResults] = createSignal(false);
 
 let pool: WorkerPool<AurocPoolJob> | undefined;
 let nextJob = 1;
+/** A framework run is in flight (its progress comes from `active()`). */
+let frameworkRunning = false;
 
+/** Stops a run: a framework run is cancelled through the bridge, browser workers are terminated. */
 export function cancelAurocRun(): void {
+  if (frameworkRunning) {
+    void cancelRun();
+    return;
+  }
   pool?.dispose();
   pool = undefined;
   setAurocStatus({ kind: 'idle' });
@@ -275,7 +333,8 @@ export function aurocPlan(data: AurocData, cfg: PlanSettings) {
   };
 }
 
-export async function runAuroc(): Promise<void> {
+/** The browser engine: the TypeScript port runs the cells on workers. */
+async function runAurocBrowser(): Promise<void> {
   const data = aurocData();
   if ('error' in data) {
     setAurocStatus({ kind: 'error', message: data.error });
@@ -377,6 +436,8 @@ export async function runAuroc(): Promise<void> {
       seconds: (performance.now() - t0) / 1000,
       settings: cfg,
       prep: prepUsed,
+      engine: 'browser',
+      nullKept: true,
     });
     cache.clear();
     setAurocShowResults(true);
@@ -395,10 +456,14 @@ export async function runAuroc(): Promise<void> {
 const cache = new Map<string, Float64Array>();
 
 /**
- * The shifted auROC values of one cell, shuffles x behaviors, recomputed from the run's stored shifts,
- * mask and neural data, so they are exactly the draws the p-values came from. Cached per cell.
+ * The shifted auROC values of one cell, shuffles x behaviors. Browser runs recompute them from the
+ * run's stored shifts, mask and neural data, so they are exactly the draws the p-values came from
+ * (cached per cell). Framework runs return the draws the run saved.
  */
 export function shiftedValues(out: AurocOutcome, cellIndex: number): Float64Array {
+  // A framework run saved its draws: read them, never recompute.
+  if (out.engine === 'framework')
+    return out.draws ? savedDrawsOfCell(out.draws, cellIndex) : new Float64Array(0);
   const key = `${cellIndex}`;
   let v = cache.get(key);
   if (!v) {
@@ -433,4 +498,239 @@ export function estimateMinShift(input: AurocInput): void {
       p.dispose();
     },
   } as AurocPoolJob);
+}
+
+// ---- the framework engine ---------------------------------------------------------------------
+
+export interface AurocRunOptions {
+  /** 50 shuffles, saved as Preliminary. Framework engine only. */
+  preview?: boolean;
+  /** Set only by "Run in browser engine": the framework is never replaced silently. */
+  engine?: EngineId;
+}
+
+// Progress of a framework run comes from the bridge: shuffles when it reports them, else the
+// fraction done, else no number.
+function watchProgress(): void {
+  createRoot(() => {
+    createEffect(() => {
+      const a = active();
+      if (!frameworkRunning || a?.id !== 'auroc') return;
+      const [done, total] = a.shuffles ?? [];
+      const unit = a.shuffles ? 'shuffles' : a.fraction > 0 ? 'percent' : undefined;
+      setAurocStatus({
+        kind: 'running',
+        step:
+          a.phase === 'cancelling'
+            ? 'Cancelling'
+            : a.message || (a.phase === 'queued' ? 'Queued' : 'Running'),
+        done: a.shuffles ? (done ?? 0) : Math.round(a.fraction * 100),
+        total: a.shuffles ? (total ?? 1) : unit ? 100 : 1,
+        unit,
+      });
+    });
+  });
+}
+
+type SavedSettings = {
+  analysis?: Partial<AurocSettings>;
+  prep?: Partial<typeof DEFAULT_PREP>;
+};
+
+/** The settings a record saved, over the defaults (values an automatic choice replaced are not saved). */
+export function savedAurocSettings(record: RunRecord): AurocSettings {
+  const a = ((record.gui.settings ?? {}) as SavedSettings).analysis ?? {};
+  return {
+    ...DEFAULT_AUROC_SETTINGS,
+    ...a,
+    unselected: [...(a.unselected ?? [])],
+    match: { ...DEFAULT_MATCH, ...a.match },
+  };
+}
+
+/** The results of a saved framework run in the shape the results views read. No computation. */
+export async function aurocOutcomeFromRun(record: RunRecord): Promise<AurocOutcome> {
+  const data = aurocData();
+  if ('error' in data) throw new Error(data.error);
+  const cfg = savedAurocSettings(record);
+  const src = runSource(record.run_id);
+  const fw = await aurocFromFramework(src, cfg.minShiftS);
+  // Rebuild the input with the behaviors the run used, in its order.
+  const { input, info: plannedInfo } = aurocPlan(data, {
+    ...cfg,
+    compare: 'rest',
+    unselected: data.labels.filter((l) => !fw.labels.includes(l)),
+  });
+  const info: BehaviorInfo[] = fw.labels.map((label, b) => {
+    const planned = plannedInfo.find((i) => i.label === label);
+    const during = fw.nInState[b] ?? 0;
+    return {
+      label,
+      duration: planned?.duration ?? 0,
+      bouts: planned?.bouts ?? 0,
+      during,
+      outside: Math.max(0, fw.framesUsed - during),
+    };
+  });
+  const ids = (await src.manifest()).results.find((r) => r.name === 'auroc')?.cell_ids?.map(Number);
+  const cellIds = ids?.every(Number.isFinite) ? ids : data.cellIds;
+  const sameCells =
+    cellIds.length === data.cellIds.length && cellIds.every((id, i) => id === data.cellIds[i]);
+  const rows = cellIds.map((id) => data.cellIds.indexOf(id));
+  const speedFilterSame =
+    cfg.speedFilter === (data.excluded.minSpeed !== undefined) &&
+    (!cfg.speedFilter || cfg.minSpeed === data.excluded.minSpeed);
+  return {
+    labels: fw.labels,
+    info,
+    cellIds,
+    input: sameCells
+      ? input
+      : {
+          ...input,
+          cells: cellIds.length,
+          neural: rows.every((r) => r >= 0)
+            ? Float32Array.from(
+                { length: cellIds.length * input.frames },
+                (_, k) =>
+                  input.neural[
+                    rows[Math.floor(k / input.frames)] * input.frames + (k % input.frames)
+                  ],
+              )
+            : new Float32Array(0), // the loaded recording lacks some of the run's cells
+        },
+    result: fw.result,
+    cellsMissing: sameCells
+      ? data.cellsMissing
+      : rows.flatMap((r, i) => (data.cellsMissing.includes(r) ? [i] : [])),
+    shifts: fw.shifts,
+    uniqueShifts: fw.uniqueShifts,
+    minShiftS: fw.minShiftS,
+    timescale: fw.timescale,
+    matched: fw.matched,
+    excluded: speedFilterSame
+      ? data.excluded
+      : { missingSpeed: 0, slow: 0, minSpeed: cfg.speedFilter ? cfg.minSpeed : undefined },
+    seconds: secondsBetween(record.created_utc, record.finished_utc),
+    settings: cfg,
+    prep: { ...DEFAULT_PREP, ...((record.gui.settings ?? {}) as SavedSettings).prep },
+    engine: 'framework',
+    record,
+    draws: fw.draws,
+    nullKept: !!fw.draws,
+  };
+}
+
+/** "Load these settings": copy a saved run's settings into the setup. Only settings the run saved are changed. */
+export function loadAurocSettings(record: RunRecord): void {
+  const a = ((record.gui.settings ?? {}) as SavedSettings).analysis ?? {};
+  const { match, unselected, ...own } = a;
+  setAurocSettings(
+    Object.fromEntries(Object.entries(own).filter(([k]) => k in DEFAULT_AUROC_SETTINGS)),
+  );
+  if (unselected) setAurocSettings('unselected', [...unselected]);
+  if (match) setAurocSettings('match', { ...DEFAULT_MATCH, ...match });
+}
+
+const failureText = (rec: RunRecord) =>
+  rec.errors[0]?.message?.split('\n').filter(Boolean).at(-1) ?? 'The run failed.';
+
+async function runAurocFramework(scope: 'full' | 'preview'): Promise<void> {
+  if (!frameworkReady()) {
+    setAurocStatus({
+      kind: 'error',
+      message: `Python engine not running. Start it with: ${START_COMMAND}`,
+    });
+    return;
+  }
+  if (active()) {
+    setAurocStatus({
+      kind: 'error',
+      message: 'Another analysis is running. Wait for it to finish.',
+    });
+    return;
+  }
+  const data = aurocData();
+  if ('error' in data) {
+    setAurocStatus({ kind: 'error', message: data.error });
+    return;
+  }
+  frameworkRunning = true;
+  setAurocStatus({ kind: 'running', step: 'Uploading inputs', done: 0, total: 1 });
+  try {
+    const record = await runAnalysis('auroc', scope);
+    if (!record) {
+      setAurocStatus({ kind: 'error', message: lastError()?.message ?? 'The run did not start.' });
+    } else if (record.status === 'cancelled') {
+      setAurocStatus({ kind: 'idle' });
+    } else if (record.status === 'failed' || record.status === 'partial') {
+      setAurocStatus({ kind: 'error', message: failureText(record) });
+    } else {
+      setAurocOutcome(await aurocOutcomeFromRun(record));
+      setAurocShowResults(true);
+      setAurocStatus({ kind: 'idle' });
+    }
+  } catch (e) {
+    setAurocStatus({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    frameworkRunning = false;
+  }
+}
+
+/**
+ * Run auROC. The engine follows the settings (lib/engine.ts); asking for the browser engine is
+ * always an explicit choice made on the page.
+ */
+export async function runAuroc(options: AurocRunOptions = {}): Promise<void> {
+  const engine = options.engine ?? engineFor('auroc');
+  if (engine === 'browser') return runAurocBrowser();
+  return runAurocFramework(options.preview ? 'preview' : 'full');
+}
+
+// A saved framework run is shown without recomputing: the opened run, else the latest, unless a
+// browser result made in this session is on screen and nothing was opened explicitly.
+function watchSaved(): void {
+  createRoot(() => {
+    createEffect(
+      on(
+        // the data must be loaded to show a result, so a late load shows it too
+        () => [openedRun('auroc') ?? latest.auroc?.run_id, !('error' in aurocData())] as const,
+        async ([runId, dataReady]) => {
+          if (!runId || !dataReady || frameworkRunning) return;
+          const shown = aurocOutcome();
+          const explicit = !!openedRun('auroc');
+          if (shown?.record?.run_id === runId || (shown && !shown.record && !explicit)) return;
+          const record = explicit
+            ? (history().find((r) => r.run_id === runId) ?? latest.auroc)
+            : latest.auroc;
+          if (
+            !record ||
+            record.engine !== 'framework' ||
+            record.status !== 'ok' ||
+            record.run_id !== runId
+          )
+            return;
+          try {
+            setAurocOutcome(await aurocOutcomeFromRun(record));
+            if (explicit) setAurocShowResults(true);
+          } catch (e) {
+            if (explicit)
+              setAurocStatus({
+                kind: 'error',
+                message: e instanceof Error ? e.message : String(e),
+              });
+          }
+        },
+      ),
+    );
+  });
+}
+
+let watching = false;
+/** Start following a run's progress and showing saved framework runs. Idempotent; the pages call it. */
+export function watchAurocRuns(): void {
+  if (watching) return;
+  watching = true;
+  watchProgress();
+  watchSaved();
 }

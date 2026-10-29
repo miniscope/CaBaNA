@@ -1,18 +1,20 @@
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { configReport } from '../lib/config-import.ts';
 import { GROUPS, SLOTS, type Group, type Slot, type SlotId } from '../lib/slots.ts';
 import { ConfigSummary, fileMismatch, setupItems } from './ConfigReport.tsx';
 import { FileButton, Preview, type PreviewItem } from './Preview.tsx';
+import { ConflictReview } from './ConflictReview.tsx';
+import { activeLabel, clearActiveLabel, reviewingConflicts, setReviewingConflicts, takeFocus } from '../lib/label-view.ts';
 import { fitToWindow } from './QcPanel.tsx';
 import { PopButton, StatusIcon, type Shown } from './QcParts.tsx';
 import {
   EXAMPLES,
   levelOf,
-  goToStep,
   addFiles,
   clearAll,
   loaded,
+  labelRegistry,
   loadExample,
   missingRequired,
   unrecognized,
@@ -202,6 +204,21 @@ export function LoadPanel(): JSX.Element {
   const nLoaded = () => SLOTS.filter((s) => loaded[s.id]?.summary && loaded[s.id]!.size).length;
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
+  // A link from Experimental setup: show the file the label came from.
+  createEffect(() => {
+    const f = takeFocus('load');
+    if (!f) return;
+    setReviewingConflicts(false);
+    const entry = labelRegistry().find((e) => e.name === f.name && (!f.file || e.file === f.file));
+    const slot = entry?.slot as SlotId | undefined;
+    const group = slot ? SLOTS.find((s) => s.id === slot)!.group : 'Behavioral';
+    setTab(group);
+    if (slot) setPickedIn(group, { slot });
+  });
+  const missingLabel = () => {
+    const f = activeLabel();
+    return f?.to === 'load' && !labelRegistry().some((e) => e.name === f.name) ? f.name : undefined;
+  };
   return (
     <div
       class="cb-load"
@@ -248,7 +265,21 @@ export function LoadPanel(): JSX.Element {
         </button>
       </div>
 
-      <div class="cb-load__body">
+      <Show when={missingLabel()}>
+        <p class="cb-warn cb-load__missing">
+          Label '{missingLabel()}' is not in any loaded file. Add the time-marker, annotation or
+          frame-label file that contains it.{' '}
+          <button class="cb-linkbtn" onClick={clearActiveLabel}>
+            Dismiss
+          </button>
+        </p>
+      </Show>
+      <Show when={reviewingConflicts()}>
+        <div class="cb-load__review">
+          <ConflictReview />
+        </div>
+      </Show>
+      <div class="cb-load__body" style={{ display: reviewingConflicts() ? 'none' : undefined }}>
         <section class="cb-load__files">
           <div class="cb-tabs" role="tablist" aria-label="File type">
             <For each={tabs()}>
@@ -323,10 +354,6 @@ export function LoadPanel(): JSX.Element {
             assign types
           </button>
         </Show>
-        <span class="cb-spacer" />
-        <button class="btn-primary" onClick={() => goToStep('setup')}>
-          Continue to Experimental setup →
-        </button>
       </div>
     </div>
   );

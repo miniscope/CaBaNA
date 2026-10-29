@@ -1,8 +1,7 @@
-import { Show, type JSX } from 'solid-js';
+import { createSignal, Show, type JSX } from 'solid-js';
 import { displayMap, gradientCss, maxOf } from '../lib/place-display.ts';
-import { FootprintStrip } from './FootprintStrip.tsx';
 import { num, type ResultsCtx } from './place-ctx.ts';
-import { FieldDetails, Outcome, ShuffleDetails, TestStats } from './PlaceInspector.tsx';
+import { Outcome, TestStats } from './PlaceInspector.tsx';
 import { HowToRead } from './parts.tsx';
 import { RateMap } from './RateMap.tsx';
 
@@ -22,6 +21,7 @@ export function PlaceCellPanel(props: {
     displayMap(a.subarray(i() * r().nStates, (i() + 1) * r().nStates), [ny, nx]);
   const halves = () => [half(r().rateA), half(r().rateB)] as const;
   const top = () => maxOf(...halves());
+  const [part, setPart] = createSignal<'tests' | 'maps'>('tests');
   const row = () =>
     c()
       .rows()
@@ -64,57 +64,63 @@ export function PlaceCellPanel(props: {
           <p class="cb-muted">This cell is hidden by the current filter or search.</p>
         </Show>
 
-        <TestStats out={out()} i={i()} />
-
-        <div class="cb-cellpanel__halves">
-          <figure>
-            <figcaption>First half</figcaption>
-            <RateMap values={halves()[0]} max={top()} size={260} {...mapProps} />
-          </figure>
-          <figure>
-            <figcaption>Second half</figcaption>
-            <RateMap values={halves()[1]} max={top()} size={260} {...mapProps} />
-          </figure>
-        </div>
-        <div class="cb-legend" role="img" aria-label="Color scale">
-          <span class="cb-legend__item">Event rate 0</span>
-          <span
-            class="cb-legend__bar cb-legend__bar--sm"
-            style={{ background: gradientCss('right') }}
-          />
-          <span class="cb-legend__item">{num(top(), 1)} events/s, shared by both halves</span>
-          <span class="cb-legend__item">
-            <i style={{ background: '#d4d4d0' }} /> Under {out().settings.minOccS} s
-          </span>
-        </div>
-        <HowToRead>
-          <p>
-            Event-rate maps from the first and second half of the recording, seen from above, on one
-            color scale so their rates can be compared directly. The stability test correlates these
-            two maps: a stable place cell has its field in the same place in both. Grey bins were
-            visited for less than {out().settings.minOccS} s in that half and have no rate.
-          </p>
-        </HowToRead>
-
-        <ShuffleDetails out={out()} i={i()} />
-        <FieldDetails out={out()} i={i()} />
-        <details class="cb-notebox cb-fold">
-          <summary>Footprint and neural trace</summary>
-          <div>
-            <FootprintStrip out={out()} i={i()} />
-            <HowToRead>
-              <p>
-                The small image is the cell’s footprint in the field of view. The trace is its
-                signal over the whole recording; shaded columns are frames left out of the analysis
-                (no position, or below the speed threshold).
-              </p>
-            </HowToRead>
+        <div class="cb-cellpanel__tabs">
+          <div class="cb-seg" role="tablist" aria-label="Selected cell views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={part() === 'tests'}
+              classList={{ 'cb-seg__on': part() === 'tests' }}
+              onClick={() => setPart('tests')}
+            >
+              Tests
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={part() === 'maps'}
+              classList={{ 'cb-seg__on': part() === 'maps' }}
+              onClick={() => setPart('maps')}
+            >
+              Half-session maps
+            </button>
           </div>
-        </details>
+          <button class="cb-link" onClick={() => props.onInspector()}>
+            Full inspector (shuffles, fields, trace) ›
+          </button>
+        </div>
 
-        <button class="btn-secondary cb-cellpanel__open" onClick={() => props.onInspector()}>
-          Open full cell inspector
-        </button>
+        <Show when={part() === 'tests'}>
+          <TestStats out={out()} i={i()} />
+        </Show>
+        <Show when={part() === 'maps'}>
+          <div class="cb-cellpanel__halves">
+            <figure>
+              <figcaption>First half</figcaption>
+              <RateMap values={halves()[0]} max={top()} size={100} {...mapProps} />
+            </figure>
+            <figure>
+              <figcaption>Second half</figcaption>
+              <RateMap values={halves()[1]} max={top()} size={100} {...mapProps} />
+            </figure>
+          </div>
+          <div class="cb-legend" role="img" aria-label="Color scale">
+            <span class="cb-legend__item">0</span>
+            <span
+              class="cb-legend__bar cb-legend__bar--sm"
+              style={{ background: gradientCss('right') }}
+            />
+            <span class="cb-legend__item">{num(top(), 1)} events/s, both halves</span>
+          </div>
+          <HowToRead>
+            <p>
+              Event-rate maps from the first and second half of the recording, seen from above, on
+              one color scale so their rates can be compared directly. The stability test correlates
+              these two maps: a stable place cell has its field in the same place in both. Grey bins
+              were visited for less than {out().settings.minOccS} s in that half and have no rate.
+            </p>
+          </HowToRead>
+        </Show>
       </Show>
     </aside>
   );

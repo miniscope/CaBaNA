@@ -1,4 +1,12 @@
-import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  type JSX,
+} from 'solid-js';
 import {
   type Pt,
   arena,
@@ -28,11 +36,34 @@ import { Trajectory } from './Trajectory.tsx';
 import { Note } from './parts.tsx';
 import { EXAMPLES, exampleMedia, loaded, setSource, source } from '../lib/store.ts';
 
+const SECTIONS = [
+  [1, '1. Picture'],
+  [2, '2. Outline, scale'],
+  [3, '3. Zones'],
+  [4, '4. Animal size'],
+] as const;
+
 type Tool = 'none' | 'arena' | 'distance' | 'zone' | 'animal';
 
 /** Describe the arena on a picture: its outline, scale, zones and the animal's size. */
 export function SpatialSetup(): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
+  const [section, setSection] = createSignal<1 | 2 | 3 | 4>(1);
+
+  /** Gives the canvas the largest size that fits its box, keeping the picture's proportions. */
+  const fitCanvas = (holder: HTMLElement | undefined) => {
+    if (!holder || !canvas || !canvas.width) return;
+    const k = Math.min(holder.clientWidth / canvas.width, holder.clientHeight / canvas.height);
+    canvas.style.width = `${Math.floor(canvas.width * k)}px`;
+    canvas.style.height = `${Math.floor(canvas.height * k)}px`;
+  };
+  let holderEl: HTMLDivElement | undefined;
+  const fitHolder = (el: HTMLDivElement) => {
+    holderEl = el;
+    const ro = new ResizeObserver(() => fitCanvas(el));
+    ro.observe(el);
+    onCleanup(() => ro.disconnect());
+  };
   const [tool, setTool] = createSignal<Tool>('none');
   const [zoneShape, setZoneShape] = createSignal<
     'rect' | 'square' | 'circle' | 'polygon' | 'freehand'
@@ -182,6 +213,7 @@ export function SpatialSetup(): JSX.Element {
     if (!f || !c || !ctx) return;
     c.width = f.canvas.width;
     c.height = f.canvas.height;
+    fitCanvas(holderEl);
     const lw = Math.max(2, c.width / 400);
     const fontPx = Math.max(12, c.width / 50);
     ctx.drawImage(f.canvas, 0, 0);
@@ -352,21 +384,30 @@ export function SpatialSetup(): JSX.Element {
     })[tool()];
 
   return (
-    <div class="cb-panel cb-panel--wide">
-      <p class="cb-lead">
-        Describe the arena so later steps can place the animal in it: its outline, its scale and its
-        zones. If you loaded a config file you can skip this. Nothing here is required.
-      </p>
+    <div class="cb-panel cb-panel--wide cb-spatial">
       <Show when={pendingZones()?.length}>
         <div class="cb-note">
-          Zones and excluded regions from {loaded.config?.name} waiting to be placed:{' '}
-          {pendingZones()!.length}. Outline the arena below, or use a blank arena, and they appear
-          in place.
+          {pendingZones()!.length} zones and excluded regions from {loaded.config?.name} are waiting
+          to be placed. Outline the arena or use a blank arena and they appear.
         </div>
       </Show>
       <div class="cb-arena-grid">
         <div class="cb-arena-controls">
-          <section class="cb-group">
+          <div class="cb-tabs" role="tablist" aria-label="Spatial setup sections">
+            <For each={SECTIONS}>
+              {([id, label]) => (
+                <button
+                  role="tab"
+                  aria-selected={section() === id}
+                  classList={{ 'cb-tab--on': section() === id }}
+                  onClick={() => setSection(id)}
+                >
+                  {label}
+                </button>
+              )}
+            </For>
+          </div>
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 1 }}>
             <h3>1. Picture of the arena</h3>
             <Note>
               Upload one frame from the behavior camera, or a video. For a video, CaBaNA builds a
@@ -438,7 +479,7 @@ export function SpatialSetup(): JSX.Element {
             </Show>
           </section>
 
-          <section class="cb-group">
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 2 }}>
             <h3>2. Arena outline and scale</h3>
             <div class="cb-controls">
               <label>
@@ -555,7 +596,7 @@ export function SpatialSetup(): JSX.Element {
             </div>
           </section>
 
-          <section class="cb-group">
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 3 }}>
             <h3>3. Zones and excluded regions</h3>
             <Note>
               Zones are places the analyses compare, such as center, reward or an object. Excluded
@@ -638,7 +679,7 @@ export function SpatialSetup(): JSX.Element {
             </div>
           </section>
 
-          <section class="cb-group">
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 4 }}>
             <h3>4. Animal size</h3>
             <Note>
               Use a frame where the animal is walking and stretched out, not rearing or curled up.
@@ -704,6 +745,7 @@ export function SpatialSetup(): JSX.Element {
             <Trajectory bare mode="path" />
           </Show>
           <Show when={viewTab() === 'zones'}>
+            <div class="cb-arena-zones">
             <Trajectory bare mode="time" />
             <Show
               when={zoneShare().length}
@@ -740,8 +782,9 @@ export function SpatialSetup(): JSX.Element {
                 </tbody>
               </table>
             </Show>
+            </div>
           </Show>
-          <div style={{ display: viewTab() === 'top' ? 'block' : 'none' }}>
+          <div style={{ display: viewTab() === 'top' ? 'flex' : 'none' }}>
             <Show when={tool() !== 'none'}>
               <div class="cb-note">{hint()}</div>
             </Show>
@@ -759,6 +802,7 @@ export function SpatialSetup(): JSX.Element {
                 </div>
               }
             >
+              <div class="cb-arena-holder" ref={fitHolder}>
               <canvas
                 ref={canvas}
                 class="cb-arena-canvas"
@@ -796,6 +840,7 @@ export function SpatialSetup(): JSX.Element {
                 }}
                 aria-label="Picture of the arena"
               />
+              </div>
               <label class="cb-muted">
                 <input
                   type="checkbox"

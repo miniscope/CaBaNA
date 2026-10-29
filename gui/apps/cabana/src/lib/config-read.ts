@@ -4,6 +4,7 @@
 
 import { parse } from 'yaml';
 import type { SlotId } from './slots.ts';
+import type { LabelRole } from './labels.ts';
 
 type Pt = [number, number];
 /** A zone in cm from the arena's lower left corner, y up. circle: centre, then a point on the edge. */
@@ -32,6 +33,8 @@ export type MetaField = (typeof META_FIELDS)[number][1];
 export interface Stimulus {
   name: string;
   kind: string;
+  /** The loaded label that says when it happened. */
+  label?: string;
   durationS?: number;
   note: string;
 }
@@ -54,6 +57,13 @@ export interface ConfigValues {
   subjectId?: string;
   meta: Partial<Record<MetaField, string | number>>;
   stimuli?: Stimulus[];
+  /** metadata.label_roles, keyed by exact label. */
+  labelRoles?: Record<string, LabelRole>;
+  /** The config's name for the time-marker file and the frame-label file, so an export keeps them. */
+  markersName?: string;
+  frameLabelsName?: string;
+  /** behavior.frame_labels: which columns are the frame number, binary labels and categories. */
+  frameMapping?: { frameColumn: string; binary: string[]; categorical: string[] };
   /** The config's name for each epoch file, so an export keeps it. */
   epochNames: Partial<Record<SlotId, string>>;
 }
@@ -88,7 +98,15 @@ const SECTIONS: Record<string, { read: string[]; keep: string[] }> = {
     keep: ['key', 'orientation', 'cell_ids'],
   },
   behavior: {
-    read: ['timestamps', 'clock', 'position', 'head_orientation', 'epochs'],
+    read: [
+      'timestamps',
+      'clock',
+      'position',
+      'head_orientation',
+      'epochs',
+      'markers',
+      'frame_labels',
+    ],
     keep: ['signals'],
   },
   'behavior.clock': { read: ['offset_s', 'scale'], keep: [] },
@@ -192,6 +210,8 @@ function readValues(cfg: Obj, r: ConfigRead): void {
     v.headOffsetDeg = num(beh.head_orientation.offset_deg);
   }
   if (isObj(beh.epochs)) readEpochs(beh.epochs, r);
+  if (isObj(beh.markers)) readMarkerGroups(beh.markers, r);
+  if (isObj(beh.frame_labels)) readFrameLabelGroups(beh.frame_labels, r);
 
   if (isObj(cfg.arena)) readArena(cfg.arena, r, cfg.metadata, v.positionUnit);
 
@@ -218,6 +238,46 @@ function readEpochs(epochs: Obj, r: ConfigRead): void {
     r.files[slot] = base(e.file);
     r.values.mergeGapS ??= num(e.merge_gap_s);
     r.values.minBoutS ??= num(e.min_duration_s);
+  }
+}
+
+/** The GUI holds one time-marker file; further groups are kept in the export but not loaded. */
+function readMarkerGroups(groups: Obj, r: ConfigRead): void {
+  for (const [name, g] of Object.entries(groups)) {
+    if (!isObj(g)) continue;
+    if (r.values.markersName) {
+      r.kept.push({ path: ['behavior', 'markers', name], value: g });
+      r.problems.push(
+        `Marker file "${name}" is kept but not loaded: the GUI holds one time-marker file.`,
+      );
+      continue;
+    }
+    r.values.markersName = name;
+    r.files.time_markers = base(g.file);
+  }
+}
+
+const strings = (v: unknown) =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+
+/** The GUI holds one frame-label file; further groups are kept in the export but not loaded. */
+function readFrameLabelGroups(groups: Obj, r: ConfigRead): void {
+  for (const [name, g] of Object.entries(groups)) {
+    if (!isObj(g)) continue;
+    if (r.values.frameLabelsName) {
+      r.kept.push({ path: ['behavior', 'frame_labels', name], value: g });
+      r.problems.push(
+        `Frame-label file "${name}" is kept but not loaded: the GUI holds one frame-label file.`,
+      );
+      continue;
+    }
+    r.values.frameLabelsName = name;
+    r.files.frame_labels = base(g.file);
+    r.values.frameMapping = {
+      frameColumn: str(g.frame_column) ?? 'frame',
+      binary: strings(g.binary),
+      categorical: strings(g.categorical),
+    };
   }
 }
 
@@ -292,7 +352,13 @@ function readArena(a: Obj, r: ConfigRead, meta: unknown, positionUnit?: 'cm' | '
 const isPolygon = (z: unknown): z is Pt[] => Array.isArray(z) && z.length >= 3 && z.every(isPt);
 
 function readMetadata(m: Obj, r: ConfigRead): void {
-  const known = new Set<string>(['arena_shape', 'body_length_cm', 'stimuli', 'y_increases']);
+  const known = new Set<string>([
+    'arena_shape',
+    'body_length_cm',
+    'stimuli',
+    'y_increases',
+    'label_roles',
+  ]);
   for (const [key, field] of META_FIELDS) {
     known.add(key);
     const val = m[key];
@@ -304,9 +370,16 @@ function readMetadata(m: Obj, r: ConfigRead): void {
     r.values.stimuli = m.stimuli.filter(isObj).map((s) => ({
       name: String(s.name ?? ''),
       kind: String(s.kind ?? ''),
+      label: str(s.label),
       durationS: num(s.duration_s),
       note: String(s.note ?? ''),
     }));
+  if (isObj(m.label_roles))
+    r.values.labelRoles = Object.fromEntries(
+      Object.entries(m.label_roles).filter(
+        (e): e is [string, LabelRole] => e[1] === 'measured' || e[1] === 'controlled',
+      ),
+    );
   for (const [k, val] of Object.entries(m)) {
     if (known.has(k)) r.read.push(`metadata.${k}`);
     else r.kept.push({ path: ['metadata', k], value: val });

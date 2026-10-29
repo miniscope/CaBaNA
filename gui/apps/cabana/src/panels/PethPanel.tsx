@@ -8,6 +8,7 @@ import {
   alignsOf,
   pethAlignedReports,
   pethPlan,
+  seedPethSelection,
   pethReports,
   pethRunIssue,
   pethSettings,
@@ -22,6 +23,7 @@ import { windowProblems, type Align, type OnsetReport } from '../lib/peth.ts';
 import { pethChanges, pethSettingChanges } from '../lib/peth-view.ts';
 import { prep } from '../lib/preprocess.ts';
 import { goToStep } from '../lib/store.ts';
+import { Requirements } from '../components/Requirements.tsx';
 import { HowTo } from './AurocResults.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { NumField } from './PethFields.tsx';
@@ -37,19 +39,32 @@ const D = DEFAULT_PETH_SETTINGS.params;
 const p = () => pethSettings.params;
 
 /** The timeline filling its box, redrawn when the box is resized. */
-function FitTimeline(props: { data: PethData; reports: OnsetReport[] | undefined; ready: (b: number) => boolean }): JSX.Element {
+function FitTimeline(props: {
+  data: PethData;
+  reports: OnsetReport[] | undefined;
+  ready: (b: number) => boolean;
+}): JSX.Element {
   const [size, measure] = createSize();
   return (
     <div class="cb-as-tl" ref={measure}>
       <Show when={size().w > 0}>
-        <PethTimeline data={props.data} reports={props.reports} ready={props.ready} w={size().w} h={size().h} />
+        <PethTimeline
+          data={props.data}
+          reports={props.reports}
+          ready={props.ready}
+          w={size().w}
+          h={size().h}
+        />
       </Show>
     </div>
   );
 }
 
 /** Excluded bouts by reason, for every behavior (one table per alignment); the same tables open from each count. */
-function Exclusions(props: { data: PethData; reports: Partial<Record<Align, OnsetReport[]>> }): JSX.Element {
+function Exclusions(props: {
+  data: PethData;
+  reports: Partial<Record<Align, OnsetReport[]>>;
+}): JSX.Element {
   const aligns = () => alignsOf(pethSettings.align);
   return (
     <>
@@ -87,10 +102,11 @@ function Exclusions(props: { data: PethData; reports: Partial<Record<Align, Onse
         )}
       </For>
       <p class="cb-muted">
-        Checked in this order; each bout is counted once, under the first reason. For onsets the gap is measured from
-        the end of the previous bout of the same behavior; for offsets, from the end of this bout to the start of the
-        next bout of the same behavior (the last bout has no next bout and always passes). Excluded bouts still count
-        as the neighboring bout. PETH uses every frame, so no bout is outside the selected frames.
+        Checked in this order; each bout is counted once, under the first reason. For onsets the gap
+        is measured from the end of the previous bout of the same behavior; for offsets, from the
+        end of this bout to the start of the next bout of the same behavior (the last bout has no
+        next bout and always passes). Excluded bouts still count as the neighboring bout. PETH uses
+        every frame, so no bout is outside the selected frames.
       </p>
     </>
   );
@@ -113,14 +129,19 @@ function PethSetup(): JSX.Element {
   const aligns = () => alignsOf(pethSettings.align);
   const aligned = createMemo(() => (ok() ? pethAlignedReports(ok()!, pethSettings) : undefined));
   // The timeline draws one alignment: the offsets when only offsets are run, otherwise the onsets.
-  const reports = createMemo(() => (ok() ? pethReports(ok()!, p(), pethSettings.align === 'offset' ? 'offset' : 'onset') : undefined));
+  const reports = createMemo(() =>
+    ok()
+      ? pethReports(ok()!, p(), pethSettings.align === 'offset' ? 'offset' : 'onset')
+      : undefined,
+  );
   /** Included bouts of a behavior, one number per alignment run. */
   const counts = (b: number) => aligns().map((a) => aligned()?.[a]?.[b].onsets.length ?? 0);
   const countText = (b: number) => counts(b).join(' / ');
   const ready = (b: number) => counts(b).some((n) => n >= p().minEvents);
   const chosen = (b: number) => ready(b) && !pethSettings.unselected.includes(ok()!.labels[b]);
   const readyBehaviors = () => ok()!.labels.flatMap((_, b) => (chosen(b) ? [b] : []));
-  const included = () => readyBehaviors().reduce((n, b) => n + counts(b).reduce((s, v) => s + v, 0), 0);
+  const included = () =>
+    readyBehaviors().reduce((n, b) => n + counts(b).reduce((s, v) => s + v, 0), 0);
   const notEvaluated = () => ok()!.labels.filter((_, b) => !ready(b));
   const issue = () => (ok() ? pethRunIssue(ok()!, pethSettings, aligned()) : undefined);
   const toggle = (label: string) =>
@@ -131,12 +152,28 @@ function PethSetup(): JSX.Element {
         : [...pethSettings.unselected, label],
     );
 
+  // Behaviors not marked controlled start out unselected, once, when the data first appear.
+  // Every behavior stays in the list.
+  let seeded = false;
+  createEffect(() => {
+    const d = ok();
+    if (!d || seeded) return;
+    seeded = true;
+    seedPethSelection(d.labels);
+  });
+
   // The automatic minimum shift, worked out ahead of the run so it can be shown here.
   createEffect(() => {
     const d = ok();
     const r = aligned();
     if (d && r && pethSettings.test === 'circular' && pethSettings.shiftAuto && !issue())
-      estimateMinShift(pethPlan(d, { params: p(), unselected: [...pethSettings.unselected], align: pethSettings.align }, r).input);
+      estimateMinShift(
+        pethPlan(
+          d,
+          { params: p(), unselected: [...pethSettings.unselected], align: pethSettings.align },
+          r,
+        ).input,
+      );
   });
 
   let root!: HTMLDivElement;
@@ -149,8 +186,12 @@ function PethSetup(): JSX.Element {
         <div>
           <h2>PETH analysis</h2>
           <p class="cb-muted">
-            <Show when={ok()} fallback="Peri-event time histograms: neural data aligned to behavior bouts.">
-              Smoothed deconvolved trace ({prep.eventSigmaS ? `event smoothing σ ${prep.eventSigmaS} s` : 'no event smoothing'},{' '}
+            <Show
+              when={ok()}
+              fallback="Peri-event time histograms: neural data aligned to behavior bouts."
+            >
+              Smoothed deconvolved trace (
+              {prep.eventSigmaS ? `event smoothing σ ${prep.eventSigmaS} s` : 'no event smoothing'},{' '}
               <button class="cb-link" onClick={() => goToStep('prep')}>
                 Preprocess
               </button>
@@ -172,11 +213,16 @@ function PethSetup(): JSX.Element {
                 button={`${ok()!.cellsMissing.length} of ${ok()!.cells} cells cannot be evaluated`}
               >
                 <p>
-                  These cells have a non-finite neural value somewhere in the session, so the response is undefined
-                  for every behavior. They are kept in the results as Not evaluated and are left out of the counts of
-                  evaluated cells.
+                  These cells have a non-finite neural value somewhere in the session, so the
+                  response is undefined for every behavior. They are kept in the results as Not
+                  evaluated and are left out of the counts of evaluated cells.
                 </p>
-                <p>Cells: {ok()!.cellsMissing.map((c) => ok()!.cellIds[c] + 1).join(', ')}</p>
+                <p>
+                  Cells:{' '}
+                  {ok()!
+                    .cellsMissing.map((c) => ok()!.cellIds[c] + 1)
+                    .join(', ')}
+                </p>
               </PopButton>
             </Show>
           </div>
@@ -190,15 +236,17 @@ function PethSetup(): JSX.Element {
         </div>
       </div>
       <Show when={pethOutcome() && changes().length}>
-        <div class="cb-muted">Changed since the last run: {changes().join(', ')}. Run again to update.</div>
+        <div class="cb-muted">
+          Changed since the last run: {changes().join(', ')}. Run again to update.
+        </div>
       </Show>
       <Show when={error()}>
         <div class="cb-note">{error()}</div>
       </Show>
       <Show when={!ok()}>
         <div class="cb-empty">
-          {(data() as { error: string }).error} PETH needs deconvolved neural data, neural timestamps and behavior
-          annotations.
+          {(data() as { error: string }).error} PETH needs deconvolved neural data, neural
+          timestamps and behavior annotations.
         </div>
       </Show>
 
@@ -210,11 +258,12 @@ function PethSetup(): JSX.Element {
               <span class="cb-pe-small">
                 Align windows to
                 <InfoTip label="About the alignment">
-                  Onset is the first frame of each bout; offset is the first frame after the bout. With both, each
-                  behavior gets two separate PETHs, one aligned to onsets and one to offsets, each with its own
-                  curves, p-values and labels. That doubles the number of tests. Onset and offset tests are
-                  corrected separately, so the correction does not control the error rate for a claim that combines
-                  both alignments. Aligning to offsets is a GUI addition; it is not in the framework.
+                  Onset is the first frame of each bout; offset is the first frame after the bout.
+                  With both, each behavior gets two separate PETHs, one aligned to onsets and one to
+                  offsets, each with its own curves, p-values and labels. That doubles the number of
+                  tests. Onset and offset tests are corrected separately, so the correction does not
+                  control the error rate for a claim that combines both alignments. Aligning to
+                  offsets is a GUI addition; it is not in the framework.
                 </InfoTip>
               </span>
               <For each={['onset', 'offset', 'both'] as const}>
@@ -234,34 +283,60 @@ function PethSetup(): JSX.Element {
             <div class="cb-pe-mins">
               <div class="cb-pe-min">
                 <span class="cb-pe-small">
-                Minimum bout duration
-                <InfoTip label="About the minimum bout duration">
-                  Bouts shorter than this are not used. Onsets are the first frame of each bout of the annotated
-                  behavior, offsets the first frame after it; label padding is not applied.
-                </InfoTip>
+                  Minimum bout duration
+                  <InfoTip label="About the minimum bout duration">
+                    Bouts shorter than this are not used. Onsets are the first frame of each bout of
+                    the annotated behavior, offsets the first frame after it; label padding is not
+                    applied.
+                  </InfoTip>
                 </span>
-                <NumField label="Minimum bout duration (s)" value={p().minDurationS} def={D.minDurationS} min={0} step={0.1} unit="s" onSet={(v) => setPethSettings('params', 'minDurationS', v)} />
+                <NumField
+                  label="Minimum bout duration (s)"
+                  value={p().minDurationS}
+                  def={D.minDurationS}
+                  min={0}
+                  step={0.1}
+                  unit="s"
+                  onSet={(v) => setPethSettings('params', 'minDurationS', v)}
+                />
               </div>
               <div class="cb-pe-min">
                 <span class="cb-pe-small">
-                Minimum gap to the neighboring bout
-                <InfoTip label="About the minimum gap">
-                  For onsets: a bout that starts sooner than this after the end of the previous bout of the same
-                  behavior is not used. For offsets: a bout that ends sooner than this before the start of the next bout
-                  of the same behavior is not used (the last bout always passes). Windows are then less likely to
-                  contain the neighboring bout. 0 turns it off.
-                </InfoTip>
+                  Minimum gap to the neighboring bout
+                  <InfoTip label="About the minimum gap">
+                    For onsets: a bout that starts sooner than this after the end of the previous
+                    bout of the same behavior is not used. For offsets: a bout that ends sooner than
+                    this before the start of the next bout of the same behavior is not used (the
+                    last bout always passes). Windows are then less likely to contain the
+                    neighboring bout. 0 turns it off.
+                  </InfoTip>
                 </span>
-                <NumField label="Minimum gap (s)" value={p().minGapS} def={D.minGapS} min={0} step={0.1} unit="s" onSet={(v) => setPethSettings('params', 'minGapS', v)} />
+                <NumField
+                  label="Minimum gap (s)"
+                  value={p().minGapS}
+                  def={D.minGapS}
+                  min={0}
+                  step={0.1}
+                  unit="s"
+                  onSet={(v) => setPethSettings('params', 'minGapS', v)}
+                />
               </div>
               <div class="cb-pe-min">
                 <span class="cb-pe-small">
-                Minimum bouts per behavior
-                <InfoTip label="About the minimum bouts">
-                  A behavior with fewer included bouts is not evaluated: it has no curves, p-values or labels.
-                </InfoTip>
+                  Minimum bouts per behavior
+                  <InfoTip label="About the minimum bouts">
+                    A behavior with fewer included bouts is not evaluated: it has no curves,
+                    p-values or labels.
+                  </InfoTip>
                 </span>
-                <NumField label="Minimum bouts per behavior" value={p().minEvents} def={D.minEvents} min={1} step={1} onSet={(v) => setPethSettings('params', 'minEvents', Math.max(1, Math.round(v)))} />
+                <NumField
+                  label="Minimum bouts per behavior"
+                  value={p().minEvents}
+                  def={D.minEvents}
+                  min={1}
+                  step={1}
+                  onSet={(v) => setPethSettings('params', 'minEvents', Math.max(1, Math.round(v)))}
+                />
               </div>
             </div>
             <div class="cb-pe-tablewrap">
@@ -271,8 +346,12 @@ function PethSetup(): JSX.Element {
                     <th aria-label="Selected" />
                     <th>Behavior</th>
                     <th class="cb-as-num">Bouts</th>
-                    <th class="cb-as-num">Included bouts{aligns().length > 1 ? ' (onset / offset)' : ''}</th>
-                    <th class="cb-as-num">Excluded bouts{aligns().length > 1 ? ' (onset / offset)' : ''}</th>
+                    <th class="cb-as-num">
+                      Included bouts{aligns().length > 1 ? ' (onset / offset)' : ''}
+                    </th>
+                    <th class="cb-as-num">
+                      Excluded bouts{aligns().length > 1 ? ' (onset / offset)' : ''}
+                    </th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -301,7 +380,9 @@ function PethSetup(): JSX.Element {
                               title="Excluded bouts by reason"
                               width={560}
                               class="cb-link"
-                              button={counts(i()).map((n) => b.bouts - n).join(' / ')}
+                              button={counts(i())
+                                .map((n) => b.bouts - n)
+                                .join(' / ')}
                             >
                               <Exclusions data={ok()!} reports={aligned()!} />
                             </PopButton>
@@ -313,10 +394,7 @@ function PethSetup(): JSX.Element {
                               when={ready(i())}
                               fallback={`Not evaluated: ${countText(i())} bout${countText(i()) === '1' ? '' : 's'}, minimum ${p().minEvents}`}
                             >
-                              <Show
-                                when={chosen(i())}
-                                fallback={<span>Left out of the run</span>}
-                              >
+                              <Show when={chosen(i())} fallback={<span>Left out of the run</span>}>
                                 <span class="cb-pill cb-pill--good">✓ Ready</span>
                               </Show>
                             </Show>
@@ -333,14 +411,14 @@ function PethSetup(): JSX.Element {
               <h4>Session timeline</h4>
               <HowTo title="Session timeline">
                 <p>
-                  Each row is one behavior. Bars are annotated bouts; circles mark the aligned end of each bout
-                  (onsets, or offsets when only offsets are run; with both, onsets). Filled circles are included
-                  bouts; open red circles were excluded by the settings above. Gray rows have too few bouts to be
-                  evaluated.
+                  Each row is one behavior. Bars are annotated bouts; circles mark the aligned end
+                  of each bout (onsets, or offsets when only offsets are run; with both, onsets).
+                  Filled circles are included bouts; open red circles were excluded by the settings
+                  above. Gray rows have too few bouts to be evaluated.
                 </p>
                 <p>
-                  No frame selection is applied to PETH: every frame is used, so every bout whose window lies inside
-                  the session has the same full window.
+                  No frame selection is applied to PETH: every frame is used, so every bout whose
+                  window lies inside the session has the same full window.
                 </p>
               </HowTo>
               <span class="cb-plot__legend">
@@ -355,7 +433,8 @@ function PethSetup(): JSX.Element {
               <FitTimeline data={ok()!} reports={reports()} ready={(b) => !reports() || ready(b)} />
             </div>
             <div class="cb-muted cb-pe-small">
-              All frames are used: no frame selection is applied, and a window may contain any frame.
+              All frames are used: no frame selection is applied, and a window may contain any
+              frame.
             </div>
           </section>
 
@@ -366,20 +445,31 @@ function PethSetup(): JSX.Element {
               <div class="cb-pe-small">
                 <h4>Display settings</h4>{' '}
                 <span class="cb-muted">
-                  These change only the displayed curves. The test always compares the baseline and response
-                  intervals above, unbinned.
+                  These change only the displayed curves. The test always compares the baseline and
+                  response intervals above, unbinned.
                 </span>
               </div>
               <div class="cb-pe-inline">
                 <span class="cb-pe-inline cb-pe-small">
                   Bin size
-                  <NumField label="Bin size (s)" value={p().binS ?? 0} def={D.binS ?? 0} min={0.001} step={0.05} unit="s" bad={windowProblems(p(), ok()!.fs).some((m) => m.startsWith('Bin'))} onSet={(v) => setPethSettings('params', 'binS', v)} />
+                  <NumField
+                    label="Bin size (s)"
+                    value={p().binS ?? 0}
+                    def={D.binS ?? 0}
+                    min={0.001}
+                    step={0.05}
+                    unit="s"
+                    bad={windowProblems(p(), ok()!.fs).some((m) => m.startsWith('Bin'))}
+                    onSet={(v) => setPethSettings('params', 'binS', v)}
+                  />
                 </span>
                 <label class="cb-as-check cb-pe-small">
                   <input
                     type="checkbox"
                     checked={p().baselineSubtract}
-                    onChange={(e) => setPethSettings('params', 'baselineSubtract', e.currentTarget.checked)}
+                    onChange={(e) =>
+                      setPethSettings('params', 'baselineSubtract', e.currentTarget.checked)
+                    }
                   />
                   Subtract each onset's baseline
                 </label>
@@ -397,7 +487,8 @@ function PethSetup(): JSX.Element {
 
         <div class="cb-pe-foot">
           <span class="cb-pe-warn">
-            Choose the windows before inspecting results; changing them afterward biases which cells respond.
+            Choose the windows before inspecting results; changing them afterward biases which cells
+            respond.
           </span>
           <span class="cb-pe-foot__text">
             <Show
@@ -420,7 +511,10 @@ function PethSetup(): JSX.Element {
                   {readyBehaviors().length} behavior{readyBehaviors().length === 1 ? '' : 's'} ready
                 </b>{' '}
                 · <b>{included()} bouts</b> included
-                <Show when={notEvaluated().length}> · {notEvaluated().join(', ')} not evaluated</Show>
+                <Show when={notEvaluated().length}>
+                  {' '}
+                  · {notEvaluated().join(', ')} not evaluated
+                </Show>
               </Show>
             </Show>
           </span>
@@ -445,8 +539,11 @@ function PethSetup(): JSX.Element {
 /** The PETH page: its settings, or after a run its results. */
 export function PethPanel(): JSX.Element {
   return (
-    <Show when={pethShowResults() && pethOutcome()} keyed fallback={<PethSetup />}>
-      {(out) => <PethResults out={out} onEdit={() => setPethShowResults(false)} />}
-    </Show>
+    <>
+      <Requirements analysis="peth" />
+      <Show when={pethShowResults() && pethOutcome()} keyed fallback={<PethSetup />}>
+        {(out) => <PethResults out={out} onEdit={() => setPethShowResults(false)} />}
+      </Show>
+    </>
   );
 }

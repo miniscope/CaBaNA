@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { Requirements } from '../components/Requirements.tsx';
 import { arena, DEFAULT_BIN_CM, effectiveBin, setArena, setBinCm, sizeCm } from '../lib/arena.ts';
 import {
   DEFAULT_PLACE_SETTINGS,
@@ -8,9 +9,12 @@ import {
   placeStatus,
   runPlaceCells,
   placeShowResults,
+  progressText,
   setPlaceSettings,
   setPlaceShowResults,
+  watchPlaceRuns,
 } from '../lib/place-run.ts';
+import { engineFor, frameworkReady, startRunTracking } from '../lib/engine.ts';
 import { placeChanges } from '../lib/place-ui.ts';
 import { placeFrames, placeNeural, positionIssue } from '../lib/prepared.ts';
 import { prep } from '../lib/preprocess.ts';
@@ -21,6 +25,7 @@ import { Note, SpeedFilterField } from './parts.tsx';
 import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlaceResults } from './PlaceResults.tsx';
 import { fitToWindow } from './QcPanel.tsx';
+import { EngineNotice } from './results/EngineNotice.tsx';
 
 type NumKey =
   | 'nShuffles'
@@ -119,54 +124,101 @@ function AutoManual(props: {
   );
 }
 
-type Sec = 'maps' | 'tests' | 'fields';
-// Kept outside the page so the open section survives a visit to the results.
+type Sec = 'maps' | 'tests' | 'fields' | 'occupancy' | 'method';
+// Kept outside the page so the open view survives a visit to the results.
 const [openSec, setOpenSec] = createSignal<Sec>('maps');
+// The occupancy view follows the settings group opened last.
+const [lastSettings, setLastSettings] = createSignal<'maps' | 'tests' | 'fields'>('maps');
+const openView = (id: Sec) => {
+  setOpenSec(id);
+  if (id === 'maps' || id === 'tests' || id === 'fields') setLastSettings(id);
+};
 
-/** One settings group that opens on click. Closed, its header shows the current values. */
-function Section(props: {
+type SectionInfo = {
   id: Sec;
   n: number;
   title: string;
   summary: string;
   tag?: string;
   tagClass?: string;
-  children: JSX.Element;
-}): JSX.Element {
-  const open = () => openSec() === props.id;
+};
+
+/** Local side navigation: one entry per settings group; closed entries show their current values. */
+function SectionNav(props: { items: SectionInfo[] }): JSX.Element {
   return (
-    <section class="cb-acc" classList={{ 'cb-acc--open': open() }}>
-      <button
-        type="button"
-        class="cb-acc__head"
-        aria-expanded={open()}
-        aria-controls={`pc-sec-${props.id}`}
-        onClick={() => setOpenSec(props.id)}
-      >
-        <span class="cb-acc__n">{props.n}</span>
-        <span class="cb-acc__title">
-          {props.title}
-          <Show when={!open()}>
-            <span class="cb-muted">{props.summary}</span>
-          </Show>
-        </span>
-        <Show when={props.tag}>
-          <span class={`cb-acc__tag ${props.tagClass}`}>{props.tag}</span>
-        </Show>
-        <span aria-hidden="true">{open() ? '▴' : '▾'}</span>
-      </button>
-      <Show when={open()}>
-        <div class="cb-acc__body" id={`pc-sec-${props.id}`}>
-          {props.children}
-        </div>
-      </Show>
-    </section>
+    <nav class="cb-place-nav" aria-label="Place cell settings">
+      <For each={props.items}>
+        {(item) => (
+          <button
+            type="button"
+            class="cb-place-nav__item"
+            classList={{ 'cb-place-nav__item--open': openSec() === item.id }}
+            aria-current={openSec() === item.id ? 'page' : undefined}
+            onClick={() => openView(item.id)}
+          >
+            <span class="cb-acc__n">{item.n}</span>
+            <span class="cb-acc__title">
+              <span>{item.title}</span>
+              <span
+                class="cb-muted cb-place-nav__sum"
+                title={item.tag ? `${item.tag} · ${item.summary}` : item.summary}
+              >
+                {item.tag ? `${item.tag} · ` : ''}
+                {item.summary}
+              </span>
+            </span>
+          </button>
+        )}
+      </For>
+    </nav>
+  );
+}
+
+/** The body of one settings group, shown when its entry is selected. */
+function Section(props: { id: Sec; children: JSX.Element }): JSX.Element {
+  return (
+    <Show when={openSec() === props.id}>
+      <div class="cb-acc__body" id={`pc-sec-${props.id}`}>
+        {props.children}
+      </div>
+    </Show>
   );
 }
 
 function PlaceSetup(): JSX.Element {
   const frames = createMemo(() => placeFrames());
   const ready = () => !!(deconvolved() && placeNeural());
+  const sectionItems = (): SectionInfo[] => [
+    {
+      id: 'maps',
+      n: 1,
+      title: 'Build spatial maps',
+      summary: `${prep.minSpeed} cm/s · ${effectiveBin()} cm bins · ${arena.minOccupancy} s per bin · smoothing ${auto(ps.sigmaAuto, `${ps.sigma} bins`)}`,
+    },
+    {
+      id: 'tests',
+      n: 2,
+      title: 'Test spatial tuning',
+      summary: `${ps.nShuffles} shuffles · p < ${ps.alpha} · shift ${auto(ps.shiftAuto, `${ps.minShiftS} s`)}`,
+      tag: 'Classification',
+      tagClass: 'cb-acc__tag--class',
+    },
+    {
+      id: 'fields',
+      n: 3,
+      title: 'Outline place fields',
+      summary: `${ps.fieldThreshold} of peak · ≥ ${ps.minFieldBins} bins · ${ps.minOccFieldsS} s per bin`,
+      tag: 'Descriptive only',
+      tagClass: 'cb-acc__tag--desc',
+    },
+    {
+      id: 'occupancy',
+      n: 4,
+      title: 'Occupancy preview',
+      summary: 'Time spent in each bin',
+    },
+    { id: 'method', n: 5, title: 'How it works', summary: 'Steps and assumptions' },
+  ];
   const ok = () => {
     const f = frames();
     return f && !('error' in f) ? f : undefined;
@@ -200,9 +252,24 @@ function PlaceSetup(): JSX.Element {
         </button>
       }
     >
+      <Show when={engineFor('place') === 'framework' && frameworkReady()}>
+        <button
+          class="btn-secondary"
+          disabled={!ready() || !ok() || ok()?.used === 0}
+          title="Runs 50 shuffles. The result is saved as Preliminary."
+          onClick={() => void runPlaceCells({ preview: true })}
+        >
+          Quick preview
+        </button>
+      </Show>
       <button
         class="btn-primary"
-        disabled={!ready() || !ok() || ok()?.used === 0}
+        disabled={
+          !ready() ||
+          !ok() ||
+          ok()?.used === 0 ||
+          (engineFor('place') === 'framework' && !frameworkReady())
+        }
         onClick={() => void runPlaceCells()}
       >
         {placeOutcome() ? 'Run again' : 'Run analysis'}
@@ -212,7 +279,7 @@ function PlaceSetup(): JSX.Element {
 
   const status = () => {
     const s = running();
-    if (s) return `${s.step}${s.total > 1 ? ` (${s.done} of ${s.total} cells)` : '…'}`;
+    if (s) return `${s.step}${progressText(s) ? ` (${progressText(s)})` : '…'}`;
     if (!ready()) return 'Load deconvolved neural data and position';
     if (error()) return 'Needs attention';
     return 'Ready to run';
@@ -222,8 +289,12 @@ function PlaceSetup(): JSX.Element {
     <div class="cb-place" ref={root}>
       <div class="cb-place-head">
         <div>
-          <h2>Place cell analysis</h2>
-          <PlaceIntro />
+          <h2>
+            Place cell analysis
+            <InfoTip label="About the place cell analysis">
+              <PlaceIntro />
+            </InfoTip>
+          </h2>
         </div>
         <div class="cb-place-head__side">
           <span class="cb-place-method__status">
@@ -257,19 +328,22 @@ function PlaceSetup(): JSX.Element {
       <Show when={error()}>
         <div class="cb-note">{error()}</div>
       </Show>
+      <Show when={ready()}>
+        <EngineNotice
+          mode="place"
+          busy={!!running()}
+          onBrowserRun={() => void runPlaceCells({ engine: 'browser' })}
+        />
+      </Show>
       <Show when={!ready()}>
         <div class="cb-empty">Load deconvolved neural data and position to run this analysis.</div>
       </Show>
 
       <Show when={ready() && ok()}>
         <div class="cb-place-body">
+          <SectionNav items={sectionItems()} />
           <div class="cb-place-settings">
-            <Section
-              id="maps"
-              n={1}
-              title="Build spatial maps"
-              summary={`${prep.minSpeed} cm/s · ${effectiveBin()} cm bins · ${arena.minOccupancy} s per bin · smoothing ${auto(ps.sigmaAuto, `${ps.sigma} bins`)}`}
-            >
+            <Section id="maps">
               <div class="cb-setting">
                 <div class="cb-setting__title">
                   Minimum speed
@@ -393,14 +467,7 @@ function PlaceSetup(): JSX.Element {
               </Note>
             </Section>
 
-            <Section
-              id="tests"
-              n={2}
-              title="Test spatial tuning"
-              summary={`${ps.nShuffles} shuffles · p < ${ps.alpha} · shift ${auto(ps.shiftAuto, `${ps.minShiftS} s`)}`}
-              tag="Classification"
-              tagClass="cb-acc__tag--class"
-            >
+            <Section id="tests">
               <p class="cb-muted">
                 Compare each cell’s spatial tuning with a null distribution made by circularly
                 shifting its neural data relative to position. These settings decide which cells
@@ -456,14 +523,7 @@ function PlaceSetup(): JSX.Element {
               </Note>
             </Section>
 
-            <Section
-              id="fields"
-              n={3}
-              title="Outline place fields"
-              summary={`${ps.fieldThreshold} of peak · ≥ ${ps.minFieldBins} bins · ${ps.minOccFieldsS} s per bin`}
-              tag="Descriptive only"
-              tagClass="cb-acc__tag--desc"
-            >
+            <Section id="fields">
               <p class="cb-muted">
                 Identify contiguous regions with event rates above a fraction of the cell’s peak.
                 These settings set field outlines and field measurements. They do not change which
@@ -518,30 +578,29 @@ function PlaceSetup(): JSX.Element {
               </Note>
             </Section>
 
-            <details class="cb-notebox cb-place-method">
-              <summary>How the analysis works</summary>
+            <Section id="method">
               <div class="cb-muted">
                 <PlaceMethodText />
               </div>
-            </details>
-          </div>
+            </Section>
 
-          <OccupancyPreview which={openSec() === 'fields' ? 'fields' : 'tuning'} />
+            <Show when={openSec() === 'occupancy'}>
+              <OccupancyPreview which={lastSettings() === 'fields' ? 'fields' : 'tuning'} />
+            </Show>
+          </div>
         </div>
       </Show>
 
-      <div class="cb-place-foot cb-muted">
-        Inputs: deconvolved events and position
-        <Show when={placeNeural()}>
-          {' · '}
-          {placeNeural()!.cells} cells · {placeNeural()!.frames.toLocaleString()} frames · arena{' '}
-          {sizeCm()[0].toFixed(0)} × {sizeCm()[1].toFixed(0)} cm
-        </Show>
-      </div>
       <div class="cb-pe-foot">
         <span class="cb-pe-foot__text">
           <i classList={{ 'cb-dot--ok': ready() && !error() && !running() }} />{' '}
           <span class="cb-muted">{status()}</span>
+          <Show when={placeNeural()}>
+            <span class="cb-muted">
+              {placeNeural()!.frames.toLocaleString()} frames · arena {sizeCm()[0].toFixed(0)} ×{' '}
+              {sizeCm()[1].toFixed(0)} cm
+            </span>
+          </Show>
         </span>
         {runButton()}
       </div>
@@ -551,12 +610,17 @@ function PlaceSetup(): JSX.Element {
 
 /** The Place cells page: its settings, or after a run its results. The results stay while the settings are edited. */
 export function PlaceCellsPanel(): JSX.Element {
+  startRunTracking();
+  watchPlaceRuns();
   const changes = createMemo(placeChanges);
   return (
-    <Show when={placeShowResults() && placeOutcome()} keyed fallback={<PlaceSetup />}>
-      {(out) => (
-        <PlaceResults out={out} changes={changes()} onEdit={() => setPlaceShowResults(false)} />
-      )}
-    </Show>
+    <>
+      <Requirements analysis="place" />
+      <Show when={placeShowResults() && placeOutcome()} keyed fallback={<PlaceSetup />}>
+        {(out) => (
+          <PlaceResults out={out} changes={changes()} onEdit={() => setPlaceShowResults(false)} />
+        )}
+      </Show>
+    </>
   );
 }

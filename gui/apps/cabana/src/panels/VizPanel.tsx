@@ -4,7 +4,6 @@ import {
   deconvolved,
   denoisedTrace,
   footprints,
-  goToStep,
   rawTrace,
   positionResult,
   annotationResults,
@@ -310,9 +309,6 @@ export function VizPanel(): JSX.Element {
           <strong>Session navigator</strong>
           <HowTo title={HELP.navigator.title}>{HELP.navigator.text}</HowTo>
           <SessionNavigator />
-          <button class="btn-primary" onClick={() => goToStep('qc')}>
-            Continue to Data QC →
-          </button>
         </div>
       </Show>
       <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>

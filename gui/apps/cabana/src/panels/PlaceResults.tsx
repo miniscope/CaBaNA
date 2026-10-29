@@ -8,9 +8,22 @@ import {
   Show,
   type JSX,
 } from 'solid-js';
+import { bridge } from '../lib/bridge-client.ts';
+import { bridgeReady } from '../lib/bridge-status.ts';
+import { BROWSER_ENGINE_TEXT, frameworkReady, runMatch } from '../lib/engine.ts';
+import { download } from '../lib/export-figure.ts';
 import { OVERALL, OVERALL_ORDER } from '../lib/place-outcome.ts';
-import { downloadText, placeCsv } from '../lib/place-export.ts';
-import { cancelPlaceRun, placeStatus, runPlaceCells, type PlaceOutcome } from '../lib/place-run.ts';
+import { downloadText, placeCsv, placeMetadata } from '../lib/place-export.ts';
+import {
+  cancelPlaceRun,
+  loadPlaceSettings,
+  placeStatus,
+  progressText,
+  runPlaceCells,
+  type PlaceOutcome,
+} from '../lib/place-run.ts';
+import { openedRun } from '../lib/results-nav.ts';
+import { latest } from '../lib/runs.ts';
 import {
   buildRows,
   countOutcomes,
@@ -28,6 +41,9 @@ import { PlacePopulation } from './PlacePopulation.tsx';
 import { PlaceRunDetails } from './PlaceRunDetails.tsx';
 import { FILTERS, type ResultsCtx } from './place-ctx.ts';
 import { fitToWindow } from './QcPanel.tsx';
+import { ExportMenu } from './results/ExportMenu.tsx';
+import { RunBanner } from './results/RunBanner.tsx';
+import { SavedRunBar } from './results/SavedRunBar.tsx';
 
 // Outcome names short enough for the summary bar; the full names are in each segment's title.
 const SHORT = {
@@ -128,6 +144,78 @@ export function PlaceResults(props: {
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   const total = () => rows().length;
+  const record = () => out().record;
+  const isLatest = () => record()?.run_id === latest.place?.run_id;
+  const older = () => !!record() && !!openedRun('place') && !isLatest();
+  /** Edit settings and Run again, or the progress of a run under way, beside the banner's badges. */
+  const rerun = () => (
+    <Show when={props.changes.length}>
+      <span class="cb-muted" title={`Changed since the run: ${props.changes.join(', ')}`}>
+        {props.changes.join(', ')}
+      </span>
+      <Show
+        when={!running()}
+        fallback={
+          <>
+            {running()!.step}
+            {progressText(running()!) && ` (${progressText(running()!)})`}{' '}
+            <button class="btn-secondary btn-small" onClick={cancelPlaceRun}>
+              Cancel
+            </button>
+          </>
+        }
+      >
+        <button class="btn-secondary btn-small" onClick={() => props.onEdit()}>
+          Edit settings
+        </button>
+        <button class="btn-primary btn-small" onClick={() => void runPlaceCells()}>
+          Run again
+        </button>
+      </Show>
+    </Show>
+  );
+  const exportGroups = () => [
+    {
+      title: 'Tables',
+      items: [
+        {
+          label: 'Cell table (CSV)',
+          note: 'Values and p-values; not affected by plot styling',
+          run: () => downloadText('place_cells.csv', placeCsv(out()), 'text/csv'),
+        },
+        {
+          label: 'Run metadata (JSON)',
+          note: 'Settings and automatic choices',
+          run: () =>
+            downloadText(
+              'place_cells_run.json',
+              JSON.stringify(placeMetadata(out()), null, 2),
+              'application/json',
+            ),
+        },
+      ],
+    },
+    ...(record()
+      ? [
+          {
+            title: 'Framework run',
+            items: [
+              {
+                label: 'Bundle (zip)',
+                note: 'Settings, pipeline, results and reproduce script',
+                unavailable: bridgeReady() ? undefined : 'Needs the Python engine',
+                run: async () =>
+                  download(
+                    `place-${record()!.run_id}.zip`,
+                    await bridge.bundle(record()!.run_id),
+                    'application/zip',
+                  ),
+              },
+            ],
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div class="cb-results" ref={root}>
@@ -152,15 +240,40 @@ export function PlaceResults(props: {
         <button class="btn-secondary btn-small" onClick={() => props.onEdit()}>
           Edit settings
         </button>
-        <button
-          class="btn-primary btn-small"
-          onClick={() => downloadText('place_cells.csv', placeCsv(out()), 'text/csv')}
-        >
-          Export results
-        </button>
+        <ExportMenu label="Export results" groups={exportGroups()} />
       </div>
+      <Show
+        when={record()}
+        fallback={
+          <div class="cb-rb">
+            <div class="cb-rb__row">
+              <span class="cb-badge" title={BROWSER_ENGINE_TEXT}>
+                Browser engine
+              </span>
+              <span class="cb-muted">Made in this browser session; not saved as a run.</span>
+            </div>
+          </div>
+        }
+      >
+        {(r) => (
+          <>
+            <Show when={older()}>
+              <SavedRunBar
+                analysis="place"
+                record={r()}
+                onLoadSettings={() => loadPlaceSettings(r())}
+              />
+            </Show>
+            <Show when={!older()}>
+              <RunBanner record={r()} match={runMatch('place')} offline={!frameworkReady()}>
+                {rerun()}
+              </RunBanner>
+            </Show>
+          </>
+        )}
+      </Show>
 
-      <Show when={props.changes.length}>
+      <Show when={props.changes.length && !record()}>
         <div class="cb-note" role="status">
           <strong>These results use the previous settings.</strong> Changed since the run:{' '}
           {props.changes.join(', ')}.{' '}
@@ -168,7 +281,8 @@ export function PlaceResults(props: {
             when={!running()}
             fallback={
               <>
-                {running()!.step} ({running()!.done} of {running()!.total}){' '}
+                {running()!.step}
+                {progressText(running()!) && ` (${progressText(running()!)})`}{' '}
                 <button class="btn-secondary btn-small" onClick={cancelPlaceRun}>
                   Cancel
                 </button>
@@ -314,11 +428,6 @@ export function PlaceResults(props: {
           </Show>
         </div>
       </div>
-      <div class="cb-place-foot cb-muted">
-        Click a map to inspect a cell. The selected cell, filter, sort and page are kept when you
-        open the inspector, the population plots or the settings.
-      </div>
-
       <Show when={drawer()}>
         <PlaceRunDetails out={out()} onClose={closeDrawer} />
       </Show>

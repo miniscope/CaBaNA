@@ -1,3 +1,4 @@
+import { InfoTip } from './InfoTip.tsx';
 import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { arena, sizeCm, toCm, type Zone } from '../lib/arena.ts';
 import { drawZones } from '../lib/draw.ts';
@@ -101,13 +102,16 @@ export function OccupancyPreview(props: { which: Which }): JSX.Element {
   return (
     <section class="cb-group cb-card-box cb-occupancy">
       <div class="cb-occupancy__head">
-        <h3>Occupancy for {which() === 'tuning' ? 'the tuning tests' : 'place-field outlines'}</h3>
+        <h3>
+          Occupancy for {which() === 'tuning' ? 'the tuning tests' : 'place-field outlines'}
+          <InfoTip label="About the occupancy preview">
+            Time spent in each spatial bin, using the current bin size and minimum speed. Grey bins
+            are under the minimum time
+            {which() === 'tuning' ? ' for the tests' : ' for outlining fields'}.
+          </InfoTip>
+        </h3>
         <span class="cb-muted">Follows the open settings section</span>
       </div>
-      <p class="cb-muted">
-        Time spent in each spatial bin, using the current bin size and minimum speed. Grey bins are
-        under the minimum time{which() === 'tuning' ? ' for the tests' : ' for outlining fields'}.
-      </p>
       <Show
         when={cov()}
         fallback={<div class="cb-empty">Load position and set up the arena to see occupancy.</div>}

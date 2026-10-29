@@ -10,9 +10,25 @@ import {
   type JSX,
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
+import { Note } from './parts.tsx';
 import { MIN_FRAMES, type Response } from '../lib/auroc.ts';
 import { aurocCsv, aurocMetadata } from '../lib/auroc-export.ts';
-import { shiftedValues, type AurocOutcome } from '../lib/auroc-run.ts';
+import {
+  aurocProgressText,
+  aurocStatus,
+  cancelAurocRun,
+  loadAurocSettings,
+  runAuroc,
+  shiftedValues,
+  type AurocOutcome,
+} from '../lib/auroc-run.ts';
+import { aurocChanges } from '../lib/auroc-view.ts';
+import { bridge } from '../lib/bridge-client.ts';
+import { bridgeReady } from '../lib/bridge-status.ts';
+import { BROWSER_ENGINE_TEXT, engineText, frameworkReady, runMatch } from '../lib/engine.ts';
+import { download } from '../lib/export-figure.ts';
+import { openedRun } from '../lib/results-nav.ts';
+import { latest } from '../lib/runs.ts';
 import {
   aurocColor,
   aurocOf,
@@ -33,6 +49,10 @@ import { InfoTip } from './InfoTip.tsx';
 import { Popover } from './Popover.tsx';
 import { AurocScale, behaviorColor } from './AurocPanel.tsx';
 import { fitToWindow } from './QcPanel.tsx';
+import { ExportMenu } from './results/ExportMenu.tsx';
+import { RunDetailsBody } from './results/RunDetails.tsx';
+import { RunBanner } from './results/RunBanner.tsx';
+import { SavedRunBar } from './results/SavedRunBar.tsx';
 
 type View = 'inspector' | 'heatmap' | 'summary';
 const VIEWS: [View, string][] = [
@@ -42,8 +62,11 @@ const VIEWS: [View, string][] = [
 ];
 type Sort = 'strength' | 'auroc' | 'cell';
 type Filter = Response | 'all';
-const CELL_PAGE = 10;
-const HEAT_PAGE = 20;
+// Cells per page of the list: as many rows as fit, set from the list's height.
+const [cellPage, setCellPage] = createSignal(10);
+const CELL_ROW_PX = 27;
+// Rows per page of the heatmap: as many as fit the height of its plot.
+const [heatRows, setHeatRows] = createSignal(20);
 
 const num = (v: number, d = 3) => (Number.isNaN(v) ? '–' : v.toFixed(d));
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '–');
@@ -56,11 +79,12 @@ export const Resp = (props: { r: Response }): JSX.Element => (
 const RESPONSE_NOTE = (
   <>
     <p>
-      A cell-behavior pair is <strong>Higher (excited)</strong> when the adjusted p-value (the uncorrected p-value with no correction) is below α
-      and auROC is above 0.5, and <strong>Lower (inhibited)</strong> when it is below α and auROC is
-      below 0.5. Otherwise it is <strong>Not significant</strong>. <strong>Not evaluated</strong>{' '}
-      means auROC was undefined: the cell has a missing neural value among the included frames, or
-      the behavior has fewer than {MIN_FRAMES} included frames during or outside it.
+      A cell-behavior pair is <strong>Higher (excited)</strong> when the adjusted p-value (the
+      uncorrected p-value with no correction) is below α and auROC is above 0.5, and{' '}
+      <strong>Lower (inhibited)</strong> when it is below α and auROC is below 0.5. Otherwise it is{' '}
+      <strong>Not significant</strong>. <strong>Not evaluated</strong> means auROC was undefined:
+      the cell has a missing neural value among the included frames, or the behavior has fewer than{' '}
+      {MIN_FRAMES} included frames during or outside it.
     </p>
     <p>
       Higher and Lower describe activity during the behavior relative to the reference group. They
@@ -239,7 +263,10 @@ function percentile(sorted: number[], q: number): number {
  * all use one x scale, and the label flips to the left of the line near the right edge so it is never cut off.
  */
 /** A box that fills its space and draws its child at the box's pixel size, so text keeps its size. */
-export function Fit(props: { height?: number; children: (w: number, h: number) => JSX.Element }): JSX.Element {
+export function Fit(props: {
+  height?: number;
+  children: (w: number, h: number) => JSX.Element;
+}): JSX.Element {
   const [size, measure] = createSize();
   return (
     <div
@@ -379,7 +406,12 @@ function ShiftHistogram(props: {
  * auROC of one cell for each listed behavior on the 0 to 1 axis; filled when significant. Dots only: the
  * framework does not compute intervals for auROC. Row, dot and text share one row position.
  */
-function Lollipops(props: { out: AurocOutcome; c: number; rows: number[]; w: number }): JSX.Element {
+function Lollipops(props: {
+  out: AurocOutcome;
+  c: number;
+  rows: number[];
+  w: number;
+}): JSX.Element {
   const [W, R, ROW] = [props.w, 24, 24];
   const L = Math.min(150, Math.round(W * 0.4));
   const fit = (t: string) => {
@@ -571,6 +603,123 @@ interface Ctx {
   openInspector: () => void;
 }
 
+/** The export menu: the CSV and run metadata the page always exported, plus the framework bundle. */
+function exportGroups(out: AurocOutcome) {
+  const csv = () => downloadText('auroc_pairs.csv', aurocCsv(out), 'text/csv');
+  const json = () =>
+    downloadText('auroc_run.json', JSON.stringify(aurocMetadata(out), null, 2), 'application/json');
+  const record = out.record;
+  return [
+    {
+      title: 'Tables',
+      items: [
+        {
+          label: 'CSV and run metadata (both files)',
+          note: 'Values and p-values; not affected by plot styling',
+          run: () => {
+            csv();
+            json();
+          },
+        },
+        { label: 'Pair table (CSV)', run: csv },
+        { label: 'Run metadata (JSON)', note: 'Settings and automatic choices', run: json },
+      ],
+    },
+    ...(record
+      ? [
+          {
+            title: 'Framework run',
+            items: [
+              {
+                label: 'Bundle (zip)',
+                note: 'Settings, pipeline, results and reproduce script',
+                unavailable: bridgeReady() ? undefined : 'Needs the Python engine',
+                run: async () =>
+                  download(
+                    `auroc-${record.run_id}.zip`,
+                    await bridge.bundle(record.run_id),
+                    'application/zip',
+                  ),
+              },
+            ],
+          },
+        ]
+      : []),
+  ];
+}
+
+/** Engine, run state and whether the results still match the settings, in one compact row. */
+function RunState(props: { out: AurocOutcome; onEdit: () => void }): JSX.Element {
+  const record = () => props.out.record;
+  const isLatest = () => record()?.run_id === latest.auroc?.run_id;
+  const older = () => !!record() && !!openedRun('auroc') && !isLatest();
+  const changes = createMemo(aurocChanges);
+  const status = () => {
+    const s = aurocStatus();
+    return s.kind === 'running' ? s : undefined;
+  };
+  /** Edit settings and Run again, or the progress of a run that is under way. */
+  const actions = () => (
+    <Show when={changes().length}>
+      <span class="cb-muted" title={`Changed since the run: ${changes().join(', ')}`}>
+        {changes().join(', ')}
+      </span>
+      <Show
+        when={!status()}
+        fallback={
+          <>
+            {status()!.step}
+            {aurocProgressText(status()!) && ` (${aurocProgressText(status()!)})`}{' '}
+            <button class="btn-secondary btn-small" onClick={cancelAurocRun}>
+              Cancel
+            </button>
+          </>
+        }
+      >
+        <button class="btn-secondary btn-small" onClick={() => props.onEdit()}>
+          Edit settings
+        </button>
+        <button class="btn-primary btn-small" onClick={() => void runAuroc()}>
+          Run again
+        </button>
+      </Show>
+    </Show>
+  );
+  return (
+    <Show
+      when={record()}
+      fallback={
+        <div class="cb-rb">
+          <div class="cb-rb__row">
+            <span class="cb-badge" title={BROWSER_ENGINE_TEXT}>
+              Browser engine
+            </span>
+            <span class="cb-muted">Made in this browser session; not saved as a run.</span>
+            <span class="cb-rb__side">{actions()}</span>
+          </div>
+        </div>
+      }
+    >
+      {(r) => (
+        <Show
+          when={!older()}
+          fallback={
+            <SavedRunBar
+              analysis="auroc"
+              record={r()}
+              onLoadSettings={() => loadAurocSettings(r())}
+            />
+          }
+        >
+          <RunBanner record={r()} match={runMatch('auroc')} offline={!frameworkReady()}>
+            {actions()}
+          </RunBanner>
+        </Show>
+      )}
+    </Show>
+  );
+}
+
 function Header(props: {
   out: AurocOutcome;
   onEdit: () => void;
@@ -586,30 +735,6 @@ function Header(props: {
       <div class="cb-ar-head">
         <div>
           <h2 class="cb-restitle">auROC results</h2>
-          <p class="cb-muted">
-            <b>
-              {s().respondingCells} of {s().evaluated}
-            </b>{' '}
-            cells showed a significant response to at least one selected behavior · {s().significantPairs} significant
-            cell–behavior pairs
-          </p>
-          <p class="cb-muted">
-            {maxStat()
-              ? `Max-stat correction across the ${o().labels.length} selected behaviors within each cell, not across cells`
-              : 'No correction (uncorrected p-values)'}{' '}
-            · α = {o().settings.alpha} · Completed in {Math.max(1, Math.round(o().seconds))} s · {method()}{' '}
-            <InfoTip label="About the significance test and correction">
-              <p>
-                Significance compares the observed auROC with auROC values from time-shifted copies of the cell's neural
-                data.
-              </p>
-              <p>
-                {maxStat()
-                  ? 'Max-stat correction accounts for testing the selected behaviors within each cell; it does not correct across cells. Adding or removing behaviors can change adjusted p-values.'
-                  : 'No correction is applied: p-values are uncorrected for the number of behaviors and cells tested.'}
-              </p>
-            </InfoTip>
-          </p>
         </div>
         <div class="cb-controls">
           <button class="btn-secondary" aria-haspopup="dialog" onClick={props.onDetails}>
@@ -618,19 +743,7 @@ function Header(props: {
           <button class="btn-secondary" onClick={props.onEdit}>
             Edit settings
           </button>
-          <button
-            class="btn-primary"
-            onClick={() => {
-              downloadText('auroc_pairs.csv', aurocCsv(o()), 'text/csv');
-              downloadText(
-                'auroc_run.json',
-                JSON.stringify(aurocMetadata(o()), null, 2),
-                'application/json',
-              );
-            }}
-          >
-            Export results
-          </button>
+          <ExportMenu label="Export results" groups={exportGroups(o())} />
         </div>
       </div>
       <div class="cb-ar-strip">
@@ -676,7 +789,19 @@ function Header(props: {
           Significant = adjusted p &lt; {o().settings.alpha}.{' '}
           {maxStat()
             ? `Max-stat correction across the ${o().labels.length} selected behaviors within each cell, not across cells.`
-            : 'No correction for multiple comparisons.'}
+            : 'No correction for multiple comparisons.'}{' '}
+          Completed in {Math.max(1, Math.round(o().seconds))} s · {method()}
+          <InfoTip label="About the significance test and correction">
+            <p>
+              Significance compares the observed auROC with auROC values from time-shifted copies of
+              the cell's neural data.
+            </p>
+            <p>
+              {maxStat()
+                ? 'Max-stat correction accounts for testing the selected behaviors within each cell; it does not correct across cells. Adding or removing behaviors can change adjusted p-values.'
+                : 'No correction is applied: p-values are uncorrected for the number of behaviors and cells tested.'}
+            </p>
+          </InfoTip>
         </p>
       </div>
     </>
@@ -714,51 +839,67 @@ const pagesOf = (n: number, size: number) => Math.max(1, Math.ceil(n / size));
 function CellBrowser(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
   const o = () => c().out;
-  const rows = () => c().list.slice(c().page * CELL_PAGE, (c().page + 1) * CELL_PAGE);
+  const rows = () => c().list.slice(c().page * cellPage(), (c().page + 1) * cellPage());
+  let box!: HTMLDivElement;
+  onMount(() => {
+    const ro = new ResizeObserver(([e]) =>
+      setCellPage(Math.max(3, Math.floor((e.contentRect.height - CELL_ROW_PX) / CELL_ROW_PX))),
+    );
+    ro.observe(box);
+    onCleanup(() => ro.disconnect());
+  });
   return (
     <div class="cb-ar-browser">
       <ListControls ctx={c()} />
-      <table class="cb-auroc-table cb-auroc-list">
-        <thead>
-          <tr>
-            <th>Cell</th>
-            <th>auROC</th>
-            <th>Response</th>
-          </tr>
-        </thead>
-        <tbody>
-          <For each={rows()}>
-            {(i) => (
-              <tr
-                classList={{ 'cb-row--on': i === c().c }}
-                tabindex={i === c().c ? 0 : -1}
-                aria-selected={i === c().c}
-                onClick={() => c().setC(i)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && c().setC(i)}
-              >
-                <td>{o().cellIds[i] + 1}</td>
-                <td>{num(aurocOf(o(), i, c().b))}</td>
-                <td>
-                  <Resp r={responseAt(o(), i, c().b)} />
-                </td>
-              </tr>
-            )}
-          </For>
-        </tbody>
-      </table>
-      <Show when={!c().list.length}>
-        <div class="cb-empty">No cells match this filter or search.</div>
-      </Show>
+      <div class="cb-ar-listbox" ref={box}>
+        <table class="cb-auroc-table cb-auroc-list">
+          <thead>
+            <tr>
+              <th>Cell</th>
+              <th>auROC</th>
+              <th>Response</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={rows()}>
+              {(i) => (
+                <tr
+                  classList={{ 'cb-row--on': i === c().c }}
+                  tabindex={i === c().c ? 0 : -1}
+                  aria-selected={i === c().c}
+                  onClick={() => c().setC(i)}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && c().setC(i)}
+                >
+                  <td>{o().cellIds[i] + 1}</td>
+                  <td>{num(aurocOf(o(), i, c().b))}</td>
+                  <td>
+                    <Resp r={responseAt(o(), i, c().b)} />
+                  </td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+        <Show when={!c().list.length}>
+          <div class="cb-empty">No cells match this filter or search.</div>
+        </Show>
+      </div>
       <Pager
         page={c().page}
-        pages={pagesOf(c().list.length, CELL_PAGE)}
-        size={CELL_PAGE}
+        pages={pagesOf(c().list.length, cellPage())}
+        size={cellPage()}
         n={c().list.length}
         onPage={c().setPage}
       />
     </div>
   );
 }
+
+/** Why a null histogram cannot be drawn. */
+const nullMissingText = (out: AurocOutcome) =>
+  out.record?.null_not_kept
+    ? 'Null draws were not kept for this run.'
+    : 'Null draws are not in the copy saved in this browser. Start the Python engine to see them.';
 
 function Inspector(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
@@ -768,6 +909,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
   const a = () => aurocOf(o(), c().c, c().b);
   const r = () => responseAt(o(), c().c, c().b);
   const draws = createMemo(() => {
+    if (!o().nullKept) return [];
     const nb = o().labels.length;
     const v = shiftedValues(o(), c().c);
     return Array.from({ length: o().shifts.length }, (_, i) => v[i * nb + c().b]);
@@ -793,14 +935,16 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
       : `${cell} was not evaluated for ${o().labels[c().b]}: a group has fewer than ${MIN_FRAMES} included frames.`;
   };
   const hist = (w?: number, h?: number) => (
-    <ShiftHistogram draws={draws()} observed={a()} alpha={o().settings.alpha} w={w} h={h} />
+    <Show when={o().nullKept} fallback={<p class="cb-muted">{nullMissingText(o())}</p>}>
+      <ShiftHistogram draws={draws()} observed={a()} alpha={o().settings.alpha} w={w} h={h} />
+    </Show>
   );
   const histCaption = () => (
-    <>
+    <Show when={o().nullKept}>
       Gray: {o().shifts.length.toLocaleString()} shifted copies, this behavior only, unadjusted.
       Dashed: their central {Math.round(cover())}%. Significance uses the{' '}
       {maxStat() ? 'max-stat adjusted' : 'unadjusted'} p.
-    </>
+    </Show>
   );
   return (
     <div class="cb-ar-insp">
@@ -808,11 +952,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
       <div class="cb-ar-detail">
         <div class="cb-ar-dhead">
           <h3>
-            {cellName()} · {o().labels[c().b]} ·{' '}
-            <span class="cb-muted">
-              {info().during.toLocaleString()} behavior / {info().outside.toLocaleString()}{' '}
-              {o().against ? `${o().against} ` : ''}reference frames
-            </span>
+            {cellName()} · {o().labels[c().b]}
           </h3>
           <div class="cb-controls">
             <button
@@ -820,7 +960,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
               aria-haspopup="dialog"
               onClick={() => setFp(true)}
             >
-              Footprint and activity ↗
+              Footprint and trace ↗
             </button>
             <button
               class="btn-secondary btn-small"
@@ -877,21 +1017,25 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
             </div>
             <Resp r={r()} />
           </div>
-        </div>
-        <p class="cb-ar-sentence">
-          {sentence()}{' '}
-          <Show when={rank()}>
+          <p class="cb-ar-sentence">
+            {sentence()}{' '}
+            <Show when={rank()}>
+              <span class="cb-muted">
+                {strength(o(), c().c) >= 0
+                  ? `Rank ${rank()} of ${o().cellIds.length} by strongest association.`
+                  : ''}
+              </span>
+            </Show>{' '}
             <span class="cb-muted">
-              {strength(o(), c().c) >= 0
-                ? `Rank ${rank()} of ${o().cellIds.length} by strongest association.`
-                : ''}
+              {info().during.toLocaleString()} behavior / {info().outside.toLocaleString()}{' '}
+              {o().against ? `${o().against} ` : ''}reference frames.
             </span>
-          </Show>
-        </p>
+          </p>
+        </div>
         <div class="cb-ar-plots">
           <section class="cb-ar-plot cb-ar-plot--hist">
             <div class="cb-ar-plot__head">
-              <h4>Observed auROC vs time-shifted data</h4>
+              <h4>auROC vs time-shifted data</h4>
               <HowTo title="Observed auROC versus time-shifted data">
                 <p>
                   The x axis is auROC. Gray bars count how many of the shifted copies of this cell’s
@@ -1032,7 +1176,7 @@ function Heatmap(props: { ctx: Ctx }): JSX.Element {
   const o = () => c().out;
   const [contrast, setContrast] = createSignal(false);
   const [hover, setHover] = createSignal<[number, number] | undefined>();
-  const order = () => c().list.slice(c().heatPage * HEAT_PAGE, (c().heatPage + 1) * HEAT_PAGE);
+  const order = () => c().list.slice(c().heatPage * heatRows(), (c().heatPage + 1) * heatRows());
   const nb = () => o().labels.length;
   const [L, T, HEAD, RH] = [44, 8, 22, 14];
   const colW = () => Math.min(150, 520 / nb());
@@ -1048,6 +1192,14 @@ function Heatmap(props: { ctx: Ctx }): JSX.Element {
     return `Cell ${o().cellIds[h[0]] + 1} · ${o().labels[h[1]]} · auROC ${num(aurocOf(o(), h[0], h[1]))} · adj. p ${num(pAdjOf(o(), h[0], h[1]))} · ${RESPONSE_LABEL[responseAt(o(), h[0], h[1])]}`;
   };
   const r = () => responseAt(o(), c().c, c().b);
+  let plotBox!: HTMLDivElement;
+  onMount(() => {
+    const ro = new ResizeObserver(([e]) =>
+      setHeatRows(Math.max(4, Math.floor((e.contentRect.height - HEAD - T - 4) / RH) - 1)),
+    );
+    ro.observe(plotBox);
+    onCleanup(() => ro.disconnect());
+  });
   return (
     <div class="cb-auroc-heat cb-ar-heat">
       <div class="cb-ar-heat__main">
@@ -1069,123 +1221,152 @@ function Heatmap(props: { ctx: Ctx }): JSX.Element {
           </HowTo>
           <ListControls ctx={c()} />
         </div>
-        <svg
-          viewBox={`0 0 ${W()} ${H()}`}
-          style={{ 'max-width': `${W()}px` }}
-          class="cb-auroc-heatmap"
-          role="img"
-          aria-label="auROC of each cell for each behavior"
-        >
-          <For each={o().labels}>
-            {(label, b) => (
-              <text
-                x={L + colW() * (b() + 0.5)}
-                y={14}
-                text-anchor="middle"
-                font-size="12"
-                font-weight={b() === c().b ? '700' : '400'}
-                fill={b() === c().b ? '#1f6fb2' : 'currentColor'}
-              >
-                {label}
-              </text>
-            )}
-          </For>
-          <For each={order()}>
-            {(cell, i) => (
-              <>
+        <div class="cb-ar-heat__plot" ref={plotBox}>
+          <svg
+            viewBox={`0 0 ${W()} ${H()}`}
+            style={{ 'max-width': `${W()}px` }}
+            class="cb-auroc-heatmap"
+            role="img"
+            aria-label="auROC of each cell for each behavior"
+          >
+            <For each={o().labels}>
+              {(label, b) => (
                 <text
-                  x={L - 6}
-                  y={rowY(i()) + RH / 2 + 4}
-                  text-anchor="end"
-                  font-size="11"
-                  fill="currentColor"
+                  x={L + colW() * (b() + 0.5)}
+                  y={14}
+                  text-anchor="middle"
+                  font-size="12"
+                  font-weight={b() === c().b ? '700' : '400'}
+                  fill={b() === c().b ? '#1f6fb2' : 'currentColor'}
                 >
-                  {o().cellIds[cell] + 1}
+                  {label}
                 </text>
-                <For each={o().labels}>
-                  {(_, b) => {
-                    const rr = () => responseAt(o(), cell, b());
-                    const cx = () => L + colW() * (b() + 0.5);
-                    const cy = () => rowY(i()) + RH / 2;
-                    return (
-                      <>
-                        <rect
-                          x={L + colW() * b() + 1}
-                          y={rowY(i())}
-                          width={colW() - 2}
-                          height={RH}
-                          fill={aurocColor(aurocOf(o(), cell, b()), ...range())}
-                          onClick={() => c().setPair(cell, b())}
-                          onMouseEnter={() => setHover([cell, b()])}
-                          onMouseLeave={() => setHover(undefined)}
-                        />
-                        <Show when={rr() === 'excited' || rr() === 'inhibited'}>
-                          <polygon
-                            pointer-events="none"
-                            fill="#111"
-                            stroke="#fff"
-                            stroke-width="0.6"
-                            points={
-                              rr() === 'excited'
-                                ? `${cx()},${cy() - size / 2} ${cx() - size / 2},${cy() + size / 2} ${cx() + size / 2},${cy() + size / 2}`
-                                : `${cx()},${cy() + size / 2} ${cx() - size / 2},${cy() - size / 2} ${cx() + size / 2},${cy() - size / 2}`
-                            }
+              )}
+            </For>
+            <For each={order()}>
+              {(cell, i) => (
+                <>
+                  <text
+                    x={L - 6}
+                    y={rowY(i()) + RH / 2 + 4}
+                    text-anchor="end"
+                    font-size="11"
+                    fill="currentColor"
+                  >
+                    {o().cellIds[cell] + 1}
+                  </text>
+                  <For each={o().labels}>
+                    {(_, b) => {
+                      const rr = () => responseAt(o(), cell, b());
+                      const cx = () => L + colW() * (b() + 0.5);
+                      const cy = () => rowY(i()) + RH / 2;
+                      return (
+                        <>
+                          <rect
+                            x={L + colW() * b() + 1}
+                            y={rowY(i())}
+                            width={colW() - 2}
+                            height={RH}
+                            fill={aurocColor(aurocOf(o(), cell, b()), ...range())}
+                            onClick={() => c().setPair(cell, b())}
+                            onMouseEnter={() => setHover([cell, b()])}
+                            onMouseLeave={() => setHover(undefined)}
                           />
-                        </Show>
-                      </>
-                    );
-                  }}
-                </For>
-              </>
-            )}
-          </For>
-          <rect
-            x={L + colW() * c().b}
-            y={HEAD + T - 2}
-            width={colW()}
-            height={order().length * RH + 4}
-            fill="#1f6fb214"
-            stroke="#1f6fb2"
-            stroke-width="1.5"
-            pointer-events="none"
-          />
-          <Show when={sel() >= 0}>
+                          <Show when={rr() === 'excited' || rr() === 'inhibited'}>
+                            <polygon
+                              pointer-events="none"
+                              fill="#111"
+                              stroke="#fff"
+                              stroke-width="0.6"
+                              points={
+                                rr() === 'excited'
+                                  ? `${cx()},${cy() - size / 2} ${cx() - size / 2},${cy() + size / 2} ${cx() + size / 2},${cy() + size / 2}`
+                                  : `${cx()},${cy() + size / 2} ${cx() - size / 2},${cy() - size / 2} ${cx() + size / 2},${cy() - size / 2}`
+                              }
+                            />
+                          </Show>
+                        </>
+                      );
+                    }}
+                  </For>
+                </>
+              )}
+            </For>
             <rect
-              x={L}
-              y={rowY(sel())}
-              width={W() - L}
-              height={RH}
-              fill="none"
+              x={L + colW() * c().b}
+              y={HEAD + T - 2}
+              width={colW()}
+              height={order().length * RH + 4}
+              fill="#1f6fb214"
               stroke="#1f6fb2"
               stroke-width="1.5"
               pointer-events="none"
             />
-          </Show>
-        </svg>
+            <Show when={sel() >= 0}>
+              <rect
+                x={L}
+                y={rowY(sel())}
+                width={W() - L}
+                height={RH}
+                fill="none"
+                stroke="#1f6fb2"
+                stroke-width="1.5"
+                pointer-events="none"
+              />
+            </Show>
+          </svg>
+        </div>
         <div class="cb-muted" aria-live="polite">
           {tip() || 'Hover a square for its values; click to select it.'}
         </div>
+        <Note title="Included frames by behavior">
+          <Paged items={o().info} size={5}>
+            {(rows) => (
+              <table class="cb-auroc-table">
+                <thead>
+                  <tr>
+                    <th>Behavior</th>
+                    <th>During</th>
+                    <th>Outside</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={rows}>
+                    {(i) => (
+                      <tr>
+                        <td>{i.label}</td>
+                        <td>{i.during.toLocaleString()}</td>
+                        <td>{i.outside.toLocaleString()}</td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            )}
+          </Paged>
+        </Note>
         <Pager
           page={c().heatPage}
-          pages={pagesOf(c().list.length, HEAT_PAGE)}
-          size={HEAT_PAGE}
+          pages={pagesOf(c().list.length, heatRows())}
+          size={heatRows()}
           n={c().list.length}
           onPage={c().setHeatPage}
         />
       </div>
       <div class="cb-ar-heat__side">
         <div class="cb-setgroup">
-          <h4>Selected pair</h4>
-          <div>
-            <strong>{`Cell ${o().cellIds[c().c] + 1}`}</strong> · {o().labels[c().b]}
-          </div>
+          <h4>
+            Selected pair: {`Cell ${o().cellIds[c().c] + 1}`} · {o().labels[c().b]}
+          </h4>
           <div class="cb-ar-stats">
             <div>
               <div class="cb-muted">auROC</div>
               <strong class="cb-auroc-big">{num(aurocOf(o(), c().c, c().b))}</strong>
             </div>
             <div>
-              <div class="cb-muted">{o().settings.correction === 'max_stat' ? 'Adjusted p' : 'Uncorrected p'}</div>
+              <div class="cb-muted">
+                {o().settings.correction === 'max_stat' ? 'Adjusted p' : 'Uncorrected p'}
+              </div>
               <strong class="cb-auroc-big">{num(pAdjOf(o(), c().c, c().b))}</strong>
             </div>
           </div>
@@ -1221,33 +1402,6 @@ function Heatmap(props: { ctx: Ctx }): JSX.Element {
         </div>
         <div class="cb-muted">
           ▲ Higher (excited) · ▼ Lower (inhibited), significant only · Gray: not evaluated
-        </div>
-        <div class="cb-setgroup">
-          <h4>Included frames by behavior</h4>
-          <Paged items={o().info} size={5}>
-            {(rows) => (
-              <table class="cb-auroc-table">
-                <thead>
-                  <tr>
-                    <th>Behavior</th>
-                    <th>During</th>
-                    <th>Outside</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={rows}>
-                    {(i) => (
-                      <tr>
-                        <td>{i.label}</td>
-                        <td>{i.during.toLocaleString()}</td>
-                        <td>{i.outside.toLocaleString()}</td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            )}
-          </Paged>
         </div>
       </div>
     </div>
@@ -1403,6 +1557,18 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
       <p class="cb-muted">Settings and automatic choices. Use Edit settings to change them.</p>
       <div class="cb-ar-cols">
         <section>
+          <h4>Engine</h4>
+          <KV k="Engine" v={engineText(o().engine)} />
+          <Show when={o().record}>
+            {(r) => (
+              <details>
+                <summary>Framework run record</summary>
+                <RunDetailsBody record={r()} />
+              </details>
+            )}
+          </Show>
+        </section>
+        <section>
           <h4>Inputs</h4>
           <KV
             k="Neural signal"
@@ -1420,11 +1586,17 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
           />
           <KV
             k="Minimum speed (auROC)"
-            v={o().excluded.minSpeed !== undefined ? `${o().excluded.minSpeed} cm/s` : 'No speed filter'}
+            v={
+              o().excluded.minSpeed !== undefined
+                ? `${o().excluded.minSpeed} cm/s`
+                : 'No speed filter'
+            }
           />
           <KV
             k="Excluded: missing speed"
-            v={o().excluded.minSpeed !== undefined ? o().excluded.missingSpeed.toLocaleString() : '—'}
+            v={
+              o().excluded.minSpeed !== undefined ? o().excluded.missingSpeed.toLocaleString() : '—'
+            }
           />
           <KV
             k="Excluded: below minimum speed"
@@ -1459,7 +1631,10 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
           <KV k="Shuffles" v={o().settings.nShuffles.toLocaleString()} />
           <KV k="Unique shifts" v={o().uniqueShifts.toLocaleString()} />
           <KV k="Random seed" v={o().settings.seed} />
-          <KV k="Significance level" v={`α = ${o().settings.alpha} (two-sided, ${o().settings.correction === 'max_stat' ? 'adjusted' : 'uncorrected'} p)`} />
+          <KV
+            k="Significance level"
+            v={`α = ${o().settings.alpha} (two-sided, ${o().settings.correction === 'max_stat' ? 'adjusted' : 'uncorrected'} p)`}
+          />
           <Show when={o().uniqueShifts < o().settings.nShuffles}>
             <p class="cb-muted">
               Only {o().uniqueShifts.toLocaleString()} unique shifts met the criteria; accepted
@@ -1529,8 +1704,9 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
                   behavior in {num(t().tauBehaviorS, 2)} s. {t().note}.
                 </p>
                 <p>
-                  The shifted values for a cell are recomputed from the stored shifts, seed, frame
-                  selection and neural data, so they are the draws the p-values came from.
+                  {o().engine === 'framework'
+                    ? 'The shifted values for a cell are the draws the run saved, so they are the draws the p-values came from.'
+                    : 'The shifted values for a cell are recomputed from the stored shifts, seed, frame selection and neural data, so they are the draws the p-values came from.'}
                 </p>
               </div>
             </section>
@@ -1587,12 +1763,12 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
   const pos = () => list().indexOf(c());
   // A new selection, filter or sort turns each list to the selected cell's page, or keeps it in range.
   createEffect(
-    on([list, c], () => {
+    on([list, c, cellPage], () => {
       const p = pos();
       const n = list().length;
-      setPage(p >= 0 ? Math.floor(p / CELL_PAGE) : (v) => Math.min(v, pagesOf(n, CELL_PAGE) - 1));
+      setPage(p >= 0 ? Math.floor(p / cellPage()) : (v) => Math.min(v, pagesOf(n, cellPage()) - 1));
       setHeatPage(
-        p >= 0 ? Math.floor(p / HEAT_PAGE) : (v) => Math.min(v, pagesOf(n, HEAT_PAGE) - 1),
+        p >= 0 ? Math.floor(p / heatRows()) : (v) => Math.min(v, pagesOf(n, heatRows()) - 1),
       );
     }),
   );
@@ -1650,6 +1826,7 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
   return (
     <div class="cb-results cb-ar" ref={root}>
       <Header out={props.out} onEdit={props.onEdit} onDetails={() => setDetails(true)} />
+      <RunState out={props.out} onEdit={props.onEdit} />
       <div class="cb-ar-tool">
         <div class="cb-seg" role="group" aria-label="Results view">
           <For each={VIEWS}>

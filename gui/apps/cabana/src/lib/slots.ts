@@ -14,6 +14,8 @@ export type SlotId =
   | 'head_orientation'
   | 'zone_annotations'
   | 'behavior_annotations'
+  | 'time_markers'
+  | 'frame_labels'
   | 'config';
 
 export interface Slot {
@@ -119,6 +121,26 @@ export const SLOTS: Slot[] = [
     file: 'behavior_annotations.csv',
     format: 'Epochs. Columns: label, start_s, stop_s.',
     match: /annotation|investigat/i,
+  },
+  {
+    id: 'time_markers',
+    group: 'Behavioral',
+    label: 'Time markers',
+    level: 'optional',
+    file: 'time_markers.csv',
+    format:
+      'Occurrences represented by a single time, such as tone onset or a TTL edge. Columns: label, time_s (seconds on the session clock).',
+    match: /marker|(^|[^a-z])ttl([^a-z]|$)/i,
+  },
+  {
+    id: 'frame_labels',
+    group: 'Behavioral',
+    label: 'Frame labels',
+    level: 'optional',
+    file: 'frame_labels.csv',
+    format:
+      'One row per camera frame. A frame column, then 0/1 columns (binary labels), text columns (categories) or numbers (signals). Blank means missing.',
+    match: /frame.?label/i,
   },
   {
     id: 'config',

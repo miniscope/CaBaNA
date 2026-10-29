@@ -1,0 +1,128 @@
+{
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "bouts_to_states",
+    "source": "social_epochs",
+    "exclusive": false,
+    "output": "population_target"
+   }
+  ],
+  "preprocess": [
+   {
+    "name": "smooth_activity",
+    "sigma_s": 0.1
+   },
+   {
+    "name": "rebin_time",
+    "bin_s": 0.5,
+    "activity_method": "auto",
+    "min_fraction": 0.5
+   }
+  ],
+  "analyses": [
+   {
+    "name": "pv_similarity",
+    "metric": {
+     "name": "population_vector_overlap",
+     "similarity": "cosine",
+     "min_occupancy_s": 0.05,
+     "normalize_cells": true
+    },
+    "states": "population_target",
+    "shuffle": {
+     "n_shuffles": 200,
+     "null": {
+      "name": "cell_shift",
+      "min_shift_s": 20,
+      "min_pair_separation_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "pv_stability",
+    "metric": {
+     "name": "pv_stability",
+     "n_blocks": 2,
+     "min_occupancy_s": 0.05
+    },
+    "states": "population_target",
+    "shuffle": {
+     "n_shuffles": 200,
+     "null": {
+      "name": "cell_shift",
+      "min_shift_s": 20,
+      "min_pair_separation_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "state_separation",
+    "metric": {
+     "name": "pca_population",
+     "n_components": 10,
+     "zscore": true,
+     "distance": "euclidean",
+     "min_frames": 20
+    },
+    "states": "population_target",
+    "shuffle": {
+     "n_shuffles": 200,
+     "null": {
+      "name": "cell_shift",
+      "min_shift_s": 20,
+      "min_pair_separation_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "dimensionality",
+    "metric": {
+     "name": "participation_ratio",
+     "zscore": true,
+     "min_frames": 50,
+     "per_state": false
+    },
+    "states": "population_target",
+    "shuffle": {
+     "n_shuffles": 200,
+     "null": {
+      "name": "cell_shift",
+      "min_shift_s": 20,
+      "min_pair_separation_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "none",
+     "n_jobs": -1
+    }
+   },
+   {
+    "name": "pairwise",
+    "metric": {
+     "name": "pairwise_correlation",
+     "kind": "total",
+     "method": "pearson",
+     "min_frames": 50,
+     "zscore": true
+    },
+    "states": "population_target"
+   }
+  ]
+ },
+ "requires": [],
+ "problems": [],
+ "target": "population_target"
+}

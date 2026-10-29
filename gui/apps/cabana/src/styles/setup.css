@@ -1,0 +1,205 @@
+/* Experimental Setup: every view fits the page body without scrolling. */
+.cb-setup {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cb-setup .cb-panel {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+.cb-setup-head {
+  align-items: center;
+  gap: 8px;
+}
+.cb-setup-head h2 {
+  margin: 0;
+}
+.cb-setup-cards {
+  margin: 8px 0;
+}
+.cb-setup-card {
+  padding: 6px 10px;
+  gap: 3px;
+}
+.cb-setup-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-setup-view > div {
+  min-height: 0;
+}
+.cb-setup-view .cb-group {
+  margin: 0;
+}
+.cb-setup-view .cb-group > h3 {
+  margin: 0 0 4px;
+}
+.cb-setup-view .cb-setup-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cb-setup-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+.cb-setup-cols .cb-setup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cb-hide {
+  display: none;
+}
+
+/* Notes open as a popover over the page instead of pushing content down. */
+.cb-setup .cb-notebox,
+.cb-setup-pop {
+  position: relative;
+}
+.cb-setup .cb-notebox[open] > div,
+.cb-setup-pop[open] > .cb-setup-pop__body {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: 100%;
+  width: min(560px, 80vw);
+  max-height: 60vh;
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
+}
+.cb-setup-pop > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+}
+.cb-setup-import {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+
+/* Spatial setup: one section of controls beside a picture that takes the remaining height. */
+.cb-spatial {
+  height: 100%;
+}
+.cb-spatial .cb-arena-grid {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.cb-spatial .cb-arena-controls,
+.cb-spatial .cb-arena-view {
+  min-height: 0;
+  height: 100%;
+}
+.cb-spatial .cb-arena-view {
+  position: static;
+  display: flex;
+  flex-direction: column;
+}
+.cb-spatial .cb-arena-view > div:not(.cb-tabs) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-spatial .cb-arena-holder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cb-spatial .cb-arena-canvas {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+.cb-setup-view > div {
+  flex: 1;
+}
+.cb-spatial .cb-arena-view > section,
+.cb-spatial .cb-arena-zones > section {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-spatial .cb-arena-view > section > div:not(.cb-legend):not(.cb-note):not(.cb-controls),
+.cb-spatial .cb-arena-zones > section > div:not(.cb-legend):not(.cb-note):not(.cb-controls) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cb-spatial .cb-traj {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+.cb-spatial .cb-arena-zones {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-md);
+}
+.cb-spatial .cb-arena-zones > table {
+  align-self: flex-start;
+  width: 280px;
+  flex: none;
+}
+.cb-setup-card {
+  font-size: 13px;
+  padding: 6px 8px;
+  gap: 2px;
+}
+.cb-setup-card__title {
+  white-space: nowrap;
+}
+.cb-setup-card__meta {
+  flex-wrap: nowrap;
+  gap: 4px;
+  white-space: nowrap;
+}
+.cb-setup-card .cb-pill {
+  font-size: 11px;
+  padding: 0 6px;
+}
+.cb-setup-status {
+  font-size: 11.5px;
+}
+.cb-spatial {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cb-spatial .cb-arena-grid {
+  flex: 1;
+  height: auto;
+}
+.cb-spatial .cb-note {
+  margin: 0;
+  padding: 4px 8px;
+}
+.cb-spatial .cb-arena-controls .cb-tabs button {
+  white-space: nowrap;
+  padding: 4px 8px;
+}

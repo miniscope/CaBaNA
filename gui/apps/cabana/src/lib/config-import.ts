@@ -9,6 +9,8 @@ import {
   onClear,
   onConfig,
   setConfigFiles,
+  setConfiguredFrameMapping,
+  setLabelRoles,
   setOverride,
   setSessionName,
   setSource,
@@ -35,6 +37,8 @@ onConfig((text) => {
   if (v.subjectId) setSource('subjectId', v.subjectId);
   for (const [k, val] of Object.entries(v.meta)) setSource(k as never, val as never);
   if (v.stimuli) setSource('stimuli', v.stimuli);
+  if (v.labelRoles) setLabelRoles(v.labelRoles);
+  setConfiguredFrameMapping(v.frameMapping);
   if (v.mergeGapS !== undefined) setTol('mergeGapS', v.mergeGapS);
   if (v.minBoutS !== undefined) setTol('minBoutS', v.minBoutS);
   if (v.headOffsetDeg !== undefined) setArena('headOffset', v.headOffsetDeg);

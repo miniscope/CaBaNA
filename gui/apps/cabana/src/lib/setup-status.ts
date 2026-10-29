@@ -10,6 +10,7 @@ import {
   derivedDuration,
   derivedNeuralFps,
   experimentId,
+  labelRegistry,
   override,
   sessionName,
   source,
@@ -60,7 +61,9 @@ export interface SetupSnapshot {
   headOffset: number;
   annotationTool: string;
   annotationUnit: string;
-  stimuli: { name: string; durationS?: number }[];
+  stimuli: { name: string; label?: string; durationS?: number }[];
+  /** Names of the labels loaded from annotation, marker and frame-label files. */
+  loadedLabels?: string[];
   device: string;
   extractionTool: string;
   deconTool: string;
@@ -81,8 +84,8 @@ const positive = (v: number | undefined) => v !== undefined && Number.isFinite(v
  * - Tracking & coordinates: needs the body part tracked, a pixels-per-cm above 0 when positions are
  *   in pixels, and a likelihood threshold between 0 and 1 when one is given. The default units,
  *   tools and annotation units do not count; the tool choices only change export advice.
- * - Stimuli & cues: needs at least one stimulus, every stimulus named, any length 0 or more.
- *   An experiment with no stimuli stays Empty, which is fine for a recommended card.
+ * - Stimuli & cues: needs at least one stimulus, every stimulus named with a loaded label chosen,
+ *   any length 0 or more. An experiment with no stimuli stays Empty, which is fine for a recommended card.
  * - Neural acquisition: needs the miniscope. The extraction and deconvolution tools are optional.
  */
 export function statusOf(id: CardId, s: SetupSnapshot): Status {
@@ -93,7 +96,15 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
       const need = [s.subjectId, s.species, s.brainRegion].every(filled);
       const any =
         s.paradigmChosen ||
-        [s.sessionName, s.sessionDate, s.subjectId, s.species, s.brainRegion, s.group, s.notes].some(filled);
+        [
+          s.sessionName,
+          s.sessionDate,
+          s.subjectId,
+          s.species,
+          s.brainRegion,
+          s.group,
+          s.notes,
+        ].some(filled);
       return grade(any, need);
     }
     case 'session': {
@@ -115,20 +126,37 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
         s.headOffset !== 0 ||
         s.annotationTool !== 'other' ||
         s.annotationUnit !== 'seconds';
-      const likelihoodOk = s.likelihoodMin === undefined || (s.likelihoodMin >= 0 && s.likelihoodMin <= 1);
+      const likelihoodOk =
+        s.likelihoodMin === undefined || (s.likelihoodMin >= 0 && s.likelihoodMin <= 1);
       const scaleOk = s.positionUnit !== 'px' || positive(s.pxPerCmEntered);
       return grade(any, filled(s.bodyPart) && likelihoodOk && scaleOk);
     }
     case 'stimuli': {
       const named = s.stimuli.every((x) => filled(x.name));
       const lengthsOk = s.stimuli.every((x) => x.durationS === undefined || x.durationS >= 0);
-      return grade(s.stimuli.length > 0, s.stimuli.length > 0 && named && lengthsOk);
+      const labeled = stimulusLabelIssues(s).length === 0;
+      return grade(s.stimuli.length > 0, s.stimuli.length > 0 && named && lengthsOk && labeled);
     }
     case 'neural': {
       const any = filled(s.device) || s.extractionTool !== 'other' || s.deconTool !== 'other';
       return grade(any, filled(s.device));
     }
   }
+}
+
+/**
+ * Stimuli whose label is empty or not loaded, in words. A missing label does not block unrelated
+ * analyses: only one that would use the stimulus (such as PETH aligned to it) needs it.
+ */
+export function stimulusLabelIssues(s: Pick<SetupSnapshot, 'stimuli' | 'loadedLabels'>) {
+  const loadedLabels = s.loadedLabels ?? [];
+  return s.stimuli.flatMap((x, index) => {
+    const label = x.label?.trim();
+    if (!label) return [{ index, name: x.name, label: '', message: 'Choose a label' }];
+    if (!loadedLabels.includes(label))
+      return [{ index, name: x.name, label, message: `Missing label ${label}` }];
+    return [];
+  });
 }
 
 /** The settings as they are now. */
@@ -160,7 +188,8 @@ export function setupSnapshot(): SetupSnapshot {
     headOffset: arena.headOffset,
     annotationTool: source.annotationTool,
     annotationUnit: source.annotationUnit,
-    stimuli: source.stimuli.map((x) => ({ name: x.name, durationS: x.durationS })),
+    stimuli: source.stimuli.map((x) => ({ name: x.name, label: x.label, durationS: x.durationS })),
+    loadedLabels: labelRegistry().map((e) => e.name),
     device: source.device,
     extractionTool: source.extractionTool,
     deconTool: source.deconTool,

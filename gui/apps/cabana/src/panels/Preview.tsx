@@ -7,6 +7,9 @@ import {
   cell,
   deconvolved,
   denoisedTrace,
+  labelRegistry,
+  markerFile,
+  neuralSpan,
   footprints,
   goToStep,
   levelOf,
@@ -20,7 +23,9 @@ import { setQcCategory, setQcTab } from '../lib/qc-view.ts';
 import { Ethogram } from './BehaviorQc.tsx';
 import { CellTraces } from './CellTraces.tsx';
 import { ConfigReport, fileMismatch } from './ConfigReport.tsx';
+import { outsideRecording } from '../lib/markers.ts';
 import { FootprintViewer } from './FootprintViewer.tsx';
+import { FrameLabelMapping } from './FrameLabelMapping.tsx';
 import { CellPicker } from './parts.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
 import { Trajectory } from './Trajectory.tsx';
@@ -195,6 +200,53 @@ function Annotations(props: { slot: SlotId }): JSX.Element {
   );
 }
 
+/** Time markers: a count per label, how many fall outside the recording, and what was left out. */
+function Markers(): JSX.Element {
+  const file = () => markerFile();
+  const outside = () => {
+    const span = neuralSpan();
+    return span ? outsideRecording(file()?.markers ?? [], span[0], span[1]).length : 0;
+  };
+  const rows = () => labelRegistry().filter((e) => e.source === 'markers');
+  return (
+    <Box title="Time markers">
+      <p class="cb-muted">
+        {file()?.markers.length.toLocaleString()} markers, {rows().length} label
+        {rows().length === 1 ? '' : 's'}. Times are seconds on the session clock.
+      </p>
+      <ul>
+        <For each={rows()}>
+          {(e) => (
+            <li>
+              <strong>{e.name}</strong>: {e.count}
+              <Show when={e.problems.length}>
+                <span class="cb-warn"> ({e.problems.join('; ')})</span>
+              </Show>
+            </li>
+          )}
+        </For>
+      </ul>
+      <p class={outside() ? 'cb-warn' : 'cb-muted'}>
+        {neuralSpan()
+          ? `${outside()} outside recording${outside() ? ': kept, but not drawn on the session view' : ''}.`
+          : 'Load the miniscope timestamps to check which markers are inside the recording.'}
+      </p>
+      <Show when={file()?.problems.length}>
+        <For each={file()!.problems}>{(p) => <p class="cb-warn">{p}</p>}</For>
+      </Show>
+    </Box>
+  );
+}
+
+/** Frame labels: the import mapping (what each column is) and the conflicts it leads to. */
+function FrameLabels(): JSX.Element {
+  return (
+    <Box title="Frame labels">
+      <FrameLabelMapping />
+    </Box>
+  );
+}
+
 /** A preview box with a title and no plot. */
 function Box(props: { title: string; children: JSX.Element }): JSX.Element {
   return (
@@ -218,6 +270,8 @@ const VIEWS: Partial<Record<SlotId, (slot: SlotId) => JSX.Element>> = {
   position: () => <Position />,
   zone_annotations: (s) => <Annotations slot={s} />,
   behavior_annotations: (s) => <Annotations slot={s} />,
+  time_markers: () => <Markers />,
+  frame_labels: () => <FrameLabels />,
   config: () => (
     <Box title="Configuration">
       <ConfigReport />

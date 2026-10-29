@@ -8,14 +8,20 @@ import { lowerBound } from './framework.ts';
 import {
   annotationResults,
   cameraTimes,
+  cameraClock,
   deconvolved,
   denoisedTrace,
+  frameLabelsOnCamera,
   frameTimes,
+  labelRegistry,
+  markerFile,
+  neuralSpan,
   positionResult,
   rawTrace,
   samplingRate,
 } from './store.ts';
-import { hoverT } from './viz.ts';
+import { runsOf } from './frame-labels.ts';
+import { hoverT, win } from './viz.ts';
 import { PALETTE } from '../panels/BehaviorQc.tsx';
 
 export type Source = 'raw' | 'denoised' | 'events';
@@ -65,6 +71,61 @@ export const epochs = createMemo(() =>
   annotationResults().flatMap((a) => (a.error ? [] : a.epochs.filter((e) => e.stop > e.start))),
 );
 const labels = createMemo(() => [...new Set(epochs().map((e) => e.label))]);
+
+/** One color per label name across epochs, markers and frame labels; epoch labels come first, so their colors are unchanged. */
+export const colorOf = (name: string) => {
+  const names = [...new Set([...labels(), ...labelRegistry().map((e) => e.name)])];
+  return PALETTE[Math.max(0, names.indexOf(name)) % PALETTE.length];
+};
+
+/** Time markers inside the recording; the ones outside are listed in Load preview and drawn nowhere. */
+export const markersInView = createMemo(() => {
+  const span = neuralSpan();
+  const all = markerFile()?.markers ?? [];
+  return span ? all.filter((m) => m.timeS >= span[0] && m.timeS <= span[1]) : all;
+});
+
+/** The marker nearest `t` within `tol` seconds, for the hover label. */
+export function markerNear(t: number, tol: number) {
+  let best: { label: string; timeS: number } | undefined;
+  for (const m of markersInView())
+    if (Math.abs(m.timeS - t) <= tol && (!best || Math.abs(m.timeS - t) < Math.abs(best.timeS - t)))
+      best = m;
+  return best;
+}
+
+/** One band row per frame-label column: runs of 1 for a binary column, one colored run per value for a category. */
+export const frameBands = createMemo(() => {
+  const j = frameLabelsOnCamera();
+  const t = cameraClock();
+  if (!j || !t) return [];
+  const bands: {
+    key: string;
+    name: string;
+    kind: 'binary' | 'category';
+    runs: { label: string; color: string; runs: [number, number][] }[];
+  }[] = [];
+  for (const [name, v] of Object.entries(j.binary))
+    bands.push({
+      key: `fb:${name}`,
+      name,
+      kind: 'binary',
+      runs: [{ label: name, color: colorOf(name), runs: runsOf(t, (i) => v[i] === 1) }],
+    });
+  for (const [name, v] of Object.entries(j.categorical))
+    bands.push({
+      key: `fc:${name}`,
+      name,
+      kind: 'category',
+      runs: [...new Set(v.filter((x): x is string => x !== null))].map((label) => ({
+        label,
+        color: colorOf(label),
+        runs: runsOf(t, (i) => v[i] === label),
+      })),
+    });
+  return bands;
+});
+
 const zones = createMemo(() => {
   const pos = positionsCm();
   if (!pxPerCm() || !arena.box || !pos.x.length)
@@ -98,11 +159,11 @@ export const pos = () => {
 
 /** One row per behavior label, then one per zone. */
 export const rows = createMemo(() => [
-  ...labels().map((name, i) => ({
+  ...labels().map((name) => ({
     key: `b:${name}`,
     kind: 'Behavior',
     name,
-    color: PALETTE[i % PALETTE.length],
+    color: colorOf(name),
     runs: epochs()
       .filter((e) => e.label === name)
       .map((e) => [e.start, e.stop] as [number, number]),
@@ -126,6 +187,18 @@ export const hiddenCount = () =>
 export const [tracksAnchor, setTracksAnchor] = createSignal<HTMLElement>();
 export const openTracks = (el: HTMLElement) => setTracksAnchor((a) => (a === el ? undefined : el));
 
+/** Frame-label values at time `t`: binary labels that are 1 and the category value. */
+function frameLabelsAt(t: number): string[] {
+  const j = frameLabelsOnCamera();
+  const ct = cameraClock();
+  if (!j || !ct) return [];
+  const i = Math.min(lowerBound(ct, t), ct.length - 1);
+  return [
+    ...Object.entries(j.binary).flatMap(([n, v]) => (v[i] === 1 ? [n] : [])),
+    ...Object.values(j.categorical).flatMap((v) => (v[i] ? [v[i]!] : [])),
+  ];
+}
+
 export const readout = () => {
   const ht = hoverT();
   if (ht === undefined) return undefined;
@@ -139,5 +212,7 @@ export const readout = () => {
     const i = Math.min(lowerBound(ct, ht), ct.length - 1);
     if (Number.isFinite(p.x[i])) where = `, position (${p.x[i].toFixed(1)}, ${p.y[i].toFixed(1)})`;
   }
-  return `${ht.toFixed(1)} s${where}${active.length ? `, behavior: ${active.join(', ')}` : ''}`;
+  const mk = markerNear(ht, (win()[1] - win()[0]) / 200);
+  const frame = frameLabelsAt(ht);
+  return `${ht.toFixed(1)} s${where}${active.length ? `, behavior: ${active.join(', ')}` : ''}${frame.length ? `, frame labels: ${frame.join(', ')}` : ''}${mk ? `, marker: ${mk.label} (${mk.timeS.toFixed(2)} s)` : ''}`;
 };

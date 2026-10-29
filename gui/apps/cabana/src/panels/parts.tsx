@@ -44,20 +44,49 @@ export function CellPicker(props: {
   );
 }
 
-/** Collapsed explanation. Titled "Note" unless a section needs a more specific title. */
+/**
+ * Opens the explanation as a floating panel next to its summary, above or below depending on the
+ * space, so that reading a note never pushes the page content or adds a scrollbar.
+ */
+export function placePopover(event: Event): void {
+  const details = event.currentTarget as HTMLDetailsElement;
+  const panel = details.querySelector<HTMLElement>(':scope > div');
+  if (!details.open || !panel) return;
+  const anchor = details.querySelector('summary')!.getBoundingClientRect();
+  const below = innerHeight - anchor.bottom - 12;
+  const above = anchor.top - 12;
+  const useBelow = below >= Math.min(220, above);
+  const width = Math.min(440, innerWidth - 24);
+  panel.style.width = `${width}px`;
+  panel.style.left = `${Math.max(12, Math.min(anchor.left, innerWidth - width - 12))}px`;
+  panel.style.maxHeight = `${Math.max(120, useBelow ? below : above)}px`;
+  panel.style.top = useBelow ? `${anchor.bottom + 4}px` : '';
+  panel.style.bottom = useBelow ? '' : `${innerHeight - anchor.top + 4}px`;
+  const close = (e: Event) => {
+    if (e instanceof KeyboardEvent ? e.key !== 'Escape' : details.contains(e.target as Node))
+      return;
+    details.open = false;
+    document.removeEventListener('pointerdown', close);
+    document.removeEventListener('keydown', close);
+  };
+  document.addEventListener('pointerdown', close);
+  document.addEventListener('keydown', close);
+}
+
+/** Explanation that opens as a popover. Titled "Note" unless a section needs a more specific title. */
 export function Note(props: { title?: string; children: JSX.Element }): JSX.Element {
   return (
-    <details class="cb-notebox">
+    <details class="cb-notebox cb-notepop" onToggle={placePopover}>
       <summary>{props.title ?? 'Note'}</summary>
       <div class="cb-muted">{props.children}</div>
     </details>
   );
 }
 
-/** Collapsed, plot-specific explanation placed under a figure. */
+/** Plot-specific explanation placed under a figure; opens as a popover. */
 export function HowToRead(props: { children: JSX.Element }): JSX.Element {
   return (
-    <details class="cb-notebox cb-howto">
+    <details class="cb-notebox cb-howto cb-notepop" onToggle={placePopover}>
       <summary>How to read this plot</summary>
       <div class="cb-muted">{props.children}</div>
     </details>

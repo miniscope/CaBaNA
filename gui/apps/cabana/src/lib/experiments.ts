@@ -1,6 +1,7 @@
 // Experimental paradigms. Choosing one sets which files are needed. Anything
 // not listed keeps the default level from slots.ts.
 
+import { ANALYSIS_ITEMS, type AnalysisItem } from './readiness.ts';
 import type { Level, SlotId } from './slots.ts';
 
 export interface Paradigm {
@@ -8,6 +9,10 @@ export interface Paradigm {
   label: string;
   summary: string;
   levels: Partial<Record<SlotId, Level>>;
+  /** Labels the experimenter sets (a tone, a shock) rather than measures. Everything else is measured. */
+  controlledLabels: string[];
+  /** Analyses Next offers for this paradigm, in sidebar order. Every analysis stays reachable. */
+  recommended: AnalysisItem[];
 }
 
 type Levels = Paradigm['levels'];
@@ -42,7 +47,9 @@ const events = (extra: Levels = {}): Levels => ({
   ...extra,
 });
 
-export const PARADIGMS: Paradigm[] = [
+type Entry = Omit<Paradigm, 'controlledLabels' | 'recommended'> & { controlledLabels?: string[] };
+
+const ENTRIES: Entry[] = [
   {
     id: 'open_field',
     label: 'Open field',
@@ -135,19 +142,21 @@ export const PARADIGMS: Paradigm[] = [
     id: 'fear_conditioning',
     label: 'Fear conditioning',
     summary: 'Tones and shocks, with freezing scored.',
-    levels: events({ footprints: 'optional' }),
+    levels: events({ footprints: 'optional', time_markers: 'recommended' }),
+    controlledLabels: ['cs', 'us', 'tone', 'shock'],
   },
   {
     id: 'fear_extinction',
     label: 'Fear extinction and recall',
     summary: 'Tones without shocks across later sessions.',
-    levels: events({ footprints: 'optional' }),
+    levels: events({ footprints: 'optional', time_markers: 'recommended' }),
+    controlledLabels: ['cs', 'tone'],
   },
   {
     id: 'operant',
     label: 'Operant task or lick and reward',
     summary: 'Lever presses, nose pokes, licking and reward epochs.',
-    levels: events(),
+    levels: events({ time_markers: 'recommended' }),
   },
   {
     id: 'home_cage',
@@ -173,3 +182,36 @@ export const PARADIGMS: Paradigm[] = [
     levels: {},
   },
 ];
+
+const MOVING: AnalysisItem[] = ['place', 'population'];
+const ARENA_TASK: AnalysisItem[] = ['place', 'auroc', 'population'];
+const SOCIAL: AnalysisItem[] = ['auroc', 'population', 'decoding'];
+const CUED: AnalysisItem[] = ['auroc', 'peth'];
+/** Analyses suggested per paradigm; a paradigm not listed gets every analysis. */
+const RECOMMENDED: Record<string, AnalysisItem[]> = {
+  open_field: MOVING,
+  linear_track: ['place', 'population', 'decoding'],
+  t_maze: ARENA_TASK,
+  barnes: MOVING,
+  morris: MOVING,
+  epm: MOVING,
+  light_dark: MOVING,
+  cpp: MOVING,
+  novel_object: ARENA_TASK,
+  object_location: ARENA_TASK,
+  three_chamber: ARENA_TASK,
+  social_interaction: SOCIAL,
+  resident_intruder: SOCIAL,
+  social_memory: SOCIAL,
+  fear_conditioning: ['peth', 'auroc'],
+  fear_extinction: ['peth', 'auroc'],
+  operant: ['peth', 'auroc'],
+  home_cage: ['auroc', 'population'],
+  eye_whisker: CUED,
+};
+
+export const PARADIGMS: Paradigm[] = ENTRIES.map((p) => ({
+  controlledLabels: [],
+  recommended: RECOMMENDED[p.id] ?? ANALYSIS_ITEMS,
+  ...p,
+}));

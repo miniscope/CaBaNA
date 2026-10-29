@@ -2,6 +2,7 @@
 
 import { arena, effectiveBin } from './arena.ts';
 import { DEFAULT_PLACE_SETTINGS, placeOutcome, placeSettings } from './place-run.ts';
+import { describeChanges, PLACE_LABELS, runMatch } from './engine.ts';
 import { prepChanges } from './prep-deps.ts';
 
 const LABELS: Partial<Record<keyof typeof DEFAULT_PLACE_SETTINGS, string>> = {
@@ -17,6 +18,8 @@ const LABELS: Partial<Record<keyof typeof DEFAULT_PLACE_SETTINGS, string>> = {
 export function placeChanges(): string[] {
   const o = placeOutcome();
   if (!o) return [];
+  // A framework run is compared by the hash of its settings, not field by field.
+  if (o.record) return describeChanges(runMatch('place')?.diff ?? [], PLACE_LABELS);
   const a = o.settings;
   const b = placeSettings;
   const out: string[] = [];

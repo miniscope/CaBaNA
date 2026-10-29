@@ -34,6 +34,8 @@ export function placeMetadata(out: PlaceOutcome) {
   const { grid } = out.data;
   return {
     analysis: 'place_cells',
+    engine: out.engine === 'framework' ? 'framework' : 'browser-ts',
+    run_id: out.record?.run_id,
     cells_analyzed: out.data.cellIds.length,
     frames: { used: out.data.used, total: out.data.input.frames },
     min_speed_cm_s: out.data.minSpeed,

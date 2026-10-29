@@ -1,6 +1,13 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { configReport } from '../lib/config-import.ts';
-import { CARDS, setSetupCard, setupCard, setupSnapshot, statusOf, type CardId } from '../lib/setup-status.ts';
+import {
+  CARDS,
+  setSetupCard,
+  setupCard,
+  setupSnapshot,
+  statusOf,
+  type CardId,
+} from '../lib/setup-status.ts';
 import { arena, arenaSummary, setArena } from '../lib/arena.ts';
 import { INDICATORS } from '../lib/decon.ts';
 import { indicatorId, setIndicator } from '../lib/decon-state.ts';
@@ -15,6 +22,7 @@ import {
   experiment,
   experimentId,
   goToStep,
+  labelRegistry,
   loaded,
   override,
   sessionName,
@@ -25,6 +33,9 @@ import {
   source,
 } from '../lib/store.ts';
 import { HELP, OPTIONS, type Field } from '../lib/tool-help.ts';
+import { rangeText, showLabel } from '../lib/label-view.ts';
+import { LabelRoles, RolesHelp, setStimuliView, stimuliView } from './LabelRoles.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { Note } from './parts.tsx';
 import { SpatialSetup } from './SpatialSetup.tsx';
 
@@ -192,8 +203,8 @@ function ExperimentTab(): JSX.Element {
   return (
     <section class="cb-group">
       <p class="cb-muted">
-        Everything in this section is optional. What you fill in is saved with the config and helps QC
-        and the analyses.
+        Everything in this section is optional. What you fill in is saved with the config and helps
+        QC and the analyses.
       </p>
       <div class="cb-setup-grid">
         <label class="cb-setup-field">
@@ -244,7 +255,7 @@ function ExperimentTab(): JSX.Element {
       <label class="cb-setup-field">
         Notes
         <textarea
-          rows="3"
+          rows="2"
           value={source.notes}
           onInput={(e) => setSource('notes', e.currentTarget.value)}
         />
@@ -320,7 +331,7 @@ function SessionTab(): JSX.Element {
 
 function TrackingTab(): JSX.Element {
   return (
-    <>
+    <div class="cb-setup-cols">
       <section class="cb-group">
         <h3>Position</h3>
         <div class="cb-setup-grid">
@@ -422,19 +433,51 @@ function TrackingTab(): JSX.Element {
         </div>
         <Help field="annotationTool" />
       </section>
-    </>
+    </div>
   );
 }
 
+const STIM_PER_PAGE = 5;
+const [stimPage, setStimPage] = createSignal(0);
+
 function StimuliTab(): JSX.Element {
+  const loadedLabels = () => [...new Set(labelRegistry().map((e) => e.name))];
   return (
     <section class="cb-group">
-      <p class="cb-muted">
-        List what the animal was shown or given, such as a tone, a shock or a reward. When each one
-        happened comes from an annotation file on Load data, with one label per stimulus.
-      </p>
-      <For each={source.stimuli}>
-        {(s, i) => (
+      <div class="cb-lbl-viewbar">
+        <div class="cb-tabs" role="tablist" aria-label="Stimuli and cues views">
+          <button
+            role="tab"
+            aria-selected={stimuliView() === 'stimuli'}
+            classList={{ 'cb-tab--on': stimuliView() === 'stimuli' }}
+            onClick={() => setStimuliView('stimuli')}
+          >
+            Stimuli
+          </button>
+          <button
+            role="tab"
+            aria-selected={stimuliView() === 'roles'}
+            classList={{ 'cb-tab--on': stimuliView() === 'roles' }}
+            onClick={() => setStimuliView('roles')}
+          >
+            Label roles <span class="cb-muted">{labelRegistry().length}</span>
+          </button>
+        </div>
+        <span class="cb-muted">
+          {stimuliView() === 'stimuli' ? (
+            'What the animal was shown or given. Each stimulus takes its times from a label loaded on Load data.'
+          ) : (
+            <>
+              Role sets the default selection only. <RolesHelp />
+            </>
+          )}
+        </span>
+      </div>
+      <div style={{ display: stimuliView() === 'stimuli' ? 'block' : 'none' }}>
+      <For each={source.stimuli.slice(stimPage() * STIM_PER_PAGE, (stimPage() + 1) * STIM_PER_PAGE)}>
+        {(s, j) => {
+          const i = () => stimPage() * STIM_PER_PAGE + j();
+          return (
           <div class="cb-controls">
             <input
               type="text"
@@ -448,6 +491,29 @@ function StimuliTab(): JSX.Element {
             >
               <For each={STIMULUS_KINDS}>{(k) => <option>{k}</option>}</For>
             </select>
+            <label>
+              Label
+              <select
+                value={s.label ?? ''}
+                onChange={(e) => setSource('stimuli', i(), 'label', e.currentTarget.value)}
+              >
+                <option value="" disabled>
+                  Choose a label
+                </option>
+                <Show when={s.label && !loadedLabels().includes(s.label)}>
+                  <option value={s.label}>{s.label}</option>
+                </Show>
+                <For each={loadedLabels()}>{(l) => <option value={l}>{l}</option>}</For>
+              </select>
+            </label>
+            <Show when={s.label && !loadedLabels().includes(s.label)}>
+              <span class="cb-error">
+                Missing label '{s.label}'.{' '}
+                <button class="cb-link" onClick={() => showLabel('load', s.label!)}>
+                  Open Load data
+                </button>
+              </span>
+            </Show>
             <label>
               Length
               <input
@@ -479,16 +545,43 @@ function StimuliTab(): JSX.Element {
               Remove
             </button>
           </div>
-        )}
+          );
+        }}
       </For>
-      <button
-        class="btn-secondary btn-small"
-        onClick={() =>
-          setSource('stimuli', (l) => [...l, { name: '', kind: STIMULUS_KINDS[0], note: '' }])
-        }
-      >
-        Add a stimulus
-      </button>
+      <div class="cb-controls">
+        <button
+          class="btn-secondary btn-small"
+          onClick={() => {
+            setSource('stimuli', (l) => [...l, { name: '', kind: STIMULUS_KINDS[0], note: '' }]);
+            setStimPage(Math.floor((source.stimuli.length - 1) / STIM_PER_PAGE));
+          }}
+        >
+          Add a stimulus
+        </button>
+        <Show when={source.stimuli.length > STIM_PER_PAGE}>
+          <button
+            class="btn-secondary btn-small"
+            disabled={stimPage() === 0}
+            onClick={() => setStimPage(stimPage() - 1)}
+          >
+            Previous
+          </button>
+          <span class="cb-muted">
+            {rangeText(stimPage(), source.stimuli.length, STIM_PER_PAGE)}
+          </span>
+          <button
+            class="btn-secondary btn-small"
+            disabled={(stimPage() + 1) * STIM_PER_PAGE >= source.stimuli.length}
+            onClick={() => setStimPage(stimPage() + 1)}
+          >
+            Next
+          </button>
+        </Show>
+      </div>
+      </div>
+      <div style={{ display: stimuliView() === 'roles' ? 'block' : 'none' }}>
+        <LabelRoles />
+      </div>
     </section>
   );
 }
@@ -520,7 +613,7 @@ function NeuralTab(): JSX.Element {
 function UpdateConfig(): JSX.Element {
   const [saved, setSaved] = createSignal(false);
   return (
-    <div class="cb-savebar">
+    <>
       <Show when={saved()}>
         <span class="cb-muted">Config updated.</span>
       </Show>
@@ -533,7 +626,7 @@ function UpdateConfig(): JSX.Element {
       >
         Update config
       </button>
-    </div>
+    </>
   );
 }
 
@@ -542,39 +635,45 @@ function ImportedConfig(): JSX.Element {
   return (
     <Show when={configReport()}>
       {(r) => (
-        <div class="cb-cfgsum cb-setup-import">
-          <div class="cb-cfgsum__part">
-            <strong>Configuration loaded</strong>
-            <span class="cb-muted">
-              {r().read.length} settings filled in from {loaded.config?.name ?? 'config.yaml'}; anything changed
-              by hand replaces them.
-            </span>
-            <details>
-              <summary>Review details</summary>
+        <div class="cb-setup-import">
+          <strong>Configuration loaded</strong>
+          <span class="cb-muted">
+            {r().read.length} settings filled in from {loaded.config?.name ?? 'config.yaml'}; changes
+            made here replace them.
+          </span>
+          <details class="cb-setup-pop">
+            <summary>
+              Review details
+              <Show when={setupItems().length}>
+                {' '}
+                ({setupItems().length} to check)
+              </Show>
+            </summary>
+            <div class="cb-setup-pop__body">
               <ConfigReport />
-            </details>
-          </div>
-          <Show when={setupItems().length}>
-            <ul class="cb-warn cb-setup-warns">
-              <For each={setupItems()}>
-                {(w) => (
-                  <li>
-                    {w.text}{' '}
-                    <Show when={w.card}>
-                      <button class="cb-link" onClick={() => setSetupCard(w.card!)}>
-                        Open {CARDS.find((c) => c.id === w.card)!.title}
-                      </button>
-                    </Show>
-                    <Show when={w.step}>
-                      <button class="cb-link" onClick={() => goToStep(w.step!)}>
-                        Go to Load data
-                      </button>
-                    </Show>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
+              <Show when={setupItems().length}>
+                <ul class="cb-warn cb-setup-warns">
+                  <For each={setupItems()}>
+                    {(w) => (
+                      <li>
+                        {w.text}{' '}
+                        <Show when={w.card}>
+                          <button class="cb-link" onClick={() => setSetupCard(w.card!)}>
+                            Open {CARDS.find((c) => c.id === w.card)!.title}
+                          </button>
+                        </Show>
+                        <Show when={w.step}>
+                          <button class="cb-link" onClick={() => goToStep(w.step!)}>
+                            Go to Load data
+                          </button>
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </div>
+          </details>
         </div>
       )}
     </Show>
@@ -587,16 +686,17 @@ export function SetupPanel(): JSX.Element {
   const only = (id: string) => ({ display: tab() === id ? 'block' : 'none' });
   const status = (id: CardId) => statusOf(id, setupSnapshot());
   return (
-    <div class="cb-panel cb-panel--wide">
+    <div class="cb-panel cb-panel--wide cb-setup">
       <div class="cb-setup-head">
-        <div>
-          <h2>Experimental Setup</h2>
-          <p class="cb-lead">
-            Describe your experiment so CaBaNA can interpret your data and identify available analyses. Spatial setup
-            is required for many spatial analyses. Complete the other sections when they apply to your experiment;
-            some settings may be required for particular analyses.
-          </p>
-        </div>
+        <h2>Experimental Setup</h2>
+        <InfoTip label="About Experimental Setup">
+          Describe your experiment so CaBaNA can interpret your data and identify available
+          analyses. Spatial setup is required for many spatial analyses. Complete the other sections
+          when they apply to your experiment; some settings may be required for particular analyses.
+        </InfoTip>
+        <span class="cb-muted">Describe the experiment so CaBaNA can offer the right analyses.</span>
+        <span class="cb-spacer" />
+        <UpdateConfig />
         <button class="btn-primary" onClick={downloadConfig}>
           Download Config
         </button>
@@ -614,7 +714,9 @@ export function SetupPanel(): JSX.Element {
             >
               <span class="cb-setup-card__title">{c.title}</span>
               <span class="cb-setup-card__meta">
-                <span class={`cb-pill cb-pill--${c.priority === 'Required' ? 'warn' : 'plain'}`}>{c.priority}</span>
+                <span class={`cb-pill cb-pill--${c.priority === 'Required' ? 'warn' : 'plain'}`}>
+                  {c.priority}
+                </span>
                 <span class={`cb-setup-status cb-setup-status--${status(c.id).toLowerCase()}`}>
                   {status(c.id) === 'Complete' ? '✓ ' : status(c.id) === 'Incomplete' ? '◐ ' : '○ '}
                   {status(c.id)}
@@ -624,7 +726,7 @@ export function SetupPanel(): JSX.Element {
           )}
         </For>
       </div>
-      <h3 class="cb-setup-title">{CARDS.find((c) => c.id === tab())!.title}</h3>
+      <div class="cb-setup-view">
       <div style={only('experiment')}>
         <ExperimentTab />
       </div>
@@ -644,7 +746,7 @@ export function SetupPanel(): JSX.Element {
       <div style={only('neural')}>
         <NeuralTab />
       </div>
-      <UpdateConfig />
+      </div>
     </div>
   );
 }

@@ -8,6 +8,47 @@ The browser calculations are implemented in TypeScript, following the Python fra
 
 The repository includes simulated demo sessions from several kinds of neurobehavioral experiments. Most contain problems on purpose, such as lost tracking, overlapping cells or mistaken annotations, so each QC and correction feature can be tested as it is developed (see [Example data](#example-data)).
 
+## Python engine (bridge)
+
+`gui/bridge` is a local server that runs the framework for the GUI, through the same `cabana run`
+command the CLI uses. Start it with the `cabana-bridge` entry in `.claude/launch.json` (or the
+command in [gui/bridge/README.md](bridge/README.md)) and open the GUI with the `?bridge=` URL it
+prints. Without it the GUI still loads data, sets up, runs QC and preprocessing, and runs the
+analyses that use the browser engine (PETH, and the cases in the table below). Analyses that use the
+Python engine show "Python engine not running" with the start command, and the page offers a
+separate button to run the browser engine instead (its random draws differ).
+
+What the bridge needs from the framework is checked by feature detection (`GET /capabilities`);
+missing features are named in the interface with the contract that adds them
+(`outputs/claude/CABANA_GUI_IMPLEMENTATION_PLAN.md`, section 7).
+
+## Engines during the transition
+
+Every result names the engine that made it (Result details). A mode never switches engines
+silently: with the Python engine off, a framework mode says so and offers "Run in browser engine
+(different random draws)" as its own button.
+
+| Mode | Engine | Notes |
+| --- | --- | --- |
+| Place cells | Framework (`place_cell` pipeline) | Browser engine only when positions are in pixels (the framework path does not convert them). |
+| auROC, each behavior against the rest (circular shift) | Framework (`social` pipeline) | Automatic minimum shift is the framework's `auto_null_timescale`. |
+| auROC, speed-matched | Framework (`covariate_matched_shift`) | The automatic shift does not act on this null in the framework, so the typed minimum shift is used. |
+| auROC, behavior A against behavior B | Browser engine | No framework pipeline yet. |
+| PETH | Browser engine | Needs framework F9 (offset and both alignment, same-direction latency). |
+| Decoding | Framework | Blocked parts are named in the page (F1, F3). |
+| Population analyses | Framework | |
+
+**Migration is not complete while any mode uses the browser engine.** The TypeScript place-cell,
+auROC and speed-matching code stays because the pixel, A-against-B and PETH modes still need it;
+it is retired only for a mode whose framework path is the only path.
+
+The framework and browser engines give the same observed values (place cells within 5e-15,
+auROC identical, speed-matched auROC identical on the social example) and different p-values,
+because the random draws differ (numpy and TypeScript generators; speed-matched auROC, 1,000
+shuffles: mean absolute difference 0.012 in raw p, 448 of 450 cell-behavior calls the same). Parity tests: `gui/bridge/tests/test_pvalues.py` re-derives stored p-values from the
+saved shifted values; `gui/bridge/tests/test_parity.py` runs the GUI's pipelines through the
+bridge and `cabana run` and compares the arrays bit for bit.
+
 ## Current status
 
 Implemented interfaces include data loading, experimental setup, visualization, QC, preprocessing, and dedicated place-cell and auROC analysis workspaces. Each analysis includes configurable settings, multiple results views, run details, and CSV and run-metadata exports.

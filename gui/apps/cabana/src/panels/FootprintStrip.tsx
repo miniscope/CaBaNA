@@ -150,21 +150,9 @@ export function FootprintStrip(props: { out: PlaceOutcome; i: number }): JSX.Ele
   const seconds = () => Math.round(frames() / fs());
 
   return (
-    <details class="cb-notebox cb-fpstrip">
-      <summary>
-        <strong>Footprint &amp; activity</strong>
-        <Footprint cellRow={cellRow()} width={36} />
-        <span class="cb-fpstrip__spark">
-          <Show when={current()} fallback={<span class="cb-muted">No traces loaded</span>}>
-            {(t) => (
-              <TraceCanvas values={values(t())!} labels={labels()} color={t().color} height={26} />
-            )}
-          </Show>
-        </span>
-        <span class="cb-muted">Full recording · {seconds()} s</span>
-      </summary>
+    <div class="cb-fpstrip">
       <div class="cb-fpstrip__open">
-        <Footprint cellRow={cellRow()} width={150} />
+        <Footprint cellRow={cellRow()} width={110} />
         <div class="cb-fpstrip__main">
           <Show
             when={current()}
@@ -191,7 +179,7 @@ export function FootprintStrip(props: { out: PlaceOutcome; i: number }): JSX.Ele
                   values={values(t())!}
                   labels={labels()}
                   color={t().color}
-                  height={130}
+                  height={100}
                 />
                 <div class="cb-trace__axis cb-muted">
                   <span>0 s</span>
@@ -229,6 +217,6 @@ export function FootprintStrip(props: { out: PlaceOutcome; i: number }): JSX.Ele
           </Show>
         </div>
       </div>
-    </details>
+    </div>
   );
 }

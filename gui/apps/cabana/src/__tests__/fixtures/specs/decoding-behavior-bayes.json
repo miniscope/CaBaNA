@@ -1,0 +1,54 @@
+{
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "bouts_to_states",
+    "source": "social_epochs",
+    "behaviors": [
+     "follow",
+     "sniff_anogenital",
+     "sniff_face"
+    ],
+    "exclusive": true,
+    "add_rest": false,
+    "rest_name": "Other / none of the selected behaviors",
+    "output": "decoding_target"
+   }
+  ],
+  "preprocess": [],
+  "analyses": [
+   {
+    "name": "decoding_behavior",
+    "metric": {
+     "name": "bayesian_decoder",
+     "likelihood": "gaussian",
+     "binarize": true,
+     "window_s": 0.25,
+     "n_folds": 5,
+     "sigma": "pooled",
+     "prior": "occupancy",
+     "min_frames_per_class": 20
+    },
+    "states": "decoding_target",
+    "shuffle": {
+     "n_shuffles": 1000,
+     "null": {
+      "name": "label_shuffle",
+      "block_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "max_stat",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   }
+  ]
+ },
+ "requires": [
+  "decoding_fold_gap",
+  "overlap_policy"
+ ],
+ "problems": [],
+ "target": "decoding_target"
+}

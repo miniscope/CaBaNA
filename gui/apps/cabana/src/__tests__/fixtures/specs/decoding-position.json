@@ -1,0 +1,93 @@
+{
+ "pipeline": {
+  "transforms": [
+   {
+    "name": "interpolate_gaps",
+    "signal": [
+     "x",
+     "y"
+    ],
+    "max_gap_s": 0.5
+   },
+   {
+    "name": "smooth_signal",
+    "signal": [
+     "x",
+     "y"
+    ],
+    "method": "median",
+    "window_s": 0.25
+   },
+   {
+    "name": "speed",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "window_s": 0.25
+   },
+   {
+    "name": "bin_grid",
+    "signals": [
+     "x",
+     "y"
+    ],
+    "bin_size": 3,
+    "extent": [
+     [
+      0,
+      40
+     ],
+     [
+      0,
+      40
+     ]
+    ]
+   }
+  ],
+  "preprocess": [
+   {
+    "name": "speed_threshold",
+    "signal": "speed",
+    "min_speed": 2
+   }
+  ],
+  "analyses": [
+   {
+    "name": "decoding_position",
+    "metric": {
+     "name": "bayesian_decoder",
+     "likelihood": "gaussian",
+     "binarize": true,
+     "window_s": 0.25,
+     "smooth_sigma_bins": 0,
+     "n_folds": 5,
+     "sigma": "per_state",
+     "prior": "occupancy",
+     "min_frames_per_class": 20
+    },
+    "states": "position",
+    "masks": [
+     "speed"
+    ],
+    "shuffle": {
+     "n_shuffles": 1000,
+     "null": {
+      "name": "label_shuffle",
+      "block_s": 1
+     },
+     "seed": 0,
+     "alpha": 0.05,
+     "correction": "max_stat",
+     "correction_scope": "states",
+     "n_jobs": -1
+    }
+   }
+  ]
+ },
+ "requires": [
+  "decoding_fold_gap"
+ ],
+ "problems": [],
+ "target": "position"
+}

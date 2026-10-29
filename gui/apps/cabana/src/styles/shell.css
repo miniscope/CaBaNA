@@ -1,0 +1,245 @@
+/* Sidebar status, footer with Next, Requirements, and the Analyze overview. */
+.cb-side-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cb-side-main > .cb-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cb-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.cb-side__go {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cb-side__mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cb-side .cb-tip {
+  display: inline-flex;
+}
+.cb-side__top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: var(--space-xs);
+}
+.cb-side__title {
+  flex: 1;
+  padding-left: var(--space-md);
+  font-size: 15px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+.cb-side__top .cb-side__fold {
+  margin: 0;
+}
+.cb-app--folded .cb-side__top {
+  justify-content: center;
+}
+.cb-app--folded .cb-side {
+  gap: 4px;
+  justify-content: center;
+}
+.cb-app--folded .cb-side__go {
+  flex: none;
+}
+.cb-legend__btn {
+  border-radius: 50%;
+  border: 1.5px solid var(--text-secondary);
+  min-width: 20px;
+  height: 20px;
+  font-size: 12px;
+}
+.cb-legend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+  font-size: 15px;
+}
+.cb-legend__row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: var(--space-sm);
+}
+.cb-legend__row .cb-tone {
+  margin-top: 3px;
+}
+.cb-tone {
+  flex: none;
+}
+.cb-tone--complete {
+  color: #1e8e3e;
+}
+.cb-tone--in_progress {
+  color: #f5c400;
+}
+.cb-tone--needs_input {
+  color: #d93025;
+}
+.cb-tone--not_started {
+  color: #9aa0a6;
+}
+.cb-tone--outdated {
+  color: #e8710a;
+}
+.cb-st {
+  font-size: 11px;
+}
+.cb-app--folded .cb-side {
+  align-items: center;
+}
+.cb-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+.cb-st__icon {
+  flex: none;
+}
+.cb-st__icon--spin {
+  animation: cb-spin 1s linear infinite;
+}
+@keyframes cb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cb-st--complete,
+.cb-st--ready {
+  color: var(--accent);
+}
+.cb-st--needs_input,
+.cb-st--outdated {
+  color: #92400e;
+}
+.cb-st--failed {
+  color: #b91c1c;
+}
+.cb-side--on .cb-st {
+  color: inherit;
+}
+.cb-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 8px var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary, #fff);
+}
+.cb-foot__hint {
+  margin-right: auto;
+}
+.cb-req {
+  margin-bottom: var(--space-sm);
+}
+.cb-req .cb-un {
+  margin: 0 0 var(--space-xs);
+}
+.cb-req .cb-un__item p {
+  margin: 2px 0;
+}
+.cb-ov__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+.cb-ov__head h2 {
+  margin: 0;
+}
+.cb-ov__all {
+  margin-left: auto;
+}
+.cb-ov__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-md);
+  font-size: 13px;
+}
+.cb-ov__table th {
+  text-align: left;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  padding: 4px 12px 6px 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.cb-ov__table td {
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+.cb-ov__table .cb-st {
+  font-size: 13px;
+}
+.cb-ov__sum {
+  margin-top: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+.cb-ov__sum h3 {
+  margin-top: 0;
+}
+.cb-ov__sum h4 {
+  font-size: 13px;
+  margin: var(--space-sm) 0 var(--space-xs);
+}
+.cb-ov__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--space-lg);
+}
+.cb-ov__sum ol,
+.cb-ov__skip {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.cb-ov__skip li {
+  margin-bottom: 3px;
+}
+.cb-ov__opt {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+.cb-ov__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}

@@ -4,7 +4,7 @@
 // framework's; the GUI's own words stay on screen.
 
 import { Document, isMap, visit } from 'yaml';
-import { arena, cmPts, effectiveBin, pendingZones, sizeCm } from './arena.ts';
+import { arena, binGrid, cmPts, effectiveBin, pendingZones, sizeCm } from './arena.ts';
 import { configReport } from './config-import.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
@@ -12,14 +12,19 @@ import { prep } from './preprocess.ts';
 import {
   annotationFixed,
   annotationResults,
+  frameMapping,
+  labelRegistry,
+  labelRoles,
   loaded,
   override,
   rejected,
+  roleOf,
   sessionName,
   source,
   tol,
 } from './store.ts';
 import type { SlotId } from './slots.ts';
+import { commonSteps, type CommonInput } from './spec/pipeline.ts';
 
 type Obj = Record<string, unknown>;
 const file = (id: SlotId) => loaded[id]?.name;
@@ -78,8 +83,14 @@ const HEADER = [
   ' metadata holds settings from CaBaNA that the framework does not use.',
 ].join('\n');
 
-/** The session config as an object in the framework's layout. */
-function sessionConfig(): Obj {
+/** Sections the framework may not read yet; the bridge leaves them out of the copy it runs. */
+export type Section = 'metadata' | 'markers' | 'frame_labels';
+
+/**
+ * The session config as a plain object in the framework's layout. `omit` drops sections the
+ * installed framework does not accept, for the copy that is run; the downloaded file keeps them.
+ */
+export function buildSessionConfig(omit: Section[] = []): Obj {
   const cfg: Obj = {};
   if (sessionName()) cfg.name = sessionName();
 
@@ -130,6 +141,21 @@ function sessionConfig(): Obj {
         },
       ]),
     );
+  if (file('time_markers') && !omit.includes('markers'))
+    beh.markers = {
+      [configReport()?.values.markersName ?? 'cues']: { file: file('time_markers') },
+    };
+  if (file('frame_labels') && !omit.includes('frame_labels')) {
+    const m = frameMapping();
+    beh.frame_labels = {
+      [configReport()?.values.frameLabelsName ?? 'scoring']: {
+        file: file('frame_labels'),
+        frame_column: m.frameColumn,
+        ...(m.binary.length && { binary: m.binary }),
+        ...(m.categorical.length && { categorical: m.categorical }),
+      },
+    };
+  }
   if (Object.keys(beh).length) cfg.behavior = beh;
 
   const [w, h] = sizeCm();
@@ -162,18 +188,27 @@ function sessionConfig(): Obj {
     meta.stimuli = stimuli.map((s) => ({
       name: s.name,
       kind: s.kind,
+      ...(s.label && { label: s.label }),
       ...(s.durationS && { duration_s: s.durationS }),
       ...(s.note && { note: s.note }),
     }));
-  if (Object.keys(meta).length) cfg.metadata = meta;
+  const roles = Object.fromEntries(
+    [...new Set([...labelRegistry().map((e) => e.name), ...Object.keys(labelRoles)])].map((n) => [
+      n,
+      roleOf(n),
+    ]),
+  );
+  if (Object.keys(roles).length) meta.label_roles = roles;
+  if (Object.keys(meta).length && !omit.includes('metadata')) cfg.metadata = meta;
 
   restoreKept(cfg, configReport()?.kept ?? []);
+  if (omit.includes('metadata')) delete cfg.metadata;
   return cfg;
 }
 
 /** The session config as YAML. Lists of numbers are written on one line. */
 export function sessionYaml(): string {
-  const doc = new Document(sessionConfig());
+  const doc = new Document(buildSessionConfig());
   visit(doc, {
     Seq(_, node) {
       if (!node.items.some(isMap)) node.flow = true;
@@ -183,53 +218,34 @@ export function sessionYaml(): string {
   return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
 
+/** The Preprocess page's values as the input of `commonSteps`. */
+export function commonInput(): CommonInput {
+  const labels = new Set(
+    annotationResults()
+      .filter((a) => a.id === 'behavior_annotations' && !a.error)
+      .flatMap((a) => a.epochs.map((e) => e.label)),
+  );
+  return {
+    positionUnit: source.positionUnit,
+    pxPerCm: source.pxPerCm,
+    fillGapS: prep.fillGapS,
+    posWindowS: prep.posWindowS,
+    posMethod: prep.posMethod,
+    speedWindowS: prep.speedWindowS,
+    minSpeed: prep.minSpeed,
+    eventSigmaS: prep.eventSigmaS,
+    labelPadS: prep.labelPadS,
+    paddedLabels: [...labels],
+    hasArenaBox: !!binGrid(effectiveBin()),
+    binCm: effectiveBin(),
+    arenaCm: sizeCm(),
+    rejected: [...rejected()],
+  };
+}
+
 /** The preprocessing steps, in the order the framework runs them. */
 export function preprocessYaml(): string {
-  const transforms: Record<string, unknown>[] = [];
-  if (source.positionUnit === 'px')
-    transforms.unshift({
-      name: 'arena_transform',
-      signals: [''],
-      scale: round(1 / source.pxPerCm),
-      // The framework names the unit mm after a scale; the values here are cm.
-    });
-  if (prep.fillGapS > 0)
-    transforms.push({ name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: prep.fillGapS });
-  if (prep.posWindowS > 0)
-    transforms.push({
-      name: 'smooth_signal',
-      signal: ['x', 'y'],
-      method: prep.posMethod,
-      window_s: prep.posWindowS,
-    });
-  transforms.push({ name: 'speed', signals: ['x', 'y'], window_s: prep.speedWindowS });
-  if (arena.box)
-    transforms.push({ name: 'bin_grid', signals: ['x', 'y'], bin_size: effectiveBin() });
-
-  const steps: Record<string, unknown>[] = [];
-  if (rejected().size)
-    steps.push({
-      name: 'select_cells',
-      exclude_ids: [...rejected()].sort((a, b) => a - b).map(String),
-    });
-  if (prep.eventSigmaS > 0) steps.push({ name: 'smooth_activity', sigma_s: prep.eventSigmaS });
-  steps.push({ name: 'speed_threshold', signal: 'speed', min_speed: prep.minSpeed });
-  if (prep.labelPadS > 0) {
-    const labels = new Set(
-      annotationResults()
-        .filter((a) => a.id === 'behavior_annotations' && !a.error)
-        .flatMap((a) => a.epochs.map((e) => e.label)),
-    );
-    for (const l of labels) {
-      steps.push({
-        name: 'mask_from_state',
-        states: 'behavior',
-        include: [l],
-        output: `${l}_padded`,
-      });
-      steps.push({ name: 'clean_mask', mask: `${l}_padded`, dilate_s: prep.labelPadS });
-    }
-  }
+  const { transforms, preprocess: steps } = commonSteps(commonInput());
 
   const list = (name: string, items: Record<string, unknown>[]) =>
     items.length ? [`${name}:`, ...items.map((i) => `  - ${flow(i)}`)] : [`${name}: []`];

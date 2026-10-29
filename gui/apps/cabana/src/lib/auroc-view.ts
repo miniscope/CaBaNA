@@ -2,18 +2,28 @@
 
 import { responseOf, type Response } from './auroc.ts';
 import { aurocOutcome, aurocSettings, type AurocOutcome } from './auroc-run.ts';
+import { AUROC_LABELS, describeChanges, runMatch } from './engine.ts';
 import { prepChanges } from './prep-deps.ts';
+import { canonicalJson } from './settings-hash.ts';
 
-/** Preprocess settings changed since the last run, in words. Empty when there is no run or nothing changed. */
+/** Settings changed since the last run, in words. Empty when there is no run or nothing changed. */
 export function aurocChanges(): string[] {
   const o = aurocOutcome();
   if (!o) return [];
+  // A framework run is compared by the hash of its settings, not field by field.
+  if (o.record) return describeChanges(runMatch('auroc')?.diff ?? [], AUROC_LABELS);
   const filterOn = o.settings.speedFilter || aurocSettings.speedFilter;
   const out = prepChanges('auroc', o.prep, filterOn);
   const s = o.settings;
-  if (s.speedFilter !== aurocSettings.speedFilter) out.push('speed filter choice');
-  else if (s.speedFilter && s.minSpeed !== aurocSettings.minSpeed) out.push('minimum speed');
-  return out;
+  // Every analysis setting counts, not only the speed filter (a changed shuffle count or method made the results stale).
+  const same = (k: keyof typeof s) => canonicalJson(s[k]) === canonicalJson(aurocSettings[k]);
+  const unused = (k: keyof typeof s) =>
+    (k === 'minSpeed' && !filterOn) ||
+    (k === 'minShiftS' && s.shiftAuto && aurocSettings.shiftAuto) ||
+    (k === 'match' && s.method === 'circular' && aurocSettings.method === 'circular');
+  for (const k of Object.keys(AUROC_LABELS) as (keyof typeof s)[])
+    if (!same(k) && !unused(k)) out.push(AUROC_LABELS[k]);
+  return [...new Set(out)];
 }
 
 export const RESPONSES: Response[] = ['excited', 'inhibited', 'not significant', 'not evaluated'];

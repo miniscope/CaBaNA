@@ -23,8 +23,8 @@ const [start, setStart] = createSignal(0);
 const [perCell, setPerCell] = createSignal(true);
 
 const GAP = 8;
-const MIN_MAP = 140; // narrowest map, in px, that still reads
-const CARD_EXTRA = 66; // card padding, title row and the peak-rate line, in px
+const MIN_MAP = 84; // narrowest map, in px, that still reads
+const CARD_EXTRA = 104; // card padding, title row and the peak-rate line, in px
 
 /**
  * How many cards fit the space without scrolling, and how wide their maps are. For 1 to 6 rows,

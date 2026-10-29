@@ -4,7 +4,12 @@ import { cameraTimes, cell, selectCell } from '../lib/store.ts';
 import { lowerBound } from '../lib/framework.ts';
 import { hoverT, setHoverT, win } from '../lib/viz.ts';
 import {
+  colorOf,
+  epochs,
+  frameBands,
   heat,
+  markersInView,
+  markerNear,
   heatScale,
   hiddenCount,
   isOn,
@@ -98,6 +103,30 @@ function drawBars(
   });
 }
 
+/** Epochs shaded across a row, and time markers as thin lines, so every row shows when things happened. */
+function drawOverlay(ctx: CanvasRenderingContext2D, H: number, [t0, t1]: [number, number]): void {
+  const X = (v: number) => ((v - t0) / (t1 - t0)) * W;
+  ctx.save();
+  ctx.globalAlpha = 0.13;
+  for (const e of epochs()) {
+    if (e.stop < t0 || e.start > t1) continue;
+    ctx.fillStyle = colorOf(e.label);
+    const a = X(Math.max(e.start, t0));
+    ctx.fillRect(a, 0, Math.max(X(Math.min(e.stop, t1)) - a, 1), H);
+  }
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = 1;
+  for (const m of markersInView()) {
+    if (m.timeS < t0 || m.timeS > t1) continue;
+    ctx.strokeStyle = colorOf(m.label);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(X(m.timeS)) + 0.5, 0);
+    ctx.lineTo(Math.round(X(m.timeS)) + 0.5, H);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 const Swatch = (props: { color: string }): JSX.Element => <i style={{ background: props.color }} />;
 
 /**
@@ -114,6 +143,10 @@ function Track(props: {
   min?: number;
   draw: (ctx: CanvasRenderingContext2D, H: number) => void;
   onClick?: (fractionY: number) => void;
+  /** Rows that already show the epochs or markers themselves leave the overlay off. */
+  overlay?: boolean;
+  /** Show the label of the nearest time marker beside the cursor. */
+  markerLabels?: boolean;
 }): JSX.Element {
   let c: HTMLCanvasElement | undefined;
   createEffect(() => {
@@ -122,7 +155,12 @@ function Track(props: {
     ctx.fillStyle = '#fafafa';
     ctx.fillRect(0, 0, W, props.height);
     props.draw(ctx, props.height);
+    if (props.overlay !== false) drawOverlay(ctx, props.height, win());
   });
+  const nearMarker = () =>
+    props.markerLabels && hoverT() !== undefined
+      ? markerNear(hoverT()!, (win()[1] - win()[0]) / 200)
+      : undefined;
   const left = () => ((hoverT()! - win()[0]) / (win()[1] - win()[0])) * 100;
   return (
     <div
@@ -156,6 +194,13 @@ function Track(props: {
         />
         <Show when={hoverT() !== undefined && left() >= 0 && left() <= 100}>
           <div class="cb-trk__line" style={{ left: `${left()}%` }} />
+        </Show>
+        <Show when={nearMarker()}>
+          {(m) => (
+            <span class="cb-trk__tip" style={{ left: `${left()}%` }}>
+              {m().label} · {m().timeS.toFixed(2)} s
+            </span>
+          )}
         </Show>
       </div>
     </div>
@@ -284,6 +329,7 @@ export function Timeline(): JSX.Element {
             grow={0}
             min={18}
             height={20}
+            overlay={false}
             draw={(ctx, H) => drawBars(ctx, [r], H, win())}
           />
         )}
@@ -295,6 +341,41 @@ export function Timeline(): JSX.Element {
           </button>
         </div>
       </Show>
+      <Show when={markersInView().length}>
+        <Track
+          label={<>Time markers</>}
+          grow={0}
+          min={18}
+          height={20}
+          overlay={false}
+          markerLabels
+          draw={(ctx, H) => {
+            const [t0, t1] = win();
+            for (const m of markersInView()) {
+              if (m.timeS < t0 || m.timeS > t1) continue;
+              ctx.fillStyle = colorOf(m.label);
+              ctx.fillRect(Math.round(((m.timeS - t0) / (t1 - t0)) * W) - 1, 2, 2, H - 4);
+            }
+          }}
+        />
+      </Show>
+      <For each={frameBands()}>
+        {(b) => (
+          <Track
+            label={
+              <>
+                <Swatch color={b.runs[0]?.color ?? '#999'} />
+                <span title={`${b.name} (frame labels)`}>{b.name}</span>
+              </>
+            }
+            grow={0}
+            min={18}
+            height={20}
+            overlay={false}
+            draw={(ctx, H) => b.runs.forEach((g) => drawBars(ctx, [g], H, win()))}
+          />
+        )}
+      </For>
       <Show when={pos() && isOn('position')}>
         <Track
           label={

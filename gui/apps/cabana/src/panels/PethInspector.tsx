@@ -20,18 +20,31 @@ import {
 } from '../lib/peth-view.ts';
 import { MIN_NONZERO_PREPOST } from '../lib/peth.ts';
 import { Fit, HowTo } from './AurocResults.tsx';
+import { Note } from './parts.tsx';
 import { binText, MeanHelp, RasterHelp, rawLimits } from './PethPopulation.tsx';
 import { CurvePlot, fmtP, GRAY, Histogram, num, ORANGE, PURPLE, Raster } from './PethPlots.tsx';
-import { colorOf, DIRECTION_NOTE, Dot, Label, LabelNote, LatencyNote, alignWord, type Ctx } from './PethShared.tsx';
+import {
+  colorOf,
+  DIRECTION_NOTE,
+  Dot,
+  Label,
+  LabelNote,
+  LatencyNote,
+  alignWord,
+  type Ctx,
+} from './PethShared.tsx';
 
-const labelColor = (r: string | undefined) => (r === 'excited' ? ORANGE : r === 'inhibited' ? PURPLE : GRAY);
+const labelColor = (r: string | undefined) =>
+  r === 'excited' ? ORANGE : r === 'inhibited' ? PURPLE : GRAY;
 
 /** This cell's mean response to each behavior, small and on one y scale. */
 function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
   const o = () => props.ctx.out;
   const range = createMemo((): [number, number] => {
     const v = [0];
-    o().labels.forEach((_, b) => curveOf(o(), props.ctx.c, b).mean.forEach((x) => Number.isFinite(x) && v.push(x)));
+    o().labels.forEach((_, b) =>
+      curveOf(o(), props.ctx.c, b).mean.forEach((x) => Number.isFinite(x) && v.push(x)),
+    );
     const [lo, hi] = [Math.min(...v), Math.max(...v)];
     const pad = (hi - lo) * 0.08 || 0.1;
     return [lo - pad, hi + pad];
@@ -50,7 +63,15 @@ function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
                   <Dot label={label} muted={bad()} /> {label}
                 </span>
                 <span class="cb-pe-small" style={{ color: labelColor(r()) }}>
-                  {bad() ? 'Not evaluated' : r() === 'excited' ? '▲ Higher' : r() === 'inhibited' ? '▼ Lower' : hasTest(o()) ? 'Not significant' : ''}
+                  {bad()
+                    ? 'Not evaluated'
+                    : r() === 'excited'
+                      ? '▲ Higher'
+                      : r() === 'inhibited'
+                        ? '▼ Lower'
+                        : hasTest(o())
+                          ? 'Not significant'
+                          : ''}
                 </span>
               </div>
               <div class="cb-pe-strip__plot">
@@ -64,7 +85,9 @@ function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
                         label={`Mean response of this cell to ${label}`}
                         timeS={o().curves.timeS}
                         domain={timeDomain(o())}
-                        series={[{ mean: curveOf(o(), props.ctx.c, b).mean, color: labelColor(r()) }]}
+                        series={[
+                          { mean: curveOf(o(), props.ctx.c, b).mean, color: labelColor(r()) },
+                        ]}
                         yRange={range()}
                       />
                     )}
@@ -113,7 +136,12 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
           ← Back to population
         </button>
         <strong>Cell {o().cellIds[cell()] + 1}</strong>
-        <button class="btn-secondary btn-small" aria-label="Previous cell" disabled={pos() <= 0} onClick={() => step(-1)}>
+        <button
+          class="btn-secondary btn-small"
+          aria-label="Previous cell"
+          disabled={pos() <= 0}
+          onClick={() => step(-1)}
+        >
           ‹
         </button>
         <button
@@ -129,7 +157,10 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
           <select value={c().b} onChange={(e) => c().setB(+e.currentTarget.value)}>
             <For each={o().labels}>
               {(l, b) => (
-                <option value={b()} disabled={o().reports[b()].onsets.length < o().params.minEvents}>
+                <option
+                  value={b()}
+                  disabled={o().reports[b()].onsets.length < o().params.minEvents}
+                >
                   {l}
                 </option>
               )}
@@ -169,8 +200,8 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
               <MeanHelp out={o()} />
             </div>
             <div class="cb-muted cb-pe-small">
-              {o().params.baselineSubtract ? 'Baseline-subtracted' : 'Not baseline-subtracted'}, {binText(o())} bins, ± SEM
-              across onsets{o().band ? ' · gray: null band' : ''}
+              {o().params.baselineSubtract ? 'Baseline-subtracted' : 'Not baseline-subtracted'},{' '}
+              {binText(o())} bins, ± SEM across onsets{o().band ? ' · gray: null band' : ''}
             </div>
             <div class="cb-plot__body">
               <Fit>
@@ -198,9 +229,9 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
               <h3>Shuffle distribution</h3>
               <HowTo title="Shuffle distribution">
                 <p>
-                  Response minus baseline (a.u.) after each of {o().shifts.length.toLocaleString()} circular shifts of this
-                  cell's trace, with the aligned frames fixed. The colored line is the observed value; the dashed line
-                  is 0.
+                  Response minus baseline (a.u.) after each of {o().shifts.length.toLocaleString()}{' '}
+                  circular shifts of this cell's trace, with the aligned frames fixed. The colored
+                  line is the observed value; the dashed line is 0.
                 </p>
                 <p>
                   The p-value counts shifts at least as extreme as the observed value, two-sided
@@ -216,7 +247,9 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
                 when={draws()}
                 fallback={
                   <div class="cb-muted cb-pe-small">
-                    {hasTest(o()) ? `No shuffle distribution: ${why() ?? 'no value'}.` : 'This run had no shuffle test.'}
+                    {hasTest(o())
+                      ? `No shuffle distribution: ${why() ?? 'no value'}.`
+                      : 'This run had no shuffle test.'}
                   </div>
                 }
               >
@@ -249,14 +282,19 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
             <Show when={o().settings.correction === 'max_stat'}>
               <KV k="Raw p" v={hasTest(o()) ? fmtP(pRawOf(o(), cell(), c().b)) : 'not computed'} />
             </Show>
-            <KV k="Estimated response latency" v={latencyText(o(), cell(), c().b) ?? 'not computed'} />
+            <KV
+              k="Estimated response latency"
+              v={latencyText(o(), cell(), c().b) ?? 'not computed'}
+            />
             <Show when={o().band}>
-              <div class="cb-muted cb-pe-small">
-                Time from {alignWord(o())} to the first of {o().settings.latencyBins} consecutive time bins where the mean
-                response is outside the shuffled-data band on the same side. Descriptive: a latency does not mean the
-                response is significant.
-              </div>
-              <LatencyNote out={o()} />
+              <Note title="About latency">
+                <p>
+                  Time from {alignWord(o())} to the first of {o().settings.latencyBins} consecutive
+                  time bins where the mean response is outside the shuffled-data band on the same
+                  side. Descriptive: a latency does not mean the response is significant.
+                </p>
+                <LatencyNote out={o()} />
+              </Note>
             </Show>
             <KV k="Onsets" v={o().reports[c().b].onsets.length} />
             <KV
@@ -269,17 +307,21 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
                     : `not computed (fewer than ${MIN_NONZERO_PREPOST} non-zero differences)`
               }
             />
-            <div class="cb-muted cb-pe-small">{DIRECTION_NOTE}</div>
+            <Note title="About Higher and Lower">
+              <p>{DIRECTION_NOTE}</p>
+            </Note>
           </section>
           <section class="cb-plot cb-pe-stripcard">
             <div class="cb-plot__head">
               <h3>All behaviors</h3>
               <HowTo title="All behaviors">
                 <p>
-                  This cell's mean response ({o().params.baselineSubtract ? 'baseline-subtracted, ' : ''}a.u.) to each behavior, drawn on one
-                  shared y scale from {timeDomain(o())[0].toFixed(1)} to {timeDomain(o())[1].toFixed(1)} s around
-                  {alignWord(o())} (dashed line). The text under the name is the response label for that behavior. The
-                  selected behavior is highlighted.
+                  This cell's mean response (
+                  {o().params.baselineSubtract ? 'baseline-subtracted, ' : ''}a.u.) to each
+                  behavior, drawn on one shared y scale from {timeDomain(o())[0].toFixed(1)} to{' '}
+                  {timeDomain(o())[1].toFixed(1)} s around
+                  {alignWord(o())} (dashed line). The text under the name is the response label for
+                  that behavior. The selected behavior is highlighted.
                 </p>
                 <LabelNote out={o()} />
               </HowTo>

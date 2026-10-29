@@ -1,8 +1,10 @@
 import { createEffect, For, Show, type JSX } from 'solid-js';
 import { HowToRead } from './parts.tsx';
 import { downloadText, placeMetadata } from '../lib/place-export.ts';
+import { engineText } from '../lib/engine.ts';
 import type { PlaceOutcome } from '../lib/place-run.ts';
 import type { SigmaChoice } from '../lib/placecells.ts';
+import { RunDetailsBody } from './results/RunDetails.tsx';
 
 const num = (v: number, d = 2) => (Number.isNaN(v) ? '–' : v.toFixed(d));
 const bins = (n: number) => `${n} bin${n === 1 ? '' : 's'}`;
@@ -19,6 +21,8 @@ function SigmaPlot(props: { c: SigmaChoice }): JSX.Element {
   const x = (v: number) => L + (v / (xMax() || 1)) * (W - L - R);
   const y = (v: number) => T + (1 - (v - lo()) / (hi() - lo() || 1)) * (H - T - B);
   const ticks = () => [lo(), (lo() + hi()) / 2, hi()];
+  // The framework records one standard error (in its note), not one per width, so its runs show none.
+  const hasSe = () => c().se.some((v) => v > 0);
   return (
     <svg
       class="cb-sigma"
@@ -48,13 +52,15 @@ function SigmaPlot(props: { c: SigmaChoice }): JSX.Element {
       <For each={c().candidates}>
         {(s, i) => (
           <>
-            <line
-              x1={x(s)}
-              x2={x(s)}
-              y1={y(c().scores[i()] - c().se[i()])}
-              y2={y(c().scores[i()] + c().se[i()])}
-              stroke="#6b8fb5"
-            />
+            <Show when={hasSe()}>
+              <line
+                x1={x(s)}
+                x2={x(s)}
+                y1={y(c().scores[i()] - c().se[i()])}
+                y2={y(c().scores[i()] + c().se[i()])}
+                stroke="#6b8fb5"
+              />
+            </Show>
             <circle
               cx={x(s)}
               cy={y(c().scores[i()])}
@@ -63,7 +69,7 @@ function SigmaPlot(props: { c: SigmaChoice }): JSX.Element {
               stroke={s === c().sigma ? '#fff' : '#2171b5'}
               stroke-width={s === c().sigma ? 1.5 : 1}
             >
-              <title>{`${bins(s)}: score ${num(c().scores[i()], 1)} ± ${num(c().se[i()], 1)}`}</title>
+              <title>{`${bins(s)}: score ${num(c().scores[i()], 1)}${hasSe() ? ` ± ${num(c().se[i()], 1)}` : ''}`}</title>
             </circle>
             <text x={x(s)} y={H - B + 12} text-anchor="middle" font-size="9" fill="#666">
               {s}
@@ -122,6 +128,19 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
       </p>
 
       <section>
+        <h4>Engine</h4>
+        <KV k="Engine" v={engineText(o().engine)} />
+        <Show when={o().record}>
+          {(r) => (
+            <details class="cb-notebox">
+              <summary>Framework run record</summary>
+              <RunDetailsBody record={r()} />
+            </details>
+          )}
+        </Show>
+      </section>
+
+      <section>
         <h4>Run configuration</h4>
         <KV k="Cells analyzed" v={o().data.cellIds.length} />
         <KV
@@ -168,7 +187,7 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
               <HowToRead>
                 <p>
                   Each point is a smoothing width and its held-out score: maps built on part of the session are used to predict the
-                  rest, and higher is better. Bars show ± 1 standard error. The width kept is the smallest one within one standard
+                  rest, and higher is better. {c().se.some((v) => v > 0) ? 'Bars show ± 1 standard error. ' : ''}The width kept is the smallest one within one standard
                   error of the best, so no p-value is used to choose it.
                 </p>
               </HowToRead>
@@ -185,7 +204,9 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
                   </svg>{' '}
                   Best score: {bins(c().best)}
                 </span>
-                <span class="cb-legend__item">Bars: ± 1 standard error</span>
+                <Show when={c().se.some((v) => v > 0)}>
+                  <span class="cb-legend__item">Bars: ± 1 standard error</span>
+                </Show>
               </div>
               <details class="cb-notebox">
                 <summary>View score table</summary>
@@ -194,7 +215,9 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
                     <tr>
                       <th>Smoothing (bins)</th>
                       <th>Held-out score</th>
-                      <th>Standard error</th>
+                      <Show when={c().se.some((v) => v > 0)}>
+                        <th>Standard error</th>
+                      </Show>
                     </tr>
                   </thead>
                   <tbody>
@@ -206,7 +229,9 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
                             {v === c().sigma ? ' (selected)' : v === c().best ? ' (best)' : ''}
                           </td>
                           <td>{num(c().scores[i()], 1)}</td>
-                          <td>{num(c().se[i()], 1)}</td>
+                          <Show when={c().se.some((v) => v > 0)}>
+                            <td>{num(c().se[i()], 1)}</td>
+                          </Show>
                         </tr>
                       )}
                     </For>

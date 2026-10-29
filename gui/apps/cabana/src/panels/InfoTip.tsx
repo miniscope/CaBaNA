@@ -7,7 +7,13 @@ let nextId = 1;
  * An ⓘ button with a short explanation. It opens on hover or keyboard focus and closes when the
  * pointer or focus leaves; a click or tap keeps it open until Escape or a click elsewhere.
  */
-export function InfoTip(props: { label: string; children: JSX.Element }): JSX.Element {
+export function InfoTip(props: {
+  label: string;
+  /** Replaces the ⓘ. */
+  icon?: JSX.Element;
+  class?: string;
+  children: JSX.Element;
+}): JSX.Element {
   const [open, setOpen] = createSignal(false);
   const [pinned, setPinned] = createSignal(false);
   const id = `cb-tip-${nextId++}`;
@@ -21,7 +27,7 @@ export function InfoTip(props: { label: string; children: JSX.Element }): JSX.El
       <button
         ref={btn}
         type="button"
-        class="cb-tip__btn"
+        class={`cb-tip__btn ${props.class ?? ''}`}
         aria-label={props.label}
         aria-expanded={open()}
         aria-describedby={open() ? id : undefined}
@@ -35,7 +41,7 @@ export function InfoTip(props: { label: string; children: JSX.Element }): JSX.El
           setOpen(pin);
         }}
       >
-        <span aria-hidden="true">ⓘ</span>
+        {props.icon ?? <span aria-hidden="true">ⓘ</span>}
       </button>
       <Show when={open()}>
         <Popover

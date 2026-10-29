@@ -31,7 +31,7 @@ import { placeChanges } from '../lib/place-ui.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { positionOnNeural } from '../lib/prepared.ts';
 import { preprocessYaml } from '../lib/session-config.ts';
-import { frameTimes, goToStep, layout } from '../lib/store.ts';
+import { frameTimes, goToStep } from '../lib/store.ts';
 import { span } from '../lib/viz.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { HelpDrawer, openHelp } from './PrepHelp.tsx';
@@ -486,11 +486,6 @@ export function PreprocessPanel(): JSX.Element {
         <button class="btn-secondary" onClick={download}>
           Download preprocess.yaml
         </button>
-        <Show when={layout() === 'sidebar'}>
-          <button class="btn-primary" onClick={() => goToStep('analyze')}>
-            Continue to Analyze →
-          </button>
-        </Show>
       </div>
     </div>
   );
