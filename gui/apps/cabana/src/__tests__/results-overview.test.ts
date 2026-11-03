@@ -142,7 +142,11 @@ describe('framework note and open rules', () => {
     });
     expect(openness(rec({ status: 'failed', results_file: null })).kind).toBe('blocked');
     expect(openness(rec({ status: 'cancelled' })).kind).toBe('full');
-    expect(openness(rec({ engine: 'browser-ts', analysis: 'peth' })).kind).toBe('files');
+    // A browser record's result is its stored tables; without any there is nothing to open.
+    expect(
+      openness(rec({ engine: 'browser-ts', analysis: 'peth', files: ['peth.csv'] })).kind,
+    ).toBe('files');
+    expect(openness(rec({ engine: 'browser-ts', analysis: 'peth' })).kind).toBe('blocked');
   });
 });
 
@@ -180,7 +184,11 @@ describe('badges', () => {
       (e) => e.textContent,
     );
   it('Preliminary and settings-changed are separate badges, whichever the other is', () => {
-    const preview = rec({ scope: 'preview' });
+    // The badge shows the count the run executed, read from its saved settings.
+    const preview = rec({
+      scope: 'preview',
+      settings: { settingsVersion: 2, analysis: { shuffles: 50 } },
+    });
     const full = rec({ scope: 'full' });
     expect(texts(preview, { matches: true, diff: [] })).toEqual([
       'Preliminary: 50 shuffles',

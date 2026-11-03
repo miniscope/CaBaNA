@@ -14,7 +14,10 @@ export const analysisLabel = (id: string) => ANALYSES.find((a) => a.id === id)?.
 
 const HAS_RESULTS = new Set(['ok', 'partial', 'cancelled']);
 const IN_PROGRESS = new Set(['queued', 'running']);
-export const hasResults = (r: RunRecord) => HAS_RESULTS.has(r.status) && r.results_file !== null;
+/** The run left something to open: a results file, or (browser engine) its stored result tables. */
+export const hasResults = (r: RunRecord) =>
+  HAS_RESULTS.has(r.status) &&
+  (r.engine === 'browser-ts' ? (r.files?.length ?? 0) > 0 : r.results_file !== null);
 export const isInProgress = (r: RunRecord) => IN_PROGRESS.has(r.status);
 
 const newestFirst = (a: RunRecord, b: RunRecord) => b.created_utc.localeCompare(a.created_utc);

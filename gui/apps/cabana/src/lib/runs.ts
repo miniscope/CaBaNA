@@ -59,7 +59,7 @@ export const [lastError, setLastError] = createSignal<{
 }>();
 
 const fileHashes = new WeakMap<File, Promise<string>>();
-const hashOf = (f: File) => {
+export const hashOf = (f: File) => {
   let p = fileHashes.get(f);
   if (!p) fileHashes.set(f, (p = f.arrayBuffer().then(sha256)));
   return p;

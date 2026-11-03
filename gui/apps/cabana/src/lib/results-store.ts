@@ -21,7 +21,7 @@ function db(): Promise<IDBDatabase | undefined> {
     }
   });
 }
-async function cacheGet<T>(key: string): Promise<T | undefined> {
+export async function cacheGet<T>(key: string): Promise<T | undefined> {
   const d = await db();
   if (!d) return undefined;
   return new Promise((resolve) => {
@@ -30,7 +30,7 @@ async function cacheGet<T>(key: string): Promise<T | undefined> {
     req.onerror = () => resolve(undefined);
   });
 }
-async function cachePut(key: string, value: unknown): Promise<void> {
+export async function cachePut(key: string, value: unknown): Promise<void> {
   const d = await db();
   if (!d) return;
   await new Promise<void>((resolve) => {
