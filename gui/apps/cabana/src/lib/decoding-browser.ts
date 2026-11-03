@@ -24,6 +24,7 @@ import {
   behaviorLogisticDump,
   dumpSource,
   positionDump,
+  type EngineDump,
   type EngineTest,
 } from './decoding-engine-results.ts';
 import {
@@ -39,6 +40,7 @@ import { runDeps, type Uses } from './run-deps.ts';
 import { canonicalJson } from './settings-hash.ts';
 import { annotationResults, onClear } from './store.ts';
 import type { ShuffleBatch } from '../workers/decoding-types.ts';
+import { saveBrowserRun } from './browser-records.ts';
 
 export const BROWSER_DECODING_RUN_LABEL = 'Run in browser engine (different random draws)';
 export const BROWSER_DECODING_ENGINE_TEXT =
@@ -320,8 +322,12 @@ export async function runBrowserDecoding(): Promise<boolean> {
   const position = decodeTarget.type === 'position';
   const s = position ? positionDecoding : behaviorDecoding;
   const t0 = performance.now();
+  const started = new Date();
   const settingsKey = currentSettingsKey();
   try {
+    // The engine's output in the framework's results layout, saved with the run record.
+    let dump: EngineDump | undefined;
+    const keep = (d: EngineDump) => ((dump = d), dumpSource(d));
     let run: Omit<
       BrowserDecodingRun,
       'seconds' | 'shuffles' | 'target' | 'decoder' | 'notes' | 'settingsKey'
@@ -340,7 +346,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
       );
       const [ny, nx] = d.input.shape!;
       run = {
-        source: dumpSource(
+        source: keep(
           positionDump({ out: r.observed, nx, ny, params: bayesParamRecord(params), test: r.test }),
         ),
         overallP: r.test.pOverall,
@@ -359,7 +365,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
         (o) => o.overall,
       );
       run = {
-        source: dumpSource(
+        source: keep(
           behaviorLogisticDump({
             out: r.observed,
             names: d.names,
@@ -390,7 +396,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
         (o) => overallStatistic(o, false),
       );
       run = {
-        source: dumpSource(
+        source: keep(
           behaviorBayesDump({
             out: r.observed,
             names: d.names,
@@ -415,6 +421,13 @@ export async function runBrowserDecoding(): Promise<boolean> {
       setShownEngine('browser');
       setBrowserStatus({ kind: 'idle' });
     });
+    void saveBrowserRun({
+      analysis: 'decoding',
+      settings: JSON.parse(JSON.stringify({ type: decodeTarget.type, ...s })),
+      seed: s.seed,
+      files: { 'results.json': JSON.stringify(dump) },
+      started,
+    }).catch(() => undefined);
     return true;
   } catch (e) {
     if (pool !== mine) return false; // cancelled

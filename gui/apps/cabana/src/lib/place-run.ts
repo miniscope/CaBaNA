@@ -26,6 +26,8 @@ import {
 } from './placecells.ts';
 import { onClear } from './store.ts';
 import { runDeps, type Uses } from './run-deps.ts';
+import { saveBrowserRun } from './browser-records.ts';
+import { placeCsv, placeMetadata } from './place-export.ts';
 
 export const DEFAULT_PLACE_SETTINGS = {
   /** auto_smooth_sigma, or a width in grid bins. */
@@ -160,6 +162,7 @@ async function runPlaceCellsBrowser(): Promise<void> {
   const prepUsed = { ...prep };
   const deps = runDeps(PLACE_USES);
   const t0 = performance.now();
+  const started = new Date();
   cancelPlaceRun();
   pool = createPlaceWorkerPool();
   const mine = pool;
@@ -226,7 +229,7 @@ async function runPlaceCellsBrowser(): Promise<void> {
         })),
       ),
     );
-    setPlaceOutcome({
+    const outcome: PlaceOutcome = {
       data,
       result: join(parts, data.grid.nx * data.grid.ny),
       sigma,
@@ -242,7 +245,20 @@ async function runPlaceCellsBrowser(): Promise<void> {
       deps,
       engine: 'browser',
       nullKept: true,
-    });
+    };
+    setPlaceOutcome(outcome);
+    // Saved like a framework run, so it is listed in Results and survives a reload.
+    void saveBrowserRun({
+      analysis: 'place',
+      settings: outcome.settings,
+      seed: outcome.settings.seed,
+      files: {
+        'place_cells.csv': placeCsv(outcome),
+        'metadata.json': JSON.stringify(placeMetadata(outcome), null, 2),
+      },
+      started,
+    }).catch(() => undefined);
+
     setPlaceShowResults(true);
     setPlaceStatus({ kind: 'idle' });
   } catch (e) {
@@ -299,7 +315,7 @@ function join(parts: PlaceResult[], nStates: number): PlaceResult {
 // ---- the framework engine ---------------------------------------------------------------------
 
 export interface PlaceRunOptions {
-  /** 50 shuffles, saved as Preliminary. Framework engine only. */
+  /** Up to 50 shuffles (`PREVIEW_SHUFFLES`), saved as Preliminary. Framework engine only. */
   preview?: boolean;
   /** Set only by "Run in browser engine": the framework is never replaced silently. */
   engine?: EngineId;

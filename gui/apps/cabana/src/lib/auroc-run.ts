@@ -28,6 +28,8 @@ import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from 
 import { preselectUnselected } from './labels.ts';
 import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
 import { runDeps, type Uses } from './run-deps.ts';
+import { saveBrowserRun } from './browser-records.ts';
+import { aurocCsv, aurocMetadata } from './auroc-export.ts';
 
 /** Behaviors to leave out when the panel first opens: those not marked measured (a preselection only). */
 export const aurocPreselected = (labels: string[]) =>
@@ -381,6 +383,7 @@ async function runAurocBrowser(): Promise<void> {
     return;
   }
   const t0 = performance.now();
+  const started = new Date();
   cancelAurocRun();
   pool = createAurocWorkerPool();
   const mine = pool;
@@ -440,7 +443,7 @@ async function runAurocBrowser(): Promise<void> {
       }
       return out;
     };
-    setAurocOutcome({
+    const outcome: AurocOutcome = {
       labels,
       info,
       against,
@@ -464,7 +467,20 @@ async function runAurocBrowser(): Promise<void> {
       deps,
       engine: 'browser',
       nullKept: true,
-    });
+    };
+    setAurocOutcome(outcome);
+    // Saved like a framework run, so it is listed in Results and survives a reload.
+    void saveBrowserRun({
+      analysis: 'auroc',
+      settings: outcome.settings,
+      seed: outcome.settings.seed,
+      files: {
+        'auroc.csv': aurocCsv(outcome),
+        'metadata.json': JSON.stringify(aurocMetadata(outcome), null, 2),
+      },
+      started,
+    }).catch(() => undefined);
+
     cache.clear();
     setAurocShowResults(true);
     setAurocStatus({ kind: 'idle' });
@@ -529,7 +545,7 @@ export function estimateMinShift(input: AurocInput): void {
 // ---- the framework engine ---------------------------------------------------------------------
 
 export interface AurocRunOptions {
-  /** 50 shuffles, saved as Preliminary. Framework engine only. */
+  /** Up to 50 shuffles (`PREVIEW_SHUFFLES`), saved as Preliminary. Framework engine only. */
   preview?: boolean;
   /** Set only by "Run in browser engine": the framework is never replaced silently. */
   engine?: EngineId;

@@ -26,6 +26,8 @@ import { preselectUnselected } from './labels.ts';
 import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
 import { runDeps, type Uses } from './run-deps.ts';
 import type { PethCells, ShiftDraw } from '../workers/peth-types.ts';
+import { saveBrowserRun } from './browser-records.ts';
+import { pethCsv, pethCurvesCsv, pethMetadata } from './peth-export.ts';
 
 /** Behaviors to leave out when the panel first opens: those not marked controlled (a preselection only). */
 export const pethPreselected = (labels: string[]) =>
@@ -349,6 +351,7 @@ export async function runPeth(): Promise<void> {
   } = pethPlan(data, cfg, reports!);
   const test = cfg.test === 'circular';
   const t0 = performance.now();
+  const started = new Date();
   cancelPethRun();
   pool = createPethWorkerPool();
   const mine = pool;
@@ -414,7 +417,7 @@ export async function runPeth(): Promise<void> {
     );
     const first = parts[0].curves;
     const bands = parts.map((p) => p.band!);
-    setPethOutcome({
+    const outcome: PethOutcome = {
       labels,
       columns,
       info,
@@ -455,7 +458,21 @@ export async function runPeth(): Promise<void> {
       settings: cfg,
       prep: prepUsed,
       deps,
-    });
+    };
+    setPethOutcome(outcome);
+    // Saved like a framework run, so it is listed in Results and survives a reload.
+    void saveBrowserRun({
+      analysis: 'peth',
+      settings: outcome.settings,
+      seed: outcome.settings.seed,
+      files: {
+        'peth.csv': pethCsv(outcome),
+        'peth_curves.csv': pethCurvesCsv(outcome),
+        'metadata.json': JSON.stringify(pethMetadata(outcome), null, 2),
+      },
+      started,
+    }).catch(() => undefined);
+
     cache.clear();
     setPethShowResults(true);
     setPethStatus({ kind: 'idle' });
