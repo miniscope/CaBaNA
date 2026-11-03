@@ -30,7 +30,7 @@ export interface OverallValue {
 const overallNote = (hasTest: boolean) =>
   hasTest
     ? ''
-    : 'Overall value not tested (needs framework F2). The per-state tests below are unaffected.';
+    : 'Overall value not tested (needs a framework update). The per-state tests below are unaffected.';
 
 export interface PositionDecodingView {
   overall: OverallValue;
@@ -103,7 +103,7 @@ export async function loadPositionDecoding(
       family: 'eligible spatial bins',
     }),
     exclusionRule:
-      'Bins need at least min_frames_per_class frames (framework setting; default 20); occupancy per bin from training data needs framework F5.',
+      'Bins need at least the minimum frames per bin (default 20). Counting them from the training folds only needs a framework update.',
   };
 }
 

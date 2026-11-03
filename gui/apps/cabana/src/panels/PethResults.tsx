@@ -66,7 +66,7 @@ function Header(props: { out: PethOutcome }): JSX.Element {
             <span>{correctionText(o())}</span>{' '}
             <InfoTip label="About the significance test and correction">
               <p>
-                Significance compares neural activity in the response window with activity in the baseline window (response
+                Significance compares the neural values in the response window with those in the baseline window (response
                 minus baseline), against the same difference after circular shifts of the cell's trace.
               </p>
               <p>

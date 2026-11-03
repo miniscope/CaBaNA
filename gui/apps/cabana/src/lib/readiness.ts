@@ -56,38 +56,36 @@ export interface Status {
 }
 
 /** Plain-language text for each framework feature the bridge can report. */
-export const FEATURES: Record<string, FrameworkNeed> = {
-  session_metadata: { text: 'Session metadata in config files is not supported yet.', code: 'F0a' },
-  session_markers: { text: 'Time marker files are not supported yet.', code: 'F0b' },
-  peth_markers: { text: 'PETH aligned to time markers is not supported yet.', code: 'F0b' },
-  frame_labels: { text: 'Frame-label files are not supported yet.', code: 'F0c' },
+export const FEATURES: Record<string, Pick<FrameworkNeed, 'text'>> = {
+  session_metadata: { text: 'Session metadata in config files is not supported yet.' },
+  session_markers: { text: 'Time marker files are not supported yet.' },
+  peth_markers: { text: 'PETH aligned to time markers is not supported yet.' },
+  frame_labels: { text: 'Frame-label files are not supported yet.' },
   decoding_fold_gap: {
     text: 'Decoding needs a fold-local test window and a gap between folds.',
-    code: 'F1',
   },
   decoding_fold_local_window: {
     text: 'The Bayesian decoder needs a fold-local test window.',
-    code: 'F1',
   },
-  decoding_overall_test: { text: 'The overall decoding test is not available yet.', code: 'F2' },
+  decoding_overall_test: { text: 'The overall decoding test is not available yet.' },
   overlap_policy: {
     text: 'Behavior decoding needs a policy for overlapping behaviors.',
-    code: 'F3',
   },
-  bayes_input_check: { text: 'The Bayesian decoder input check is not available.', code: 'F4' },
+  bayes_input_check: { text: 'The Bayesian decoder input check is not available.' },
   bin_eligibility: {
     text: 'Minimum occupancy per bin from training data is not available.',
-    code: 'F5',
   },
-  preview_flag: { text: 'Quick previews cannot be marked as preliminary yet.', code: 'F7' },
-  cli_rejects_recipes: { text: 'The command line does not reject recipe files yet.', code: 'F8' },
+  preview_flag: { text: 'Quick previews cannot be marked as preliminary yet.' },
+  cli_rejects_recipes: { text: 'The command line does not reject recipe files yet.' },
   peth_gui_extensions: {
     text: 'PETH offset alignment and same-direction latency are not available yet.',
-    code: 'F9',
   },
 };
-export const featureNeed = (name: string): FrameworkNeed =>
-  FEATURES[name] ?? { text: `Feature ${name} is missing.`, code: name };
+/** The need for a missing feature; `code` is the capability name the bridge reports. */
+export const featureNeed = (name: string): FrameworkNeed => ({
+  text: FEATURES[name]?.text ?? `Feature ${name} is missing.`,
+  code: `Framework capability: ${name}`,
+});
 
 export interface RunState {
   running: boolean;

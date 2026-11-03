@@ -65,10 +65,11 @@ describe('setup card status', () => {
       statusOf('spatial', s({ arenaDrawn: true, pxPerCm: 7.5, positionUnit: 'px', calibrated: false })),
     ).toBe('Incomplete');
   });
-  it('tracking: body part needed; likelihood in 0 to 1; the pixel scale belongs to spatial', () => {
+  it('tracking: body part needed; the inactive likelihood threshold does not count; the pixel scale belongs to spatial', () => {
     expect(statusOf('tracking', s({ annotationUnit: 'milliseconds' }))).toBe('Incomplete');
     expect(statusOf('tracking', s({ bodyPart: 'Head' }))).toBe('Complete');
-    expect(statusOf('tracking', s({ bodyPart: 'Head', likelihoodMin: 1.5 }))).toBe('Incomplete');
+    // the threshold is applied nowhere, so the status no longer reads it at all
+    expect(statusOf('tracking', s({ bodyPart: 'Head' }))).toBe('Complete');
     expect(
       statusOf('tracking', s({ bodyPart: 'Head', positionUnit: 'px', calibrated: false })),
     ).toBe('Complete');

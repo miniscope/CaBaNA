@@ -106,7 +106,8 @@ describe('item status', () => {
     const s = analysisStatus(base(), 'decoding');
     expect(s).toMatchObject({ kind: 'framework_update', text: 'Framework update required' });
     expect(s.input).toEqual([]);
-    expect(s.framework[0].code).toBe('F1');
+    // technical details name the capability the bridge reports, not a plan contract id
+    expect(s.framework[0].code).toBe('Framework capability: decoding_fold_gap');
     expect(s.framework[0].text).not.toMatch(/\bF1\b/);
     const ok = base({ capabilities: { decoding_fold_gap: true, overlap_policy: true } });
     expect(analysisStatus(ok, 'decoding').kind).toBe('ready');
@@ -114,7 +115,7 @@ describe('item status', () => {
       { ...ok, decodingTarget: 'behaviors', capabilities: { decoding_fold_gap: true } },
       'decoding',
     );
-    expect(beh.framework.map((f) => f.code)).toEqual(['F3']);
+    expect(beh.framework.map((f) => f.code)).toEqual(['Framework capability: overlap_policy']);
   });
   it('a stopped Python engine blocks framework analyses only', () => {
     const s = base({ bridge: 'offline' });

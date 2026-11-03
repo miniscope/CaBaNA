@@ -18,7 +18,7 @@ export type EngineMode = Extract<AnalysisId, 'place' | 'auroc'>;
 
 export const FRAMEWORK_ENGINE_TEXT = 'Python framework (same command as `cabana run`)';
 export const BROWSER_ENGINE_TEXT =
-  'Browser engine (TypeScript port of framework 57c0c4b, with approved GUI extensions)';
+  'Browser engine (the framework methods reimplemented in this browser, with GUI extensions)';
 export const engineText = (e: EngineId) =>
   e === 'framework' ? FRAMEWORK_ENGINE_TEXT : BROWSER_ENGINE_TEXT;
 export const BROWSER_RUN_LABEL = 'Run in browser engine (different random draws)';

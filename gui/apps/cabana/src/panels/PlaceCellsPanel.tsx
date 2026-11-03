@@ -349,8 +349,8 @@ function PlaceSetup(): JSX.Element {
                 <div class="cb-setting__title">
                   Minimum speed
                   <InfoTip label="About minimum speed">
-                    Frames below this speed are left out of the maps and tests. Shared with auROC:
-                    one value for both, which auROC uses only when its own speed filter is on.
+                    Frames below this speed are left out of the maps and tests. Shared with position
+                    decoding: one value for both. auROC has its own minimum speed.
                   </InfoTip>
                 </div>
                 <SpeedFilterField />
@@ -443,9 +443,9 @@ function PlaceSetup(): JSX.Element {
               <Note title="Choosing these settings">
                 <p>
                   <strong>Bin size.</strong> Choose bins small enough to resolve spatial patterns,
-                  but large enough to estimate activity reliably. Use the occupancy preview to check
-                  coverage; if sampling is sparse, increase the bin size. Published calcium-imaging
-                  place maps use bins of about 2 to 6.5 cm (3.5 cm, Ziv et al. 2013,
+                  but large enough to estimate the event rate reliably. Use the occupancy preview to
+                  check coverage; if sampling is sparse, increase the bin size. Published
+                  calcium-imaging place maps use bins of about 2 to 6.5 cm (3.5 cm, Ziv et al. 2013,
                   doi:10.1038/nn.3329; 4 cm, Rubin et al. 2015, doi:10.7554/eLife.12247; 6.5 cm, Cai
                   et al. 2016, doi:10.1038/nature17955; 2 cm, Shuman et al. 2020,
                   doi:10.1038/s41593-019-0559-0). Smoothing is set in bins, so changing the bin size

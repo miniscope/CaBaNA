@@ -141,7 +141,7 @@ export function PlaceGallery(props: { ctx: ResultsCtx }): JSX.Element {
           </span>
           <InfoTip label="About the color scale">
             {perCell()
-              ? 'Each map is scaled to its own peak. Compare spatial patterns across cells; use the listed peak rates to compare activity levels.'
+              ? 'Each map is scaled to its own peak. Compare spatial patterns across cells; use the listed peak rates to compare event rates.'
               : 'All maps share one scale, from 0 to the highest rate of any cell. Cells with low rates look dim.'}
           </InfoTip>
         </span>

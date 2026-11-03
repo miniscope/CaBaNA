@@ -209,8 +209,9 @@ function ExperimentTab(): JSX.Element {
   return (
     <section class="cb-group">
       <p class="cb-muted">
-        Everything in this section is optional. What you fill in is saved with the config and helps
-        QC and the analyses.
+        Everything in this section is optional. Session name, date, subject, species, brain region
+        and group are written to the config you download; paradigm, calcium indicator and notes are
+        kept in this browser session only.
       </p>
       <div class="cb-setup-grid">
         <label class="cb-setup-field">
@@ -381,22 +382,6 @@ function TrackingTab(): JSX.Element {
             placeholder="Back of the head"
           />
           <label class="cb-setup-field">
-            Likelihood threshold
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              value={source.likelihoodMin ?? ''}
-              onInput={(e) =>
-                setSource(
-                  'likelihoodMin',
-                  e.currentTarget.value ? +e.currentTarget.value : undefined,
-                )
-              }
-            />
-          </label>
-          <label class="cb-setup-field">
             Head direction offset (degrees)
             <input
               type="number"
@@ -406,9 +391,15 @@ function TrackingTab(): JSX.Element {
             />
           </label>
         </div>
+        <Show when={source.likelihoodMin !== undefined}>
+          <p class="cb-inactive-meta">
+            From the config: likelihood threshold {source.likelihoodMin} · not applied by any
+            analysis or check · kept in the downloaded config
+          </p>
+        </Show>
         <Help field="positionTool" />
         <Note>
-          Position frames below the likelihood threshold are treated as lost. The head direction
+          The head direction
           offset is added to the head orientation so that 0 degrees points to the right of the
           picture and angles grow counterclockwise. It only matters for head direction. Maps and
           zones put y up, with 0 at the arena's bottom edge. Camera tracking often has y growing

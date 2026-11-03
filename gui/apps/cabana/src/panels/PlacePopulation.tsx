@@ -244,7 +244,7 @@ export function PlacePopulation(props: { ctx: ResultsCtx }): JSX.Element {
             <HowToRead>
               <p>
                 Each row is one cell and each column one spatial bin, counted row by row across the
-                arena. Color shows the cell’s activity in that bin relative to its own lowest and
+                arena. Color shows the cell’s event rate in that bin relative to its own lowest and
                 highest bin, so rows cannot be compared by brightness. A cell with one tuned
                 location shows a bright block in a few neighboring columns. Rows are sorted by the
                 measure chosen above.

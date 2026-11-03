@@ -168,7 +168,7 @@ export async function loadPopulationView(
           return { a: pick(a), b: pick(b) };
         },
         label: significanceLabel(r.tested, {
-          metric: 'Population vector stability (first vs second half)',
+          metric: 'Population vector stability (even vs odd blocks)',
           unit: 'state',
           family: 'the states',
         }),

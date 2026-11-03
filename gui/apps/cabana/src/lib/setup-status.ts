@@ -55,7 +55,6 @@ export interface SetupSnapshot {
   zones: number;
   bodyLine: boolean;
   bodyPart: string;
-  likelihoodMin?: number;
   positionTool: string;
   positionUnit: 'cm' | 'px';
   yDown: boolean;
@@ -86,8 +85,8 @@ const positive = (v: number | undefined) => v !== undefined && Number.isFinite(v
  *   timestamp files or typed, all above 0, and a clock scale above 0. The clock offset is optional.
  * - Spatial setup: needs the arena outline or the scale line drawn, so pixels convert to cm.
  *   Zones, the body line and the bin size are optional. The default shape and 40 cm size do not count.
- * - Tracking & coordinates: needs the body part tracked, a pixels-per-cm above 0 when positions are
- *   in pixels, and a likelihood threshold between 0 and 1 when one is given. The default units,
+ * - Tracking & coordinates: needs the body part tracked and a pixels-per-cm above 0 when positions
+ *   are in pixels. An imported likelihood threshold is applied nowhere and does not count. The default units,
  *   tools and annotation units do not count; the tool choices only change export advice.
  * - Stimuli & cues: needs at least one stimulus, every stimulus named with a loaded label chosen,
  *   any length 0 or more. An experiment with no stimuli stays Empty, which is fine for a recommended card.
@@ -124,16 +123,13 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
     case 'tracking': {
       const any =
         filled(s.bodyPart) ||
-        s.likelihoodMin !== undefined ||
         s.positionTool !== 'other' ||
         s.positionUnit !== 'cm' ||
         s.yDown ||
         s.headOffset !== 0 ||
         s.annotationTool !== 'other' ||
         s.annotationUnit !== 'seconds';
-      const likelihoodOk =
-        s.likelihoodMin === undefined || (s.likelihoodMin >= 0 && s.likelihoodMin <= 1);
-      return grade(any, filled(s.bodyPart) && likelihoodOk);
+      return grade(any, filled(s.bodyPart));
     }
     case 'stimuli': {
       const named = s.stimuli.every((x) => filled(x.name));
@@ -184,7 +180,6 @@ export function setupSnapshot(): SetupSnapshot {
     zones: arena.zones.length,
     bodyLine: !!arena.bodyLine,
     bodyPart: source.bodyPart,
-    likelihoodMin: source.likelihoodMin,
     positionTool: source.positionTool,
     positionUnit: source.positionUnit,
     yDown: source.yDown,

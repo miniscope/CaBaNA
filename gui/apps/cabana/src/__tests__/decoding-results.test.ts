@@ -19,13 +19,13 @@ describe('position decoding view', () => {
   it('says the overall value is not tested without F2, and has no p', async () => {
     const v = (await loadPositionDecoding(src, d.manifest, false))!;
     expect(v.overall.p).toBeNull();
-    expect(v.overall.testNote).toMatch(/not tested.*F2/);
+    expect(v.overall.testNote).toMatch(/not tested.*framework update/);
     expect((await loadPositionDecoding(src, d.manifest, true))!.overall.testNote).toBe('');
   });
   it('marks bins without a value as excluded and states the rule', async () => {
     const v = (await loadPositionDecoding(src, d.manifest))!;
     expect(v.excluded.filter(Boolean).length).toBe(v.medianErrorPerBin.filter((x) => x == null).length);
-    expect(v.exclusionRule).toMatch(/min_frames_per_class/);
+    expect(v.exclusionRule).toMatch(/minimum frames per bin/);
     expect(v.label).toMatch(/label shuffle.*max stat correction across eligible spatial bins/s);
   });
 });

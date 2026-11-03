@@ -76,9 +76,10 @@ export function Dimensionality(p: ViewProps): JSX.Element {
                             and approaches the number of cells when variance is spread evenly.
                           </p>
                           <p>
-                            The black line is the middle 95% of the shuffled (cell-shift) null; the
-                            test is two-sided. It is computed on all included frames and says
-                            nothing about generalization.
+                            The black line runs from the α/2 to the 1 − α/2 percentile of the
+                            shuffled (cell-shift) null (the middle 95% at α = 0.05); the test is
+                            two-sided. It is computed on all included frames and says nothing about
+                            generalization.
                           </p>
                         </>
                       }

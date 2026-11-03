@@ -578,7 +578,7 @@ export const TOL_INFO: Record<
     step: 1,
     why: 'Footprints that share most of their pixels usually mean one cell was split in two, or that two cells contaminate each other. Footprint overlap above about 50%, with correlated traces, is a common screen for split cells (Miniscope guide, miniscope.org/wiki/Guide/Data_processing_considerations).',
     ifFails:
-      'Cells that share pixels share signal, so the same activity is counted twice. This biases correlations, population analyses and decoding.',
+      'Cells that share pixels share signal, so the same signal is counted twice. This biases correlations, population analyses and decoding.',
   },
   riseLowPct: {
     label: 'Cells whose events sit at noise level',

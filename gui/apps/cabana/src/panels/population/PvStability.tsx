@@ -5,7 +5,7 @@ import { fmt, perStateCsv } from './logic.ts';
 import { Figure, Message, Row, Summary, recorded, useView, type ViewProps } from './shared.tsx';
 import { plotSettings, setPlotSettings } from './view-store.ts';
 
-/** Population vector stability: one dot per state, and the two halves for the selected state. */
+/** Population vector stability: one dot per state, and halves A and B for the selected state. */
 export function PvStability(p: ViewProps): JSX.Element {
   const { view, meta } = useView<StabilityView>(p, 'stability');
   const alpha = () => recorded(meta()).alpha ?? 0.05;
@@ -56,7 +56,7 @@ export function PvStability(p: ViewProps): JSX.Element {
                   nStates={v().states.length}
                   details={v().label}
                   limits={[
-                    'Correlation of each state between the first and second half of the session',
+                    'Correlation of each state between half A (even-numbered blocks) and half B (odd-numbered blocks); with 2 blocks, the first and second half',
                   ]}
                 />
               </div>
@@ -87,15 +87,17 @@ export function PvStability(p: ViewProps): JSX.Element {
                   howTo={
                     <>
                       <p>
-                        For each state, the population vector (mean neural value of each cell) in
-                        the first block of the session is correlated with the one in the second
-                        block. A high r means the pattern of the state is reproducible.
+                        The session is cut into equal blocks. For each state, the population vector
+                        (mean neural value of each cell) over the even-numbered blocks (half A) is
+                        correlated with the one over the odd-numbered blocks (half B); with 2 blocks
+                        these are the first and second half. A high r means the pattern of the state
+                        is reproducible.
                       </p>
                       <p>
-                        The dot is the observed r; the gray bar is the middle 95% of the shuffled
-                        (cell-shift) null. Filled dots with * are above the null (
-                        {corrected() ? 'max-stat adjusted p' : 'uncorrected p'} below alpha). Click
-                        a state to see its two halves on the right.
+                        The dot is the observed r; the gray bar is the null range of the shuffled
+                        (cell-shift) null, from its α to its 1 − α percentile. Filled dots with *
+                        are above the null ({corrected() ? 'max-stat adjusted p' : 'uncorrected p'}{' '}
+                        below alpha). Click a state to see its halves A and B on the right.
                       </p>
                     </>
                   }
@@ -105,7 +107,7 @@ export function PvStability(p: ViewProps): JSX.Element {
                       label="Population vector stability by state"
                       svgRef={r.svgRef}
                       rows={rows()}
-                      xTitle="Stability: correlation between first and second half (r)"
+                      xTitle="Stability: correlation between half A and half B (r)"
                       selected={order().indexOf(state())}
                       onSelect={(row) => setPlotSettings('state', order()[row])}
                     />
@@ -117,7 +119,7 @@ export function PvStability(p: ViewProps): JSX.Element {
                   resultName="pv_stability"
                   file="population_vector_halves"
                   csv={() => ({
-                    header: ['cell', 'first_half', 'second_half'],
+                    header: ['cell', 'half_a_even_blocks', 'half_b_odd_blocks'],
                     rows: halves().a.map((a, i) => [
                       i + 1,
                       Number.isFinite(a) ? a : null,
@@ -126,24 +128,25 @@ export function PvStability(p: ViewProps): JSX.Element {
                   })}
                   howTo={
                     <p>
-                      Each dot is one cell. x is the cell's mean neural value in the state during
-                      the first block, y during the second block. Points near the dashed identity
-                      line mean the cell behaves the same in both halves; the correlation r on the
-                      left is computed over these cells ({fmt(v().r[state()], 3)} for this state).
+                      Each dot is one cell. x is the cell's mean neural value in the state over half
+                      A (even-numbered blocks), y over half B (odd-numbered blocks). Points near the
+                      dashed identity line mean the cell behaves the same in both halves; the
+                      correlation r on the left is computed over these cells (
+                      {fmt(v().r[state()], 3)} for this state).
                     </p>
                   }
                 >
                   {(r) => (
                     <Scatter
-                      label="First half versus second half population vector"
+                      label="Half A versus half B population vector"
                       svgRef={r.svgRef}
                       points={halves().a.map((a, i) => ({
                         x: a,
                         y: halves().b[i],
                         name: `Cell ${i + 1}`,
                       }))}
-                      xTitle="Mean neural value, first half"
-                      yTitle="Mean neural value, second half"
+                      xTitle="Mean neural value, half A (even blocks)"
+                      yTitle="Mean neural value, half B (odd blocks)"
                       diagonal
                     />
                   )}

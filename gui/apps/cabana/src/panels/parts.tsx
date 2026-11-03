@@ -96,9 +96,8 @@ export function HowToRead(props: { children: JSX.Element }): JSX.Element {
 }
 
 /**
- * The minimum speed (cm/s). One value, `prep.minSpeed`, is shared by every analysis that filters
- * on speed, so editing it here changes it for all of them. Place cells always apply it; auROC
- * only when its own speed filter is ticked.
+ * The minimum speed (cm/s). One value, `prep.minSpeed`, is shared by Place cells and position
+ * decoding, so editing it here changes it for both. auROC has its own value.
  */
 export function SpeedFilterField(): JSX.Element {
   return (

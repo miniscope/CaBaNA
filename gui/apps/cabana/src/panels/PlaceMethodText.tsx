@@ -4,8 +4,8 @@ import type { JSX } from 'solid-js';
 export function PlaceIntro(): JSX.Element {
   return (
     <p>
-      Identify cells whose activity varies with the animal’s location and whose spatial activity
-      patterns are consistent over time. The analysis builds an activity map for each cell and tests
+      Identify cells whose event rate varies with the animal’s location and whose spatial patterns
+      are consistent over time. The analysis builds an event-rate map for each cell and tests
       spatial information and stability against time-shifted data. Cells must pass both tests to
       meet place-cell criteria.
     </p>
@@ -20,21 +20,21 @@ export function PlaceMethodText(props: {
   return (
     <>
       <p>
-        <strong>Build spatial activity maps:</strong> Divide the arena into spatial bins and
+        <strong>Build event-rate maps:</strong> Divide the arena into spatial bins and
         calculate each cell’s event rate from its neural events and the time spent in each bin.
         Apply the selected speed filter, minimum time per bin (the spatial-tuning value, 0.05 s by
         default), and spatial smoothing.
       </p>
       <p>
         <strong>Measure spatial information and stability:</strong> Spatial information measures how
-        strongly activity varies across locations. Stability measures how similar the cell’s spatial
-        activity maps are between the first and second halves of the recording.
+        strongly the event rate varies across locations. Stability measures how similar the cell’s
+        event-rate maps are between the first and second halves of the recording.
       </p>
       <p>
         <strong>Compare with time-shifted data:</strong> Repeatedly shift each cell’s neural
-        activity relative to position (circularly, wrapping around the end of the recording) and
+        events relative to position (circularly, wrapping around the end of the recording) and
         recalculate both measures. This estimates the values expected without the original
-        alignment between activity and location.
+        alignment between events and location.
       </p>
       <p>
         <strong>Identify cells meeting the criteria:</strong> A cell qualifies when both measures

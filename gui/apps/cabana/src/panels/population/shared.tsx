@@ -201,8 +201,9 @@ export function Summary(p: {
           <p class="cb-muted">
             The p-value is the share of shuffled sessions (each cell's events shifted in time by a
             different amount, keeping the state labels) whose value is at least as extreme as the
-            observed one, counting the observed value itself. The null range is the middle 95% of
-            the shuffled values.
+            observed one, counting the observed value itself. The null range runs from the α to the
+            1 − α percentile of the shuffled values for a one-sided test (5th to 95th at α = 0.05),
+            and from α/2 to 1 − α/2 for a two-sided test.
           </p>
         </Show>
       </PopButton>

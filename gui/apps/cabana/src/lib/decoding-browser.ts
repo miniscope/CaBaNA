@@ -44,7 +44,7 @@ import { saveBrowserRun } from './browser-records.ts';
 
 export const BROWSER_DECODING_RUN_LABEL = 'Run in browser engine (different random draws)';
 export const BROWSER_DECODING_ENGINE_TEXT =
-  'Browser engine (TypeScript port of framework 57c0c4b, with GUI extensions)';
+  'Browser engine (the framework methods reimplemented in this browser, with GUI extensions)';
 
 /** A finished browser run: the result as a results source, and what the page says about it. */
 export interface BrowserDecodingRun {

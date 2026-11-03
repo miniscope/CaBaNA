@@ -116,7 +116,9 @@ export function behaviorDecodingPipeline(s: BehaviorDecoding, ctx: DecodingConte
   const problems: string[] = [];
   if (labels.length < 2) problems.push('Behavior decoding needs at least 2 behaviors.');
   if (!bayes && s.mode === 'multiclass' && !ctx.has('overlap_policy'))
-    problems.push('Multiclass logistic regression needs exclusive states (framework F3).');
+    problems.push(
+      'Multiclass logistic regression needs exclusive states, which needs a framework update.',
+    );
   return {
     pipeline: {
       transforms: [...common.transforms, toStates],

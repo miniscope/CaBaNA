@@ -81,11 +81,13 @@ describe('validation reasons', () => {
 });
 
 describe('framework requirements and greyed choices', () => {
-  it('names each missing feature in plain words, with the contract code only in details', () => {
+  it('names each missing feature in plain words, with the capability name only in details', () => {
     const items = frameworkItems(['decoding_fold_gap', 'overlap_policy'], none);
     expect(items).toHaveLength(2);
     for (const i of items) expect(i.text + i.short).not.toMatch(/\bF\d\b/);
-    expect(items[0].code).toMatch(/F1/);
+    // no plan contract ids anywhere: details name the capability the bridge reports
+    for (const i of items) expect(i.code).not.toMatch(/\bF\d\b/);
+    expect(items[0].code).toBe('Framework capability: decoding_fold_gap');
     expect(frameworkItems(['decoding_fold_gap'], () => true)).toEqual([]);
   });
   it('greys fold gap, exclude overlap and multiclass until the framework has them', () => {

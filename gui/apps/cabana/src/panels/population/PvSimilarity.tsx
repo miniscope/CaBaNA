@@ -55,8 +55,9 @@ export function PvSimilarity(p: ViewProps): JSX.Element {
                     howTo={
                       <p>
                         One row per pair of different states: the {name().toLowerCase()} of their
-                        population vectors, the middle 95% of the shuffled values (null range) and
-                        the uncorrected p-value. An asterisk marks p below alpha. Pairs are not
+                        population vectors, the null range of the shuffled values (from the α to the
+                        1 − α percentile for a one-sided test, α/2 to 1 − α/2 for two-sided) and the
+                        uncorrected p-value. An asterisk marks p below alpha. Pairs are not
                         corrected for the number of pairs tested.
                       </p>
                     }

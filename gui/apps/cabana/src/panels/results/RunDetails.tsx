@@ -24,7 +24,7 @@ export function RunDetailsBody(props: { record: RunRecord; pipeline?: string }):
           <Row k="Engine">
             {r().engine === 'framework'
               ? 'Python framework (same command as `cabana run`)'
-              : 'Browser engine (TypeScript port of framework 57c0c4b, with approved GUI extensions)'}
+              : 'Browser engine (the framework methods reimplemented in this browser, with GUI extensions)'}
           </Row>
           <Show when={note()}>
             <Row k="Framework version">{note()}. Rerun to make a result with the current one.</Row>

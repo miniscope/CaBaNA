@@ -3,7 +3,6 @@
 // result; reported numbers come from the framework.
 
 import type { CapabilityName } from '../../lib/bridge-client.ts';
-import { CAPABILITY_TEXT } from '../../lib/bridge-status.ts';
 import {
   OTHER_NAME,
   type BehaviorDecoding,
@@ -51,7 +50,7 @@ export function frameworkItems(
     .map((c) => ({
       text: PLAIN_REQUIREMENT[c as CapabilityName] ?? c,
       short: SHORT_REQUIREMENT[c as CapabilityName] ?? `${c} is missing`,
-      code: CAPABILITY_TEXT[c as CapabilityName] ?? c,
+      code: `Framework capability: ${c}`,
     }));
 }
 

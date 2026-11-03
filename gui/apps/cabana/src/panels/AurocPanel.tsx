@@ -58,20 +58,20 @@ export function AurocScale(): JSX.Element {
       <div
         class="cb-auroc-scale__bar"
         role="img"
-        aria-label="auROC scale from 0 (lower activity during the behavior) to 1 (higher)"
+        aria-label="auROC scale from 0 (lower neural values during the behavior) to 1 (higher)"
       >
         <For each={stops}>{(v) => <span style={{ background: aurocColor(v) }} />}</For>
       </div>
       <div class="cb-auroc-scale__ends">
         <span>
           <b class="cb-auroc-low">Below 0.5</b>
-          Lower activity during behavior
+          Lower neural values during behavior
         </span>
         <span>
           <b>0.5</b>No tendency
         </span>
         <span>
-          <b class="cb-auroc-high">Above 0.5</b>Higher activity during behavior
+          <b class="cb-auroc-high">Above 0.5</b>Higher neural values during behavior
         </span>
       </div>
     </div>
@@ -568,10 +568,10 @@ function AurocSetup(): JSX.Element {
                   <h3>1 · Comparison</h3>
                   <div class="cb-setting">
                     <Title text="Compare with">
-                      Choose the reference frames used to compare neural activity with frames
-                      labeled as the selected behavior. Against another behavior, the comparison
-                      group is that behavior's frames only; frames in neither behavior, and frames
-                      in both, are left out. Excluded frames are left out of both groups.
+                      Choose the reference frames used to compare neural values with frames labeled
+                      as the selected behavior. Against another behavior, the comparison group is
+                      that behavior's frames only; frames in neither behavior, and frames in both,
+                      are left out. Excluded frames are left out of both groups.
                     </Title>
                     <select
                       aria-label="Compare with"
@@ -1086,7 +1086,7 @@ function AurocSetup(): JSX.Element {
             </p>
             <p>
               <strong>Compare neural events:</strong> For each cell, auROC is the probability that a
-              randomly chosen frame during the behavior has higher neural activity than a randomly
+              randomly chosen frame during the behavior has a higher neural value than a randomly
               chosen frame in the comparison group. Against all other frames, the comparison group
               is every frame outside the behavior, including unlabeled frames. Against another
               behavior, it is that behavior's frames only; frames in neither behavior, and frames in

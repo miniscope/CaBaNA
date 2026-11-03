@@ -41,23 +41,25 @@ export const capabilities = (): Capabilities | undefined => {
 };
 export const hasCapability = (name: CapabilityName) => capabilities()?.[name] === true;
 
-/** Plain-language text for a missing framework feature (contract id from the plan, section 7). */
+/** Plain-language text for a missing framework feature. */
 export const CAPABILITY_TEXT: Record<CapabilityName, string> = {
-  session_metadata: 'Needs framework support for `metadata:` in session configs (F0a).',
-  session_markers: 'Needs framework support for time markers (`behavior.markers`, F0b).',
-  peth_markers: 'Needs framework support for aligning PETH to time markers (F0b).',
-  frame_labels: 'Needs framework support for frame-label files (`behavior.frame_labels`, F0c).',
-  decoding_fold_gap: 'Needs framework F1: fold-local test window and fold gap for decoding.',
+  session_metadata: 'Needs framework support for session metadata in config files.',
+  session_markers: 'Needs framework support for time marker files.',
+  peth_markers: 'Needs framework support for aligning PETH to time markers.',
+  frame_labels: 'Needs framework support for frame-label files.',
+  decoding_fold_gap: 'Needs a framework update: fold-local test window and fold gap for decoding.',
   decoding_fold_local_window:
-    'Needs framework F1: fold-local test window for the Bayesian decoder.',
+    'Needs a framework update: fold-local test window for the Bayesian decoder.',
   decoding_overall_test:
-    'Needs framework F2: overall decoding test. The overall value is shown without a p-value.',
-  overlap_policy: 'Needs framework F3: overlap policy for behaviors (exclude overlapping frames).',
-  bayes_input_check: 'Needs framework F4: input-kind check for the Bayesian decoder.',
-  bin_eligibility: 'Needs framework F5: minimum occupancy per bin from training data.',
-  preview_flag: 'Needs framework F7: preview flag on shuffle results.',
-  cli_rejects_recipes: 'Framework F8: `cabana run` should reject recipe files.',
-  peth_gui_extensions: 'Needs framework F9: PETH offset/both alignment and same-direction latency.',
+    'Needs a framework update: overall decoding test. The overall value is shown without a p-value.',
+  overlap_policy:
+    'Needs a framework update: overlap policy for behaviors (exclude overlapping frames).',
+  bayes_input_check: 'Needs a framework update: input-kind check for the Bayesian decoder.',
+  bin_eligibility: 'Needs a framework update: minimum occupancy per bin from training data.',
+  preview_flag: 'Needs a framework update: preview flag on shuffle results.',
+  cli_rejects_recipes: 'Needs a framework update: the command line should reject recipe files.',
+  peth_gui_extensions:
+    'Needs a framework update: PETH offset and both-ends alignment, and same-direction latency.',
 };
 export const missingText = (names: CapabilityName[]) =>
   names.filter((n) => !hasCapability(n)).map((n) => CAPABILITY_TEXT[n]);

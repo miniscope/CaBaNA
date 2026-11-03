@@ -631,7 +631,8 @@ function TimingView(): JSX.Element {
           <div class="cb-setting">
             <span>Behavior clock offset</span>
             <InfoTip label="About the clock offset">
-              Seconds added to the camera timestamps to put them on the neural clock. Set it in
+              Seconds subtracted from the camera timestamps, before the clock scale, to put them on
+              the neural clock: neural time = scale × (camera time − offset). Set it in
               Experimental Setup when the camera started before or after the miniscope.
             </InfoTip>
             <b>{source.clockOffsetS} s</b>

@@ -58,7 +58,7 @@ export const STEP_HELP: Partial<Record<StepId, StepHelp>> = {
     adjust:
       'A larger value moves each event’s weight further in time, about two standard deviations either side, so events near a bout edge or a bin border are shared with the neighbor. Compare the smoothed trace with the events around a known transition.',
     tradeoffs:
-      'Blurs event timing and lowers peaks. Activity just before or after a behavior can be counted during it. Place cells, auROC and PETH all use the smoothed events.',
+      'Blurs event timing and lowers peaks. Events just before or after a behavior can be counted during it. Place cells, auROC and PETH all use the smoothed events.',
     default: '0 (off). A software default, not a recommendation.',
   },
   // interpolate_gaps (linear), max_gap_s, after resample_signal
@@ -96,11 +96,11 @@ export const STEP_HELP: Partial<Record<StepId, StepHelp>> = {
       'Each behavior’s frame labels grow by the value on each side, rounded to whole frames. Each behavior is widened separately, so overlapping labels stay overlapping: a frame can belong to two behaviors. The frames counted as outside a behavior shrink by the same amount. 0 turns it off.',
     why: 'Consider it when bout starts and stops were scored loosely, or by a few frames off.',
     leaveOff:
-      'Leave it off when bouts were scored at frame precision, when behaviors follow each other closely, or when the question is about activity just before or after a behavior.',
+      'Leave it off when bouts were scored at frame precision, when behaviors follow each other closely, or when the question is about events just before or after a behavior.',
     adjust:
       'A larger value counts more frames as during the behavior. Look at the label rows: widened bouts should cover the scored edges without merging into neighboring bouts of other behaviors.',
     tradeoffs:
-      'Activity just before and after a behavior is counted during it, which blurs onset and offset timing. Close bouts of different behaviors can share frames. Only auROC uses the padded labels; PETH takes onsets from the unpadded labels.',
+      'Events just before and after a behavior are counted during it, which blurs onset and offset timing. Close bouts of different behaviors can share frames. Only auROC uses the padded labels; PETH takes onsets from the unpadded labels.',
     default: '0 (off). A software default, not a recommendation.',
   },
 };

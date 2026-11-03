@@ -87,8 +87,8 @@ const RESPONSE_NOTE = (
       {MIN_FRAMES} included frames during or outside it.
     </p>
     <p>
-      Higher and Lower describe activity during the behavior relative to the reference group. They
-      do not imply a mechanism such as synaptic excitation or inhibition.
+      Higher and Lower describe neural values during the behavior relative to the reference group.
+      They do not imply a mechanism such as synaptic excitation or inhibition.
     </p>
     <p>
       Not significant is not evidence of no relationship. A direction is shown only for significant
@@ -925,9 +925,9 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
     const beh = against ? o().labels[c().b].split(' vs ')[0] : o().labels[c().b];
     const other = against ?? 'outside it';
     if (r() === 'excited')
-      return `${cell} shows significantly higher activity during ${beh} than ${against ? 'during ' : ''}${other}.`;
+      return `${cell} shows significantly higher neural values during ${beh} than ${against ? 'during ' : ''}${other}.`;
     if (r() === 'inhibited')
-      return `${cell} shows significantly lower activity during ${beh} than ${against ? 'during ' : ''}${other}.`;
+      return `${cell} shows significantly lower neural values during ${beh} than ${against ? 'during ' : ''}${other}.`;
     if (r() === 'not significant')
       return `${cell} does not differ significantly between ${beh} and ${against ?? 'the rest of the included frames'}.`;
     return o().cellsMissing.includes(c().c)
@@ -1086,10 +1086,10 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
               <HowTo title="This cell across behaviors">
                 <p>
                   Each row is one behavior. The dot shows auROC on a scale from 0 to 1; the line
-                  starts at 0.5, which means no tendency. Right of 0.5 is higher activity during the
-                  behavior, left is lower. Filled orange or purple dots are significant after
-                  correction (higher, lower); open gray dots are not significant. Dots only: no
-                  interval is computed for auROC.
+                  starts at 0.5, which means no tendency. Right of 0.5 is higher neural values
+                  during the behavior, left is lower. Filled orange or purple dots are significant
+                  after correction (higher, lower); open gray dots are not significant. Dots only:
+                  no interval is computed for auROC.
                 </p>
                 <p>
                   The table gives the same values with the adjusted p-value and response. Behaviors
@@ -1136,7 +1136,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
       </div>
       <Show when={fp()}>
         <Modal
-          title={`Footprint and activity · ${cellName()} · ${o().labels[c().b]}`}
+          title={`Footprint and trace · ${cellName()} · ${o().labels[c().b]}`}
           onClose={() => setFp(false)}
         >
           <div class="cb-fpstrip__open">
