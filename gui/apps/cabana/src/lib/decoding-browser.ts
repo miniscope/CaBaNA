@@ -5,7 +5,7 @@
 import { batch, createSignal } from 'solid-js';
 import type { WorkerPool } from '@calab/compute';
 import { effectiveBin } from './arena.ts';
-import { DEFAULT_BAYES, type BayesOut, type BayesParams } from './decode-bayes.ts';
+import { DEFAULT_BAYES, usedFrameMask, type BayesOut, type BayesParams } from './decode-bayes.ts';
 import {
   annotatedBehaviors,
   behaviorDecodeData,
@@ -200,6 +200,26 @@ function plan(): Plan | { error: string } {
 export function browserBlock(): string {
   const p = plan();
   return 'error' in p ? p.error : '';
+}
+
+/**
+ * The frames (or, for logistic regression, time bins) the browser engine splits into folds, as
+ * session times in seconds, with the length of one frame or bin and of the session. Undefined
+ * when the current settings cannot run.
+ */
+export function foldedTimes(): { times: number[]; stepS: number; totalS: number } | undefined {
+  const p = plan();
+  if ('error' in p) return undefined;
+  const logistic = p.decoder === 'logistic';
+  const m = logistic ? (p.data as LinearDecodeData).linear : (p.data as PositionDecodeData).input;
+  // Logistic regression folds every labeled bin; the Bayesian decoder also drops rare states.
+  const minFrames = logistic
+    ? 0
+    : (decodeTarget.type === 'position' ? positionDecoding : behaviorDecoding).minFramesPerClass;
+  const { used } = usedFrameMask(m, m.labels, minFrames);
+  const times: number[] = [];
+  used.forEach((u, t) => u && times.push(t / m.fs));
+  return { times, stepS: 1 / m.fs, totalS: m.frames / m.fs };
 }
 
 // ---- running ---------------------------------------------------------------------------------------

@@ -73,7 +73,8 @@ export function choiceGates(has: (c: CapabilityName) => boolean): Gates {
       ? open
       : {
           disabled: true,
-          reason: 'Not applied by the installed framework; the value is kept for when it is.',
+          reason:
+            'Not applied. Neither the browser engine nor the installed framework leaves frames out next to a test fold; the value is kept for when one does.',
         },
     overlapExclude: has('overlap_policy')
       ? open
@@ -203,9 +204,14 @@ export interface StripBlock {
   gapBefore: [number, number];
   gapAfter: [number, number];
 }
-export function stripBlocks(n: number, k: number, fs: number, gapS: number): StripBlock[] {
-  const total = n / fs;
-  return foldSpans(n, k, fs, gapS).map((s) => ({
+export function stripBlocks(
+  times: ArrayLike<number>,
+  stepS: number,
+  total: number,
+  k: number,
+  gapS: number,
+): StripBlock[] {
+  return foldSpans(times, stepS, total, k, gapS).map((s) => ({
     fold: s.fold,
     x0: s.startS / total,
     x1: s.stopS / total,

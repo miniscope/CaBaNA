@@ -220,7 +220,7 @@ export function DecoderView(): JSX.Element {
           <h3>Logistic regression</h3>
           <Row
             label="Mode"
-            tip="One-vs-rest fits one behavior against all other frames and works when behaviors overlap. Multiclass picks one behavior per frame and needs non-overlapping classes."
+            tip="One-vs-rest fits one behavior against all other time bins. Multiclass picks one behavior per bin and needs non-overlapping classes. On the browser engine each bin has one behavior in both modes: overlapping frames are reduced to one class by the overlap policy before binning."
           >
             <Choice
               label="Mode"
@@ -417,7 +417,7 @@ function BehaviorList(): JSX.Element {
             {framesText(c().overlapFrames, fs())} are covered by two or more selected behaviors
             {behaviorDecoding.overlap === 'exclude'
               ? ' and are left out'
-              : ' and go to the behavior higher in the list'}
+              : ' and are reduced to one class, the behavior higher in the list'}
             ; {framesText(c().noneFrames, fs())} are covered by none.
           </p>
         )}
@@ -471,7 +471,7 @@ export function FramesView(): JSX.Element {
         >
           <Row
             label="Overlap policy"
-            tip="Frames where two selected behaviors are annotated at once. Exclude leaves them out of training and testing. Priority gives each such frame to the behavior higher in the list."
+            tip="Frames where two selected behaviors are annotated at once. Exclude leaves them out of training and testing. Priority reduces each such frame to one class, the behavior higher in the list."
           >
             <Choice
               label="Overlap policy"
@@ -551,7 +551,7 @@ export function FoldsView(): JSX.Element {
         <Row
           label="Fold gap"
           range={RANGE.foldGapS}
-          tip="Frames within this time of a test fold are left out of training, so slow drift cannot carry information across the border."
+          tip="When applied, frames within this time of a test fold are left out of training, so slow drift cannot carry information across the border. The browser engine never applies it."
         >
           <Num
             label="Fold gap (s)"
@@ -567,7 +567,8 @@ export function FoldsView(): JSX.Element {
         <Show when={gates().foldGap.disabled}>
           <p class="cb-dec-why">Fold gap: {gates().foldGap.reason}</p>
         </Show>
-        <FoldStrip folds={s().folds} gapS={s().foldGapS} gapApplied={!gates().foldGap.disabled} />
+        {/* The strip draws the browser engine's folds, and that engine never applies the gap. */}
+        <FoldStrip folds={s().folds} gapS={s().foldGapS} gapApplied={false} />
       </section>
     </div>
   );

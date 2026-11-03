@@ -180,6 +180,9 @@
   padding: 4px 10px;
   min-width: 0;
 }
+.cb-dec-stat--tested {
+  border-color: var(--accent);
+}
 .cb-dec-stat__label {
   font-size: 12px;
   color: var(--text-secondary);

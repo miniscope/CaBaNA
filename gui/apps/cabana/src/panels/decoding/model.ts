@@ -21,7 +21,21 @@ export interface Stat {
   label: string;
   value: string;
   note?: string;
+  /** The value the overall shuffle test uses, outlined beside an untested one. */
+  tested?: boolean;
 }
+
+/** The note of a tested overall value: not tested, or tested with its p-value when the run has one. */
+const testedNote = (o: { testNote: string; p: number | null }, notTested: string) =>
+  o.testNote
+    ? notTested
+    : `Tested against the shuffled null${o.p == null ? '' : ` · p = ${fmtP(o.p)}`}`;
+
+/** Mean of the finite per-behavior recalls: the statistic the overall shuffle test uses. */
+export const meanRecall = (score: (number | null)[]): number | null => {
+  const v = score.filter((x): x is number => x != null && Number.isFinite(x));
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+};
 
 export function positionStats(v: PositionDecodingView): Stat[] {
   const evaluated = v.excluded.filter((x) => !x).length;
@@ -31,22 +45,42 @@ export function positionStats(v: PositionDecodingView): Stat[] {
     {
       label: 'Overall median error',
       value: fmt(v.overall.value, 2),
-      note: v.overall.testNote ? OVERALL_NOT_TESTED : 'Tested against the shuffled null',
+      note: testedNote(v.overall, OVERALL_NOT_TESTED),
     },
-    { label: 'Chance error', value: fmt(v.overall.chance, 2), note: 'Expected by guessing' },
+    {
+      label: 'Chance error',
+      value: fmt(v.overall.chance, 2),
+      note: 'Median error when always guessing the most occupied training bin',
+    },
     { label: 'Frames decoded', value: decoded == null ? 'n/a' : decoded.toLocaleString() },
     { label: 'Bins evaluated', value: `${evaluated} of ${v.bins.length}` },
   ];
 }
 
 export function behaviorStats(v: BehaviorDecodingView): Stat[] {
+  const tested = testedNote(v.overall, OVERALL_NOT_TESTED_BEHAVIOR);
+  // The Bayesian decoder's overall value is frame accuracy; its shuffle test uses mean recall.
+  const overall: Stat[] =
+    v.classifier === 'bayesian_decoder'
+      ? [
+          {
+            label: 'Frame accuracy',
+            value: fmt(v.overall.value),
+            note: 'Share of decoded frames decoded correctly. Not tested',
+          },
+          { label: 'Mean recall', value: fmt(meanRecall(v.score)), note: tested, tested: true },
+        ]
+      : [{ label: 'Mean balanced accuracy', value: fmt(v.overall.value), note: tested }];
   return [
+    ...overall,
     {
-      label: 'Overall accuracy',
-      value: fmt(v.overall.value),
-      note: v.overall.testNote ? OVERALL_NOT_TESTED_BEHAVIOR : 'Tested against the shuffled null',
+      label: 'Chance',
+      value: fmt(v.overall.chance),
+      note:
+        v.overall.chance == null
+          ? 'No chance level is reported for this decoder'
+          : 'Expected balanced accuracy of a decoder that ignores the neural data',
     },
-    { label: 'Chance', value: fmt(v.overall.chance), note: 'Expected by guessing' },
     { label: 'Behaviors', value: String(v.states.length) },
   ];
 }

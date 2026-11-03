@@ -201,7 +201,7 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
           <For each={r().notes}>{(n) => <li>{n}</li>}</For>
         </ul>
       </div>
-      <DecodingResults source={r().source} overallTested />
+      <DecodingResults source={r().source} overallTested overallP={r().overallP} />
     </div>
   );
 }

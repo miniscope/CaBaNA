@@ -17,7 +17,7 @@ import {
   type PositionDecodingView,
 } from '../lib/decoding-results.ts';
 import { foldBoundaries } from '../lib/fold-strip.ts';
-import type { ResultSource } from '../lib/results-load.ts';
+import { finite, type ResultSource } from '../lib/results-load.ts';
 import { Help } from './QcParts.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PopButton } from './QcParts.tsx';
@@ -57,7 +57,7 @@ const Stats = (props: { stats: Stat[] }): JSX.Element => (
   <div class="cb-dec-summary">
     <For each={props.stats}>
       {(s) => (
-        <div class="cb-dec-stat">
+        <div class="cb-dec-stat" classList={{ 'cb-dec-stat--tested': s.tested }}>
           <div class="cb-dec-stat__label">{s.label}</div>
           <div class="cb-dec-stat__value">{s.value}</div>
           <Show when={s.note}>
@@ -158,9 +158,16 @@ function PositionResults(props: {
     const k = Number(
       (props.record?.gui.settings as { analysis?: { folds?: number } })?.analysis?.folds,
     );
-    const n = props.v.frameError?.shape[0];
     const fs = Number((meta()?.provenance as { fs?: number })?.fs);
-    return k >= 2 && n && fs ? foldBoundaries(n, k).map((b) => b / fs) : [];
+    if (!(k >= 2) || !fs || !props.v.frameError) return [];
+    // The engine folds the frames it used; a decoded frame has a finite error.
+    const used: number[] = [];
+    Array.from(props.v.frameError.data).forEach((e, t) => finite(e) && used.push(t));
+    return used.length >= k
+      ? foldBoundaries(used.length, k)
+          .slice(0, k)
+          .map((b) => used[b] / fs)
+      : [];
   };
   let svg: SVGSVGElement | undefined;
   const csv = () =>
@@ -341,8 +348,9 @@ function PositionResults(props: {
                   Time in seconds of the session; position in the units of the position file.
                 </Help>
                 <Help k="Fold borders">
-                  Dashed lines mark where the equal contiguous folds begin (drawn here from the
-                  number of folds; the framework cuts the same blocks).
+                  Dashed lines mark where each fold begins. Folds are equal contiguous blocks of the
+                  decoded frames, so frames left out (speed filter, no position) shift the borders
+                  in time.
                 </Help>
                 <Help k="Limits">
                   Gaps are frames that were not decoded. The window shows one minute only.
@@ -393,8 +401,8 @@ function PositionResults(props: {
                   frames.
                 </Help>
                 <Help k="Lines">
-                  Solid: overall median error; dashed: chance error (decoding at random). Both come
-                  from the framework.
+                  Solid: overall median error; dashed: chance error, the median error when always
+                  guessing the most occupied training bin. Both are saved with the run.
                 </Help>
                 <Help k="Limits">
                   The bin width is a display choice (Plot settings) and does not change the median.
@@ -683,17 +691,18 @@ export function DecodingResults(props: {
   saved?: boolean;
   /** The engine tested the overall value itself (the browser engine does); default: the framework capability. */
   overallTested?: boolean;
+  /** The overall p-value, when the engine tested the overall value. */
+  overallP?: number | null;
 }): JSX.Element {
   const [loaded] = createResource(
     () => props.source,
     async (src) => {
       const manifest = await src.manifest();
       const has = props.overallTested ?? hasCapability('decoding_overall_test');
-      return {
-        manifest,
-        pos: await loadPositionDecoding(src, manifest, has),
-        beh: await loadBehaviorDecoding(src, manifest, has),
-      };
+      const pos = await loadPositionDecoding(src, manifest, has);
+      const beh = await loadBehaviorDecoding(src, manifest, has);
+      for (const v of [pos, beh]) if (v && has) v.overall.p = props.overallP ?? null;
+      return { manifest, pos, beh };
     },
   );
   let root!: HTMLDivElement;

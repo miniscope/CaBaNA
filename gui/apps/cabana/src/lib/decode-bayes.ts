@@ -320,6 +320,22 @@ function logLikPoisson(
   return out;
 }
 
+/** The frames the decoder uses: allowed by the mask, labeled, and in a state with enough frames. */
+export function usedFrameMask(
+  m: Pick<BayesInput, 'frames' | 'mask' | 'nStates'>,
+  labels: Int32Array,
+  minFramesPerClass: number,
+) {
+  const nFrames = new Int32Array(m.nStates);
+  for (let t = 0; t < m.frames; t++) if (m.mask[t] && labels[t] >= 0) nFrames[labels[t]]++;
+  const valid = new Uint8Array(m.nStates);
+  for (let s = 0; s < m.nStates; s++) valid[s] = nFrames[s] >= minFramesPerClass ? 1 : 0;
+  const used = new Uint8Array(m.frames);
+  for (let t = 0; t < m.frames; t++)
+    used[t] = m.mask[t] && labels[t] >= 0 && valid[labels[t]] ? 1 : 0;
+  return { nFrames, valid, used };
+}
+
 /**
  * A decoder for one input: builds the features once and runs for any labels, as the shuffle test needs.
  * `run` is `BayesianDecoder._run` (values, confusion, decoded state, error and the extras).
@@ -330,13 +346,7 @@ export function makeBayesDecoder(m: BayesInput, p: BayesParams) {
 
   return function run(labels: Int32Array = m.labels): BayesOut {
     const { nStates, frames } = m;
-    const nFrames = new Int32Array(nStates);
-    for (let t = 0; t < frames; t++) if (m.mask[t] && labels[t] >= 0) nFrames[labels[t]]++;
-    const valid = new Uint8Array(nStates);
-    for (let s = 0; s < nStates; s++) valid[s] = nFrames[s] >= p.minFramesPerClass ? 1 : 0;
-    const used = new Uint8Array(frames);
-    for (let t = 0; t < frames; t++)
-      used[t] = m.mask[t] && labels[t] >= 0 && valid[labels[t]] ? 1 : 0;
+    const { nFrames, valid, used } = usedFrameMask(m, labels, p.minFramesPerClass);
     const nUsed = used.reduce((s, v) => s + v, 0);
     const nValid = valid.reduce((s, v) => s + v, 0);
 

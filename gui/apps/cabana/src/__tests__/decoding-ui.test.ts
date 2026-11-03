@@ -133,7 +133,8 @@ describe('fold strip layout inputs', () => {
   it('covers the session with k contiguous blocks and clips the gaps at the ends', () => {
     const n = 18000;
     const fs = 30;
-    const blocks = stripBlocks(n, 5, fs, 1);
+    const times = Array.from({ length: n }, (_, t) => t / fs);
+    const blocks = stripBlocks(times, 1 / fs, n / fs, 5, 1);
     expect(blocks).toHaveLength(5);
     expect(blocks[0].x0).toBe(0);
     expect(blocks[4].x1).toBe(1);
@@ -211,6 +212,21 @@ describe('behavior result views', () => {
       expect(r.significant).toBe(Number(a.sh_significant.data[i]) === 1);
     });
     expect(behaviorStats(v)[0].note).toMatch(/not tested/);
+  });
+  it('shows Bayesian frame accuracy apart from the tested mean recall', () => {
+    const v = {
+      classifier: 'bayesian_decoder',
+      states: ['a', 'b', 'c'],
+      score: [0.9, 0.3, null],
+      overall: { value: 0.8, chance: null, p: 0.004, testNote: '' },
+    } as unknown as BehaviorDecodingView;
+    const [frame, recall, chance] = behaviorStats(v);
+    expect(frame).toMatchObject({ label: 'Frame accuracy', value: '0.8' });
+    expect(frame.tested).toBeFalsy();
+    // mean of the finite per-behavior recalls, with the run's overall p
+    expect(recall).toMatchObject({ label: 'Mean recall', value: '0.6', tested: true });
+    expect(recall.note).toBe('Tested against the shuffled null · p = 0.004');
+    expect(chance.value).toBe('n/a');
   });
   it('splits the confusion array into one table per behavior', async () => {
     const v = (await loadBehaviorDecoding(src, d.manifest))!;
