@@ -25,6 +25,7 @@ import {
   type TimescaleChoice,
 } from './placecells.ts';
 import { onClear } from './store.ts';
+import { runDeps, type Uses } from './run-deps.ts';
 
 export const DEFAULT_PLACE_SETTINGS = {
   /** auto_smooth_sigma, or a width in grid bins. */
@@ -44,6 +45,8 @@ export const DEFAULT_PLACE_SETTINGS = {
   minFieldBins: DEFAULT_PLACE.field.minFieldBins,
 };
 export const [placeSettings, setPlaceSettings] = createStore({ ...DEFAULT_PLACE_SETTINGS });
+/** Place cells read position on the arena grid and no labels. */
+export const PLACE_USES: Uses = { position: true, grid: true, labels: [] };
 
 /** What a finished run used and found. */
 export interface PlaceOutcome {
@@ -62,6 +65,8 @@ export interface PlaceOutcome {
   settings: typeof DEFAULT_PLACE_SETTINGS;
   /** The Preprocess settings this run used. */
   prep: typeof DEFAULT_PREP;
+  /** What the run read beyond its settings (browser runs; a framework run is checked by its hash). */
+  deps?: Record<string, unknown>;
   /** Which engine made the numbers. */
   engine: EngineId;
   /** The saved run behind a framework outcome. */
@@ -153,6 +158,7 @@ async function runPlaceCellsBrowser(): Promise<void> {
   const { input } = data;
   const cfg = { ...placeSettings, minOccS: arena.minOccupancy };
   const prepUsed = { ...prep };
+  const deps = runDeps(PLACE_USES);
   const t0 = performance.now();
   cancelPlaceRun();
   pool = createPlaceWorkerPool();
@@ -233,6 +239,7 @@ async function runPlaceCellsBrowser(): Promise<void> {
       arenaCm: sizeCm(),
       settings: cfg,
       prep: prepUsed,
+      deps,
       engine: 'browser',
       nullKept: true,
     });

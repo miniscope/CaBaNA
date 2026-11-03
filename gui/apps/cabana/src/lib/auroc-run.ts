@@ -27,6 +27,7 @@ import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from './speed-match.ts';
 import { preselectUnselected } from './labels.ts';
 import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
+import { runDeps, type Uses } from './run-deps.ts';
 
 /** Behaviors to leave out when the panel first opens: those not marked measured (a preselection only). */
 export const aurocPreselected = (labels: string[]) =>
@@ -90,6 +91,25 @@ export const [aurocSettings, setAurocSettings] = createStore({
   match: { ...DEFAULT_MATCH },
 });
 export type AurocSettings = typeof DEFAULT_AUROC_SETTINGS;
+
+/** Labels and position an auROC run reads with settings `s`. */
+export function aurocUses(s: AurocSettings): Uses {
+  const behaviors = [
+    ...new Set(
+      annotationResults()
+        .filter((a) => a.id === 'behavior_annotations' && !a.error)
+        .flatMap((a) => a.epochs.map((e) => e.label)),
+    ),
+  ];
+  return {
+    position: s.speedFilter || s.method === 'speed',
+    grid: false,
+    labels:
+      s.compare === 'behavior'
+        ? [s.pairA, s.pairB]
+        : behaviors.filter((l) => !s.unselected.includes(l)),
+  };
+}
 
 /** The behaviors left out at first: not marked measured, or with too few frames to test. */
 export const aurocDefaultUnselected = (d: Pick<AurocData, 'labels' | 'info'>): string[] => {
@@ -213,6 +233,8 @@ export interface AurocOutcome {
   settings: AurocSettings;
   /** The Preprocess settings this run used. */
   prep: typeof DEFAULT_PREP;
+  /** What the run read beyond its settings (browser runs; a framework run is checked by its hash). */
+  deps?: Record<string, unknown>;
   /** Which engine made the numbers. */
   engine: EngineId;
   /** The saved run behind a framework outcome. */
@@ -348,6 +370,7 @@ async function runAurocBrowser(): Promise<void> {
     unselected: [...aurocSettings.unselected],
     match: { ...aurocSettings.match },
   };
+  const deps = runDeps(aurocUses(cfg));
   const { input, labels, info, against } = aurocPlan(data, cfg);
   if (!labels.length) {
     setAurocStatus({ kind: 'error', message: 'Select at least one behavior.' });
@@ -438,6 +461,7 @@ async function runAurocBrowser(): Promise<void> {
       seconds: (performance.now() - t0) / 1000,
       settings: cfg,
       prep: prepUsed,
+      deps,
       engine: 'browser',
       nullKept: true,
     });

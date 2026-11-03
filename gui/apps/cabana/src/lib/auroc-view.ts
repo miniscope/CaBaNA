@@ -1,7 +1,8 @@
 // What the auROC results screens show, derived from a finished run.
 
 import { responseOf, type Response } from './auroc.ts';
-import { aurocOutcome, aurocSettings, type AurocOutcome } from './auroc-run.ts';
+import { aurocOutcome, aurocSettings, aurocUses, type AurocOutcome } from './auroc-run.ts';
+import { depChanges, runDeps } from './run-deps.ts';
 import { AUROC_LABELS, describeChanges, runMatch } from './engine.ts';
 import { prepChanges } from './prep-deps.ts';
 import { canonicalJson } from './settings-hash.ts';
@@ -23,6 +24,7 @@ export function aurocChanges(): string[] {
     (k === 'match' && s.method === 'circular' && aurocSettings.method === 'circular');
   for (const k of Object.keys(AUROC_LABELS) as (keyof typeof s)[])
     if (!same(k) && !unused(k)) out.push(AUROC_LABELS[k]);
+  out.push(...depChanges(o.deps, runDeps(aurocUses(o.settings))));
   return [...new Set(out)];
 }
 

@@ -11,6 +11,7 @@ import { cachedRecords } from './results-store.ts';
 import { compareToRecord, latest, setLatest, type AnalysisId } from './runs.ts';
 import { labelRegistry, rejected, source } from './store.ts';
 import { prep } from './preprocess.ts';
+import { DEP_WORDS } from './run-deps.ts';
 
 export type EngineId = 'framework' | 'browser';
 export type EngineMode = Extract<AnalysisId, 'place' | 'auroc'>;
@@ -113,6 +114,8 @@ const PREP_LABELS: Record<string, string> = {
   minSpeed: 'minimum speed',
 };
 
+const PIPELINE_WORD = 'framework pipeline steps';
+
 /** Words for the lines of a settings diff (`analysis.alpha: 0.05 -> 0.01`), each setting once. */
 export function describeChanges(diff: string[], labels: Record<string, string>): string[] {
   const words = diff.map((line) => {
@@ -122,9 +125,15 @@ export function describeChanges(diff: string[], labels: Record<string, string>):
     if (root === 'inputs') return 'input files';
     if (root === 'rejected') return 'rejected cells';
     if (root === 'labelRoles') return 'label roles';
+    if (root === 'deps') return DEP_WORDS[key] ?? key;
+    if (root === 'pipeline') return PIPELINE_WORD;
+    if (root === 'settingsVersion' || key === 'settingsVersion')
+      return 'saved before changes to clock, calibration, arena and labels were tracked';
     return root;
   });
-  return [...new Set(words)];
+  // The pipeline mirrors the settings, so it is named only when nothing more specific changed.
+  const named = [...new Set(words)];
+  return named.length > 1 ? named.filter((w) => w !== PIPELINE_WORD) : named;
 }
 
 export const PLACE_LABELS: Record<string, string> = {

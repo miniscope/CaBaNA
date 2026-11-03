@@ -35,7 +35,7 @@ vi.mock('../lib/session-config.ts', () => ({ buildSessionConfig: () => ({}) }));
 
 const { registerFrameworkAnalysis, runAnalysis, latest, active, lastError } = await import('../lib/runs.ts');
 
-const spec = (problems: string[] = []) => ({ spec: { pipeline: { analyses: [] }, requires: [], problems, target: 't' }, settings: { a: 1 }, prepKeys: [] });
+const spec = (problems: string[] = []) => ({ spec: { pipeline: { analyses: [] }, requires: [], problems, target: 't' }, settings: { a: 1 }, prepKeys: [], uses: { position: false, grid: false, labels: [] } });
 
 describe('runAnalysis', () => {
   beforeEach(() => { calls.length = 0; });

@@ -35,7 +35,9 @@ import {
 } from './decoding-settings.ts';
 import type { ResultSource } from './results-load.ts';
 import { prep } from './preprocess.ts';
-import { onClear } from './store.ts';
+import { runDeps, type Uses } from './run-deps.ts';
+import { canonicalJson } from './settings-hash.ts';
+import { annotationResults, onClear } from './store.ts';
 import type { ShuffleBatch } from '../workers/decoding-types.ts';
 
 export const BROWSER_DECODING_RUN_LABEL = 'Run in browser engine (different random draws)';
@@ -63,8 +65,23 @@ export type BrowserStatus =
   | { kind: 'running'; step: string; done: number; total: number }
   | { kind: 'error'; message: string };
 
+/** What a browser decoding run of the current target reads beyond its settings. */
+function decodingUses(): Uses {
+  if (decodeTarget.type === 'position') return { position: true, grid: true, labels: [] };
+  const all = annotationResults()
+    .filter((a) => a.id === 'behavior_annotations' && !a.error)
+    .flatMap((a) => a.epochs.map((e) => e.label));
+  const labels = behaviorDecoding.labels.length ? behaviorDecoding.labels : [...new Set(all)];
+  return { position: false, grid: false, labels };
+}
+// Only the current target's settings count: editing the other target's leaves this result alone.
 const currentSettingsKey = () =>
-  JSON.stringify([decodeTarget.type, positionDecoding, behaviorDecoding, prep]);
+  canonicalJson([
+    decodeTarget.type,
+    decodeTarget.type === 'position' ? positionDecoding : behaviorDecoding,
+    prep,
+    runDeps(decodingUses()),
+  ]);
 /** The browser result on screen was made with other settings than the ones now set. */
 export const browserOutdated = () => {
   const r = browserRun();

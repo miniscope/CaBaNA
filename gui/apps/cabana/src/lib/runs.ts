@@ -17,7 +17,8 @@ import { HashedSettings, SETTINGS_VERSION, settingsDiff, settingsHash } from './
 import { configFileKeys, uploadSession } from './spec/session.ts';
 import type { BuiltSpec } from './spec/population.ts';
 import { buildSessionConfig } from './session-config.ts';
-import { labelRegistry, rejected, roleOf, slotFile } from './store.ts';
+import { rejected, slotFile } from './store.ts';
+import { runDeps, type Uses } from './run-deps.ts';
 import { prep } from './preprocess.ts';
 import type { CapabilityName } from './bridge-client.ts';
 
@@ -30,6 +31,8 @@ export interface FrameworkRun {
   /** Analysis settings (display settings excluded) and the Preprocess fields the analysis reads. */
   settings: Record<string, unknown>;
   prepKeys: string[];
+  /** What the run reads beyond its settings, for "Needs rerun". */
+  uses: Uses;
 }
 type Builder = (scope: 'full' | 'preview') => FrameworkRun;
 const builders: Partial<Record<AnalysisId, Builder>> = {};
@@ -74,16 +77,28 @@ async function inputHashes(): Promise<Record<string, string>> {
 }
 
 async function hashedSettings(run: FrameworkRun): Promise<HashedSettings> {
-  const rolesUsed = Object.fromEntries(labelRegistry().map((e) => [e.name, roleOf(e.name)]));
+  // Read before the first await, so the effects that compare runs track every dependency.
+  const deps = runDeps(run.uses, { files: false });
+  const used = Object.fromEntries(
+    run.prepKeys.map((k) => [k, (prep as Record<string, unknown>)[k]]),
+  );
+  const rejectedCells = [...rejected()].sort((a, b) => a - b);
   return {
     settingsVersion: SETTINGS_VERSION,
     analysis: run.settings,
-    prep: Object.fromEntries(run.prepKeys.map((k) => [k, (prep as Record<string, unknown>)[k]])),
+    prep: used,
     inputs: await inputHashes(),
-    rejected: [...rejected()].sort((a, b) => a - b),
-    labelRoles: rolesUsed,
+    rejected: rejectedCells,
+    deps,
+    pipeline: run.spec.pipeline,
     engine: 'framework',
   };
+}
+
+/** What a run of `id` would save as its settings now, the same object a started run records. */
+export function settingsOf(id: AnalysisId, scope: 'full' | 'preview' = 'full') {
+  const build = builders[id];
+  return build ? hashedSettings(build(scope)) : undefined;
 }
 
 /** The settings of one run of `id` compared with the current ones. */

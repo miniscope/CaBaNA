@@ -24,10 +24,14 @@ export interface HashedSettings {
   prep: Record<string, unknown>;
   inputs: Record<string, string>;
   rejected: number[];
-  labelRoles: Record<string, string>;
+  /** Clock alignment, calibration, arena and labels the run read (`run-deps.ts`). */
+  deps: Record<string, unknown>;
+  /** The steps the framework was given, so a change none of the fields above names still counts. */
+  pipeline: unknown;
   engine: string;
 }
-export const SETTINGS_VERSION = 1;
+/** 2: dependencies beyond the settings (clock, calibration, arena, labels) are part of the hash. */
+export const SETTINGS_VERSION = 2;
 
 export async function settingsHash(settings: HashedSettings): Promise<string> {
   return sha256(new TextEncoder().encode(canonicalJson(settings)).buffer as ArrayBuffer);

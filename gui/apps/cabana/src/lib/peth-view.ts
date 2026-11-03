@@ -3,23 +3,37 @@
 import type { Response } from './auroc.ts';
 import { aurocColor } from './auroc-view.ts';
 import { bouts, pethGeometry, pethResponse, type Align, type OnsetReport } from './peth.ts';
-import { pethOutcome, pethSettings, type PethData, type PethOutcome } from './peth-run.ts';
+import {
+  pethOutcome,
+  pethSettings,
+  pethUses,
+  type PethData,
+  type PethOutcome,
+  type PethSettings,
+} from './peth-run.ts';
+import { depChanges, runDeps } from './run-deps.ts';
+import { canonicalJson } from './settings-hash.ts';
 import { prepChanges } from './prep-deps.ts';
 
-/** Preprocess settings changed since the last run, in words. Empty when there is no run or nothing changed. */
+/** Preprocess settings and inputs changed since the last run, in words. Empty when there is no run or nothing changed. */
 export function pethChanges(): string[] {
   const o = pethOutcome();
-  return o ? prepChanges('peth', o.prep, false) : [];
+  if (!o) return [];
+  return [...prepChanges('peth', o.prep, false), ...depChanges(o.deps, runDeps(pethUses(o.settings)))];
 }
+
+/** Settings that only change what is shown: the Wilcoxon p-value is computed either way. */
+const PETH_DISPLAY: (keyof PethSettings)[] = ['wilcoxon'];
 
 /** Settings that differ from the last run and would change its results; empty when there is no run. */
 export function pethSettingChanges(): string[] {
   const o = pethOutcome();
   if (!o) return [];
-  const s = pethSettings;
-  const a = JSON.stringify(o.settings);
-  const b = JSON.stringify(s);
-  return a === b ? [] : ['analysis settings'];
+  const changed = (Object.keys(o.settings) as (keyof PethSettings)[]).some(
+    (k) =>
+      !PETH_DISPLAY.includes(k) && canonicalJson(o.settings[k]) !== canonicalJson(pethSettings[k]),
+  );
+  return changed ? ['analysis settings'] : [];
 }
 
 export const nBehaviors = (o: PethOutcome) => o.labels.length;

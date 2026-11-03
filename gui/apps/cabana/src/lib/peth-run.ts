@@ -24,6 +24,7 @@ import { placeNeural } from './prepared.ts';
 import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { preselectUnselected } from './labels.ts';
 import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
+import { runDeps, type Uses } from './run-deps.ts';
 import type { PethCells, ShiftDraw } from '../workers/peth-types.ts';
 
 /** Behaviors to leave out when the panel first opens: those not marked controlled (a preselection only). */
@@ -76,6 +77,18 @@ export const DEFAULT_PETH_SETTINGS = {
 };
 export const [pethSettings, setPethSettings] = createStore(structuredClone(DEFAULT_PETH_SETTINGS));
 export type PethSettings = typeof DEFAULT_PETH_SETTINGS;
+
+/** PETH reads the bouts of the behaviors it aligns to, and no position. */
+export function pethUses(s: PethSettings): Uses {
+  const behaviors = annotationResults()
+    .filter((a) => a.id === 'behavior_annotations' && !a.error)
+    .flatMap((a) => a.epochs.map((e) => e.label));
+  return {
+    position: false,
+    grid: false,
+    labels: [...new Set(behaviors)].filter((l) => !s.unselected.includes(l)),
+  };
+}
 
 let pethSeeded = false;
 /** Sets the starting selection once, so other pages show it without the PETH page having been opened. */
@@ -235,6 +248,8 @@ export interface PethOutcome {
   settings: PethSettings;
   /** The Preprocess settings this run used. */
   prep: typeof DEFAULT_PREP;
+  /** What the run read beyond its settings (browser runs; a framework run is checked by its hash). */
+  deps?: Record<string, unknown>;
 }
 
 export const [pethStatus, setPethStatus] = createSignal<
@@ -316,6 +331,7 @@ export async function runPeth(): Promise<void> {
   }
   const prepUsed = { ...prep };
   const cfg: PethSettings = JSON.parse(JSON.stringify(pethSettings));
+  const deps = runDeps(pethUses(cfg));
   const reports = pethAlignedReports(data, cfg);
   const issue = pethRunIssue(data, cfg, reports);
   if (issue) {
@@ -438,6 +454,7 @@ export async function runPeth(): Promise<void> {
       seconds: (performance.now() - t0) / 1000,
       settings: cfg,
       prep: prepUsed,
+      deps,
     });
     cache.clear();
     setPethShowResults(true);

@@ -1,7 +1,8 @@
 // What differs between the last place-cell run and the settings now.
 
 import { arena, effectiveBin } from './arena.ts';
-import { DEFAULT_PLACE_SETTINGS, placeOutcome, placeSettings } from './place-run.ts';
+import { DEFAULT_PLACE_SETTINGS, PLACE_USES, placeOutcome, placeSettings } from './place-run.ts';
+import { depChanges, runDeps } from './run-deps.ts';
 import { describeChanges, PLACE_LABELS, runMatch } from './engine.ts';
 import { prepChanges } from './prep-deps.ts';
 
@@ -34,5 +35,6 @@ export function placeChanges(): string[] {
     string,
   ][])
     if (a[k] !== b[k]) out.push(label);
+  out.push(...depChanges(o.deps, runDeps(PLACE_USES)));
   return out;
 }

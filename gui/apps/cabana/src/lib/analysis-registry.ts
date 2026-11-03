@@ -5,9 +5,9 @@ import { configReport } from './config-import.ts';
 import { hasCapability } from './bridge-status.ts';
 import { behaviorDecoding, decodeTarget, positionDecoding } from './decoding-settings.ts';
 import { populationSettings } from './population-settings.ts';
-import { aurocSettings } from './auroc-run.ts';
+import { aurocSettings, aurocUses } from './auroc-run.ts';
 import { arena, effectiveBin } from './arena.ts';
-import { placeSettings } from './place-run.ts';
+import { PLACE_USES, placeSettings } from './place-run.ts';
 import { aurocPipeline, placePipeline } from './spec/place.ts';
 import { registerFrameworkAnalysis, type FrameworkRun } from './runs.ts';
 import { commonInput } from './session-config.ts';
@@ -61,6 +61,10 @@ export const PREVIEW_SHUFFLES = 50;
 
 const PLACE_PREP = ['eventSigmaS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS', 'minSpeed'];
 const AUROC_PREP = ['eventSigmaS', 'labelPadS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS'];
+const AUROC_PREP_NO_POSITION = ['eventSigmaS', 'labelPadS'];
+
+/** The labels of a list that a run reads: the chosen ones, or all of them when none is chosen. */
+const chosenOr = (chosen: string[], all: string[]) => (chosen.length ? chosen : all);
 
 export function registerAnalyses(): void {
   registerFrameworkAnalysis('place', (scope): FrameworkRun => {
@@ -82,6 +86,7 @@ export function registerAnalyses(): void {
       spec: { ...built, requires: [], target: 'position' },
       settings: used,
       prepKeys: PLACE_PREP,
+      uses: PLACE_USES,
     };
   });
   registerFrameworkAnalysis('auroc', (scope): FrameworkRun => {
@@ -102,20 +107,29 @@ export function registerAnalyses(): void {
     }
     if (!settings.speedFilter) delete used.minSpeed;
     if (settings.method === 'circular') delete used.match;
+    const uses = aurocUses(settings);
     return {
       spec: { ...built, requires: [], target: 'auroc_target' },
       settings: used,
-      prepKeys: AUROC_PREP,
+      prepKeys: uses.position ? AUROC_PREP : AUROC_PREP_NO_POSITION,
+      uses,
     };
   });
   registerFrameworkAnalysis('population', (scope): FrameworkRun => {
     const settings = { ...populationSettings, labels: [...populationSettings.labels] };
+    const ctx = populationContext();
     const position = settings.target === 'position';
     return {
-      spec: populationPipeline(settings, populationContext(), scope === 'preview'),
+      spec: populationPipeline(settings, ctx, scope === 'preview'),
       settings,
       // Event smoothing feeds every population analysis; position steps only the position target.
       prepKeys: position ? POPULATION_PREP : ['eventSigmaS'],
+      uses: {
+        position,
+        grid: position,
+        labels:
+          settings.target === 'position' ? [] : chosenOr(settings.labels, ctx.labels[settings.target]),
+      },
     };
   });
   registerFrameworkAnalysis('decoding', (scope): FrameworkRun => {
@@ -126,11 +140,17 @@ export function registerAnalyses(): void {
         spec: positionDecodingPipeline(positionDecoding, ctx, preview),
         settings: { type: 'position', ...positionDecoding },
         prepKeys: POSITION_DECODING_PREP,
+        uses: { position: true, grid: true, labels: [] },
       };
     return {
       spec: behaviorDecodingPipeline(behaviorDecoding, ctx, preview),
       settings: { type: 'behaviors', ...behaviorDecoding, labels: [...behaviorDecoding.labels] },
       prepKeys: BEHAVIOR_DECODING_PREP,
+      uses: {
+        position: false,
+        grid: false,
+        labels: chosenOr(behaviorDecoding.labels, ctx.labels.behaviors),
+      },
     };
   });
 }
