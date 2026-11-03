@@ -1,11 +1,17 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { configReport } from '../lib/config-import.ts';
 import { GROUPS, SLOTS, type Group, type Slot, type SlotId } from '../lib/slots.ts';
 import { ConfigSummary, fileMismatch, setupItems } from './ConfigReport.tsx';
 import { FileButton, Preview, type PreviewItem } from './Preview.tsx';
 import { ConflictReview } from './ConflictReview.tsx';
-import { activeLabel, clearActiveLabel, reviewingConflicts, setReviewingConflicts, takeFocus } from '../lib/label-view.ts';
+import {
+  activeLabel,
+  clearActiveLabel,
+  reviewingConflicts,
+  setReviewingConflicts,
+  takeFocus,
+} from '../lib/label-view.ts';
 import { fitToWindow } from './QcPanel.tsx';
 import { PopButton, StatusIcon, type Shown } from './QcParts.tsx';
 import {
@@ -17,8 +23,15 @@ import {
   labelRegistry,
   loadExample,
   missingRequired,
+  sessionName,
   unrecognized,
 } from '../lib/store.ts';
+import {
+  applySettings,
+  savedDatasets,
+  TEMPLATE_GROUPS,
+  type GroupId,
+} from '../lib/settings-template.ts';
 
 type Tab = Group | 'Unmatched';
 
@@ -198,6 +211,110 @@ function ExamplePicker(): JSX.Element {
   );
 }
 
+const savedWhen = (iso: string) =>
+  new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+const listed = (items: string[]) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+
+/** Copy chosen groups of settings from another dataset whose settings this browser kept. */
+function ApplySettings(props: { onApplied: (text: string) => void }): JSX.Element {
+  const [name, setName] = createSignal<string>();
+  const [include, setInclude] = createStore<Record<GroupId, boolean>>({
+    setup: true,
+    prep: true,
+    qc: true,
+    analyses: true,
+  });
+  const chosen = () => savedDatasets().find((d) => d.name === name()) ?? savedDatasets()[0];
+  const picked = () => TEMPLATE_GROUPS.filter((g) => include[g.id]);
+  const apply = () => {
+    const d = chosen();
+    if (!d) return;
+    applySettings(
+      d.settings,
+      picked().map((g) => g.id),
+    );
+    props.onApplied(
+      `Applied ${listed(picked().map((g) => g.label))} from ${d.name} (saved ${savedWhen(d.savedAt)}).`,
+    );
+  };
+  return (
+    <PopButton
+      label="Apply settings from another dataset"
+      title="Apply settings from another dataset"
+      width={460}
+      class="btn-secondary btn-small"
+      button="Apply settings from…"
+    >
+      {(close) => (
+        <div class="cb-examples">
+          <Show
+            when={sessionName()}
+            fallback={<p class="cb-muted">Load a dataset first. Settings are applied to it.</p>}
+          >
+            <Show
+              when={savedDatasets().length}
+              fallback={
+                <p class="cb-muted">No other dataset's settings are saved in this browser yet.</p>
+              }
+            >
+              <label class="cb-apply__dataset">
+                Dataset
+                <select value={chosen()?.name} onChange={(e) => setName(e.currentTarget.value)}>
+                  <For each={savedDatasets()}>
+                    {(d) => (
+                      <option value={d.name}>
+                        {d.name} · saved {savedWhen(d.savedAt)}
+                      </option>
+                    )}
+                  </For>
+                </select>
+              </label>
+              <For each={TEMPLATE_GROUPS}>
+                {(g) => (
+                  <label class="cb-examples__item">
+                    <input
+                      type="checkbox"
+                      checked={include[g.id]}
+                      onChange={(e) => setInclude(g.id, e.currentTarget.checked)}
+                    />
+                    <span>
+                      <span>{g.label}</span>
+                      <span class="cb-muted">
+                        Copies {g.copies}.{g.skips ? ` Not copied: ${g.skips}.` : ''}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </For>
+              <p class="cb-muted cb-apply__never">
+                Never copied: arena outline, zones, reference picture, QC review marks, rejected
+                cells. Settings are kept in this browser only.
+              </p>
+              <div class="cb-controls">
+                <span class="cb-spacer" />
+                <button class="btn-secondary btn-small" onClick={close}>
+                  Cancel
+                </button>
+                <button
+                  class="btn-primary btn-small"
+                  disabled={!picked().length}
+                  onClick={() => {
+                    apply();
+                    close();
+                  }}
+                >
+                  Apply {picked().length} {picked().length === 1 ? 'group' : 'groups'}
+                </button>
+              </div>
+            </Show>
+          </Show>
+        </div>
+      )}
+    </PopButton>
+  );
+}
+
 export function LoadPanel(): JSX.Element {
   const [dragging, setDragging] = createSignal(false);
   const tabs = (): Tab[] => [...GROUPS, ...(unrecognized().length ? ['Unmatched' as const] : [])];
@@ -215,6 +332,9 @@ export function LoadPanel(): JSX.Element {
     setTab(group);
     if (slot) setPickedIn(group, { slot });
   });
+  // What the last "Apply settings from…" copied; a new dataset starts without the note.
+  const [applied, setApplied] = createSignal<string>();
+  createEffect(on(sessionName, () => setApplied(undefined), { defer: true }));
   const missingLabel = () => {
     const f = activeLabel();
     return f?.to === 'load' && !labelRegistry().some((e) => e.name === f.name) ? f.name : undefined;
@@ -259,12 +379,21 @@ export function LoadPanel(): JSX.Element {
           />
         </label>
         <ExamplePicker />
+        <ApplySettings onApplied={setApplied} />
         <span class="cb-spacer" />
         <button class="btn-secondary btn-small" onClick={clearAll}>
           Clear
         </button>
       </div>
 
+      <Show when={applied()}>
+        <p class="cb-load__applied" role="status">
+          <StatusIcon status="pass" /> {applied()}{' '}
+          <button class="cb-linkbtn" onClick={() => setApplied(undefined)}>
+            Dismiss
+          </button>
+        </p>
+      </Show>
       <Show when={missingLabel()}>
         <p class="cb-warn cb-load__missing">
           Label '{missingLabel()}' is not in any loaded file. Add the time-marker, annotation or

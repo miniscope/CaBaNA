@@ -4002,6 +4002,25 @@ textarea {
 .cb-examples .cb-controls {
   margin-top: 8px;
 }
+.cb-apply__dataset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.cb-apply__never {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+}
+.cb-load__applied {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--success);
+}
 .cb-config-report p,
 .cb-config-report ul {
   margin: 0 0 8px;

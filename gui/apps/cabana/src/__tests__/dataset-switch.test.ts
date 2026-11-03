@@ -1,4 +1,5 @@
-// Loading another dataset puts every dataset-specific value back to its default.
+// Loading another dataset puts every dataset-specific value back to its default. Settings move
+// between datasets only when the user applies a saved dataset's settings, group by group.
 
 import { describe, expect, it } from 'vitest';
 import { arena, setArena } from '../lib/arena.ts';
@@ -23,6 +24,7 @@ import {
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { posRange, reviewed, setPosRange, setReviewed } from '../lib/qc-view.ts';
 import { buildSnapshot, markVisited } from '../lib/readiness-snapshot.ts';
+import { applySettings, savedDatasets } from '../lib/settings-template.ts';
 import {
   addFiles,
   cell,
@@ -120,4 +122,36 @@ describe('switching datasets', () => {
     expect(buildSnapshot().visited).toEqual({});
   });
 
+  it('applies only the chosen groups from a saved dataset, never per-recording values', () => {
+    const a = savedDatasets().find((d) => d.name === 'A');
+    expect(a).toBeDefined();
+    expect(savedDatasets().some((d) => d.name === 'B')).toBe(false); // the loaded one is not offered
+
+    applySettings(a!.settings, ['qc']);
+    expect(maxSpeed()).toBe(80);
+    expect(tol.lostPct).toBe(9);
+    expect(source.positionUnit).toBe('cm'); // setup not chosen
+    expect(placeSettings.nShuffles).toBe(DEFAULT_PLACE_SETTINGS.nShuffles);
+
+    applySettings(a!.settings, ['setup', 'prep', 'analyses']);
+    expect(experimentId()).toBe('open_field');
+    expect(source.positionUnit).toBe('px');
+    expect(source.bodyPart).toBe('Head');
+    expect(source.clockOffsetS).toBe(0); // clock alignment belongs to the recording
+    expect(source.subjectId).toBe('');
+    expect(prep.posWindowS).toBe(0.9);
+    expect(placeSettings.nShuffles).toBe(321);
+    expect(aurocSettings.nShuffles).toBe(222);
+    expect(aurocSettings.unselected).toEqual([]); // label selections are not copied
+    expect(aurocSettings.pairA).toBe('');
+    expect(pethSettings.align).toBe('offset');
+    expect(pethSettings.unselected).toEqual([]);
+    expect(populationSettings.binS).toBe(2);
+    expect(populationSettings.labels).toEqual([]);
+    expect(behaviorDecoding.C).toBe(3);
+    expect(behaviorDecoding.labels).toEqual([]);
+    expect(decodeTarget.type).toBe('behaviors');
+    expect(arena.binCm).toBe(4);
+    expect(arena.box).toBeUndefined(); // geometry is never copied
+  });
 });
