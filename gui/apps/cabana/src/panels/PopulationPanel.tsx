@@ -14,7 +14,6 @@ import { openRunOf } from '../lib/results-nav.ts';
 import {
   DEFAULT_POPULATION,
   POPULATION_METHODS,
-  PREVIEW_SHUFFLES,
   populationSettings as s,
   setPopulationSettings as set,
   type PopulationMethod,
@@ -51,6 +50,7 @@ import { correctionScope } from './population/logic.ts';
 import { StatesChart } from './population/StatesChart.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
+import { shufflesFor } from '../lib/preview.ts';
 
 type Tab = 'data' | 'methods' | 'stats' | 'results';
 const [tab, setTab] = createSignal<Tab>('data');
@@ -441,8 +441,8 @@ function Statistics(): JSX.Element {
           </Field>
         </div>
         <p class="cb-muted">
-          Quick preview uses {PREVIEW_SHUFFLES} shuffles and is marked Preliminary. Run analysis
-          uses the shuffles above.
+          Quick preview uses {shufflesFor('preview', s.shuffles)} shuffles and is marked
+          Preliminary. Run analysis uses the shuffles above.
         </p>
       </section>
       <section class="cb-setgroup cb-pn-card">
@@ -584,10 +584,10 @@ function Footer(props: { issues: () => string[] }): JSX.Element {
         <button
           class="btn-secondary"
           disabled={!!props.issues().length}
-          title={`${PREVIEW_SHUFFLES} shuffles; the result is marked Preliminary`}
+          title={`${shufflesFor('preview', s.shuffles)} shuffles; the result is marked Preliminary`}
           onClick={() => void start('preview')}
         >
-          Quick preview ({PREVIEW_SHUFFLES} shuffles)
+          Quick preview ({shufflesFor('preview', s.shuffles)} shuffles)
         </button>
         <button
           class="btn-primary"

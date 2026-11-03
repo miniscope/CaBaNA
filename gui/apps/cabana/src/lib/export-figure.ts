@@ -1,6 +1,8 @@
 // Figure and data exports (plan D-37). SVG views are serialized with their computed styles
 // inlined, so text stays text; canvas layers are embedded as PNG images; PNG is drawn at 2x.
 
+import { preliminaryText } from './preview.ts';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const STYLE_PROPS = [
   'fill',
@@ -131,7 +133,12 @@ export function toCsv(
 }
 
 /** Note lines every exported file of a run carries. */
-export const exportNotes = (r: { scope: string; analysis: string; run_id: string }) => [
+export const exportNotes = (r: {
+  scope: string;
+  analysis: string;
+  run_id: string;
+  gui?: { settings?: unknown };
+}) => [
   `run ${r.run_id} (${r.analysis})`,
-  ...(r.scope === 'preview' ? ['Preliminary: quick preview with 50 shuffles'] : []),
+  ...(r.scope === 'preview' ? [`${preliminaryText(r)} (quick preview)`] : []),
 ];

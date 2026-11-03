@@ -2,8 +2,7 @@ import { createSignal, For, Show, type JSX } from 'solid-js';
 import { StatusBadge } from '../components/StatusBadge.tsx';
 import { openItem } from '../components/Requirements.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
-import { PREVIEW_DECODING_SHUFFLES } from '../lib/decoding-settings.ts';
-import { PREVIEW_SHUFFLES } from '../lib/population-settings.ts';
+import { PREVIEW_TEXT } from '../lib/preview.ts';
 import { FRAMEWORK_ENGINE, statusOfItem } from '../lib/readiness-snapshot.ts';
 import type { AnalysisItem, Status } from '../lib/readiness.ts';
 import { active, cancelRun, runAll } from '../lib/runs.ts';
@@ -156,8 +155,7 @@ export function AnalyzeOverview(): JSX.Element {
                   disabled={batch()}
                   onChange={() => setScope('preview')}
                 />
-                Quick preview ({PREVIEW_SHUFFLES} shuffles for Population activity,{' '}
-                {PREVIEW_DECODING_SHUFFLES} for Decoding; results are marked Preliminary)
+                Quick preview ({PREVIEW_TEXT}; results are marked Preliminary)
               </label>
             </div>
             <div>

@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from 'solid-js';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { placePopover } from '../parts.tsx';
+import { preliminaryText } from '../../lib/preview.ts';
 
 export interface Match {
   matches: boolean;
@@ -24,7 +25,7 @@ export function RunBadges(props: {
     <span class="cb-rb-badges">
       <Show when={r().scope === 'preview'}>
         <span class="cb-badge cb-badge--warn" title="Quick preview with reduced shuffles">
-          Preliminary: 50 shuffles
+          {preliminaryText(r())}
         </span>
       </Show>
       <Show when={r().scope === 'full' && r().status === 'ok'}>

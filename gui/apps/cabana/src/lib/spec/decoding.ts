@@ -4,7 +4,6 @@
 
 import {
   OTHER_NAME,
-  PREVIEW_DECODING_SHUFFLES,
   type BehaviorDecoding,
   type CommonDecoding,
   type PositionDecoding,
@@ -34,11 +33,7 @@ const test = (c: CommonDecoding, n: number): Obj => ({
 /** Without the smoothing step: decoding never smooths the events. */
 const withoutSmoothing = (steps: Obj[]) => steps.filter((s) => s.name !== 'smooth_activity');
 
-export function positionDecodingPipeline(
-  s: PositionDecoding,
-  ctx: DecodingContext,
-  preview = false,
-): BuiltSpec {
+export function positionDecodingPipeline(s: PositionDecoding, ctx: DecodingContext): BuiltSpec {
   const common = commonSteps(ctx.common, { rejected: 'omit' });
   const metric: Obj = {
     name: 'bayesian_decoder',
@@ -62,7 +57,7 @@ export function positionDecodingPipeline(
           metric,
           states: 'position',
           masks: ['speed'],
-          shuffle: test(s, preview ? PREVIEW_DECODING_SHUFFLES : s.shuffles),
+          shuffle: test(s, s.shuffles),
         },
       ],
     },
@@ -74,11 +69,7 @@ export function positionDecodingPipeline(
   };
 }
 
-export function behaviorDecodingPipeline(
-  s: BehaviorDecoding,
-  ctx: DecodingContext,
-  preview = false,
-): BuiltSpec {
+export function behaviorDecodingPipeline(s: BehaviorDecoding, ctx: DecodingContext): BuiltSpec {
   const common = commonSteps(ctx.common, { rejected: 'omit', grid: false, position: false });
   const labels = s.labels.length ? s.labels : ctx.labels.behaviors;
   const requires = ['decoding_fold_gap', ...(s.overlap === 'exclude' ? ['overlap_policy'] : [])];
@@ -135,7 +126,7 @@ export function behaviorDecodingPipeline(
           name: 'decoding_behavior',
           metric,
           states: TARGET,
-          shuffle: test(s, preview ? PREVIEW_DECODING_SHUFFLES : s.shuffles),
+          shuffle: test(s, s.shuffles),
         },
       ],
     },

@@ -1,7 +1,7 @@
 // The pipeline for the Population page: one run, one pipeline holding the selected analyses
 // (they share the time bin and the target). Field names are the framework's.
 
-import { PREVIEW_SHUFFLES, type PopulationSettings } from '../population-settings.ts';
+import type { PopulationSettings } from '../population-settings.ts';
 import { commonSteps, type CommonInput } from './pipeline.ts';
 
 type Obj = Record<string, unknown>;
@@ -60,18 +60,15 @@ function targetTransforms(s: PopulationSettings, ctx: PopulationContext): Obj[] 
   ];
 }
 
-export function populationPipeline(
-  s: PopulationSettings,
-  ctx: PopulationContext,
-  preview = false,
-): BuiltSpec {
+export function populationPipeline(s: PopulationSettings, ctx: PopulationContext): BuiltSpec {
   const common = commonSteps(ctx.common, {
     rejected: 'omit',
     grid: s.target === 'position',
     position: s.target === 'position',
   });
   const target = s.target === 'position' ? 'position' : TARGET;
-  const nShuffles = preview ? PREVIEW_SHUFFLES : s.shuffles;
+  // A preview's smaller count is already in `s.shuffles` (`shufflesFor`).
+  const nShuffles = s.shuffles;
   const shuffle = (correction: 'none' | 'max_stat') => ({
     n_shuffles: nShuffles,
     null: {

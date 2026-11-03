@@ -32,7 +32,6 @@ import {
   DEFAULT_POSITION_DECODING,
   decodeTarget,
   positionDecoding,
-  PREVIEW_DECODING_SHUFFLES,
   setBehaviorDecoding,
   setDecodeTarget,
   setPositionDecoding,
@@ -67,6 +66,14 @@ import {
 import { canRun, checks, isPosition, runBlock } from './decoding/state.ts';
 import { fitToWindow } from './QcPanel.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
+import { shufflesFor } from '../lib/preview.ts';
+
+/** Shuffles a Quick preview of the current target runs. */
+const previewCount = () =>
+  shufflesFor(
+    'preview',
+    (decodeTarget.type === 'position' ? positionDecoding : behaviorDecoding).shuffles,
+  );
 
 type View = 'decoder' | 'frames' | 'folds' | 'significance' | 'checks';
 const VIEWS: [View, string][] = [
@@ -430,13 +437,13 @@ function Setup(props: { onResults: () => void }): JSX.Element {
             type="button"
             class="btn-secondary"
             disabled={!canRun() || browserRunning()}
-            title={`${PREVIEW_DECODING_SHUFFLES} shuffles, labeled Preliminary`}
+            title={`${previewCount()} shuffles, labeled Preliminary`}
             onClick={() => {
               setShownEngine('framework');
               void runAnalysis('decoding', 'preview').then(() => props.onResults());
             }}
           >
-            Quick preview ({PREVIEW_DECODING_SHUFFLES} shuffles)
+            Quick preview ({previewCount()} shuffles)
           </button>
           <button
             type="button"

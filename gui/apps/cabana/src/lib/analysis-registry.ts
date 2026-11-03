@@ -16,6 +16,7 @@ import { behaviorDecodingPipeline, positionDecodingPipeline } from './spec/decod
 import { populationPipeline, type PopulationContext } from './spec/population.ts';
 import { prep } from './preprocess.ts';
 import type { CapabilityName } from './bridge-client.ts';
+import { shufflesFor } from './preview.ts';
 
 const labelsOf = (slot: 'zone_annotations' | 'behavior_annotations') => [
   ...new Set(
@@ -56,8 +57,6 @@ const POSITION_DECODING_PREP = [
   'maxGapS',
 ];
 
-/** Shuffles of a Quick preview (saved as Preliminary). */
-export const PREVIEW_SHUFFLES = 50;
 
 const PLACE_PREP = ['eventSigmaS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS', 'minSpeed'];
 const AUROC_PREP = ['eventSigmaS', 'labelPadS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS'];
@@ -73,7 +72,7 @@ export function registerAnalyses(): void {
     // preview uses the preview shuffle count.
     const settings = {
       ...placeSettings,
-      nShuffles: scope === 'preview' ? Math.min(PREVIEW_SHUFFLES, placeSettings.nShuffles) : placeSettings.nShuffles,
+      nShuffles: shufflesFor(scope, placeSettings.nShuffles),
       minOccS: arena.minOccupancy,
       binCm: effectiveBin(),
     };
@@ -93,7 +92,7 @@ export function registerAnalyses(): void {
     const ctx = populationContext();
     const settings = {
       ...aurocSettings,
-      nShuffles: scope === 'preview' ? Math.min(PREVIEW_SHUFFLES, aurocSettings.nShuffles) : aurocSettings.nShuffles,
+      nShuffles: shufflesFor(scope, aurocSettings.nShuffles),
       unselected: [...aurocSettings.unselected],
       match: { ...aurocSettings.match },
     };
@@ -116,11 +115,16 @@ export function registerAnalyses(): void {
     };
   });
   registerFrameworkAnalysis('population', (scope): FrameworkRun => {
-    const settings = { ...populationSettings, labels: [...populationSettings.labels] };
+    // The executed shuffle count is saved, so a Preliminary record says how many ran.
+    const settings = {
+      ...populationSettings,
+      labels: [...populationSettings.labels],
+      shuffles: shufflesFor(scope, populationSettings.shuffles),
+    };
     const ctx = populationContext();
     const position = settings.target === 'position';
     return {
-      spec: populationPipeline(settings, ctx, scope === 'preview'),
+      spec: populationPipeline(settings, ctx),
       settings,
       // Event smoothing feeds every population analysis; position steps only the position target.
       prepKeys: position ? POPULATION_PREP : ['eventSigmaS'],
@@ -134,17 +138,23 @@ export function registerAnalyses(): void {
   });
   registerFrameworkAnalysis('decoding', (scope): FrameworkRun => {
     const ctx = populationContext();
-    const preview = scope === 'preview';
-    if (decodeTarget.type === 'position')
+    if (decodeTarget.type === 'position') {
+      const s = { ...positionDecoding, shuffles: shufflesFor(scope, positionDecoding.shuffles) };
       return {
-        spec: positionDecodingPipeline(positionDecoding, ctx, preview),
-        settings: { type: 'position', ...positionDecoding },
+        spec: positionDecodingPipeline(s, ctx),
+        settings: { type: 'position', ...s },
         prepKeys: POSITION_DECODING_PREP,
         uses: { position: true, grid: true, labels: [] },
       };
+    }
+    const s = {
+      ...behaviorDecoding,
+      labels: [...behaviorDecoding.labels],
+      shuffles: shufflesFor(scope, behaviorDecoding.shuffles),
+    };
     return {
-      spec: behaviorDecodingPipeline(behaviorDecoding, ctx, preview),
-      settings: { type: 'behaviors', ...behaviorDecoding, labels: [...behaviorDecoding.labels] },
+      spec: behaviorDecodingPipeline(s, ctx),
+      settings: { type: 'behaviors', ...s },
       prepKeys: BEHAVIOR_DECODING_PREP,
       uses: {
         position: false,

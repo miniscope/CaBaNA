@@ -3,6 +3,7 @@ import type { RunRecord } from '../../lib/bridge-client.ts';
 import { CAPABILITY_TEXT, capabilities } from '../../lib/bridge-status.ts';
 import { frameworkNote } from '../../lib/results-overview.ts';
 import { PopButton } from '../QcParts.tsx';
+import { preliminaryText } from '../../lib/preview.ts';
 
 const Row = (p: { k: string; children: JSX.Element }) => (
   <tr>
@@ -35,7 +36,7 @@ export function RunDetailsBody(props: { record: RunRecord; pipeline?: string }):
           </Show>
           <Row k="Run">
             {r().run_id} · {r().status} ·{' '}
-            {r().scope === 'preview' ? 'quick preview (50 shuffles)' : 'full analysis'}
+            {r().scope === 'preview' ? `quick preview (${preliminaryText(r())})` : 'full analysis'}
           </Row>
           <Row k="Seed">{r().seeds?.base ?? 'not set'}</Row>
           <Row k="Inputs">

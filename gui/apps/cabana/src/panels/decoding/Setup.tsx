@@ -6,7 +6,6 @@ import {
   DEFAULT_BEHAVIOR_DECODING,
   DEFAULT_POSITION_DECODING,
   OTHER_NAME,
-  PREVIEW_DECODING_SHUFFLES,
   setBehaviorDecoding,
   setPositionDecoding,
 } from '../../lib/decoding-settings.ts';
@@ -29,6 +28,7 @@ import {
   shared,
 } from './state.ts';
 import { samplingRate } from '../../lib/store.ts';
+import { shufflesFor } from '../../lib/preview.ts';
 
 const def = () => (isPosition() ? DEFAULT_POSITION_DECODING : DEFAULT_BEHAVIOR_DECODING);
 
@@ -575,6 +575,7 @@ export function FoldsView(): JSX.Element {
 
 export function SignificanceView(): JSX.Element {
   const s = () => shared();
+  const previewN = () => shufflesFor('preview', s().shuffles);
   return (
     <div class="cb-dec-cols">
       <section class="cb-setgroup">
@@ -665,14 +666,13 @@ export function SignificanceView(): JSX.Element {
       <section class="cb-setgroup">
         <h3>Quick preview</h3>
         <p>
-          Runs the same analysis with {PREVIEW_DECODING_SHUFFLES} shuffles to check the settings.
-          Its results are labeled Preliminary and are kept apart from the full run of{' '}
+          Runs the same analysis with {previewN()} shuffles to check the settings. Its results are
+          labeled Preliminary and are kept apart from the full run of{' '}
           {s().shuffles.toLocaleString()} shuffles. Use the Quick preview button beside Run.
         </p>
         <p class="cb-dec-note">
-          With {PREVIEW_DECODING_SHUFFLES} shuffles the smallest possible p-value is{' '}
-          {(1 / (PREVIEW_DECODING_SHUFFLES + 1)).toFixed(3)}, so corrected p-values cannot reach
-          small values.
+          With {previewN()} shuffles the smallest possible p-value is{' '}
+          {(1 / (previewN() + 1)).toFixed(3)}, so corrected p-values cannot reach small values.
           <InfoTip label="About the quick preview">
             Do not report a preview as a result. Rerun with the full number of shuffles.
           </InfoTip>

@@ -26,6 +26,7 @@ import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlaceResults } from './PlaceResults.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { EngineNotice } from './results/EngineNotice.tsx';
+import { shufflesFor } from '../lib/preview.ts';
 
 type NumKey =
   | 'nShuffles'
@@ -256,7 +257,7 @@ function PlaceSetup(): JSX.Element {
         <button
           class="btn-secondary"
           disabled={!ready() || !ok() || ok()?.used === 0}
-          title="Runs 50 shuffles. The result is saved as Preliminary."
+          title={`Runs ${shufflesFor('preview', placeSettings.nShuffles)} shuffles. The result is saved as Preliminary.`}
           onClick={() => void runPlaceCells({ preview: true })}
         >
           Quick preview

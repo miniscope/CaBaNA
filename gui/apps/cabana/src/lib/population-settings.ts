@@ -55,7 +55,6 @@ export const [populationSettings, setPopulationSettings] = createStore<Populatio
   structuredClone(DEFAULT_POPULATION),
 );
 onClear(() => setPopulationSettings(reconcile(structuredClone(DEFAULT_POPULATION))));
-export const PREVIEW_SHUFFLES = 50;
 
 /** Settings read from a saved record: missing fields take the defaults; a newer version is refused. */
 export function readPopulationSettings(saved: unknown): PopulationSettings | { error: string } {

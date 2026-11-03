@@ -1,3 +1,4 @@
+import { shufflesFor } from '../lib/preview.ts';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREP } from '../lib/preprocess.ts';
 import {
@@ -72,9 +73,12 @@ describe('population spec', () => {
     await snap('population-position', built);
     expect((built.pipeline.analyses as { masks: string[] }[])[0].masks).toEqual(['speed']);
   });
-  it('quick preview uses 50 shuffles', () => {
-    const built = populationPipeline(DEFAULT_POPULATION, ctx(social), true);
-    expect((built.pipeline.analyses as { shuffle: { n_shuffles: number } }[])[0].shuffle.n_shuffles).toBe(50);
+  it('quick preview uses at most 50 shuffles, never more than the full analysis', () => {
+    const n = (shuffles: number) =>
+      (populationPipeline({ ...DEFAULT_POPULATION, shuffles: shufflesFor('preview', shuffles) }, ctx(social))
+        .pipeline.analyses as { shuffle: { n_shuffles: number } }[])[0].shuffle.n_shuffles;
+    expect(n(200)).toBe(50);
+    expect(n(20)).toBe(20);
   });
 });
 

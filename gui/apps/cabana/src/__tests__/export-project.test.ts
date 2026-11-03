@@ -17,8 +17,11 @@ describe('figure export', () => {
     expect(out.indexOf('<image')).toBeLessThan(out.indexOf('<text'));
   });
   it('writes csv with notes, quoting and a preliminary marker', () => {
-    const csv = toCsv(['state', 'value'], [['a,b', 1.5], ['c', null]], exportNotes({ scope: 'preview', analysis: 'population', run_id: 'r1' }));
-    expect(csv.split('\n')).toEqual(['# run r1 (population)', '# Preliminary: quick preview with 50 shuffles', 'state,value', '"a,b",1.5', 'c,', '']);
+    const gui = { settings: { settingsVersion: 2, analysis: { shuffles: 20 } } };
+    const csv = toCsv(['state', 'value'], [['a,b', 1.5], ['c', null]], exportNotes({ scope: 'preview', analysis: 'population', run_id: 'r1', gui }));
+    expect(csv.split('\n')).toEqual(['# run r1 (population)', '# Preliminary: 20 shuffles (quick preview)', 'state,value', '"a,b",1.5', 'c,', '']);
+    // A record that does not say how many ran does not guess.
+    expect(exportNotes({ scope: 'preview', analysis: 'population', run_id: 'r1' })[1]).toBe('Preliminary (shuffle count not recorded) (quick preview)');
   });
 });
 

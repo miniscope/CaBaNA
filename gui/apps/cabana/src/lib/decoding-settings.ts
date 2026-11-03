@@ -76,5 +76,4 @@ onClear(() => {
   setBehaviorDecoding(reconcile({ ...DEFAULT_BEHAVIOR_DECODING, labels: [] }));
   setDecodeTarget('type', 'position');
 });
-export const PREVIEW_DECODING_SHUFFLES = 50;
 export const OTHER_NAME = 'Other / none of the selected behaviors';

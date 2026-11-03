@@ -41,6 +41,7 @@ import { fitToWindow } from './QcPanel.tsx';
 import { createSize, PopButton } from './QcParts.tsx';
 import { AurocResults } from './AurocResults.tsx';
 import { EngineNotice, RunProgress } from './results/EngineNotice.tsx';
+import { shufflesFor } from '../lib/preview.ts';
 
 const PALETTE = ['#1f77b4', '#2ca02c', '#8c6d3f', '#c9a227', '#9467bd', '#d62728', '#17becf'];
 export const behaviorColor = (i: number) => PALETTE[i % PALETTE.length];
@@ -419,7 +420,7 @@ function AurocSetup(): JSX.Element {
         <button
           class="btn-secondary"
           disabled={!ok() || !selected().length}
-          title="Runs 50 shuffles. The result is saved as Preliminary."
+          title={`Runs ${shufflesFor('preview', aurocSettings.nShuffles)} shuffles. The result is saved as Preliminary.`}
           onClick={() => void runAuroc({ preview: true })}
         >
           Quick preview
