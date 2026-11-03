@@ -2,7 +2,8 @@
 // category, tab or step keeps the selection, the plot zoom and the open sections.
 
 import { createSignal } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
+import { onClear } from './store.ts';
 
 export type QcTab = 'behavior' | 'neural';
 export const [qcTab, setQcTab] = createSignal<QcTab>('behavior');
@@ -25,3 +26,11 @@ export const [posRange, setPosRange] = createSignal<[number, number] | undefined
 
 /** The open one of the folding right-hand boxes (Settings, Correction). */
 export const [openFold, setOpenFold] = createSignal<string | undefined>('settings');
+
+// Review marks, selections and zoom belong to the dataset; the open tab and sections do not.
+onClear(() => {
+  setReviewed(reconcile({}));
+  setPicked(reconcile({}));
+  setListPage(reconcile({}));
+  setPosRange(undefined);
+});

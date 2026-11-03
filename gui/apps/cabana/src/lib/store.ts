@@ -53,7 +53,9 @@ export interface LoadedInfo {
 const [loaded, setLoaded] = createStore<Partial<Record<SlotId, LoadedInfo>>>({});
 const [unrecognized, setUnrecognized] = createSignal<File[]>([]);
 const [version, setVersion] = createSignal(0);
-const [maxSpeed, setMaxSpeed] = createSignal(60);
+/** cm/s. Frame steps faster than this are implausible jumps. */
+const DEFAULT_MAX_SPEED = 60;
+const [maxSpeed, setMaxSpeed] = createSignal(DEFAULT_MAX_SPEED);
 
 /** How much error each QC may have before it fails, as a percent (minPve: the least explained variance). */
 export const DEFAULT_TOL = {
@@ -186,7 +188,12 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
   const folder = (files[0] as File & { webkitRelativePath?: string })?.webkitRelativePath?.split(
     '/',
   )[0];
-  if (folder) setSessionName(folder);
+  // A folder is a whole session: it replaces the loaded one rather than mixing with it. Choices
+  // made before anything was loaded (such as the experiment) are kept.
+  if (folder) {
+    if (SLOTS.some((s) => loaded[s.id])) clearAll();
+    setSessionName(folder);
+  }
   // A config is read first, so the file names it gives decide where the other files go.
   const config = slot ? undefined : files.find((f) => matchSlot(f.name) === 'config');
   if (config) await load('config', config);
@@ -239,8 +246,14 @@ const clearHooks: (() => void)[] = [];
 /** Run `f` whenever the loaded data is cleared, so other parts of the app can forget what belonged to it. */
 export const onClear = (f: () => void) => clearHooks.push(f);
 
+/** Forget the loaded dataset and put everything that belonged to it back to its defaults. */
 export function clearAll(): void {
   setSessionName(undefined);
+  setSource(reconcile(structuredClone(DEFAULT_SOURCE)));
+  setExperiment('custom');
+  setMaxSpeed(DEFAULT_MAX_SPEED);
+  setTol({ ...DEFAULT_TOL });
+  selectCell(0);
   setConfigFiles({});
   setOverride({ neuralFps: undefined, cameraFps: undefined, durationS: undefined });
   clearHooks.forEach((f) => f());
@@ -376,7 +389,7 @@ export const missingRequired = () =>
   SLOTS.filter((s) => levelOf(s.id) === 'required' && !loaded[s.id]?.summary);
 
 /** How the data was collected. Units change the QC; the rest tell the user how to export their files. */
-export const [source, setSource] = createStore({
+const DEFAULT_SOURCE = {
   sessionDate: '',
   subjectId: '',
   species: '',
@@ -400,7 +413,8 @@ export const [source, setSource] = createStore({
   annotationUnit: 'seconds' as 'seconds' | 'milliseconds' | 'camera frames' | 'miniscope frames',
   extractionTool: 'other',
   deconTool: 'other',
-});
+};
+export const [source, setSource] = createStore(structuredClone(DEFAULT_SOURCE));
 
 /** Record that the arena settings were provided without a config file. */
 export function markConfigProvided(summary: string): void {

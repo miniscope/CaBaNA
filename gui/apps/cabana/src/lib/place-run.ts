@@ -109,6 +109,7 @@ export function cancelPlaceRun(): void {
   setPlaceStatus({ kind: 'idle' });
 }
 onClear(() => {
+  setPlaceSettings({ ...DEFAULT_PLACE_SETTINGS });
   cancelPlaceRun();
   setPlaceOutcome(undefined);
   setPlaceShowResults(false);

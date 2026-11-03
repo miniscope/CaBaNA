@@ -32,6 +32,7 @@ import {
   experiment,
   labelRegistry,
   loaded,
+  onClear,
   rawTrace,
   samplingRate,
   stepId,
@@ -84,6 +85,7 @@ export function populationStateCount(
 }
 
 const [visitedPages, setVisitedPages] = createSignal<Partial<Record<ItemId, boolean>>>({});
+onClear(() => setVisitedPages({}));
 export const markVisited = (id: ItemId) =>
   visitedPages()[id] || setVisitedPages({ ...visitedPages(), [id]: true });
 

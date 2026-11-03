@@ -2,7 +2,7 @@
 // kept by Preprocess), settings, the run on the worker pool, and the results the panel reads.
 
 import { createEffect, createMemo, createRoot, createSignal, on } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
 import type { RunRecord } from './bridge-client.ts';
 import { START_COMMAND } from './bridge-status.ts';
@@ -261,6 +261,8 @@ export function cancelAurocRun(): void {
   setAurocStatus({ kind: 'idle' });
 }
 onClear(() => {
+  setAurocSettings(reconcile({ ...DEFAULT_AUROC_SETTINGS, match: { ...DEFAULT_MATCH } }));
+  aurocSeeded = false;
   cancelAurocRun();
   setAurocOutcome(undefined);
   setAurocShowResults(false);

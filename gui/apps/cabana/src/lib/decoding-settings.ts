@@ -1,7 +1,8 @@
 // Decoding settings (plan D-22, D-23). Position and behavior decoding keep separate settings so
 // switching the target type never changes the other one. "Starting settings" are the defaults.
 
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
+import { onClear } from './store.ts';
 import { SETTINGS_VERSION } from './settings-hash.ts';
 
 export type DecodeTarget = 'position' | 'behaviors';
@@ -69,6 +70,11 @@ export const [behaviorDecoding, setBehaviorDecoding] = createStore<BehaviorDecod
 });
 export const [decodeTarget, setDecodeTarget] = createStore<{ type: DecodeTarget }>({
   type: 'position',
+});
+onClear(() => {
+  setPositionDecoding(reconcile({ ...DEFAULT_POSITION_DECODING }));
+  setBehaviorDecoding(reconcile({ ...DEFAULT_BEHAVIOR_DECODING, labels: [] }));
+  setDecodeTarget('type', 'position');
 });
 export const PREVIEW_DECODING_SHUFFLES = 50;
 export const OTHER_NAME = 'Other / none of the selected behaviors';

@@ -1,7 +1,6 @@
 import {
   createEffect,
   createMemo,
-  createRoot,
   createSignal,
   For,
   onCleanup,
@@ -12,7 +11,6 @@ import {
 import { binGrid, effectiveBin } from '../lib/arena.ts';
 import { bridgeState } from '../lib/bridge-status.ts';
 import { openRunOf } from '../lib/results-nav.ts';
-import { persistStore } from '../lib/persist-settings.ts';
 import {
   DEFAULT_POPULATION,
   POPULATION_METHODS,
@@ -53,9 +51,6 @@ import { correctionScope } from './population/logic.ts';
 import { StatesChart } from './population/StatesChart.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
-
-// Remembered in this browser; one root so the effect is owned.
-createRoot(() => persistStore('cabana-population-settings', s, set, DEFAULT_POPULATION));
 
 type Tab = 'data' | 'methods' | 'stats' | 'results';
 const [tab, setTab] = createSignal<Tab>('data');

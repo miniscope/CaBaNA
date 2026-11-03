@@ -6,7 +6,7 @@ import { boutFrames, dilateMask, lowerBound } from './framework.ts';
 import { STEPS, usedBy, type PrepKey, type StepId } from './prep-deps.ts';
 import { DEFAULT_PREP, prep, setPrep } from './preprocess.ts';
 import { gapRuns, positionIssue, positionOnNeural } from './prepared.ts';
-import { annotationResults, deconvolved, frameTimes, samplingRate } from './store.ts';
+import { annotationResults, deconvolved, frameTimes, onClear, samplingRate } from './store.ts';
 import { span } from './viz.ts';
 
 export type PlotId =
@@ -40,6 +40,7 @@ export const [helpTab, setHelpTab] = createSignal<'about' | PlotId>();
 // ---- Preview window, shared by every step
 export const [winS, setWinS] = createSignal(20);
 export const [winFrom, setWinFrom] = createSignal(0);
+onClear(() => setWinFrom(0));
 export const winStart = () =>
   Math.min(Math.max(winFrom(), span()[0]), Math.max(span()[0], span()[1] - winS()));
 export const prepWindow = (): [number, number] => [winStart(), winStart() + winS()];

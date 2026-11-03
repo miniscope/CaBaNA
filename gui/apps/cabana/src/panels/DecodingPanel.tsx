@@ -54,7 +54,6 @@ import {
 } from '../lib/runs.ts';
 import { DecodingResults } from './DecodingResults.tsx';
 import { RunProgress } from './results/EngineNotice.tsx';
-import './decoding/persist.ts';
 import {
   ChecksView,
   DecoderView,

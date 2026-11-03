@@ -12,11 +12,25 @@ import {
   pveSweep,
 } from './decon.ts';
 import { noiseSigma, type Check } from './qc.ts';
-import { deconvolved, denoisedTrace, rawTrace, rejected, samplingRate, tol } from './store.ts';
+import {
+  deconvolved,
+  denoisedTrace,
+  onClear,
+  rawTrace,
+  rejected,
+  samplingRate,
+  tol,
+} from './store.ts';
 
-const [indicatorId, pickIndicator] = createSignal('gcamp6f');
-const [tauRise, setTauRise] = createSignal(0.1);
-const [tauDecay, setTauDecay] = createSignal(0.6);
+const DEFAULT_INDICATOR = { id: 'gcamp6f', tauRise: 0.1, tauDecay: 0.6 };
+const [indicatorId, pickIndicator] = createSignal(DEFAULT_INDICATOR.id);
+const [tauRise, setTauRise] = createSignal(DEFAULT_INDICATOR.tauRise);
+const [tauDecay, setTauDecay] = createSignal(DEFAULT_INDICATOR.tauDecay);
+onClear(() => {
+  pickIndicator(DEFAULT_INDICATOR.id);
+  setTauRise(DEFAULT_INDICATOR.tauRise);
+  setTauDecay(DEFAULT_INDICATOR.tauDecay);
+});
 const [compareTo, setCompareTo] = createSignal<'denoised' | 'raw'>('denoised');
 export { indicatorId, tauRise, setTauRise, tauDecay, setTauDecay, compareTo, setCompareTo };
 

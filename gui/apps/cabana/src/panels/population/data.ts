@@ -12,6 +12,7 @@ import {
   deconvolved,
   frameTimes,
   labelRegistry,
+  onClear,
   rejected,
   samplingRate,
 } from '../../lib/store.ts';
@@ -39,6 +40,7 @@ export const neuralSummary = createMemo(() => {
 
 /** Labels the user switched off, per target. The settings hold the resulting list. */
 const [off, setOff] = createSignal<Record<string, string[]>>({});
+onClear(() => setOff({}));
 export const isOff = (name: string) => (off()[populationSettings.target] ?? []).includes(name);
 export function toggleLabel(name: string): void {
   const t = populationSettings.target;

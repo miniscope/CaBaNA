@@ -1,7 +1,8 @@
 // Population analysis settings (plan D-25 to D-29). Defaults follow the framework's `population`
 // recipe: 0.5 s time bin, circular cell-shift null, 200 shuffles, no correction.
 
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
+import { onClear } from './store.ts';
 import { SETTINGS_VERSION } from './settings-hash.ts';
 
 export type PopulationTarget = 'behaviors' | 'zones' | 'position';
@@ -53,6 +54,7 @@ export type PopulationSettings = typeof DEFAULT_POPULATION;
 export const [populationSettings, setPopulationSettings] = createStore<PopulationSettings>(
   structuredClone(DEFAULT_POPULATION),
 );
+onClear(() => setPopulationSettings(reconcile(structuredClone(DEFAULT_POPULATION))));
 export const PREVIEW_SHUFFLES = 50;
 
 /** Settings read from a saved record: missing fields take the defaults; a newer version is refused. */

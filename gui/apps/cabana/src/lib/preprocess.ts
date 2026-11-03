@@ -1,6 +1,7 @@
 // Preprocessing settings, one per framework step (functions in framework.ts).
 
 import { createStore } from 'solid-js/store';
+import { onClear } from './store.ts';
 
 /**
  * Starting points. Each is one framework step (named in the comment); a value of 0 leaves the step out.
@@ -26,3 +27,4 @@ export const DEFAULT_PREP = {
   labelPadS: 0,
 };
 export const [prep, setPrep] = createStore({ ...DEFAULT_PREP });
+onClear(() => setPrep({ ...DEFAULT_PREP }));

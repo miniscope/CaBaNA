@@ -1,7 +1,7 @@
 // The time window shared by the plots in the Data visualization step.
 
 import { createMemo, createSignal } from 'solid-js';
-import { cameraTimes, frameTimes } from './store.ts';
+import { cameraTimes, frameTimes, onClear } from './store.ts';
 
 /** First and last time of the session, in seconds. */
 export const span = createMemo<[number, number]>(() => {
@@ -37,6 +37,11 @@ export const setWinStartClamped = (s: number) => setWinStart(s);
 
 /** A time under the mouse in the session plots. */
 export const [hoverT, setHoverT] = createSignal<number | undefined>();
+// The window length is a display choice; where it sits belongs to the dataset.
+onClear(() => {
+  setWinStart(0);
+  setHoverT(undefined);
+});
 
 /** Seconds as m:ss. */
 export const mss = (s: number): string => {

@@ -2,7 +2,7 @@
 // settings, the run on the worker pool, and the results the panels read.
 
 import { createMemo, createSignal } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import type { WorkerPool } from '@calab/compute';
 import { behaviorFrames, type AurocMinShift } from './auroc.ts';
 import {
@@ -254,6 +254,8 @@ export function cancelPethRun(): void {
   setPethStatus({ kind: 'idle' });
 }
 onClear(() => {
+  setPethSettings(reconcile(structuredClone(DEFAULT_PETH_SETTINGS)));
+  pethSeeded = false;
   cancelPethRun();
   setPethOutcome(undefined);
   setPethShowResults(false);

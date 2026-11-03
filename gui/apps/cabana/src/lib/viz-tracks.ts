@@ -1,14 +1,14 @@
 // What the Data visualization timeline shows: the heat map source, behavior and zone rows, and which tracks are visible.
 
 import { createMemo, createSignal } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import { arena, inZone, positionsCm, pxPerCm, toPx } from './arena.ts';
 import { ZONE_COLORS } from './draw.ts';
 import { lowerBound } from './framework.ts';
 import {
   annotationResults,
-  cameraTimes,
   cameraClock,
+  cameraTimes,
   deconvolved,
   denoisedTrace,
   frameLabelsOnCamera,
@@ -16,6 +16,7 @@ import {
   labelRegistry,
   markerFile,
   neuralSpan,
+  onClear,
   positionResult,
   rawTrace,
   samplingRate,
@@ -50,6 +51,10 @@ export const neuralT = createMemo<ArrayLike<number> | undefined>(() => {
 });
 
 export const [heatSrc, setHeatSrc] = createSignal<Source | undefined>();
+onClear(() => {
+  setHeatSrc(undefined);
+  setChoice(reconcile({}));
+});
 export const heat = () => (heatSrc() && matrixOf(heatSrc()!) ? heatSrc()! : sources()[0]);
 
 /** Each cell's own color scale for the heat map: its 5th to 99.5th percentile over the session. */

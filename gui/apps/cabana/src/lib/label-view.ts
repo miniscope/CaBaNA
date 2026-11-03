@@ -5,7 +5,7 @@
 import { createSignal } from 'solid-js';
 import type { Agreement } from './frame-labels.ts';
 import type { LabelEntry, LabelSource } from './labels.ts';
-import { goToStep } from './store.ts';
+import { goToStep, onClear } from './store.ts';
 
 // ---- Paging ----
 
@@ -196,6 +196,11 @@ const [focusLabel, setFocusLabel] = createSignal<LabelFocus | undefined>();
 /** The label the user came for, kept highlighted after the request is taken. */
 const [activeLabel, setActiveLabel] = createSignal<LabelFocus | undefined>();
 export { focusLabel, activeLabel };
+onClear(() => {
+  setFocusLabel(undefined);
+  setActiveLabel(undefined);
+  setReviewingConflicts(false);
+});
 
 /** Go to a page with a label (and the file it came from) selected there. */
 export function showLabel(to: LabelFocus['to'], name: string, file?: string): void {
