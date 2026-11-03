@@ -56,7 +56,9 @@ export function labelCounts(registry: LabelEntry[]): Snapshot['labels'] {
     epochs,
     zones,
     behaviors: usable.filter((e) => e.slot !== 'zone_annotations' && e.source !== 'markers').length,
-    alignable: usable.filter((e) => e.source !== 'frame_categorical').length,
+    // PETH runs on the epochs in the behavior annotations file; zones and time markers are not supported yet
+    alignable: usable.filter((e) => e.slot === 'behavior_annotations' && e.source === 'epochs')
+      .length,
   };
 }
 

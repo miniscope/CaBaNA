@@ -110,7 +110,7 @@ export interface Snapshot {
   deconvolved: boolean;
   position: boolean;
   spatialComplete: boolean;
-  /** Labels usable by analyses (not blocked), by kind. */
+  /** Labels usable by analyses (not blocked), by kind; `alignable`: what PETH can align to. */
   labels: { epochs: number; behaviors: number; zones: number; alignable: number };
   /** Stimuli whose label is not loaded. */
   missingStimulusLabels: string[];
@@ -250,7 +250,10 @@ export function analysisNeeds(
       break;
     case 'peth':
       if (s.labels.alignable < 1)
-        need('Load a label to align to (behavior epochs or time markers).', LOAD);
+        need(
+          'Load behavior annotations to align to. PETH does not align to zones or time markers yet.',
+          LOAD,
+        );
       for (const l of s.missingStimulusLabels)
         need(`Missing label '${l}' referenced by a stimulus.`, LOAD);
       break;

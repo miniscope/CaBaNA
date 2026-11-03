@@ -26,7 +26,8 @@ const registry = [
 
 describe('snapshot helpers', () => {
   it('counts only usable labels, by what analyses can do with them', () => {
-    expect(labelCounts(registry)).toEqual({ epochs: 3, zones: 1, behaviors: 2, alignable: 4 });
+    // PETH aligns to annotated behavior epochs only: zones and time markers are not counted
+    expect(labelCounts(registry)).toEqual({ epochs: 3, zones: 1, behaviors: 2, alignable: 2 });
   });
   it('reports each missing stimulus label once and ignores unlabeled stimuli', () => {
     expect(missingStimulusLabels([{ label: 'tone' }, { label: 'tone' }, { label: '' }])).toEqual([

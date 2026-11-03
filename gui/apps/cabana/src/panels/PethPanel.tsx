@@ -444,10 +444,10 @@ function PethSetup(): JSX.Element {
             <PethWindow fs={ok()!.fs} />
             <div class="cb-pe-sub">
               <div class="cb-pe-small">
-                <h4>Display settings</h4>{' '}
+                <h4>Curve settings</h4>{' '}
                 <span class="cb-muted">
-                  These change only the displayed curves. The test always compares the baseline and
-                  response intervals above, unbinned.
+                  These change the curves and, when the null band is on, the band and latency. The
+                  shuffle test always compares the baseline and response intervals above, unbinned.
                 </span>
               </div>
               <div class="cb-pe-inline">

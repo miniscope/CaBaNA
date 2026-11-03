@@ -89,6 +89,11 @@ describe('item status', () => {
     const beh = analysisStatus({ ...s, decodingTarget: 'behaviors' }, 'decoding');
     expect(texts(beh).join(' ')).not.toMatch(/Spatial/);
   });
+  it('PETH is not ready with only zones or time markers to align to', () => {
+    const s = base({ labels: { epochs: 1, behaviors: 0, zones: 1, alignable: 0 } });
+    expect(analysisStatus(s, 'peth').kind).not.toBe('ready');
+    expect(texts(analysisStatus(s, 'peth')).join(' ')).toMatch(/behavior annotations/);
+  });
   it('a stimulus with a missing label blocks PETH only', () => {
     const s = base({ missingStimulusLabels: ['tone'] });
     expect(texts(analysisStatus(s, 'peth'))).toContain(
