@@ -760,7 +760,7 @@ textarea {
 .cb-table-scroll th {
   position: sticky;
   top: 0;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
 }
 .cb-sortable {
   cursor: pointer;
@@ -1820,7 +1820,7 @@ textarea {
   cursor: pointer;
 }
 .cb-tip__body {
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: 6px 8px;
@@ -1845,7 +1845,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-md);
@@ -2144,7 +2144,7 @@ textarea {
   z-index: 50;
   width: min(380px, 100vw);
   overflow-y: auto;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border-left: 1px solid var(--border-default);
   box-shadow: -6px 0 18px rgba(0, 0, 0, 0.14);
   padding: var(--space-md);
@@ -2964,7 +2964,7 @@ textarea {
   position: fixed;
   z-index: 50;
   overflow-y: auto;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
@@ -3013,7 +3013,7 @@ textarea {
   flex-direction: column;
   width: min(92vw, 1500px);
   height: 86vh;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border-radius: var(--radius-lg);
   padding: 12px 18px 16px;
 }
@@ -3713,7 +3713,7 @@ textarea {
   flex-direction: column;
   width: 340px;
   max-width: 100%;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
@@ -4739,7 +4739,7 @@ textarea {
 .cb-pe-form__foot {
   position: sticky;
   bottom: -10px;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   padding: 6px 0 4px;
   display: flex;
   justify-content: flex-end;
@@ -5061,3 +5061,38 @@ textarea {
   pointer-events: none;
   z-index: 3;
 }
+.cb-region-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  font-size: 13px;
+}
+.cb-region-notice p {
+  margin: 0;
+}
+.cb-region-notice__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+.cb-region-notice__choice span {
+  color: var(--text-secondary);
+}
+.cb-region-notice__choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+

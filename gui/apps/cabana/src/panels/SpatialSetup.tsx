@@ -37,6 +37,17 @@ import {
 } from '../lib/draw.ts';
 import { Trajectory } from './Trajectory.tsx';
 import { Note } from './parts.tsx';
+import {
+  keepInCm,
+  keepOnPicture,
+  previewRegions,
+  regionNotice,
+  removeRegions,
+  reprojected,
+  setPreviewRegions,
+  undoChange,
+  type ChangeKind,
+} from '../lib/region-notice.ts';
 import { EXAMPLES, exampleMedia, loaded, setSource, source } from '../lib/store.ts';
 
 const SECTIONS = [
@@ -295,6 +306,24 @@ export function SpatialSetup(): JSX.Element {
       ctx.stroke();
     }
     drawZones(ctx, arena.zones, lw, fontPx);
+    // After a change with regions drawn: the old outline dashed, and the regions as "Keep
+    // position in cm" would place them while that choice is hovered.
+    const before = regionNotice()?.before.box;
+    if (before) {
+      arenaOutline(ctx, before, regionNotice()!.before.shape);
+      ctx.strokeStyle = 'rgba(90,90,90,0.8)';
+      ctx.lineWidth = lw;
+      ctx.setLineDash([10, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const preview = previewRegions();
+    if (preview) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      drawZones(ctx, preview, lw, fontPx);
+      ctx.restore();
+    }
     const seg = (l: [Pt, Pt] | undefined, col: string, label?: string) => {
       if (!l) return;
       path(l, false);
@@ -415,6 +444,7 @@ export function SpatialSetup(): JSX.Element {
               )}
             </For>
           </div>
+          <RegionNoticeBox />
           <section class="cb-group" classList={{ 'cb-hide': section() !== 1 }}>
             <h3>1. Picture of the arena</h3>
             <Note>
@@ -905,3 +935,60 @@ export function SpatialSetup(): JSX.Element {
   );
 }
 
+const CHANGED: Record<ChangeKind, string> = {
+  outline: 'The arena outline changed',
+  scale: 'The arena scale changed',
+  picture: 'The arena picture changed',
+};
+
+/** What happens to regions drawn before the outline, scale or picture changed. Stays until a choice is made. */
+function RegionNoticeBox(): JSX.Element {
+  return (
+    <Show when={regionNotice()}>
+      {(n) => {
+        const moved = () => reprojected(n());
+        const count = () => n().regionsCm.length;
+        const regions = () => `${count()} region${count() === 1 ? '' : 's'}`;
+        const preview = (on: boolean) => setPreviewRegions(on ? moved() : undefined);
+        return (
+          <div class="cb-region-notice" role="alert">
+            <b>
+              <span aria-hidden="true">⚠</span> {CHANGED[n().kind]}
+            </b>
+            <p>
+              {regions()} {count() === 1 ? 'was' : 'were'} drawn before this change. Choose what
+              happens to them. Until you choose, analyses that use the arena are blocked.
+            </p>
+            <button
+              class="cb-region-notice__choice"
+              disabled={!moved()}
+              onClick={keepInCm}
+              onMouseEnter={() => preview(true)}
+              onMouseLeave={() => preview(false)}
+              onFocus={() => preview(true)}
+              onBlur={() => preview(false)}
+            >
+              <b>Keep position in cm</b>
+              <span>
+                {moved()
+                  ? 'Regions move with the new outline. Their coordinates in the config stay the same.'
+                  : 'Draw the new outline and scale first; regions then move with it.'}
+              </span>
+            </button>
+            <button class="cb-region-notice__choice" onClick={keepOnPicture}>
+              <b>Keep on the picture</b>
+              <span>Regions stay where they were drawn. Their cm coordinates change.</span>
+            </button>
+            <button class="cb-region-notice__choice" onClick={removeRegions}>
+              <b>Remove and redraw</b>
+              <span>Deletes the {regions()} so you can draw them again.</span>
+            </button>
+            <button class="btn-secondary btn-small" onClick={undoChange}>
+              Undo the {n().kind} change
+            </button>
+          </div>
+        );
+      }}
+    </Show>
+  );
+}

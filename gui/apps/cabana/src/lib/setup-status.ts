@@ -6,6 +6,7 @@
 import { createSignal } from 'solid-js';
 import { arena, positionTransform, pxPerCm } from './arena.ts';
 import { arenaProblem } from './config-import.ts';
+import { regionNotice } from './region-notice.ts';
 import {
   derivedCameraFps,
   derivedDuration,
@@ -60,7 +61,7 @@ export interface SetupSnapshot {
   yDown: boolean;
   /** Positions can be put in arena cm (always for cm; pixels need the arena outline and scale). */
   calibrated: boolean;
-  /** The config's arena could not be read and none has been set. */
+  /** The config's arena could not be read and none has been set, or regions wait for a choice after the arena changed. */
   arenaBlocked: boolean;
   headOffset: number;
   annotationTool: string;
@@ -188,7 +189,7 @@ export function setupSnapshot(): SetupSnapshot {
     positionUnit: source.positionUnit,
     yDown: source.yDown,
     calibrated: !!positionTransform(),
-    arenaBlocked: !!arenaProblem(),
+    arenaBlocked: !!(arenaProblem() ?? regionNotice()),
     headOffset: arena.headOffset,
     annotationTool: source.annotationTool,
     annotationUnit: source.annotationUnit,

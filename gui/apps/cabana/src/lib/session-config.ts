@@ -14,6 +14,7 @@ import {
   sizeCm,
 } from './arena.ts';
 import { arenaProblem, configReport } from './config-import.ts';
+import { regionNoticeProblem } from './region-notice.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
@@ -324,7 +325,7 @@ export function commonInput(): CommonInput {
     labelPadS: prep.labelPadS,
     paddedLabels: [...labels],
     hasArenaBox: !!binGrid(effectiveBin()),
-    arenaProblem: arenaProblem(),
+    arenaProblem: arenaProblem() ?? regionNoticeProblem(),
     binCm: effectiveBin(),
     arenaCm: sizeCm(),
     rejected: [...rejected()],
