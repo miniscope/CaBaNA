@@ -1,7 +1,9 @@
 // Small pieces shared by several panels.
 
-import type { JSX } from 'solid-js';
+import { createSignal, For, Show, type JSX } from 'solid-js';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
+import { shuffleReachIssues } from '../lib/shuffle-reach.ts';
+import { PopButton } from './QcParts.tsx';
 import { cell, selectCell } from '../lib/store.ts';
 
 /** Previous, next and a number box for the selected cell. `compact` uses arrows, for a plot's title row. */
@@ -113,5 +115,81 @@ export function SpeedFilterField(): JSX.Element {
       />
       cm/s <span class="cb-muted">default {DEFAULT_PREP.minSpeed}</span>
     </label>
+  );
+}
+
+/**
+ * Why the shuffle test cannot mark anything significant at this shuffle count and alpha, for the
+ * full run and, when offered, the Quick preview. Nothing when both can. Observed values are still
+ * computed, so the run is not blocked.
+ */
+export function ShuffleReach(props: { shuffles: number; alpha: number; preview?: boolean }) {
+  return (
+    <For each={shuffleReachIssues(props.shuffles, props.alpha, props.preview ?? true)}>
+      {(text) => <span class="cb-pe-warn">⚠ {text}</span>}
+    </For>
+  );
+}
+
+/**
+ * Advanced options with the random seed: the same control on every analysis page. Only a whole
+ * number from 0 is stored; anything else is marked and the button keeps showing the seed in use.
+ */
+export function AdvancedSeed(props: {
+  seed: number;
+  def: number;
+  onSet: (v: number) => void;
+  children?: JSX.Element;
+}): JSX.Element {
+  const [bad, setBad] = createSignal(false);
+  return (
+    <PopButton
+      label="Advanced options"
+      title="Advanced options"
+      width={340}
+      class="btn-secondary btn-small cb-as-adv"
+      button={
+        <>
+          Advanced options… <span class="cb-muted">seed {props.seed}</span>
+        </>
+      }
+    >
+      <div class="cb-setting">
+        <label
+          class="cb-prep-field"
+          classList={{
+            'cb-prep-field--changed': props.seed !== props.def,
+            'cb-pe-bad': bad(),
+          }}
+        >
+          Random seed
+          <input
+            type="number"
+            min="0"
+            step="1"
+            aria-label="Random seed"
+            aria-invalid={bad() || undefined}
+            value={props.seed}
+            onInput={(e) => {
+              const t = e.currentTarget.value;
+              const v = +t;
+              const ok = t !== '' && Number.isInteger(v) && v >= 0;
+              setBad(!ok);
+              if (ok) props.onSet(v);
+            }}
+          />
+        </label>
+        <Show when={bad()}>
+          <p class="cb-error">
+            The seed must be a whole number from 0; the seed in use is {props.seed}.
+          </p>
+        </Show>
+        <p class="cb-muted">
+          Controls the random shuffles: the same seed, settings and data give the same shuffles and
+          results. Saved with every run.
+        </p>
+      </div>
+      {props.children}
+    </PopButton>
   );
 }

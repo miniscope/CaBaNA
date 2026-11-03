@@ -21,7 +21,7 @@ import { prep } from '../lib/preprocess.ts';
 import { deconvolved, goToStep } from '../lib/store.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { OccupancyPreview } from './OccupancyPreview.tsx';
-import { Note, SpeedFilterField } from './parts.tsx';
+import { AdvancedSeed, Note, ShuffleReach, SpeedFilterField } from './parts.tsx';
 import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlaceResults } from './PlaceResults.tsx';
 import { fitToWindow } from './QcPanel.tsx';
@@ -498,6 +498,11 @@ function PlaceSetup(): JSX.Element {
                 step={1}
                 used={placeOutcome() && `${placeOutcome()!.minShiftS.toFixed(1)} s`}
               />
+              <AdvancedSeed
+                seed={placeSettings.seed}
+                def={DEFAULT_PLACE_SETTINGS.seed}
+                onSet={(v) => setPlaceSettings('seed', v)}
+              />
               <Note title="Choosing these settings">
                 <p>
                   <strong>Shuffles</strong> (default 1000). The smallest p possible is 1 divided by
@@ -596,6 +601,11 @@ function PlaceSetup(): JSX.Element {
         <span class="cb-pe-foot__text">
           <i classList={{ 'cb-dot--ok': ready() && !error() && !running() }} />{' '}
           <span class="cb-muted">{status()}</span>
+          <ShuffleReach
+            shuffles={ps.nShuffles}
+            alpha={ps.alpha}
+            preview={engineFor('place') === 'framework' && frameworkReady()}
+          />
           <Show when={placeNeural()}>
             <span class="cb-muted">
               {placeNeural()!.frames.toLocaleString()} frames · arena {sizeCm()[0].toFixed(0)} ×{' '}

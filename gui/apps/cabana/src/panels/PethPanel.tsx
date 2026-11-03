@@ -27,6 +27,7 @@ import { Requirements } from '../components/Requirements.tsx';
 import { HowTo } from './AurocResults.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { NumField } from './PethFields.tsx';
+import { AdvancedSeed, ShuffleReach } from './parts.tsx';
 import { PethResults } from './PethResults.tsx';
 import { Dot } from './PethShared.tsx';
 import { SettingsButton, SettingsSummary } from './PethSettings.tsx';
@@ -480,7 +481,14 @@ function PethSetup(): JSX.Element {
                 <h4>Significance testing</h4>
                 <SettingsSummary />
               </div>
-              <SettingsButton />
+              <span class="cb-pe-inline">
+                <SettingsButton />
+                <AdvancedSeed
+                  seed={pethSettings.seed}
+                  def={DEFAULT_PETH_SETTINGS.seed}
+                  onSet={(v) => setPethSettings('seed', v)}
+                />
+              </span>
             </div>
           </section>
         </div>
@@ -506,6 +514,13 @@ function PethSetup(): JSX.Element {
               >
                 <Show when={issue()}>
                   <span class="cb-muted">{issue()}</span>{' '}
+                </Show>
+                <Show when={pethSettings.test === 'circular'}>
+                  <ShuffleReach
+                    shuffles={pethSettings.nShuffles}
+                    alpha={pethSettings.alpha}
+                    preview={false}
+                  />{' '}
                 </Show>
                 <b>
                   {readyBehaviors().length} behavior{readyBehaviors().length === 1 ? '' : 's'} ready

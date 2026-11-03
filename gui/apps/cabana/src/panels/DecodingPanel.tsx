@@ -67,6 +67,7 @@ import { canRun, checks, isPosition, runBlock } from './decoding/state.ts';
 import { fitToWindow } from './QcPanel.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
 import { shufflesFor } from '../lib/preview.ts';
+import { ShuffleReach } from './parts.tsx';
 
 /** Shuffles a Quick preview of the current target runs. */
 const previewCount = () =>
@@ -409,11 +410,17 @@ function Setup(props: { onResults: () => void }): JSX.Element {
             <Show
               when={block()}
               fallback={
-                <span class="cb-muted">
-                  Ready: {isPosition() ? 'position' : 'behavior'} decoding with{' '}
-                  {(isPosition() ? positionDecoding : behaviorDecoding).shuffles.toLocaleString()}{' '}
-                  shuffles.
-                </span>
+                <>
+                  <span class="cb-muted">
+                    Ready: {isPosition() ? 'position' : 'behavior'} decoding with{' '}
+                    {(isPosition() ? positionDecoding : behaviorDecoding).shuffles.toLocaleString()}{' '}
+                    shuffles.
+                  </span>
+                  <ShuffleReach
+                    shuffles={(isPosition() ? positionDecoding : behaviorDecoding).shuffles}
+                    alpha={(isPosition() ? positionDecoding : behaviorDecoding).alpha}
+                  />
+                </>
               }
             >
               <span class="cb-dec-block" role="status">

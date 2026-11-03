@@ -19,8 +19,10 @@ import {
   aurocOutcome,
   seedAurocSelection,
   aurocSettings,
+  aurocSettingIssues,
   aurocShowResults,
   aurocStatus,
+  AUROC_RANGES,
   autoShift,
   autoShiftError,
   cancelAurocRun,
@@ -37,6 +39,8 @@ import { engineFor, frameworkReady, startRunTracking } from '../lib/engine.ts';
 import { prep } from '../lib/preprocess.ts';
 import { annotationResults, goToStep } from '../lib/store.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { ShuffleReach } from './parts.tsx';
+import { inRange, rangeText } from '../lib/ranges.ts';
 import { fitToWindow } from './QcPanel.tsx';
 import { createSize, PopButton } from './QcParts.tsx';
 import { AurocResults } from './AurocResults.tsx';
@@ -282,21 +286,22 @@ const Title = (props: { text: string; children: JSX.Element }): JSX.Element => (
 
 type NumKey = 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed';
 
-function NumInput(props: {
-  k: NumKey;
-  step: number;
-  min?: number;
-  max?: number;
-  unit?: string;
-  label?: string;
-}): JSX.Element {
+/** A number box; an out-of-range value is kept and marked, and the run says why it is blocked. */
+function NumInput(props: { k: NumKey; step: number; unit?: string; label?: string }): JSX.Element {
+  const r = () => AUROC_RANGES[props.k];
+  const bad = () => !inRange(aurocSettings[props.k], r());
   return (
-    <label class="cb-prep-field" classList={{ 'cb-prep-field--changed': changed(props.k) }}>
+    <label
+      class="cb-prep-field"
+      classList={{ 'cb-prep-field--changed': changed(props.k), 'cb-pe-bad': bad() }}
+    >
       <input
         type="number"
         aria-label={props.label}
-        min={props.min ?? 0}
-        max={props.max}
+        aria-invalid={bad() || undefined}
+        title={bad() ? `${r().name}: ${rangeText(r())}` : undefined}
+        min={r().min}
+        max={r().max}
         step={props.step}
         value={aurocSettings[props.k]}
         onInput={(e) => {
@@ -312,8 +317,6 @@ function NumInput(props: {
 function NumberBox(props: {
   k: NumKey;
   step: number;
-  min?: number;
-  max?: number;
   label: string;
   unit?: string;
   children: JSX.Element;
@@ -407,6 +410,7 @@ function AurocSetup(): JSX.Element {
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
 
+  const settingIssues = () => aurocSettingIssues(aurocSettings);
   const runButton = () => (
     <Show
       when={!running()}
@@ -419,7 +423,7 @@ function AurocSetup(): JSX.Element {
       <Show when={engineFor('auroc') === 'framework' && frameworkReady()}>
         <button
           class="btn-secondary"
-          disabled={!ok() || !selected().length}
+          disabled={!ok() || !selected().length || !!settingIssues().length}
           title={`Runs ${shufflesFor('preview', aurocSettings.nShuffles)} shuffles. The result is saved as Preliminary.`}
           onClick={() => void runAuroc({ preview: true })}
         >
@@ -429,7 +433,10 @@ function AurocSetup(): JSX.Element {
       <button
         class="btn-primary"
         disabled={
-          !ok() || !selected().length || (engineFor('auroc') === 'framework' && !frameworkReady())
+          !ok() ||
+          !selected().length ||
+          !!settingIssues().length ||
+          (engineFor('auroc') === 'framework' && !frameworkReady())
         }
         onClick={() => void runAuroc()}
       >
@@ -442,7 +449,9 @@ function AurocSetup(): JSX.Element {
       ? 'Load the data auROC needs to run.'
       : !selected().length
         ? 'Select at least one behavior to run.'
-        : `${selected().length} behavior${selected().length === 1 ? '' : 's'} selected · ready to run`;
+        : settingIssues().length
+          ? settingIssues()[0]
+          : `${selected().length} behavior${selected().length === 1 ? '' : 's'} selected · ready to run`;
   const minP = () => 2 / (aurocSettings.nShuffles + 1);
   const included = () => ok()!.mask.reduce((a, b) => a + b, 0);
   const smoothing = () => (prep.eventSigmaS ? `Gaussian σ = ${prep.eventSigmaS} s` : 'none');
@@ -761,13 +770,7 @@ function AurocSetup(): JSX.Element {
                       <Show
                         when={aurocSettings.shiftAuto}
                         fallback={
-                          <NumInput
-                            k="minShiftS"
-                            label="Minimum shift (s)"
-                            unit="s"
-                            step={0.5}
-                            min={0.5}
-                          />
+                          <NumInput k="minShiftS" label="Minimum shift (s)" unit="s" step={0.5} />
                         }
                       >
                         <Show
@@ -803,12 +806,12 @@ function AurocSetup(): JSX.Element {
                     </Show>
                   </div>
                   <div class="cb-as-pair">
-                    <NumberBox k="nShuffles" label="Shuffles" step={100} min={1}>
+                    <NumberBox k="nShuffles" label="Shuffles" step={100}>
                       Number of shifted datasets used to estimate significance. More shuffles
                       provide finer p-value resolution but take longer. Smallest possible unadjusted
                       p-value: approximately {minP().toFixed(3)}.
                     </NumberBox>
-                    <NumberBox k="alpha" label="α" step={0.01} min={0.001} max={0.5}>
+                    <NumberBox k="alpha" label="α" step={0.01}>
                       The significance threshold used to classify a result as significant. The test
                       is two-sided: it detects higher or lower neural events.
                     </NumberBox>
@@ -1198,7 +1201,19 @@ function AurocSetup(): JSX.Element {
       </Show>
       <div class="cb-pe-foot">
         <span class="cb-pe-foot__text">
-          <Show when={running()} fallback={<span class="cb-muted">{runStatus()}</span>}>
+          <Show
+            when={running()}
+            fallback={
+              <>
+                <span class="cb-muted">{runStatus()}</span>
+                <ShuffleReach
+                  shuffles={aurocSettings.nShuffles}
+                  alpha={aurocSettings.alpha}
+                  preview={engineFor('auroc') === 'framework' && frameworkReady()}
+                />
+              </>
+            }
+          >
             <RunProgress done={running()!.done} total={running()!.total} />
             <span class="cb-muted">
               {running()!.step}

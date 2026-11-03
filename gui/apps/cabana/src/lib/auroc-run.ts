@@ -27,6 +27,7 @@ import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from './speed-match.ts';
 import { preselectUnselected } from './labels.ts';
 import { annotationResults, frameTimes, onClear, roleOf } from './store.ts';
+import { rangeIssue, type Range } from './ranges.ts';
 import { runDeps, type Uses } from './run-deps.ts';
 import { saveBrowserRun } from './browser-records.ts';
 import { aurocCsv, aurocMetadata } from './auroc-export.ts';
@@ -88,6 +89,28 @@ export const DEFAULT_AUROC_SETTINGS = {
   minSpeed: 2,
   match: { ...DEFAULT_MATCH } as MatchOptions,
 };
+/** Valid range and name of each numeric setting. */
+export const AUROC_RANGES: Record<
+  'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed',
+  Range & { name: string }
+> = {
+  nShuffles: { name: 'Shuffles', min: 1, whole: true },
+  alpha: { name: 'Alpha', min: 0.001, max: 0.5 },
+  seed: { name: 'Random seed', min: 0, whole: true },
+  minShiftS: { name: 'Minimum shift', min: 0.5 },
+  minSpeed: { name: 'Minimum speed', min: 0 },
+};
+
+/** Settings the run would use that are outside their range, as reasons. */
+export function aurocSettingIssues(s: typeof DEFAULT_AUROC_SETTINGS): string[] {
+  const used: (keyof typeof AUROC_RANGES)[] = ['nShuffles', 'alpha', 'seed'];
+  if (s.method === 'circular' && !s.shiftAuto) used.push('minShiftS');
+  if (s.speedFilter) used.push('minSpeed');
+  return used
+    .map((k) => rangeIssue(AUROC_RANGES[k].name, s[k], AUROC_RANGES[k]))
+    .filter((m): m is string => !!m);
+}
+
 export const [aurocSettings, setAurocSettings] = createStore({
   ...DEFAULT_AUROC_SETTINGS,
   match: { ...DEFAULT_MATCH },
@@ -724,6 +747,7 @@ async function runAurocFramework(scope: 'full' | 'preview'): Promise<void> {
  * always an explicit choice made on the page.
  */
 export async function runAuroc(options: AurocRunOptions = {}): Promise<void> {
+  if (aurocSettingIssues(aurocSettings).length) return;
   const engine = options.engine ?? engineFor('auroc');
   if (engine === 'browser') return runAurocBrowser();
   return runAurocFramework(options.preview ? 'preview' : 'full');

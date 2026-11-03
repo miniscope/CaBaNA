@@ -2,6 +2,7 @@
 // recipe: 0.5 s time bin, circular cell-shift null, 200 shuffles, no correction.
 
 import { createStore, reconcile } from 'solid-js/store';
+import { rangeIssue, type Range } from './ranges.ts';
 import { onClear } from './store.ts';
 import { SETTINGS_VERSION } from './settings-hash.ts';
 
@@ -50,6 +51,42 @@ export const DEFAULT_POPULATION = {
   correction: 'none' as 'none' | 'max_stat',
 };
 export type PopulationSettings = typeof DEFAULT_POPULATION;
+
+export type PopulationNumKey =
+  | 'binS'
+  | 'pvMinOccupancyS'
+  | 'stabilityBlocks'
+  | 'components'
+  | 'shuffles'
+  | 'minShiftS'
+  | 'pairSeparationS'
+  | 'seed'
+  | 'alpha';
+
+/** Valid range and name of each numeric setting. */
+export const POPULATION_RANGES: Record<PopulationNumKey, Range & { name: string }> = {
+  binS: { name: 'Time bin', min: 0.05 },
+  pvMinOccupancyS: { name: 'Minimum time in state', min: 0 },
+  stabilityBlocks: { name: 'Blocks', min: 1, whole: true },
+  components: { name: 'Number of components', min: 1, whole: true },
+  shuffles: { name: 'Shuffles', min: 10, whole: true },
+  minShiftS: { name: 'Minimum shift', min: 0 },
+  pairSeparationS: { name: 'Pair separation', min: 0 },
+  seed: { name: 'Seed', min: 0, whole: true },
+  alpha: { name: 'Alpha', min: 0.0001, max: 0.5 },
+};
+
+/** Settings the run would use that are outside their range, as reasons. */
+export function populationSettingIssues(s: PopulationSettings): string[] {
+  const used: PopulationNumKey[] = ['binS', 'shuffles', 'minShiftS', 'seed', 'alpha'];
+  if (s.methods.similarity) used.push('pvMinOccupancyS');
+  if (s.methods.stability) used.push('stabilityBlocks');
+  if (s.methods.dimensionality && s.space === 'pca') used.push('components');
+  if (s.methods.pairwise) used.push('pairSeparationS');
+  return used
+    .map((k) => rangeIssue(POPULATION_RANGES[k].name, s[k], POPULATION_RANGES[k]))
+    .filter((m): m is string => !!m);
+}
 
 export const [populationSettings, setPopulationSettings] = createStore<PopulationSettings>(
   structuredClone(DEFAULT_POPULATION),

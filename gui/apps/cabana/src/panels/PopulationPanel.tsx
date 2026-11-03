@@ -14,9 +14,12 @@ import { openRunOf } from '../lib/results-nav.ts';
 import {
   DEFAULT_POPULATION,
   POPULATION_METHODS,
+  POPULATION_RANGES,
+  populationSettingIssues,
   populationSettings as s,
   setPopulationSettings as set,
   type PopulationMethod,
+  type PopulationNumKey,
   type PopulationSettings,
   type PopulationTarget,
 } from '../lib/population-settings.ts';
@@ -49,8 +52,10 @@ import {
 import { correctionScope } from './population/logic.ts';
 import { StatesChart } from './population/StatesChart.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
+import { AdvancedSeed, ShuffleReach } from './parts.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
 import { shufflesFor } from '../lib/preview.ts';
+import { inRange } from '../lib/ranges.ts';
 
 type Tab = 'data' | 'methods' | 'stats' | 'results';
 const [tab, setTab] = createSignal<Tab>('data');
@@ -100,21 +105,11 @@ function Select<K extends keyof PopulationSettings>(props: {
   );
 }
 
+/** A number box; an out-of-range value is kept and marked, and the run says why it is blocked. */
 const Num = (p: {
-  k:
-    | 'binS'
-    | 'pvMinOccupancyS'
-    | 'stabilityBlocks'
-    | 'components'
-    | 'shuffles'
-    | 'minShiftS'
-    | 'pairSeparationS'
-    | 'seed'
-    | 'alpha';
+  k: PopulationNumKey;
   label: string;
   unit?: string;
-  min?: number;
-  max?: number;
   step?: number;
   whole?: boolean;
 }) => (
@@ -122,8 +117,9 @@ const Num = (p: {
     label={p.label}
     value={s[p.k]}
     def={D[p.k]}
-    min={p.min ?? 0}
-    max={p.max}
+    min={POPULATION_RANGES[p.k].min}
+    max={POPULATION_RANGES[p.k].max}
+    bad={!inRange(s[p.k], POPULATION_RANGES[p.k])}
     step={p.step ?? ('any' as unknown as number)}
     unit={p.unit}
     onSet={(v) => set(p.k, p.whole ? Math.round(v) : v)}
@@ -212,7 +208,7 @@ function Methods(): JSX.Element {
             label="Blocks"
             tip="Equal consecutive parts of the session. Stability compares the first with the second, so at least 2 are needed."
           >
-            <Num k="stabilityBlocks" label="Blocks" min={1} step={1} whole />
+            <Num k="stabilityBlocks" label="Blocks" step={1} whole />
           </Field>
         </MethodRow>
         <MethodRow
@@ -239,7 +235,7 @@ function Methods(): JSX.Element {
               label="Components"
               tip="Number of principal components kept for the distances. It cannot exceed the number of kept cells."
             >
-              <Num k="components" label="Number of components" min={1} step={1} whole />
+              <Num k="components" label="Number of components" step={1} whole />
             </Field>
             <Field label="Distance">
               <Select
@@ -345,7 +341,7 @@ function Target(): JSX.Element {
           label="Time bin"
           tip="Neural frames are grouped into bins of this length before any population analysis. It applies only to this page."
         >
-          <Num k="binS" label="Time bin (s)" unit="s" step={0.1} min={0.05} />
+          <Num k="binS" label="Time bin (s)" unit="s" step={0.1} />
         </Field>
       </div>
       <Show
@@ -401,9 +397,9 @@ function Statistics(): JSX.Element {
         <div class="cb-pn-fields">
           <Field
             label="Shuffles"
-            tip="Number of shuffled sessions. More shuffles give finer p-values. A quick preview uses 50 and is marked Preliminary."
+            tip="Number of shuffled sessions. More shuffles give finer p-values. A quick preview uses up to 50 and is marked Preliminary."
           >
-            <Num k="shuffles" label="Shuffles" min={10} step={50} whole />
+            <Num k="shuffles" label="Shuffles" step={50} whole />
           </Field>
           <Field
             label="Minimum shift"
@@ -418,13 +414,10 @@ function Statistics(): JSX.Element {
             <Num k="pairSeparationS" label="Pair separation (s)" unit="s" step={0.5} />
           </Field>
           <Field
-            label="Seed"
-            tip="Starting value of the random number generator. The same seed and settings give the same shifts."
+            label="Alpha"
+            tip="Significance level for the marks in the figures. It also sets the null range: the α to 1 − α percentile of the shuffled values (one-sided tests), or α/2 to 1 − α/2 (two-sided)."
           >
-            <Num k="seed" label="Seed" whole step={1} />
-          </Field>
-          <Field label="Alpha" tip="Significance level for the marks in the figures.">
-            <Num k="alpha" label="Alpha" min={0.0001} max={0.5} step={0.01} />
+            <Num k="alpha" label="Alpha" step={0.01} />
           </Field>
           <Field
             label="Correction"
@@ -444,6 +437,7 @@ function Statistics(): JSX.Element {
           Quick preview uses {shufflesFor('preview', s.shuffles)} shuffles and is marked
           Preliminary. Run analysis uses the shuffles above.
         </p>
+        <AdvancedSeed seed={s.seed} def={D.seed} onSet={(v) => set('seed', v)} />
       </section>
       <section class="cb-setgroup cb-pn-card">
         <h3>What the correction covers</h3>
@@ -547,10 +541,13 @@ function Footer(props: { issues: () => string[] }): JSX.Element {
           <Show
             when={props.issues().length}
             fallback={
-              <span class="cb-muted">
-                {stateCount()} states · {Object.values(s.methods).filter(Boolean).length} methods ·{' '}
-                {s.shuffles} shuffles
-              </span>
+              <>
+                <span class="cb-muted">
+                  {stateCount()} states · {Object.values(s.methods).filter(Boolean).length} methods
+                  · {s.shuffles} shuffles
+                </span>
+                <ShuffleReach shuffles={s.shuffles} alpha={s.alpha} />
+              </>
             }
           >
             <span class="cb-muted">{props.issues()[0]}</span>
@@ -618,7 +615,7 @@ export function PopulationPanel(): JSX.Element {
       (m) => s.methods[m.id] && !readiness()[m.id].ready,
     ).map((m) => `${METHOD_NAME[m.id]}: ${readiness()[m.id].reason}`);
     const engine = bridgeState().kind !== 'ready' ? ['Python engine not running.'] : [];
-    return [...own, ...notReady, ...engine];
+    return [...own, ...populationSettingIssues(s), ...notReady, ...engine];
   });
   return (
     <>

@@ -12,7 +12,7 @@ import {
 import { goToStep } from '../../lib/store.ts';
 import { prep } from '../../lib/preprocess.ts';
 import { InfoTip } from '../InfoTip.tsx';
-import { SpeedFilterField } from '../parts.tsx';
+import { AdvancedSeed, SpeedFilterField } from '../parts.tsx';
 import { Unavailable } from '../results/FrameworkNotice.tsx';
 import { FoldStrip } from './FoldStrip.tsx';
 import { correctionFamily, framesText, RANGE } from './logic.ts';
@@ -650,19 +650,7 @@ export function SignificanceView(): JSX.Element {
             onSet={(v) => set('alpha', v)}
           />
         </Row>
-        <Row
-          label="Seed"
-          tip="Starting value of the random generator; the same seed gives the same shuffles."
-        >
-          <Num
-            label="Seed"
-            value={s().seed}
-            def={def().seed}
-            step={1}
-            integer
-            onSet={(v) => set('seed', v)}
-          />
-        </Row>
+        <AdvancedSeed seed={s().seed} def={def().seed} onSet={(v) => set('seed', v)} />
       </section>
       <section class="cb-setgroup">
         <h3>Quick preview</h3>

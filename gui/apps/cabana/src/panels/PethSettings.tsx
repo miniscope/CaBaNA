@@ -14,6 +14,9 @@ import { MIN_NONZERO_PREPOST } from '../lib/peth.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { NumField } from './PethFields.tsx';
 import { PopButton } from './QcParts.tsx';
+import { inRange, rangeIssue } from '../lib/ranges.ts';
+
+const ALPHA = { min: 0.001, max: 0.5 };
 
 const D = DEFAULT_PETH_SETTINGS;
 const KEYS = [
@@ -21,7 +24,6 @@ const KEYS = [
   'shiftAuto',
   'minShiftS',
   'nShuffles',
-  'seed',
   'alpha',
   'correction',
   'band',
@@ -55,6 +57,8 @@ export function SettingsSummary(): JSX.Element {
 function Form(props: { close: () => void }): JSX.Element {
   const [d, setD] = createStore(Object.fromEntries(KEYS.map((k) => [k, unwrap(pethSettings)[k]])) as Pick<PethSettings, (typeof KEYS)[number]>);
   const off = () => d.test === 'none';
+  // An out-of-range value stays in its box, marked, and holds Apply with the reason.
+  const issue = () => (off() ? undefined : rangeIssue('Alpha', d.alpha, ALPHA));
   const row = (label: JSX.Element, control: JSX.Element) => (
     <>
       <span>{label}</span>
@@ -109,8 +113,7 @@ function Form(props: { close: () => void }): JSX.Element {
             <option value="none">None</option>
           </select>,
         )}
-        {row('α', <NumField label="Alpha" value={d.alpha} def={D.alpha} min={0.001} max={0.5} step={0.01} disabled={off()} onSet={(v) => v > 0 && v <= 0.5 && setD('alpha', v)} />)}
-        {row('Seed', <NumField label="Seed" value={d.seed} def={D.seed} step={1} disabled={off()} onSet={(v) => setD('seed', Math.round(v))} />)}
+        {row('α', <NumField label="Alpha" value={d.alpha} def={D.alpha} min={ALPHA.min} max={ALPHA.max} step={0.01} bad={!inRange(d.alpha, ALPHA)} disabled={off()} onSet={(v) => setD('alpha', v)} />)}
       </div>
       <h4>
         Null band and latency <span class="cb-muted">· descriptive</span>
@@ -140,11 +143,15 @@ function Form(props: { close: () => void }): JSX.Element {
         methods; not used for labels. Needs at least {MIN_NONZERO_PREPOST} onsets with a non-zero difference.
       </p>
       <div class="cb-pe-form__foot">
+        <Show when={issue()}>
+          <span class="cb-error cb-pe-small">{issue()}</span>
+        </Show>
         <button class="btn-secondary btn-small" onClick={props.close}>
           Cancel
         </button>
         <button
           class="btn-primary btn-small"
+          disabled={!!issue()}
           onClick={() => {
             setPethSettings({ ...unwrap(d) });
             props.close();

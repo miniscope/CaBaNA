@@ -74,7 +74,7 @@ export function Choice<T extends string>(props: {
   );
 }
 
-/** A whole-number or decimal setting with its unit; out-of-range values are marked and not stored. */
+/** A whole-number or decimal setting with its unit; out-of-range values are stored, marked, and block the run. */
 export function Num(props: {
   label: string;
   value: number;
