@@ -5,8 +5,9 @@
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { FrameSource } from './frame.ts';
-import { flipY, type CmZone } from './config-read.ts';
-import { cameraFps, onClear, positionResult, source } from './store.ts';
+import type { CmZone } from './config-read.ts';
+import { UNCALIBRATED } from './spec/pipeline.ts';
+import { cameraFps, onClear, positionResult, setPositionScale, source } from './store.ts';
 
 export type Pt = [number, number];
 export interface Zone {
@@ -155,20 +156,47 @@ export function binGrid(bin: number): BinGrid | undefined {
   return { nx, ny, bin, open };
 }
 
+/**
+ * The one map from the position file's units to cm in the arena's frame (origin at the arena's
+ * lower left, y up): x_cm = sx * x + tx, y_cm = sy * y + ty. QC, previews, speed, export and every
+ * analysis use it. Undefined for pixel positions without a calibration: there is no default scale.
+ */
+export interface PositionTransform {
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+}
+
+export const positionTransform = createMemo<PositionTransform | undefined>(() => {
+  if (source.positionUnit === 'cm')
+    return source.yDown ? { sx: 1, sy: -1, tx: 0, ty: sizeCm()[1] } : { sx: 1, sy: 1, tx: 0, ty: 0 };
+  const s = pxPerCm();
+  const b = arena.box;
+  if (!s || !b) return undefined;
+  const k = frame()?.scale ?? 1; // position pixels refer to the original video, the picture may be smaller
+  return { sx: 1 / (k * s), sy: -1 / (k * s), tx: -b.x / s, ty: (b.y + b.h) / s };
+});
+
+/** Why positions cannot be put in cm, or undefined when they can. */
+export const calibrationIssue = () => (positionTransform() ? undefined : UNCALIBRATED);
+
+/** Position-file units per cm (1 for cm). A memo, so position QC reruns only when the scale changes. */
+export const positionUnitsPerCm = createMemo(() => {
+  const t = positionTransform();
+  return t && 1 / Math.abs(t.sx);
+});
+// The store's position QC needs the scale, but the store cannot import this module (it imports the store).
+// The memo itself is handed over and read inside the store's memo, so it stays tracked.
+// eslint-disable-next-line solid/reactivity
+setPositionScale(positionUnitsPerCm);
+
 /** The animal's tracked positions in cm, in the arena's frame. Empty when they cannot be placed. */
 export const positionsCm = createMemo<{ x: number[]; y: number[] }>(() => {
   const p = positionResult();
-  if (!p || !('x' in p)) return { x: [], y: [] };
-  if (source.positionUnit === 'cm') {
-    const h = sizeCm()[1];
-    return { x: p.x, y: source.yDown ? p.y.map((v) => flipY(v, h)) : p.y };
-  }
-  const f = frame();
-  const s = pxPerCm();
-  const b = arena.box;
-  if (!s || !b) return { x: [], y: [] };
-  const k = f?.scale ?? 1; // position pixels refer to the original video, the picture may be smaller
-  return { x: p.x.map((v) => (v / k - b.x) / s), y: p.y.map((v) => (b.y + b.h - v / k) / s) };
+  const t = positionTransform();
+  if (!p || !('x' in p) || !t) return { x: [], y: [] };
+  return { x: p.x.map((v) => t.sx * v + t.tx), y: p.y.map((v) => t.sy * v + t.ty) };
 });
 
 /** Seconds spent in each bin. */

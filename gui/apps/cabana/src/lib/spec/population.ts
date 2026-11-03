@@ -180,7 +180,7 @@ export function populationPipeline(
       analyses,
     },
     requires: [],
-    problems: populationProblems(s, ctx),
+    problems: [...common.problems, ...populationProblems(s, ctx)],
     target,
   };
 }

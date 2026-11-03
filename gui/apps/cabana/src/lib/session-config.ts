@@ -4,7 +4,15 @@
 // framework's; the GUI's own words stay on screen.
 
 import { Document, isMap, visit } from 'yaml';
-import { arena, binGrid, cmPts, effectiveBin, pendingZones, sizeCm } from './arena.ts';
+import {
+  arena,
+  binGrid,
+  cmPts,
+  effectiveBin,
+  pendingZones,
+  positionTransform,
+  sizeCm,
+} from './arena.ts';
 import { configReport } from './config-import.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
@@ -227,7 +235,7 @@ export function commonInput(): CommonInput {
   );
   return {
     positionUnit: source.positionUnit,
-    pxPerCm: source.pxPerCm,
+    positionTransform: positionTransform(),
     fillGapS: prep.fillGapS,
     posWindowS: prep.posWindowS,
     posMethod: prep.posMethod,
@@ -245,12 +253,13 @@ export function commonInput(): CommonInput {
 
 /** The preprocessing steps, in the order the framework runs them. */
 export function preprocessYaml(): string {
-  const { transforms, preprocess: steps } = commonSteps(commonInput());
+  const { transforms, preprocess: steps, problems } = commonSteps(commonInput());
 
   const list = (name: string, items: Record<string, unknown>[]) =>
     items.length ? [`${name}:`, ...items.map((i) => `  - ${flow(i)}`)] : [`${name}: []`];
   const out = [
     '# preprocessing made in CaBaNA: framework steps, in the order they run',
+    ...problems.map((p) => `# Incomplete: ${p}`),
     ...list('transforms', transforms),
     ...list('preprocess', steps),
   ];

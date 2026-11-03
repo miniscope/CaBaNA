@@ -8,7 +8,13 @@ import {
   statusOf,
   type CardId,
 } from '../lib/setup-status.ts';
-import { arena, arenaSummary, setArena } from '../lib/arena.ts';
+import {
+  arena,
+  arenaSummary,
+  calibrationIssue,
+  positionUnitsPerCm,
+  setArena,
+} from '../lib/arena.ts';
 import { INDICATORS } from '../lib/decon.ts';
 import { indicatorId, setIndicator } from '../lib/decon-state.ts';
 import { PARADIGMS } from '../lib/experiments.ts';
@@ -347,15 +353,14 @@ function TrackingTab(): JSX.Element {
             </select>
           </label>
           <Show when={source.positionUnit === 'px'}>
-            <label class="cb-setup-field">
+            <div class="cb-setup-field">
               Pixels per cm
-              <input
-                type="number"
-                min="0.01"
-                value={source.pxPerCm}
-                onInput={(e) => setSource('pxPerCm', Math.max(0.01, +e.currentTarget.value))}
-              />
-            </label>
+              <span class={positionUnitsPerCm() ? 'cb-muted' : 'cb-error'}>
+                {positionUnitsPerCm()
+                  ? `${positionUnitsPerCm()!.toFixed(2)} video pixels per cm, from the arena calibration in Spatial setup.`
+                  : calibrationIssue()}
+              </span>
+            </div>
           </Show>
           <Show when={source.positionUnit === 'cm'}>
             <label class="cb-setup-field">

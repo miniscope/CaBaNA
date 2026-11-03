@@ -26,7 +26,7 @@ export const BROWSER_RUN_LABEL = 'Run in browser engine (different random draws)
 export function browserReason(mode: EngineMode): string | undefined {
   if (mode === 'place')
     return source.positionUnit === 'px'
-      ? 'Positions are in pixels, which the framework path does not convert yet. Place cells runs on the browser engine.'
+      ? 'Positions are in pixels. Place cells runs them on the browser engine until the framework path for pixel positions is validated.'
       : undefined;
   return aurocSettings.compare === 'behavior'
     ? 'Behavior A against behavior B has no framework pipeline yet. It runs on the browser engine.'

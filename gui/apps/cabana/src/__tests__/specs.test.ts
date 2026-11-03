@@ -15,7 +15,6 @@ import { canonicalJson, settingsDiff } from '../lib/settings-hash.ts';
 
 const common: CommonInput = {
   positionUnit: 'cm',
-  pxPerCm: 1,
   fillGapS: DEFAULT_PREP.fillGapS,
   posWindowS: DEFAULT_PREP.posWindowS,
   posMethod: DEFAULT_PREP.posMethod,

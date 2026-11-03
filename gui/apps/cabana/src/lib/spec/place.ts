@@ -73,7 +73,7 @@ export function placePipeline(
       ],
     },
     problems: common.hasArenaBox
-      ? []
+      ? steps.problems
       : ['Place cells need the arena outline (Experimental setup, Spatial).'],
   };
 }
@@ -104,7 +104,7 @@ export function aurocPipeline(
       }
     : undefined;
   const shuffle = cellShift(s.minShiftS, s.nShuffles, s.seed, s.alpha, s.correction, nullSpec);
-  const problems: string[] = [];
+  const problems = [...steps.problems];
   if (s.compare === 'behavior')
     problems.push('Behavior A against behavior B runs on the browser engine for now.');
   if (selected.length < 1) problems.push('Select at least one behavior.');

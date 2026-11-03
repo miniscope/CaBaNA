@@ -2,7 +2,7 @@
 // frames, and (for place cells) neural data with a grid bin for every used frame.
 
 import { createMemo } from 'solid-js';
-import { binGrid, effectiveBin, positionsCm, type BinGrid } from './arena.ts';
+import { binGrid, calibrationIssue, effectiveBin, positionsCm, type BinGrid } from './arena.ts';
 import {
   interpolateGaps,
   resampleLinear,
@@ -20,13 +20,14 @@ import {
   positionResult,
   rejected,
   samplingRate,
-  source,
 } from './store.ts';
 
 /** Why position is not available, or undefined when it is. `onNeural` also needs the neural frame times. */
 export function positionIssue(onNeural = false): string | undefined {
   if (!loaded.position?.summary) return 'Position needs a position file.';
   if (!loaded.behavior_timestamps?.summary) return 'Position needs camera timestamps.';
+  const uncalibrated = calibrationIssue();
+  if (uncalibrated) return uncalibrated;
   const p = positionResult();
   if (!p || 'error' in p || !cameraTimes()) return 'Position failed QC: see Behavior QC.';
   if (onNeural && !frameTimes()) return 'Position needs neural timestamps.';
@@ -39,14 +40,10 @@ export const trackedPosition = () => {
   return p && 'x' in p && cameraTimes() ? p : undefined;
 };
 
-/** Position in cm: in the arena's frame when the arena is set up, otherwise from the position file. */
-export const positionCm = createMemo(() => {
-  const p = trackedPosition();
-  if (!p) return undefined;
-  if (positionsCm().x.length) return positionsCm();
-  const k = source.positionUnit === 'px' ? source.pxPerCm : 1;
-  return { x: p.x.map((v) => v / k), y: p.y.map((v) => v / k) };
-});
+/** Position in cm, in the arena's frame. Undefined when it is not loaded or cannot be calibrated. */
+export const positionCm = createMemo(() =>
+  trackedPosition() && positionsCm().x.length ? positionsCm() : undefined,
+);
 
 /**
  * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over `maxGapS` stay lost),

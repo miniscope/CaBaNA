@@ -4,7 +4,7 @@
 // the priority (Required, Recommended) is separate.
 
 import { createSignal } from 'solid-js';
-import { arena, pxPerCm } from './arena.ts';
+import { arena, positionTransform, pxPerCm } from './arena.ts';
 import {
   derivedCameraFps,
   derivedDuration,
@@ -57,7 +57,8 @@ export interface SetupSnapshot {
   positionTool: string;
   positionUnit: 'cm' | 'px';
   yDown: boolean;
-  pxPerCmEntered: number;
+  /** Positions can be put in arena cm (always for cm; pixels need the arena outline and scale). */
+  calibrated: boolean;
   headOffset: number;
   annotationTool: string;
   annotationUnit: string;
@@ -114,7 +115,7 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
     }
     case 'spatial': {
       const any = s.arenaDrawn || s.zones > 0 || s.bodyLine;
-      return grade(any, positive(s.pxPerCm));
+      return grade(any, positive(s.pxPerCm) && s.calibrated);
     }
     case 'tracking': {
       const any =
@@ -128,8 +129,7 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
         s.annotationUnit !== 'seconds';
       const likelihoodOk =
         s.likelihoodMin === undefined || (s.likelihoodMin >= 0 && s.likelihoodMin <= 1);
-      const scaleOk = s.positionUnit !== 'px' || positive(s.pxPerCmEntered);
-      return grade(any, filled(s.bodyPart) && likelihoodOk && scaleOk);
+      return grade(any, filled(s.bodyPart) && likelihoodOk);
     }
     case 'stimuli': {
       const named = s.stimuli.every((x) => filled(x.name));
@@ -184,7 +184,7 @@ export function setupSnapshot(): SetupSnapshot {
     positionTool: source.positionTool,
     positionUnit: source.positionUnit,
     yDown: source.yDown,
-    pxPerCmEntered: source.pxPerCm,
+    calibrated: !!positionTransform(),
     headOffset: arena.headOffset,
     annotationTool: source.annotationTool,
     annotationUnit: source.annotationUnit,

@@ -68,7 +68,7 @@ export function positionDecodingPipeline(
     },
     requires: ['decoding_fold_gap'],
     problems: ctx.common.hasArenaBox
-      ? []
+      ? common.problems
       : ['Position decoding needs the arena outline (Experimental setup, Spatial).'],
     target: 'position',
   };

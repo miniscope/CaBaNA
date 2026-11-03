@@ -23,6 +23,7 @@ import {
   undoAnnotationEdits,
 } from '../lib/store.ts';
 import { positionIssue } from '../lib/prepared.ts';
+import { positionTransform, positionUnitsPerCm } from '../lib/arena.ts';
 import { picked, posRange, setPicked, setPosRange } from '../lib/qc-view.ts';
 import type { Category } from './QcPanel.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -53,8 +54,6 @@ export function ticks(a: number, b: number, n = 6): number[] {
 
 const fmtS = (t: number, d = 1) => `${t.toFixed(d)} s`;
 
-/** Position units per cm, for drawing the path in cm. */
-const posScale = () => (source.positionUnit === 'px' ? source.pxPerCm : 1);
 
 const posOk = () => {
   const p = positionResult();
@@ -92,7 +91,10 @@ function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Element {
   createEffect(() => {
     const { x, y, frameT, idx, speed } = props.p;
     const [W, H] = [props.w, props.h];
-    const k = posScale();
+    // The same map to arena cm as every analysis. QC only has a result when it exists.
+    const t = positionTransform() ?? { sx: 1, sy: 1, tx: 0, ty: 0 };
+    const cx = (i: number) => t.sx * x[i] + t.tx;
+    const cy = (i: number) => t.sy * y[i] + t.ty;
     const thr = maxSpeed();
     const range = posRange();
     const sel = segments()[segIndex()];
@@ -101,8 +103,8 @@ function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Element {
     let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
     for (let i = 0; i < x.length; i++) {
       if (!Number.isFinite(x[i])) continue;
-      [x0, x1] = [Math.min(x0, x[i] / k), Math.max(x1, x[i] / k)];
-      [y0, y1] = [Math.min(y0, y[i] / k), Math.max(y1, y[i] / k)];
+      [x0, x1] = [Math.min(x0, cx(i)), Math.max(x1, cx(i))];
+      [y0, y1] = [Math.min(y0, cy(i)), Math.max(y1, cy(i))];
     }
     if (!Number.isFinite(x0)) return;
     const [L, B, T, R] = [48, 36, 8, 12];
@@ -113,8 +115,8 @@ function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Element {
     const [pw, ph] = [(x1 - x0) * s, (y1 - y0) * s];
     const ox = L + (W - L - R - pw) / 2;
     const oy = T + (H - T - B - ph) / 2;
-    const px = (i: number) => ox + (x[i] / k - x0) * s;
-    const py = (i: number) => oy + ph - (y[i] / k - y0) * s;
+    const px = (i: number) => ox + (cx(i) - x0) * s;
+    const py = (i: number) => oy + ph - (cy(i) - y0) * s;
     const dpr = devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
@@ -361,9 +363,9 @@ function PositionView(): JSX.Element {
                   narrows the path. Lost frames leave a break in the line.
                 </Help>
                 <Help k="Axes">
-                  x and y in cm
+                  x and y in cm, in the arena's frame (origin at its lower left, y up)
                   {source.positionUnit === 'px'
-                    ? `, converted from pixels at ${source.pxPerCm} px per cm (set in Experimental Setup)`
+                    ? `, converted from pixels with the arena calibration in Spatial setup (${positionUnitsPerCm()?.toFixed(2)} video pixels per cm)`
                     : ''}
                   . Both axes use the same scale, so the arena keeps its shape.
                 </Help>

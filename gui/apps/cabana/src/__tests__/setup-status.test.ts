@@ -19,7 +19,7 @@ const blank: SetupSnapshot = {
   positionTool: 'other',
   positionUnit: 'cm',
   yDown: false,
-  pxPerCmEntered: 10,
+  calibrated: true,
   headOffset: 0,
   annotationTool: 'other',
   annotationUnit: 'seconds',
@@ -58,15 +58,18 @@ describe('setup card status', () => {
     expect(statusOf('spatial', s({ arenaDrawn: true }))).toBe('Incomplete');
     expect(statusOf('spatial', s({ arenaDrawn: true, pxPerCm: 7.5 }))).toBe('Complete');
   });
-  it('tracking: body part needed; pixels need a scale; likelihood in 0 to 1', () => {
+  it('spatial: pixel positions without a calibration keep it Incomplete', () => {
+    // A known-distance line gives a scale but no arena outline, so pixels have no origin.
+    expect(
+      statusOf('spatial', s({ arenaDrawn: true, pxPerCm: 7.5, positionUnit: 'px', calibrated: false })),
+    ).toBe('Incomplete');
+  });
+  it('tracking: body part needed; likelihood in 0 to 1; the pixel scale belongs to spatial', () => {
     expect(statusOf('tracking', s({ annotationUnit: 'milliseconds' }))).toBe('Incomplete');
     expect(statusOf('tracking', s({ bodyPart: 'Head' }))).toBe('Complete');
     expect(statusOf('tracking', s({ bodyPart: 'Head', likelihoodMin: 1.5 }))).toBe('Incomplete');
     expect(
-      statusOf('tracking', s({ bodyPart: 'Head', positionUnit: 'px', pxPerCmEntered: 0 })),
-    ).toBe('Incomplete');
-    expect(
-      statusOf('tracking', s({ bodyPart: 'Head', positionUnit: 'px', pxPerCmEntered: 12 })),
+      statusOf('tracking', s({ bodyPart: 'Head', positionUnit: 'px', calibrated: false })),
     ).toBe('Complete');
   });
   it('stimuli: every row named with a loaded label, lengths not negative', () => {

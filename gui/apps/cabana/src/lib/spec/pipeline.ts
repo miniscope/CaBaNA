@@ -6,7 +6,8 @@ type Step = Record<string, unknown>;
 
 export interface CommonInput {
   positionUnit: string;
-  pxPerCm: number;
+  /** Pixel positions to arena cm (`lib/arena.ts`). Undefined when pixels have no calibration. */
+  positionTransform?: { sx: number; sy: number; tx: number; ty: number };
   fillGapS: number;
   posWindowS: number;
   posMethod: string;
@@ -34,16 +35,30 @@ export interface CommonOptions {
   position?: boolean;
 }
 
-const round = (v: number) => Math.round(v * 100) / 100;
+export const UNCALIBRATED =
+  'Positions are in pixels and have no calibration. Draw the arena outline in Spatial setup and give its size or a known distance.';
 
 export function commonSteps(
   i: CommonInput,
   o: CommonOptions = {},
-): { transforms: Step[]; preprocess: Step[] } {
+): { transforms: Step[]; preprocess: Step[]; problems: string[] } {
   const transforms: Step[] = [];
+  const problems: string[] = [];
   const withPosition = o.position !== false;
-  if (withPosition && i.positionUnit === 'px')
-    transforms.unshift({ name: 'arena_transform', signals: [''], scale: round(1 / i.pxPerCm) });
+  // Pixel positions get the same scale, origin and y direction as in the browser, unrounded, so
+  // zones and the spatial grid (both in arena cm) line up. The framework labels the result "mm";
+  // only its `min_speed_by_unit` reads that label, and no GUI pipeline uses it.
+  if (withPosition && i.positionUnit === 'px') {
+    const t = i.positionTransform;
+    if (t)
+      transforms.push({
+        name: 'arena_transform',
+        signals: [''],
+        scale: [t.sx, t.sy],
+        translate: [t.tx, t.ty],
+      });
+    else problems.push(UNCALIBRATED);
+  }
   if (withPosition && i.fillGapS > 0)
     transforms.push({ name: 'interpolate_gaps', signal: ['x', 'y'], max_gap_s: i.fillGapS });
   if (withPosition && i.posWindowS > 0)
@@ -87,5 +102,5 @@ export function commonSteps(
       });
       preprocess.push({ name: 'clean_mask', mask: `${l}_padded`, dilate_s: i.labelPadS });
     }
-  return { transforms, preprocess };
+  return { transforms, preprocess, problems };
 }

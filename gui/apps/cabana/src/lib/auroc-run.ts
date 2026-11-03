@@ -22,7 +22,7 @@ import {
 } from './auroc.ts';
 import { createAurocWorkerPool, type AurocPoolJob } from './auroc-pool.ts';
 import { dilateMask } from './framework.ts';
-import { placeNeural, positionOnNeural } from './prepared.ts';
+import { placeNeural, positionIssue, positionOnNeural } from './prepared.ts';
 import { DEFAULT_PREP, prep } from './preprocess.ts';
 import { DEFAULT_MATCH, fillMissing, type MatchedDraw, type MatchOptions } from './speed-match.ts';
 import { preselectUnselected } from './labels.ts';
@@ -126,7 +126,7 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
     if (!(Number.isFinite(minSpeed) && minSpeed >= 0))
       return { error: 'Enter a minimum speed of 0 cm/s or more.' };
     if (!pos || pos.sx.length !== n.frames)
-      return { error: 'The speed filter needs a loaded position file.' };
+      return { error: `The speed filter needs position. ${positionIssue(true) ?? ''}`.trim() };
     // Speed can be missing where position exists (for example at the edges of the speed window), and a missing speed cannot be compared with the threshold.
     for (let i = 0; i < n.frames; i++) {
       if (!Number.isFinite(pos.speedAfter[i])) {

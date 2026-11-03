@@ -27,6 +27,7 @@ import { annotationQc, dropShortBouts, mergeBouts, readEpochs, type Epoch } from
 import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 import { parseCsvText } from './csv-text.ts';
+import { UNCALIBRATED } from './spec/pipeline.ts';
 import { markerLabelCounts, readMarkers } from './markers.ts';
 import {
   agreement,
@@ -391,7 +392,6 @@ export const [source, setSource] = createStore({
   positionUnit: 'cm' as 'cm' | 'px',
   /** Position in cm with y growing downward, as in camera images: y is flipped to the arena's y-up frame. */
   yDown: false,
-  pxPerCm: 10,
   /** Seconds the behavior video ran before the miniscope started: t_neural = scale * (t_video - offset). */
   clockOffsetS: 0,
   /** Ratio of the neural clock's rate to the camera clock's, for clocks that drift apart. Usually 1. */
@@ -464,12 +464,19 @@ export const cameraTimes = createMemo(() => {
   }
 });
 
+/** Position units per cm, from the calibration in arena.ts, which registers it (it imports this module). Undefined: not calibrated. */
+const [positionScale, setScaleGetter] = createSignal<() => number | undefined>(() => 1);
+export const setPositionScale = (f: () => number | undefined) => setScaleGetter(() => f);
+
 export const positionResult = createMemo(() => {
   const pos = table('position');
   const ts = table('behavior_timestamps');
   if (!pos || !ts) return undefined;
+  // Speeds and jumps are in cm/s, so pixel positions without a calibration cannot be checked.
+  const unitsPerCm = positionScale()();
+  if (unitsPerCm === undefined) return { error: UNCALIBRATED };
   try {
-    return positionQc(pos, ts, maxSpeed(), tol, source.positionUnit === 'px' ? source.pxPerCm : 1);
+    return positionQc(pos, ts, maxSpeed(), tol, unitsPerCm);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
