@@ -113,11 +113,20 @@ export async function compareToRecord(
   return { matches, diff: matches ? [] : settingsDiff(rec.gui.settings, current) };
 }
 
-/** The settings of the latest run of `id` compared with the current ones. */
+/** The newest run of `id` that produced results; a later failed or cancelled attempt does not replace it. */
+export function newestResult(id: AnalysisId): RunRecord | undefined {
+  return [latest[id], ...history()]
+    .filter(
+      (r): r is RunRecord => !!r && r.analysis === id && r.status === 'ok' && !!r.results_file,
+    )
+    .sort((a, b) => b.created_utc.localeCompare(a.created_utc))[0];
+}
+
+/** The settings of the newest result of `id` compared with the current ones. */
 export async function compareToLatest(
   id: AnalysisId,
 ): Promise<{ matches: boolean; diff: string[] } | undefined> {
-  const rec = latest[id];
+  const rec = newestResult(id);
   return rec ? compareToRecord(id, rec) : undefined;
 }
 

@@ -24,7 +24,8 @@ import {
   type Snapshot,
   type Status,
 } from './readiness.ts';
-import { active, blockers, compareToLatest, history, latest, type AnalysisId } from './runs.ts';
+import { active, blockers, compareToRecord, type AnalysisId } from './runs.ts';
+import { hasSavedResults, runOutcome } from './result-index.ts';
 import { CARDS, setupSnapshot, statusOf, stimulusLabelIssues } from './setup-status.ts';
 import {
   deconvolved,
@@ -32,10 +33,8 @@ import {
   experiment,
   labelRegistry,
   loaded,
-  onClear,
   rawTrace,
   samplingRate,
-  stepId,
 } from './store.ts';
 import type { LabelEntry } from './labels.ts';
 
@@ -84,12 +83,7 @@ export function populationStateCount(
   return chosen.length ? chosen.filter((n) => names.has(n)).length : names.size;
 }
 
-const [visitedPages, setVisitedPages] = createSignal<Partial<Record<ItemId, boolean>>>({});
-onClear(() => setVisitedPages({}));
-export const markVisited = (id: ItemId) =>
-  visitedPages()[id] || setVisitedPages({ ...visitedPages(), [id]: true });
-
-/** Whether the latest framework run of each analysis still matches the current settings. */
+/** Whether the newest framework result of each analysis still matches the current settings. */
 const [matchesLatest, setMatchesLatest] = createSignal<Partial<Record<AnalysisId, boolean>>>({});
 
 /** Safe call for state that may not be complete yet (no data loaded): returns the fallback on error. */
@@ -106,7 +100,7 @@ const MISSING = /^Missing framework features: (.*)\.$/;
 /** Split what `blockers` reports into input problems and the names of missing framework features. */
 function frameworkRunState(id: AnalysisId): RunState {
   const a = active();
-  const rec = latest[id];
+  const { result, lastAttempt } = runOutcome(id);
   const running = a?.id === id;
   const messages = attempt(() => blockers(id), [] as string[]).filter(
     (m) => m !== 'Python engine not running.' && m !== 'This analysis is not available.',
@@ -115,13 +109,17 @@ function frameworkRunState(id: AnalysisId): RunState {
   return {
     running,
     progress: running && a.phase === 'running' && a.fraction > 0 ? a.fraction : undefined,
-    latest: rec && { status: rec.status, matches: matchesLatest()[id] ?? true },
+    result: result && { matches: matchesLatest()[id] ?? true },
+    lastAttempt: lastAttempt?.status as RunState['lastAttempt'],
     issues: messages.filter((m) => !MISSING.test(m)),
     framework: missing.map(featureNeed),
   };
 }
 
-/** Browser-engine analyses: a run is running, has results, and matches unless its settings changed. */
+/**
+ * Browser-engine analyses: a run is running, has results, and matches unless its settings changed.
+ * A failed later run is noted; the earlier result stays.
+ */
 function browserRunState(
   status: { kind: string; done?: number; total?: number },
   hasOutcome: boolean,
@@ -132,12 +130,8 @@ function browserRunState(
   return {
     running,
     progress: measurable ? (status.done ?? 0) / (status.total as number) : undefined,
-    latest:
-      status.kind === 'error'
-        ? { status: 'failed', matches: false }
-        : hasOutcome
-          ? { status: 'ok', matches: attempt(changes, []).length === 0 }
-          : undefined,
+    result: hasOutcome ? { matches: attempt(changes, []).length === 0 } : undefined,
+    lastAttempt: status.kind === 'error' ? 'failed' : undefined,
     issues: [],
   };
 }
@@ -155,7 +149,6 @@ export function buildSnapshot(): Snapshot {
   if (state.kind === 'ready')
     for (const [k, v] of Object.entries(state.capabilities))
       if (typeof v === 'boolean') caps[k] = v;
-  const visited = visitedPages();
   return {
     neural: !!(deconvolved() ?? rawTrace() ?? denoisedTrace()),
     timing: samplingRate() !== undefined,
@@ -188,10 +181,10 @@ export function buildSnapshot(): Snapshot {
       decoding: frameworkRunState('decoding'),
       population: frameworkRunState('population'),
     },
-    visited,
-    // Without a position file no setup card is required, so the page only has to have been opened.
-    setupComplete: position ? requiredDone : !!visited.setup && requiredDone,
-    hasRuns: history().length > 0 || !!(placeOutcome() ?? aurocOutcome() ?? pethOutcome()),
+    setupComplete: requiredDone,
+    setupStarted: CARDS.some((c) => statusOf(c.id, setup) !== 'Empty'),
+    setupRequired: position,
+    hasRuns: hasSavedResults(),
   };
 }
 
@@ -200,11 +193,11 @@ export const snapshot = createRoot(() => {
   let sequence = 0;
   // Re-hash whenever anything the settings hash reads changes; ignore answers that arrive late.
   createEffect(() => {
-    const ids = (['decoding', 'population'] as AnalysisId[]).filter((id) => latest[id]);
+    const ids = (['decoding', 'population'] as AnalysisId[]).filter((id) => runOutcome(id).result);
     const mine = ++sequence;
     void Promise.all(
       ids.map((id) =>
-        compareToLatest(id)
+        compareToRecord(id, runOutcome(id).result!)
           .then((r) => [id, r?.matches ?? true] as const)
           .catch(() => [id, true] as const),
       ),
@@ -233,11 +226,3 @@ export function currentItem(step: string, analysis: AnalysisItem): ItemId {
 const ORDERED: ItemId[] = ['load', 'setup', 'viz', 'qc', 'prep', 'results'];
 
 export const nextFor = (current: ItemId) => nextStep(snapshot(), current, experiment().recommended);
-
-/** Records the visit of the open page, for "Viewed" on the optional pages. */
-export function trackVisits(): void {
-  createEffect(() => {
-    const step = stepId() as ItemId;
-    if (ORDERED.includes(step)) markVisited(step);
-  });
-}

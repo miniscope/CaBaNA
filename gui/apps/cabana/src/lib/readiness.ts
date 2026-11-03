@@ -28,7 +28,6 @@ export type StatusKind =
   | 'framework_update'
   | 'ready'
   | 'in_progress'
-  | 'viewed'
   | 'running'
   | 'complete'
   | 'outdated'
@@ -94,11 +93,10 @@ export interface RunState {
   running: boolean;
   /** 0..1 only when the run reports measurable progress. */
   progress?: number;
-  /** Latest run of this analysis, if any. */
-  latest?: {
-    status: 'ok' | 'partial' | 'cancelled' | 'failed' | 'queued' | 'running';
-    matches: boolean;
-  };
+  /** The newest run with results; freshness is judged on it alone. */
+  result?: { matches: boolean };
+  /** A newer run that produced no usable result. It is noted, and never makes the status Complete. */
+  lastAttempt?: 'failed' | 'partial' | 'cancelled';
   /** Input problems reported for the current settings (for example a label with too few bins). */
   issues: string[];
   /** Framework features the pipeline needs that are missing. */
@@ -125,10 +123,12 @@ export interface Snapshot {
   populationStates: number;
   decodingTarget: 'position' | 'behaviors';
   runs: Partial<Record<AnalysisItem, RunState>>;
-  /** Pages the user has opened. */
-  visited: Partial<Record<ItemId, boolean>>;
-  /** Required setup cards are complete (or, with no position file, the page was visited). */
+  /** The setup cards the loaded data requires are complete. */
   setupComplete: boolean;
+  /** Some setup card has content. */
+  setupStarted: boolean;
+  /** The loaded data makes a setup card required (a position file needs the arena). */
+  setupRequired: boolean;
   hasRuns: boolean;
 }
 
@@ -156,7 +156,6 @@ export const STATUS_TEXT: Record<StatusKind, string> = {
   framework_update: 'Framework update required',
   ready: 'Ready',
   in_progress: 'In progress',
-  viewed: 'Viewed',
   running: 'Running',
   complete: 'Complete',
   outdated: 'Outdated',
@@ -170,7 +169,6 @@ export const STATUS_ICON: Record<StatusKind, string> = {
   framework_update: 'wrench',
   ready: 'play',
   in_progress: 'circle',
-  viewed: 'circle',
   running: 'spinner',
   complete: 'check',
   outdated: 'refresh',
@@ -189,7 +187,6 @@ export const TONE: Record<StatusKind, Tone> = {
   outdated: 'outdated',
   not_started: 'not_started',
   optional: 'not_started',
-  viewed: 'not_started',
   ready: 'not_started',
 };
 export const TONE_TEXT: Record<Tone, { name: string; meaning: string }> = {
@@ -220,7 +217,6 @@ export function statusDetail(s: Status): string {
   if (s.kind === 'failed') return 'The last run failed.';
   if (s.kind === 'ready') return 'Ready to run; no run yet.';
   if (s.kind === 'running') return `${s.text}.`;
-  if (s.kind === 'viewed') return 'Opened; nothing is required here.';
   if (s.kind === 'optional') return 'Optional; nothing is required here.';
   return TONE_TEXT[TONE[s.kind]].meaning;
 }
@@ -289,6 +285,12 @@ export function analysisNeeds(
   return { input, framework, engineOff: engine && s.bridge !== 'ready' };
 }
 
+const ATTEMPT_TEXT: Record<NonNullable<RunState['lastAttempt']>, string> = {
+  failed: 'failed',
+  partial: 'only partly succeeded',
+  cancelled: 'cancelled',
+};
+
 const progressText = (p?: number) =>
   p === undefined ? 'Running' : `Running ${Math.round(p * 100)}%`;
 
@@ -298,10 +300,16 @@ export function analysisStatus(s: Snapshot, id: AnalysisItem): Status {
     return status('running', { text: progressText(run.progress), progress: run.progress });
   const needs = analysisNeeds(s, id);
   if (needs.input.length) return status('needs_input', needs);
-  if (run?.latest) {
-    if (run.latest.status === 'failed') return status('failed', needs);
-    return status(run.latest.matches ? 'complete' : 'outdated', needs);
+  if (run?.result) {
+    const kind = run.result.matches ? 'complete' : 'outdated';
+    const note = run.lastAttempt && ` · last attempt ${ATTEMPT_TEXT[run.lastAttempt]}`;
+    return status(kind, { ...needs, ...(note && { text: STATUS_TEXT[kind] + note }) });
   }
+  if (run?.lastAttempt === 'failed' || run?.lastAttempt === 'partial')
+    return status('failed', {
+      ...needs,
+      text: run.lastAttempt === 'partial' ? 'Failed: partial result only' : 'Failed',
+    });
   if (needs.engineOff || needs.framework.length) {
     const text = needs.engineOff
       ? s.bridge === 'connecting'
@@ -330,15 +338,16 @@ export function itemStatus(s: Snapshot, id: ItemId): Status {
             },
           ],
         });
-      if (s.setupComplete) return status('complete');
-      return s.visited.setup ? status('in_progress') : status('not_started');
+      if (s.setupComplete && s.setupStarted) return status('complete');
+      if (s.setupStarted) return status('in_progress');
+      return s.setupRequired ? status('not_started') : status('optional');
     case 'viz':
     case 'qc':
     case 'prep':
       if (!s.neural)
         return status('needs_input', { input: [{ text: 'Load neural data first.', link: LOAD }] });
-      // Looking at an optional page is not work, so it never counts as Complete.
-      return s.visited[id] ? status('viewed') : status('optional');
+      // Looking at an optional page is not work, so opening it changes nothing.
+      return status('optional');
     case 'results':
       return s.hasRuns
         ? status('complete', { text: 'Results available' })
@@ -390,7 +399,7 @@ export function nextStep(
       continue;
     if (id === 'results') return { item: 'results' };
     const st = itemStatus(s, id);
-    if (['complete', 'viewed', 'running', 'framework_update'].includes(st.kind)) continue;
+    if (['complete', 'optional', 'running', 'framework_update'].includes(st.kind)) continue;
     if (st.kind === 'needs_input') {
       const provider = st.input.find(
         (n) => n.link && ORDER.indexOf(n.link.item) < ORDER.indexOf(id),

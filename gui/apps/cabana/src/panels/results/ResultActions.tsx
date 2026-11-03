@@ -13,6 +13,7 @@ import {
 import { active, blockers, refreshHistory, runAnalysis, type AnalysisId } from '../../lib/runs.ts';
 import { Popover } from '../Popover.tsx';
 import { RunDetailsBody } from './RunDetails.tsx';
+import { keptFile } from '../../lib/browser-records.ts';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -66,10 +67,19 @@ export function OpenResult(props: { record: RunRecord; onDone?: () => void }): J
 function StoredFiles(props: { record: RunRecord; onDone?: () => void }): JSX.Element {
   const [open, setOpen] = createSignal(false);
   const [name, setName] = createSignal<string>();
+  // This browser keeps the files of the browser runs it made, so they open with the engine off.
+  const kept = () => (name() ? keptFile(props.record.run_id, name()!) : undefined);
   const [text] = createResource(
-    () => (name() && bridgeReady() ? { id: props.record.run_id, file: name()! } : undefined),
+    () =>
+      name() && kept() === undefined && bridgeReady()
+        ? { id: props.record.run_id, file: name()! }
+        : undefined,
     (k) => bridge.runFile(k.id, k.file).catch((e) => `Could not read the file: ${errorText(e)}`),
   );
+  const shown = () => kept() ?? text();
+  const readable = () =>
+    bridgeReady() ||
+    (props.record.files ?? []).some((f) => keptFile(props.record.run_id, f) !== undefined);
   let btn!: HTMLButtonElement;
   return (
     <>
@@ -92,7 +102,7 @@ function StoredFiles(props: { record: RunRecord; onDone?: () => void }): JSX.Ele
             Saved by the browser engine. Interactive plots need the data loaded in the setup.
           </p>
           <Show
-            when={bridgeReady()}
+            when={readable()}
             fallback={<p class="cb-muted">Stored files need the Python engine.</p>}
           >
             <ul class="cb-ro__files">
@@ -109,8 +119,8 @@ function StoredFiles(props: { record: RunRecord; onDone?: () => void }): JSX.Ele
                 )}
               </For>
             </ul>
-            <Show when={text()}>
-              <pre class="cb-rd__pre">{text()}</pre>
+            <Show when={shown()}>
+              <pre class="cb-rd__pre">{shown()}</pre>
             </Show>
           </Show>
         </Popover>

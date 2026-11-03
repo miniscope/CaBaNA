@@ -26,13 +26,13 @@ const base = (over: Partial<Snapshot> = {}): Snapshot => ({
   populationStates: 3,
   decodingTarget: 'position',
   runs: {},
-  visited: {},
   setupComplete: false,
+  setupStarted: false,
+  setupRequired: true,
   hasRuns: false,
   ...over,
 });
 const texts = (s: { input: { text: string }[] }) => s.input.map((i) => i.text);
-const done = { setup: true, viz: true, qc: true, prep: true } as const;
 
 describe('item status', () => {
   it('empty app: Load is the only work; everything else is reachable but needs input', () => {
@@ -51,22 +51,27 @@ describe('item status', () => {
       text: 'No results yet',
     });
   });
-  it('optional pages are never "Not started"', () => {
-    for (const id of ['viz', 'qc', 'prep'] as const) {
+  it('optional pages stay Optional: opening a page is not work', () => {
+    for (const id of ['viz', 'qc', 'prep'] as const)
       expect(itemStatus(base(), id)).toMatchObject({ kind: 'optional', text: 'Optional' });
-      expect(itemStatus(base({ visited: { [id]: true } }), id)).toMatchObject({
-        kind: 'viewed',
-        text: 'Viewed',
-      });
-    }
   });
-  it('setup: not started, in progress once visited, complete when required cards are done', () => {
+  it('setup status comes from its cards, never from visits', () => {
     expect(itemStatus(base(), 'setup').kind).toBe('not_started');
-    expect(itemStatus(base({ visited: { setup: true } }), 'setup')).toMatchObject({
+    expect(itemStatus(base({ setupStarted: true }), 'setup')).toMatchObject({
       kind: 'in_progress',
       text: 'In progress',
     });
-    expect(itemStatus(base({ setupComplete: true }), 'setup').kind).toBe('complete');
+    expect(itemStatus(base({ setupStarted: true, setupComplete: true }), 'setup').kind).toBe(
+      'complete',
+    );
+    // Without a position file no card is required.
+    expect(itemStatus(base({ setupRequired: false, setupComplete: true }), 'setup').kind).toBe(
+      'optional',
+    );
+    expect(
+      itemStatus(base({ setupRequired: false, setupComplete: true, setupStarted: true }), 'setup')
+        .kind,
+    ).toBe('complete');
   });
   it('place cells need position and finished spatial setup', () => {
     expect(texts(analysisStatus(base({ position: false }), 'place'))).toContain(
@@ -124,7 +129,7 @@ describe('item status', () => {
   it('saved results stay Complete with the engine stopped', () => {
     const s = base({
       bridge: 'offline',
-      runs: { population: { running: false, issues: [], latest: { status: 'ok', matches: true } } },
+      runs: { population: { running: false, issues: [], result: { matches: true } } },
     });
     expect(analysisStatus(s, 'population').kind).toBe('complete');
   });
@@ -137,36 +142,37 @@ describe('item status', () => {
     });
     expect(run({ running: true, issues: [] }).text).toBe('Running');
   });
-  it('complete, outdated and failed come from the latest run', () => {
+  it('freshness comes from the newest result; a later failed attempt is a note', () => {
     const run = (r: NonNullable<Snapshot['runs']['population']>) =>
       analysisStatus(base({ runs: { population: r } }), 'population');
-    expect(run({ running: false, issues: [], latest: { status: 'ok', matches: true } }).kind).toBe(
-      'complete',
-    );
-    expect(run({ running: false, issues: [], latest: { status: 'ok', matches: false } }).kind).toBe(
-      'outdated',
-    );
+    expect(run({ running: false, issues: [], result: { matches: true } }).kind).toBe('complete');
+    expect(run({ running: false, issues: [], result: { matches: false } }).kind).toBe('outdated');
     expect(
-      run({ running: false, issues: [], latest: { status: 'failed', matches: true } }).kind,
-    ).toBe('failed');
+      run({ running: false, issues: [], result: { matches: true }, lastAttempt: 'failed' }),
+    ).toMatchObject({ kind: 'complete', text: 'Complete · last attempt failed' });
+    expect(run({ running: false, issues: [], lastAttempt: 'failed' }).kind).toBe('failed');
+    expect(run({ running: false, issues: [], lastAttempt: 'partial' })).toMatchObject({
+      kind: 'failed',
+      text: 'Failed: partial result only',
+    });
+    // Cancelled, queued or partial runs never make an analysis Complete.
+    expect(run({ running: false, issues: [], lastAttempt: 'cancelled' }).kind).toBe('ready');
     expect(run({ running: false, issues: ['Too few usable bins'] }).kind).toBe('needs_input');
   });
 });
 
 describe('Next', () => {
-  const ready = base({ visited: done, setupComplete: true });
+  const ready = base({ setupStarted: true, setupComplete: true });
   it('walks the steps in order and skips Complete ones', () => {
     expect(nextItem(ready, 'load')).toBe('place');
     expect(nextItem(base(), 'load')).toBe('setup');
-    expect(nextItem(base({ visited: { setup: true }, setupComplete: true }), 'load')).toBe('prep');
   });
-  it('never offers Data visualization or Data QC', () => {
-    const s = base({ setupComplete: true });
-    expect(nextItem(s, 'load')).toBe('prep');
-    expect(nextItem(s, 'setup')).toBe('prep');
+  it('never offers the optional pages (Data visualization, Data QC, Preprocess)', () => {
+    expect(nextItem(ready, 'load')).toBe('place');
+    expect(nextItem(ready, 'setup')).toBe('place');
   });
   it('goes to the step that provides a missing prerequisite', () => {
-    const s = base({ spatialComplete: false, visited: done, setupComplete: false });
+    const s = base({ spatialComplete: false, setupStarted: true, setupComplete: false });
     expect(nextItem(s, 'prep', ['place', 'auroc'])).toBe('setup');
   });
   it('stays on the page that supplies what is missing, and says what', () => {
@@ -188,7 +194,7 @@ describe('Next', () => {
   it('skips a Complete analysis and goes to the next recommended one', () => {
     const s = base({
       ...ready,
-      runs: { population: { running: false, issues: [], latest: { status: 'ok', matches: true } } },
+      runs: { population: { running: false, issues: [], result: { matches: true } } },
     });
     expect(nextItem(s, 'prep', ['population', 'auroc'])).toBe('auroc');
   });
@@ -203,7 +209,7 @@ describe('Next', () => {
       path.push(item);
       s = {
         ...s,
-        visited: { ...s.visited, [item]: true },
+        setupStarted: s.setupStarted || item === 'setup',
         setupComplete: s.setupComplete || item === 'setup',
         runs: ['place', 'auroc', 'peth', 'decoding', 'population'].includes(item)
           ? {
@@ -211,7 +217,7 @@ describe('Next', () => {
               [item as AnalysisItem]: {
                 running: false,
                 issues: [],
-                latest: { status: 'ok', matches: true },
+                result: { matches: true },
               },
             }
           : s.runs,
@@ -219,14 +225,13 @@ describe('Next', () => {
     }
     return path;
   }
-  it('open field: Load, Setup, Preprocess, place cells, population, Results', () => {
-    expect(walk('open_field')).toEqual(['load', 'setup', 'prep', 'place', 'population', 'results']);
+  it('open field: Load, Setup, place cells, population, Results', () => {
+    expect(walk('open_field')).toEqual(['load', 'setup', 'place', 'population', 'results']);
   });
   it('social interaction: auROC, population, decoding', () => {
     expect(walk('social_interaction')).toEqual([
       'load',
       'setup',
-      'prep',
       'auroc',
       'decoding',
       'population',
@@ -236,9 +241,8 @@ describe('Next', () => {
 });
 
 describe('sidebar tones', () => {
-  it('every kind maps to one of the five statuses, and viewing is never Complete', () => {
+  it('every kind maps to one of the five statuses', () => {
     expect(Object.keys(TONE).sort()).toEqual(Object.keys(STATUS_TEXT).sort());
-    expect(TONE.viewed).toBe('not_started');
     expect(TONE.running).toBe('in_progress');
     expect(TONE.outdated).toBe('outdated');
   });

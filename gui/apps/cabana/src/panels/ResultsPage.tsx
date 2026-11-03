@@ -1,16 +1,17 @@
-import { createEffect, createSignal, on, onMount, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, onMount, onCleanup, Show, type JSX } from 'solid-js';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { bridgeReady } from '../lib/bridge-status.ts';
 import { openedRun, openRunOf } from '../lib/results-nav.ts';
 import {
   ANALYSIS_IDS,
   hasResults,
-  listedRecords,
   overviewRows,
   type OverviewRow,
 } from '../lib/results-overview.ts';
-import { cachedRecords, cacheRecords, prefetchRun } from '../lib/results-store.ts';
-import { compareToLatest, history, latest, refreshHistory, type AnalysisId } from '../lib/runs.ts';
+import { prefetchRun } from '../lib/results-store.ts';
+import { compareToRecord, type AnalysisId } from '../lib/runs.ts';
+import { resultIndex, runOutcome } from '../lib/result-index.ts';
+import { forgetBrowserRecord } from '../lib/browser-records.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { ANALYSES } from '../lib/analyses.ts';
 import { InfoTip } from './InfoTip.tsx';
@@ -19,6 +20,7 @@ import { AnalysisHistory } from './results/AnalysisHistory.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import type { Match } from './results/RunBanner.tsx';
 import { ResultsOverview } from './results/ResultsOverview.tsx';
+import { PREVIEW_TEXT } from '../lib/preview.ts';
 
 type Tab = 'latest' | 'history';
 
@@ -26,62 +28,50 @@ type Tab = 'latest' | 'history';
 export function ResultsPage(): JSX.Element {
   let root!: HTMLDivElement;
   const [tab, setTab] = createSignal<Tab>('latest');
-  const [saved, setSaved] = createSignal<RunRecord[]>([]);
-  const [loaded, setLoaded] = createSignal(false);
   const [matches, setMatches] = createSignal<Partial<Record<AnalysisId, Match>>>({});
 
-  onMount(() => {
-    onCleanup(fitToWindow(root));
-    void cachedRecords().then(setSaved);
-  });
+  onMount(() => onCleanup(fitToWindow(root)));
 
-  // The engine answers: refresh the list. Each refreshed list is also kept for when it stops.
-  createEffect(() => {
-    if (bridgeReady())
-      void refreshHistory().then(
-        () => setLoaded(true),
-        () => setLoaded(false),
-      );
-    else setLoaded(false);
-  });
-  createEffect(
-    on([history, loaded], ([records, ready]) => {
-      if (!ready || !bridgeReady()) return;
-      void cacheRecords(records);
-      for (const r of records)
-        if (r.engine === 'framework' && hasResults(r) && r.record_version <= 1)
-          void prefetchRun(r.run_id);
-      setSaved(records);
-    }),
-  );
-
-  const records = () => listedRecords(bridgeReady() && loaded(), history(), saved());
+  // One list for this page, its history and the sidebar (`result-index.ts`).
+  const records = resultIndex;
   const rows = () => overviewRows(records());
+  // Keep finished framework results readable after the engine stops.
+  createEffect(() => {
+    if (!bridgeReady()) return;
+    for (const r of records())
+      if (r.engine === 'framework' && hasResults(r) && r.record_version <= 1)
+        void prefetchRun(r.run_id);
+  });
 
-  // Whether the settings now match each analysis's latest run (compared in the page's own effect).
+  // Whether the settings now match each analysis's newest framework result.
   let seq = 0;
   createEffect(() => {
-    if (!bridgeReady() || !loaded()) return setMatches({});
+    if (!bridgeReady()) return setMatches({});
     const mine = ++seq;
-    void Promise.all(ANALYSIS_IDS.map((id) => compareToLatest(id).catch(() => undefined))).then(
-      (found) => {
-        if (mine === seq)
-          setMatches(
-            Object.fromEntries(ANALYSIS_IDS.flatMap((id, i) => (found[i] ? [[id, found[i]]] : []))),
-          );
-      },
-    );
+    const newest = ANALYSIS_IDS.map((id) => runOutcome(id).result);
+    void Promise.all(
+      ANALYSIS_IDS.map((id, i) =>
+        newest[i]?.engine === 'framework'
+          ? compareToRecord(id, newest[i]!).catch(() => undefined)
+          : undefined,
+      ),
+    ).then((found) => {
+      if (mine === seq)
+        setMatches(
+          Object.fromEntries(ANALYSIS_IDS.flatMap((id, i) => (found[i] ? [[id, found[i]]] : []))),
+        );
+    });
   });
   // Only the run the comparison was made against shows match information.
   const matchOf = (row: OverviewRow): Match | undefined =>
-    row.record && latest[row.analysis]?.run_id === row.record.run_id
+    row.record && runOutcome(row.analysis).result?.run_id === row.record.run_id
       ? matches()[row.analysis]
       : undefined;
 
   const afterDelete = (r: RunRecord) => {
     const id = r.analysis as AnalysisId;
     if (openedRun(id) === r.run_id) openRunOf(id, undefined);
-    setSaved(saved().filter((s) => s.run_id !== r.run_id));
+    void forgetBrowserRecord(r.run_id);
   };
 
   const empty = () => records().length === 0;
@@ -96,8 +86,9 @@ export function ResultsPage(): JSX.Element {
               current settings.
             </p>
             <p>
-              Preliminary means the null used 50 shuffles. Settings changed means the setup differs
-              from the one the result was made with. They are independent.
+              Preliminary means a Quick preview: {PREVIEW_TEXT}. Each result shows the count it ran.
+              Settings changed means the setup differs from the one the result was made with. They
+              are independent.
             </p>
           </InfoTip>
         </div>

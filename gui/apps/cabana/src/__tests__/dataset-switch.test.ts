@@ -23,7 +23,6 @@ import {
 } from '../lib/population-settings.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { posRange, reviewed, setPosRange, setReviewed } from '../lib/qc-view.ts';
-import { buildSnapshot, markVisited } from '../lib/readiness-snapshot.ts';
 import { applySettings, savedDatasets } from '../lib/settings-template.ts';
 import {
   addFiles,
@@ -82,7 +81,6 @@ function editEverything(): void {
   setPositionDecoding('folds', 9);
   setBehaviorDecoding({ C: 3, labels: ['x'] });
   setDecodeTarget('type', 'behaviors');
-  markVisited('setup');
 }
 
 describe('switching datasets', () => {
@@ -119,7 +117,6 @@ describe('switching datasets', () => {
     expect(positionDecoding.folds).toBe(DEFAULT_POSITION_DECODING.folds);
     expect(behaviorDecoding.labels).toEqual([]);
     expect(decodeTarget.type).toBe('position');
-    expect(buildSnapshot().visited).toEqual({});
   });
 
   it('applies only the chosen groups from a saved dataset, never per-recording values', () => {

@@ -5,7 +5,8 @@ import { StatusLegend, ToneIcon } from '../components/StatusBadge.tsx';
 import { openItem } from '../components/Requirements.tsx';
 import { ANALYSES, analysisId, setAnalysisId } from '../lib/analyses.ts';
 import { ITEM_LABEL, statusDetail, TONE, type ItemId } from '../lib/readiness.ts';
-import { currentItem, nextFor, statusOfItem, trackVisits } from '../lib/readiness-snapshot.ts';
+import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
+import { startResultIndex } from '../lib/result-index.ts';
 import { goToStep, stepId } from '../lib/store.ts';
 import { AnalyzeOverview } from '../panels/AnalyzeOverview.tsx';
 import { InfoTip } from '../panels/InfoTip.tsx';
@@ -111,7 +112,7 @@ function Footer(): JSX.Element {
 
 /** One sidebar with every page always reachable; each item has a status icon on its left. */
 export function SidebarShell(props: { steps: Step[] }): JSX.Element {
-  trackVisits();
+  startResultIndex();
   const panel = (): Component | undefined =>
     stepId() === 'analyze_overview'
       ? AnalyzeOverview
