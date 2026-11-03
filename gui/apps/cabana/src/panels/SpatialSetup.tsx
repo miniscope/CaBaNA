@@ -16,8 +16,11 @@ import {
   frame,
   frameVersion,
   occupancy,
+  freeName,
+  nameTaken,
   pendingZones,
   positionsCm,
+  regionGroup,
   pxPerCm,
   setArena,
   setFrame,
@@ -159,10 +162,15 @@ export function SpatialSetup(): JSX.Element {
     return [a[0] + Math.sign(b[0] - a[0] || 1) * side, a[1] + Math.sign(b[1] - a[1] || 1) * side];
   };
 
+  // Two regions of one group with the same name would collapse into one in the config.
+  const takenName = () => {
+    const n = zoneName().trim();
+    return n && nameTaken(n, zoneKind(), zoneShape()) ? n : undefined;
+  };
   function addZone(pts: Pt[]) {
-    const n = arena.zones.length + 1;
-    const name = zoneName().trim() || (zoneKind() === 'exclude' ? `excluded ${n}` : `zone ${n}`);
+    if (takenName()) return;
     const kind = zoneKind();
+    const name = zoneName().trim() || freeName(kind, zoneShape());
     const drawn = zoneShape();
     const shape = drawn === 'square' ? 'rect' : drawn === 'freehand' ? 'polygon' : drawn;
     setArena('zones', (zs) => [...zs, { name, kind, shape, pts }]);
@@ -637,9 +645,14 @@ export function SpatialSetup(): JSX.Element {
                   placeholder="center"
                   value={zoneName()}
                   onInput={(e) => setZoneName(e.currentTarget.value)}
+                  aria-invalid={!!takenName()}
                 />
               </label>
-              {toolBtn('zone', '+ Add zone')}
+              <Show when={takenName()} fallback={toolBtn('zone', '+ Add zone')}>
+                <span class="cb-error" role="alert">
+                  {`A ${regionGroup(zoneKind(), zoneShape())} named "${takenName()}" already exists. Choose another name.`}
+                </span>
+              </Show>
               <Show when={tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2}>
                 <button
                   class="btn-secondary btn-small"
@@ -891,3 +904,4 @@ export function SpatialSetup(): JSX.Element {
     </div>
   );
 }
+

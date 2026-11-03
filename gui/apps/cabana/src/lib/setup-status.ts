@@ -5,6 +5,7 @@
 
 import { createSignal } from 'solid-js';
 import { arena, positionTransform, pxPerCm } from './arena.ts';
+import { arenaProblem } from './config-import.ts';
 import {
   derivedCameraFps,
   derivedDuration,
@@ -59,6 +60,8 @@ export interface SetupSnapshot {
   yDown: boolean;
   /** Positions can be put in arena cm (always for cm; pixels need the arena outline and scale). */
   calibrated: boolean;
+  /** The config's arena could not be read and none has been set. */
+  arenaBlocked: boolean;
   headOffset: number;
   annotationTool: string;
   annotationUnit: string;
@@ -115,7 +118,7 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
     }
     case 'spatial': {
       const any = s.arenaDrawn || s.zones > 0 || s.bodyLine;
-      return grade(any, positive(s.pxPerCm) && s.calibrated);
+      return grade(any || s.arenaBlocked, positive(s.pxPerCm) && s.calibrated && !s.arenaBlocked);
     }
     case 'tracking': {
       const any =
@@ -185,6 +188,7 @@ export function setupSnapshot(): SetupSnapshot {
     positionUnit: source.positionUnit,
     yDown: source.yDown,
     calibrated: !!positionTransform(),
+    arenaBlocked: !!arenaProblem(),
     headOffset: arena.headOffset,
     annotationTool: source.annotationTool,
     annotationUnit: source.annotationUnit,

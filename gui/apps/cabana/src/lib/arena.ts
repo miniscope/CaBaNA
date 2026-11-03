@@ -62,6 +62,24 @@ onClear(() => {
 /** Zones from a config.yaml, in cm, waiting for the arena outline so they can be put on the picture. */
 export const [pendingZones, setPendingZones] = createSignal<CmZone[]>();
 
+/** The config list a region is written to. Names must be unique within it, as YAML keys are. */
+export function regionGroup(kind: Zone['kind'], shape: string): 'zone' | 'enclosure' | 'divider' {
+  if (kind === 'zone') return 'zone';
+  return shape === 'circle' ? 'enclosure' : 'divider';
+}
+/** A region of this kind and shape already has the name. */
+export const nameTaken = (name: string, kind: Zone['kind'], shape: string) =>
+  [...arena.zones, ...(pendingZones() ?? [])].some(
+    (z) => z.name === name && regionGroup(z.kind, z.shape) === regionGroup(kind, shape),
+  );
+/** A name for a new region that no region of its group has. */
+export function freeName(kind: Zone['kind'], shape: string): string {
+  const stem = kind === 'exclude' ? 'excluded' : 'zone';
+  let n = 1;
+  while (nameTaken(`${stem} ${n}`, kind, shape)) n++;
+  return `${stem} ${n}`;
+}
+
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /** Picture pixels per cm. */

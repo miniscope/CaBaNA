@@ -13,7 +13,7 @@ import {
   positionTransform,
   sizeCm,
 } from './arena.ts';
-import { configReport } from './config-import.ts';
+import { arenaProblem, configReport } from './config-import.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
@@ -24,6 +24,8 @@ import {
   labelRegistry,
   labelRoles,
   loaded,
+  onClear,
+  onConfigLoaded,
   override,
   rejected,
   roleOf,
@@ -94,11 +96,8 @@ const HEADER = [
 /** Sections the framework may not read yet; the bridge leaves them out of the copy it runs. */
 export type Section = 'metadata' | 'markers' | 'frame_labels';
 
-/**
- * The session config as a plain object in the framework's layout. `omit` drops sections the
- * installed framework does not accept, for the copy that is run; the downloaded file keeps them.
- */
-export function buildSessionConfig(omit: Section[] = []): Obj {
+/** The session config as the GUI's settings describe it, in the framework's layout. */
+function configFromSettings(omit: Section[] = []): Obj {
   const cfg: Obj = {};
   if (sessionName()) cfg.name = sessionName();
 
@@ -214,9 +213,89 @@ export function buildSessionConfig(omit: Section[] = []): Obj {
   return cfg;
 }
 
+// ---- Keeping an imported config
+
+/** The loaded config as parsed, and what the GUI made of it once every file of the load was in place. */
+let imported: { original: Obj; baseline: Obj } | undefined;
+onConfigLoaded(() => {
+  const original = configReport()?.original;
+  imported = original && { original, baseline: configFromSettings() };
+});
+onClear(() => (imported = undefined));
+
+const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const base = (p: string) => p.split(/[\\/]/).pop();
+
+/**
+ * The original config with only what changed in the GUI since it was loaded written over it.
+ * A field the GUI did not change keeps its original form (zone shapes, order, paths, units);
+ * keys the GUI does not know are left as they were.
+ */
+export function patchConfig(original: unknown, baseline: unknown, current: unknown): unknown {
+  if (isObj(original) && isObj(baseline) && isObj(current)) {
+    const out: Obj = {};
+    for (const [k, v] of Object.entries(original)) {
+      if (k in current) out[k] = patchConfig(v, baseline[k], current[k]);
+      else if (!(k in baseline)) out[k] = v; // not a key the GUI writes
+      // otherwise the GUI wrote it when the config was loaded and has since removed it
+    }
+    // New in the GUI, or a GUI default the original left out that has since been changed.
+    for (const [k, v] of Object.entries(current))
+      if (!(k in original) && !same(baseline[k], v)) out[k] = v;
+    return out;
+  }
+  if (same(baseline, current)) return original;
+  // A file the GUI names by its base name keeps the original's folder.
+  if (typeof original === 'string' && typeof current === 'string' && base(original) === current)
+    return original;
+  return current;
+}
+
+/** The config for the Download button: the imported one with the GUI's changes, or the GUI's own. */
+export function exportedConfig(): Obj {
+  const current = configFromSettings();
+  return imported ? (patchConfig(imported.original, imported.baseline, current) as Obj) : current;
+}
+
+/** Set every input file path in `into` to the one in `from` (the name it was loaded under). */
+function useLoadedPaths(into: unknown, from: unknown, underAlternatives = false): void {
+  if (!isObj(into) || !isObj(from)) return;
+  for (const [k, v] of Object.entries(from)) {
+    if (typeof v === 'string' && (k === 'file' || k === 'timestamps' || underAlternatives))
+      into[k] = v;
+    else if (k !== 'metadata') useLoadedPaths(into[k], v, k === 'alternatives');
+  }
+}
+
+/** Remove the value at a dotted path. */
+function dropPath(o: Obj, path: string): void {
+  const keys = path.split('.');
+  let at: unknown = o;
+  for (const k of keys.slice(0, -1)) at = isObj(at) ? at[k] : undefined;
+  if (isObj(at)) delete at[keys.at(-1)!];
+}
+
+/**
+ * The config the framework runs: the exported one with file paths as loaded (the bridge matches
+ * files by name) and without keys the framework would reject. `omit` drops sections the
+ * installed framework does not accept.
+ */
+export function buildSessionConfig(omit: Section[] = []): Obj {
+  const current = configFromSettings(omit);
+  if (!imported) return current;
+  const cfg = JSON.parse(JSON.stringify(exportedConfig())) as Obj;
+  useLoadedPaths(cfg, current);
+  for (const path of configReport()?.unknown ?? []) dropPath(cfg, path);
+  for (const s of omit) {
+    dropPath(cfg, s === 'metadata' ? 'metadata' : `behavior.${s}`);
+  }
+  return cfg;
+}
+
 /** The session config as YAML. Lists of numbers are written on one line. */
 export function sessionYaml(): string {
-  const doc = new Document(buildSessionConfig());
+  const doc = new Document(exportedConfig());
   visit(doc, {
     Seq(_, node) {
       if (!node.items.some(isMap)) node.flow = true;
@@ -245,6 +324,7 @@ export function commonInput(): CommonInput {
     labelPadS: prep.labelPadS,
     paddedLabels: [...labels],
     hasArenaBox: !!binGrid(effectiveBin()),
+    arenaProblem: arenaProblem(),
     binCm: effectiveBin(),
     arenaCm: sizeCm(),
     rejected: [...rejected()],

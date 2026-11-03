@@ -19,6 +19,8 @@ export interface CommonInput {
   paddedLabels: string[];
   /** An arena outline exists, so position can be put on the spatial grid. */
   hasArenaBox: boolean;
+  /** Why the config's arena could not be read, until the user sets one; blocks the spatial grid. */
+  arenaProblem?: string;
   binCm: number;
   /** Arena size (cm). The grid covers [0, w] x [0, h] as the GUI's spatial bins do, not the data range. */
   arenaCm?: [number, number];
@@ -70,6 +72,7 @@ export function commonSteps(
     });
   if (withPosition)
     transforms.push({ name: 'speed', signals: ['x', 'y'], window_s: i.speedWindowS });
+  if (withPosition && o.grid !== false && i.arenaProblem) problems.push(i.arenaProblem);
   if (withPosition && i.hasArenaBox && o.grid !== false)
     transforms.push({
       name: 'bin_grid',

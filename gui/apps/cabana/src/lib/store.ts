@@ -28,6 +28,7 @@ import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 import { parseCsvText } from './csv-text.ts';
 import { UNCALIBRATED } from './spec/pipeline.ts';
+import { isSessionConfig } from './config-read.ts';
 import { markerLabelCounts, readMarkers } from './markers.ts';
 import {
   agreement,
@@ -195,14 +196,15 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
     setSessionName(folder);
   }
   // A config is read first, so the file names it gives decide where the other files go.
-  const config = slot ? undefined : files.find((f) => matchSlot(f.name) === 'config');
+  const config = slot ? undefined : await findConfig(files);
   if (config) await load('config', config);
   const named = new Map(Object.entries(configFiles()).map(([id, n]) => [n, id as SlotId]));
   const rest: File[] = [];
   await Promise.all(
     files.map((f) => {
       if (f === config) return;
-      const id = slot ?? named.get(f.name) ?? matchSlot(f.name);
+      // Other YAML files are not data; they wait in Unmatched, where the user can still assign one.
+      const id = slot ?? named.get(f.name) ?? (isYaml(f) ? undefined : matchSlot(f.name));
       // A frame-label file can also be the position file (the framework reads frame labels
       // from the same file): when the config names it for another slot, it fills both.
       if (id && !slot && id !== 'frame_labels' && matchSlot(f.name) === 'frame_labels')
@@ -212,11 +214,29 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
     }),
   );
   setUnrecognized((u) => [...u, ...rest]);
+  if (config || slot === 'config') loadHooks.forEach((f) => f());
 }
+
+const isYaml = (f: File) => /\.ya?ml$/i.test(f.name);
+
+/**
+ * The session config among `files`, recognized by its content (a framework session layout), not
+ * by its name. With several, the one named like a config wins.
+ */
+async function findConfig(files: File[]): Promise<File | undefined> {
+  const configs: File[] = [];
+  for (const f of files.filter(isYaml)) if (isSessionConfig(await f.text())) configs.push(f);
+  return configs.find((f) => matchSlot(f.name) === 'config') ?? configs[0];
+}
+
+const loadHooks: (() => void)[] = [];
+/** Run `f` after a load that included a config has finished, with every file of it in place. */
+export const onConfigLoaded = (f: () => void) => loadHooks.push(f);
 
 export async function assignFile(file: File, slot: SlotId): Promise<void> {
   setUnrecognized((u) => u.filter((f) => f !== file));
   await load(slot, file);
+  if (slot === 'config') loadHooks.forEach((f) => f());
 }
 
 const [rejected, setRejected] = createSignal<ReadonlySet<number>>(new Set());

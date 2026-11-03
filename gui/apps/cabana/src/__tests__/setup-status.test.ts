@@ -20,6 +20,7 @@ const blank: SetupSnapshot = {
   positionUnit: 'cm',
   yDown: false,
   calibrated: true,
+  arenaBlocked: false,
   headOffset: 0,
   annotationTool: 'other',
   annotationUnit: 'seconds',

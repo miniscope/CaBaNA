@@ -1,8 +1,8 @@
 // Applies a loaded config.yaml to the GUI's settings. Values from the config replace
 // what was typed; anything changed by hand afterwards wins.
 
-import { createSignal } from 'solid-js';
-import { setArena, setPendingZones } from './arena.ts';
+import { createEffect, createRoot, createSignal, on } from 'solid-js';
+import { arena, setArena, setPendingZones } from './arena.ts';
 import { readConfig, type ConfigRead } from './config-read.ts';
 import { setPrep } from './preprocess.ts';
 import {
@@ -20,7 +20,25 @@ import {
 /** What the last config.yaml set, kept, did not recognize, or lacked. */
 export const [configReport, setConfigReport] = createSignal<ConfigRead>();
 
-onClear(() => setConfigReport(undefined));
+/**
+ * Why the config's arena could not be used, until the user sets the arena by hand. Without it
+ * the arena would silently be the default size.
+ */
+export const [arenaProblem, setArenaProblem] = createSignal<string>();
+onClear(() => {
+  setConfigReport(undefined);
+  setArenaProblem(undefined);
+});
+// Typing a size or drawing the outline replaces the unreadable arena.
+createRoot(() =>
+  createEffect(
+    on(
+      () => [arena.width, arena.height, arena.box],
+      () => setArenaProblem(undefined),
+      { defer: true },
+    ),
+  ),
+);
 
 onConfig((text) => {
   const r = readConfig(text);
@@ -44,5 +62,9 @@ onConfig((text) => {
   if (v.headOffsetDeg !== undefined) setArena('headOffset', v.headOffsetDeg);
   if (v.bodyLengthCm !== undefined) setArena('bodyLength', v.bodyLengthCm);
   if (v.arena) setArena(v.arena);
+  else if (r.original?.arena !== undefined)
+    setArenaProblem(
+      `${r.problems.find((p) => p.startsWith('arena')) ?? 'The arena in the config could not be read.'} Set the arena size in Spatial setup.`,
+    );
   if (v.zones?.length) setPendingZones(v.zones);
 });

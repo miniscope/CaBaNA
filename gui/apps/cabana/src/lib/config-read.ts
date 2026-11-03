@@ -70,6 +70,8 @@ export interface ConfigValues {
 
 export interface ConfigRead {
   values: ConfigValues;
+  /** The file as parsed, so an export can keep everything the user did not change. */
+  original?: Record<string, unknown>;
   /** File name (without folder) the config gives for each slot. */
   files: Partial<Record<SlotId, string>>;
   /** Keys the GUI reads, as dotted paths. */
@@ -153,9 +155,20 @@ export function readConfig(text: string): ConfigRead {
     r.problems.push(
       'This looks like the older flat layout (arena_cm, zones at the top level). Only the framework layout is read; download a config from Experimental Setup to see it.',
     );
+  r.original = cfg;
   classify(cfg, '', r);
   readValues(cfg, r);
   return r;
+}
+
+/** A YAML text in the framework's session layout: a mapping with a neural, behavior or arena section. */
+export function isSessionConfig(text: string): boolean {
+  try {
+    const cfg = parse(text);
+    return isObj(cfg) && ['neural', 'behavior', 'arena'].some((k) => isObj(cfg[k]));
+  } catch {
+    return false;
+  }
 }
 
 /** Sort every key into read, kept or unknown, by the framework's layout. */
