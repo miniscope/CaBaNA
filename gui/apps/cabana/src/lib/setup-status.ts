@@ -22,16 +22,16 @@ export type CardId = 'experiment' | 'session' | 'spatial' | 'tracking' | 'stimul
 export type Status = 'Empty' | 'Incomplete' | 'Complete';
 
 export const CARDS: { id: CardId; title: string; priority: 'Required' | 'Recommended' }[] = [
+  { id: 'spatial', title: 'Spatial setup', priority: 'Required' },
   { id: 'experiment', title: 'Experiment & subjects', priority: 'Recommended' },
   { id: 'session', title: 'Session structure', priority: 'Recommended' },
-  { id: 'spatial', title: 'Spatial setup', priority: 'Required' },
   { id: 'tracking', title: 'Tracking & coordinates', priority: 'Recommended' },
   { id: 'stimuli', title: 'Stimuli & cues', priority: 'Recommended' },
   { id: 'neural', title: 'Neural acquisition', priority: 'Recommended' },
 ];
 
 /** The card shown below the cards. Shared so a warning elsewhere can open its section. */
-export const [setupCard, setSetupCard] = createSignal<CardId>('experiment');
+export const [setupCard, setSetupCard] = createSignal<CardId>('spatial');
 
 /** Everything the rules read, as plain values. */
 export interface SetupSnapshot {
