@@ -123,7 +123,7 @@ export function DecoderView(): JSX.Element {
             <h3>Bayesian settings</h3>
             <Row
               label="Likelihood"
-              tip="Gaussian follows Shuman et al. 2020, the lab's decoder. Poisson treats cells as independent Poisson counters (Zhang et al. 1998)."
+              tip="Gaussian: based on the Bayesian decoder described by Shuman et al. 2020 (binarized events, a Gaussian likelihood per cell and position); CaBaNA's defaults, such as the window, can differ from the paper. Poisson treats cells as independent Poisson counters (Zhang et al. 1998)."
             >
               <Choice
                 label="Likelihood"
