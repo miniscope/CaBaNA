@@ -117,13 +117,16 @@ function Row(props: { slot: Slot }): JSX.Element {
           >
             {info()!.name}
           </Show>
-          <Show when={note()}>
-            <span classList={{ 'cb-error': !!info()?.error, 'cb-warn': !info()?.error }}>
-              {' '}
-              · {note()}
-            </span>
-          </Show>
         </div>
+        {/* The full message wraps on its own line; an ellipsis hid the end of long errors. */}
+        <Show when={note()}>
+          <div
+            class="cb-ftab__note"
+            classList={{ 'cb-error': !!info()?.error, 'cb-warn': !info()?.error }}
+          >
+            {note()}
+          </div>
+        </Show>
       </td>
       <td class="cb-muted">
         {props.slot.id === 'config' && configReport()

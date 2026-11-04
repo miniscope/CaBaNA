@@ -3897,6 +3897,11 @@ textarea {
 .cb-ftab__name .cb-muted {
   font-size: 12px;
 }
+.cb-ftab__name div.cb-ftab__note {
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .cb-cfgsum {
   margin-top: auto;
   display: grid;
