@@ -217,7 +217,263 @@ function PveScatter(props: { h: number }): JSX.Element {
 
 const key = (color: string) => <span class="cb-key" style={{ background: color }} />;
 
-/** Deconvolution: the four comparison plots, and the kernel settings. */
+/** Median over cells of the fraction of the trace the reconvolved events explain. */
+export const deconMedian = () => {
+  const v = pve()
+    ?.filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  return v?.length ? v[Math.floor(v.length / 2)] : undefined;
+};
+
+/** Deconvolution: the four comparison plots. */
+export function DeconPlots(): JSX.Element {
+  const trace = () => (rawTrace() ? 'raw' : 'denoised');
+  const stack = createMemo(cellStack);
+  return (
+    <>
+      <Show
+        when={target()}
+        fallback={
+          <div class="cb-note">Load raw or denoised traces to compare events with a kernel.</div>
+        }
+      >
+        <div class="cb-qc-grid4">
+          <Show when={triggered()}>
+            <PlotCard
+              title="What the trace does after an event"
+              legend={
+                <>
+                  {key('#2171b5')}Average after event{key('#e09800')}Kernel
+                </>
+              }
+              help={
+                <>
+                  <Help k="What is plotted">
+                    The {trace()} trace averaged around every event, each cell scaled to its own
+                    peak, then averaged over cells.
+                    {triggered()!.tauDecay && (
+                      <>
+                        {' '}
+                        It decays with a time constant of about {triggered()!.tauDecay!.toFixed(
+                          2,
+                        )}{' '}
+                        s.
+                      </>
+                    )}
+                  </Help>
+                  <Help k="Axes">
+                    Time from the event in seconds (0 is the event); trace scaled to its peak.
+                  </Help>
+                  <Help k="Colors">
+                    Blue: the average trace. Orange dashed: the kernel from QC settings.
+                  </Help>
+                  <Help k="Limits">
+                    If the shapes differ, the kernel or the events are off. Events close together
+                    overlap in the average, which lengthens its tail.
+                  </Help>
+                </>
+              }
+            >
+              {(s) => <EventTriggeredPlot h={s().h} />}
+            </PlotCard>
+          </Show>
+          <Show when={sweep()}>
+            <PlotCard
+              title="Which decay time fits best"
+              legend={
+                <>
+                  {key('#2171b5')}Median fraction explained{key('#e09800')}Your setting
+                </>
+              }
+              help={
+                <>
+                  <Help k="What is plotted">
+                    The fraction of the {targetName()} trace explained after reconvolving the events
+                    with each decay time, as the median over cells (up to about 60 cells, spread
+                    across the list). Each cell gets its own scale and offset. The peak is the decay
+                    time the data prefer.
+                  </Help>
+                  <Help k="Axes">
+                    Decay time in seconds (log spacing); fraction explained from 0 to 1.
+                  </Help>
+                  <Help k="Colors">
+                    Blue: the sweep. Orange dot: the decay time in QC settings.
+                  </Help>
+                  <Help k="Limits">
+                    The rise time stays at the QC settings value. A flat curve means the events
+                    barely constrain the decay time.
+                  </Help>
+                </>
+              }
+            >
+              {(s) => <SweepPlot h={s().h} />}
+            </PlotCard>
+          </Show>
+          <Show when={pveVsRaw() && cellResult()}>
+            <PlotCard
+              title="Explained variance against signal to noise"
+              legend={
+                <>
+                  {key('#2171b5')}Reconvolved events{key('#b4bcc7')}Noise ceiling
+                </>
+              }
+              help={
+                <>
+                  <Help k="What is plotted">
+                    One dot per cell. Gray: the most any events could explain of the raw trace,
+                    which is everything except the noise. Blue: what the events explain after
+                    reconvolving with the kernel from QC settings. Good events sit just under the
+                    gray dots.
+                  </Help>
+                  <Help k="Axes">
+                    Signal to noise on a log scale, (99th percentile minus median) divided by the
+                    noise SD, which comes from the median absolute frame-to-frame difference.
+                    Fraction of the raw trace explained, 0 to 1.
+                  </Help>
+                  <Help k="Colors">Blue: events. Gray: noise ceiling.</Help>
+                  <Help k="Limits">
+                    The gray dots rise with signal to noise and level off near 1. Blue far below
+                    gray means the events miss real signal or add false ones. Cells with no events
+                    are left out.
+                  </Help>
+                </>
+              }
+            >
+              {(s) => <PveScatter h={s().h} />}
+            </PlotCard>
+          </Show>
+          <Show when={stack()}>
+            <PlotCard
+              title="Compare one cell by eye"
+              tools={<CellPicker n={stack()!.n} compact />}
+              legend={
+                <>
+                  {key('#e09800')}Events{key('#2e7d32')}Reconvolved{key('#8a97a8')}Trace
+                </>
+              }
+              help={
+                <>
+                  <Help k="What is plotted">
+                    One cell as three panels: the deconvolved events, the events reconvolved with
+                    the kernel from QC settings and fitted to the {stack()!.against} trace (own
+                    scale and offset), and the trace itself. Events reconvolved with the kernel
+                    explain{' '}
+                    {Number.isFinite(stack()!.pve) ? `${(100 * stack()!.pve).toFixed(0)}%` : 'none'}{' '}
+                    of this cell's {stack()!.against} trace.
+                  </Help>
+                  <Help k="Axes">Time in seconds; each panel has its own vertical scale.</Help>
+                  <Help k="Colors">
+                    Orange: events. Green: reconvolved events. Gray: the trace.
+                  </Help>
+                  <Help k="Linked">
+                    The panels share zoom and cursor: scroll to zoom, drag to pan. The cell is the
+                    one selected in the Cells test.
+                  </Help>
+                  <Help k="Limits">One cell can look better or worse than the median.</Help>
+                </>
+              }
+            >
+              {(s, expand) => <CellStack h={s().h} expand={expand} />}
+            </PlotCard>
+          </Show>
+        </div>
+      </Show>
+    </>
+  );
+}
+
+/** The kernel the events are reconvolved with, and what the fit is compared to. */
+export function DeconSettings(): JSX.Element {
+  return (
+    <>
+      <div class="cb-controls cb-controls--rail">
+        <label>
+          <span>
+            Indicator
+            <InfoTip label="About the kernel settings">
+              Events from different pipelines are on different scales, so each cell is fitted with
+              its own scale and offset. Pick the indicator, or type the time constants the pipeline
+              used.
+            </InfoTip>
+          </span>
+          <select value={indicatorId()} onChange={(e) => setIndicator(e.currentTarget.value)}>
+            <For each={INDICATORS}>{(i) => <option value={i.id}>{i.label}</option>}</For>
+          </select>
+        </label>
+        <label>
+          Rise time
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={tauRise()}
+            onInput={(e) => editTau('rise', Math.max(0, +e.currentTarget.value))}
+          />{' '}
+          s
+        </label>
+        <label>
+          Decay time
+          <input
+            type="number"
+            step="0.05"
+            min="0.05"
+            value={tauDecay()}
+            onInput={(e) => editTau('decay', Math.max(0.05, +e.currentTarget.value || 0.5))}
+          />{' '}
+          s
+        </label>
+        <Show when={rawTrace() && denoisedTrace()}>
+          <label>
+            Compare to
+            <select
+              value={compareTo()}
+              onChange={(e) => setCompareTo(e.currentTarget.value as 'raw' | 'denoised')}
+            >
+              <option value="denoised">Denoised trace</option>
+              <option value="raw">Raw trace</option>
+            </select>
+          </label>
+        </Show>
+        <Show when={deconMedian() !== undefined}>
+          <span class="cb-muted">Median explained: {(100 * deconMedian()!).toFixed(0)}%</span>
+        </Show>
+      </div>
+      <PopButton
+        label="About indicator presets"
+        title="About indicator presets"
+        width={380}
+        class="cb-link"
+        button="About indicator presets"
+      >
+        <p>{PRESET_NOTE}</p>
+      </PopButton>
+      <PopButton
+        label="About indicator presets"
+        title="About indicator presets"
+        width={380}
+        class="cb-link"
+        button="About indicator presets"
+      >
+        <p>{PRESET_NOTE}</p>
+      </PopButton>
+    </>
+  );
+}
+
+/** Corrections for deconvolution, under the checks. */
+export function DeconDetail(): JSX.Element {
+  return (
+    <RailBox title="Correction">
+      <p class="cb-muted">
+        No deconvolution fix runs in CaBaNA. Match the kernel to the one your pipeline used, or
+        rerun deconvolution with a decay time closer to the data.
+      </p>
+      <Advice checks={kernelChecks()} />
+    </RailBox>
+  );
+}
+
+/** The earlier three-column view, kept until Neural QC moves to the shared shell. */
 export function DeconView(): JSX.Element {
   const checks = kernelChecks;
   const med = () => {

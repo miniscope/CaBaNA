@@ -37,11 +37,13 @@ export function QcSummary(props: {
   settings: JSX.Element;
   /** Added after the flagged items, for example "3 rejected by you". */
   note?: string;
+  /** List each test's flagged items in the summary (default). */
+  listFlagged?: boolean;
 }): JSX.Element {
   const counts = createMemo(() => testCounts(props.list));
   const status = () => worst(tested(props.list).flatMap((c) => c.checks));
   const sub = () => {
-    const flagged = props.list
+    const flagged = (props.listFlagged === false ? [] : props.list)
       .filter((c) => c.flagged)
       .map((c) => `${c.name}: ${c.flagged} flagged ${c.flaggedWord}`);
     const done = tested(props.list).filter((c) => reviewed[c.id]).length;

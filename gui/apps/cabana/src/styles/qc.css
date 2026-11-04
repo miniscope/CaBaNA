@@ -100,6 +100,31 @@
   background: none;
   border: 2px solid #1f2328;
 }
+.cb-cbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px var(--space-md);
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 13px;
+}
+.cb-cbar__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cb-cbar__steps {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.cb-cbar__why {
+  flex-basis: 100%;
+  font-size: 12px;
+}
 .cb-layers {
   display: flex;
   align-items: center;
