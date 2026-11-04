@@ -5,7 +5,6 @@ import {
   createSignal,
   For,
   on,
-  onCleanup,
   onMount,
   Show,
   type JSX,
@@ -15,13 +14,8 @@ import type { RunRecord } from '../lib/bridge-client.ts';
 import { bridgeState } from '../lib/bridge-status.ts';
 import {
   BROWSER_DECODING_ENGINE_TEXT,
-  BROWSER_DECODING_RUN_LABEL,
-  browserBlock,
   browserOutdated,
   browserRun,
-  browserStatus,
-  cancelBrowserDecoding,
-  runBrowserDecoding,
   setShownEngine,
   shownEngine,
   type BrowserDecodingRun,
@@ -35,59 +29,15 @@ import {
   setBehaviorDecoding,
   setDecodeTarget,
   setPositionDecoding,
-  type DecodeTarget,
 } from '../lib/decoding-settings.ts';
 import { prep } from '../lib/preprocess.ts';
 import { openedRun, openRunOf } from '../lib/results-nav.ts';
 import { cachedRecords, runSource } from '../lib/results-store.ts';
 import type { ResultSource } from '../lib/results-load.ts';
-import {
-  active,
-  cancelRun,
-  compareToLatest,
-  history,
-  lastError,
-  latest,
-  runAnalysis,
-  setLatest,
-} from '../lib/runs.ts';
+import { compareToLatest, history, latest, setLatest } from '../lib/runs.ts';
 import { DecodingResults } from './DecodingResults.tsx';
-import { RunProgress } from './results/EngineNotice.tsx';
-import {
-  ChecksView,
-  DecoderView,
-  FoldsView,
-  FramesView,
-  InputLine,
-  isStartingSettings,
-  resetStartingSettings,
-  SignificanceView,
-} from './decoding/Setup.tsx';
-import { canRun, checks, isPosition, runBlock } from './decoding/state.ts';
-import { fitToWindow } from './QcPanel.tsx';
+import { DecodingSetup } from './decoding/GuidedPage.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
-import { shufflesFor } from '../lib/preview.ts';
-import { ShuffleReach } from './parts.tsx';
-
-/** Shuffles a Quick preview of the current target runs. */
-const previewCount = () =>
-  shufflesFor(
-    'preview',
-    (decodeTarget.type === 'position' ? positionDecoding : behaviorDecoding).shuffles,
-  );
-
-type View = 'decoder' | 'frames' | 'folds' | 'significance' | 'checks';
-const VIEWS: [View, string][] = [
-  ['decoder', 'Target & decoder'],
-  ['frames', 'Frames'],
-  ['folds', 'Cross-validation'],
-  ['significance', 'Significance'],
-  ['checks', 'Checks'],
-];
-const TARGETS: [DecodeTarget, string][] = [
-  ['position', 'Position'],
-  ['behaviors', 'Behaviors'],
-];
 
 /** Copy the settings of a saved run into the setup (an explicit action; viewing never does it). */
 function loadSettingsOf(rec: RunRecord): void {
@@ -222,253 +172,6 @@ function FixtureResults(props: { name: string }): JSX.Element {
   );
 }
 
-function Setup(props: { onResults: () => void }): JSX.Element {
-  const [view, setView] = createSignal<View>('decoder');
-  const run = () => (active()?.id === 'decoding' ? active() : undefined);
-  const block = () => runBlock();
-  const c = () => checks();
-  const problems = () => c().needsInput.length + c().framework.length + (c().engineOff ? 1 : 0);
-  const [match] = createResource(
-    () =>
-      [
-        latest.decoding?.run_id,
-        JSON.stringify([decodeTarget.type, positionDecoding, behaviorDecoding, prep]),
-      ] as const,
-    async () => compareToLatest('decoding'),
-  );
-  const failure = () => (lastError()?.id === 'decoding' ? lastError()!.message : undefined);
-  // The browser engine is offered, as its own labeled action, when the Python engine cannot run.
-  const browserOffered = () => c().engineOff || c().framework.length > 0;
-  const browserRunning = () => browserStatus().kind === 'running';
-  const browserFailure = () => {
-    const b = browserStatus();
-    return b.kind === 'error' ? b.message : undefined;
-  };
-  const hasResults = () => !!(latest.decoding || browserRun());
-  const onBrowserRun = () => void runBrowserDecoding().then((ok) => ok && props.onResults());
-  let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
-  const status = () => {
-    if (shownEngine() === 'browser' && browserRun())
-      return browserOutdated() ? 'Results are outdated' : '';
-    const r = latest.decoding;
-    if (!r) return '';
-    if (r.status === 'failed') return 'Last run failed';
-    if (r.status === 'cancelled' || r.status === 'partial') return 'Last run incomplete';
-    return match()?.matches === false ? 'Results are outdated' : '';
-  };
-  return (
-    <div class="cb-place cb-dec-page cb-dec-setup" ref={root}>
-      <div class="cb-place-head">
-        <div>
-          <h2>Decoding</h2>
-          <p class="cb-muted">
-            Predict {isPosition() ? 'position' : 'behavior'} from the events of all cells together,
-            on held-out blocks of time.
-          </p>
-        </div>
-        <div class="cb-dec-target">
-          <span class="cb-dec-target__label">Target</span>
-          <div class="cb-seg" role="group" aria-label="Decoding target">
-            <For each={TARGETS}>
-              {([t, label]) => (
-                <button
-                  type="button"
-                  classList={{ 'cb-seg__on': decodeTarget.type === t }}
-                  aria-pressed={decodeTarget.type === t}
-                  onClick={() => setDecodeTarget('type', t)}
-                >
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
-        </div>
-        <div class="cb-controls">
-          <Show when={status()}>
-            <span class="cb-badge cb-badge--warn">{status()}</span>
-          </Show>
-          <Show when={hasResults()}>
-            <button type="button" class="btn-secondary" onClick={() => props.onResults()}>
-              {(shownEngine() === 'browser' ? browserOutdated() : match()?.matches === false)
-                ? 'View previous results'
-                : 'View results'}
-            </button>
-          </Show>
-        </div>
-      </div>
-      <InputLine />
-      <div class="cb-dec-body">
-        <nav class="cb-dec-nav" aria-label="Decoding settings views">
-          <For each={VIEWS}>
-            {([id, label]) => (
-              <button
-                type="button"
-                classList={{ 'cb-dec-nav__on': view() === id }}
-                aria-current={view() === id ? 'page' : undefined}
-                onClick={() => setView(id)}
-              >
-                {label}
-                <Show when={id === 'checks' && problems()}>
-                  <span class="cb-badge cb-badge--warn">{problems()}</span>
-                </Show>
-              </button>
-            )}
-          </For>
-          <button
-            type="button"
-            class="btn-secondary cb-dec-nav__reset"
-            disabled={isStartingSettings()}
-            onClick={resetStartingSettings}
-            title="Reset the settings of this target to their starting values"
-          >
-            Starting settings
-          </button>
-        </nav>
-        <div class="cb-dec-view">
-          <Show when={view() === 'decoder'}>
-            <DecoderView />
-          </Show>
-          <Show when={view() === 'frames'}>
-            <FramesView />
-          </Show>
-          <Show when={view() === 'folds'}>
-            <FoldsView />
-          </Show>
-          <Show when={view() === 'significance'}>
-            <SignificanceView />
-          </Show>
-          <Show when={view() === 'checks'}>
-            <ChecksView />
-          </Show>
-        </div>
-      </div>
-      <Show when={failure()}>
-        <div class="cb-note" role="alert">
-          The run could not start or failed: {failure()}
-        </div>
-      </Show>
-      <Show when={browserOffered()}>
-        <div class="cb-note" role="status">
-          <Show
-            when={browserRunning()}
-            fallback={
-              <>
-                <button
-                  type="button"
-                  class="btn-secondary"
-                  disabled={!!run() || browserBlock() !== ''}
-                  title="Runs the TypeScript port in this browser. Random draws differ from the framework, so p-values differ slightly. The training/test separation is not applied."
-                  onClick={onBrowserRun}
-                >
-                  {BROWSER_DECODING_RUN_LABEL}
-                </button>{' '}
-                <Show when={browserBlock()}>
-                  <span class="cb-dec-block">{browserBlock()}</span>
-                </Show>
-              </>
-            }
-          >
-            {(() => {
-              const b = browserStatus() as Extract<
-                ReturnType<typeof browserStatus>,
-                { kind: 'running' }
-              >;
-              return (
-                <>
-                  <RunProgress done={b.done} total={b.total} />
-                  <span class="cb-muted">{b.step}</span>{' '}
-                  <button type="button" class="btn-secondary" onClick={cancelBrowserDecoding}>
-                    Cancel
-                  </button>
-                </>
-              );
-            })()}
-          </Show>
-          <Show when={browserFailure()}>
-            <p role="alert">The browser run failed: {browserFailure()}</p>
-          </Show>
-        </div>
-      </Show>
-      <div class="cb-pe-foot cb-dec-foot">
-        <span class="cb-pe-foot__text">
-          <Show
-            when={!run()}
-            fallback={
-              <>
-                <Show when={run()!.shuffles}>
-                  <progress
-                    class="cb-progress"
-                    value={run()!.shuffles![0]}
-                    max={run()!.shuffles![1]}
-                  />
-                </Show>
-                <span class="cb-muted">{run()!.message}</span>
-              </>
-            }
-          >
-            <Show
-              when={block()}
-              fallback={
-                <>
-                  <span class="cb-muted">
-                    Ready: {isPosition() ? 'position' : 'behavior'} decoding with{' '}
-                    {(isPosition() ? positionDecoding : behaviorDecoding).shuffles.toLocaleString()}{' '}
-                    shuffles.
-                  </span>
-                  <ShuffleReach
-                    shuffles={(isPosition() ? positionDecoding : behaviorDecoding).shuffles}
-                    alpha={(isPosition() ? positionDecoding : behaviorDecoding).alpha}
-                  />
-                </>
-              }
-            >
-              <span class="cb-dec-block" role="status">
-                {block()}
-              </span>
-              <button type="button" class="cb-link" onClick={() => setView('checks')}>
-                See Checks
-              </button>
-            </Show>
-          </Show>
-        </span>
-        <Show
-          when={!run()}
-          fallback={
-            <button type="button" class="btn-secondary" onClick={() => void cancelRun()}>
-              Cancel
-            </button>
-          }
-        >
-          <button
-            type="button"
-            class="btn-secondary"
-            disabled={!canRun() || browserRunning()}
-            title={`${previewCount()} shuffles, labeled Preliminary`}
-            onClick={() => {
-              setShownEngine('framework');
-              void runAnalysis('decoding', 'preview').then(() => props.onResults());
-            }}
-          >
-            Quick preview ({previewCount()} shuffles)
-          </button>
-          <button
-            type="button"
-            class="btn-primary"
-            disabled={!canRun() || browserRunning()}
-            onClick={() => {
-              setShownEngine('framework');
-              void runAnalysis('decoding', 'full').then(() => props.onResults());
-            }}
-          >
-            {latest.decoding ? 'Run again' : 'Run analysis'} ▶
-          </button>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
 /** The Decoding page: settings in named views, and the results of a saved or just finished run. */
 export function DecodingPanel(): JSX.Element {
   const [results, setResults] = createSignal(false);
@@ -499,7 +202,7 @@ export function DecodingPanel(): JSX.Element {
   );
   return (
     <Show when={!(import.meta.env.DEV && fixture)} fallback={<FixtureResults name={fixture!} />}>
-      <Show when={results()} fallback={<Setup onResults={open} />}>
+      <Show when={results()} fallback={<DecodingSetup onResults={open} />}>
         <Show
           when={shownEngine() === 'browser' && browserRun()}
           fallback={<Results onBack={() => setResults(false)} />}
