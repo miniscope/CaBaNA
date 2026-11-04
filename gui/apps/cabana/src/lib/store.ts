@@ -329,6 +329,26 @@ export const EXAMPLES = [
     note: 'Arena 30 x 30 cm. One file holds position, grooming and rearing (0/1) and a behavior category; 5 frames disagree between the grooming column and the category.',
   },
   {
+    id: 'f1647_opp2_t1',
+    label: 'F1647 OPP2 T1 empty (real recording)',
+    note: 'Three chambers, long axis 61 cm, both cups empty. One trial of about 600 s on its own clock. 148 cells with footprints.',
+  },
+  {
+    id: 'f1647_opp2_t2',
+    label: 'F1647 OPP2 T2 social (real recording)',
+    note: 'Three chambers, long axis 61 cm, partner left, stranger right. One trial of about 600 s on its own clock. 148 cells with footprints.',
+  },
+  {
+    id: 'f1647_opp2_t3',
+    label: 'F1647 OPP2 T3 sides swapped (real recording)',
+    note: 'Three chambers, long axis 61 cm, stranger left, partner right. One trial of about 600 s on its own clock. 148 cells with footprints.',
+  },
+  {
+    id: 'f1647_opp2_t4',
+    label: 'F1647 OPP2 T4 empty (real recording)',
+    note: 'Three chambers, long axis 61 cm, both cups empty. One trial of about 600 s on its own clock. 148 cells with footprints.',
+  },
+  {
     id: 'simulated_clock_drift',
     label: 'Clock drift (camera offset and scale)',
     note: 'Arena 30 x 30 cm. The camera clock is 0.35 s off and runs 0.04% fast; the config gives the offset and scale.',

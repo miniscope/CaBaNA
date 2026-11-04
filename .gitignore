@@ -54,8 +54,9 @@ uv.lock
 
 # Real data stays out of the repo for now
 example_data/hipp CA2 social behavior/
+example_data/f1647_opp2*/
 
 # Secrets
 .secrets
 
-gui/.project-dev/
+gui/.project-*/
