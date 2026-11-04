@@ -53,6 +53,7 @@ function FitTimeline(props: {
           data={props.data}
           reports={props.reports}
           ready={props.ready}
+          align={pethSettings.align === 'offset' ? 'offset' : 'onset'}
           w={size().w}
           h={size().h}
         />

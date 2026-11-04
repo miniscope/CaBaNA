@@ -2,9 +2,10 @@
 // (filled when included, open when excluded by the settings above).
 
 import { For, type JSX } from 'solid-js';
-import type { OnsetReport } from '../lib/peth.ts';
+import type { Align, OnsetReport } from '../lib/peth.ts';
 import type { PethData } from '../lib/peth-run.ts';
 import { pethSettings } from '../lib/peth-run.ts';
+import { reasonText } from '../lib/peth-setup.ts';
 import { boutTimeline } from '../lib/peth-view.ts';
 import { colorOf } from './PethShared.tsx';
 
@@ -13,6 +14,8 @@ export function PethTimeline(props: {
   reports: OnsetReport[] | undefined;
   /** Behaviors with too few onsets are drawn gray. */
   ready: (b: number) => boolean;
+  /** Which end of each bout the circles mark. */
+  align: Align;
   w: number;
   h: number;
 }): JSX.Element {
@@ -32,7 +35,10 @@ export function PethTimeline(props: {
   };
   const ticks = () => Array.from({ length: Math.floor(dur() / step()) + 1 }, (_, i) => i * step());
   const axisY = () => T + n() * ROW();
-  const rows = () => d().labels.map((_, b) => boutTimeline(d(), b, props.reports?.[b], pethSettings.align === 'offset' ? 'offset' : 'onset'));
+  const rows = () =>
+    d().labels.map((_, b) =>
+      boutTimeline(d(), b, props.reports?.[b], props.align, pethSettings.params),
+    );
   return (
     <svg
       class="cb-auroc-timeline"
@@ -69,7 +75,14 @@ export function PethTimeline(props: {
                       fill={e.included ? (gray() ? '#999' : colorOf(label)) : '#fff'}
                       stroke={e.included ? 'none' : '#cf222e'}
                       stroke-width="1.2"
-                    />
+                    >
+                      <title>
+                        {e.verdict && e.verdict !== 'kept'
+                          ? `Excluded: ${reasonText(e.verdict, pethSettings.params, props.align)}`
+                          : 'Included'}
+                        {` · ${e.markS.toFixed(1)} s`}
+                      </title>
+                    </circle>
                   </>
                 )}
               </For>
@@ -85,10 +98,15 @@ export function PethTimeline(props: {
           </text>
         )}
       </For>
-      <text x={(L + props.w - R) / 2} y={axisY() + 33} text-anchor="middle" font-size="11" fill="currentColor">
+      <text
+        x={(L + props.w - R) / 2}
+        y={axisY() + 33}
+        text-anchor="middle"
+        font-size="11"
+        fill="currentColor"
+      >
         Time in session ({mins() ? 'min' : 's'})
       </text>
     </svg>
   );
 }
-
