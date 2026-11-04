@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { statusOf, stimulusLabelIssues, type SetupSnapshot } from '../lib/setup-status.ts';
+import {
+  CARDS,
+  setupCard,
+  statusOf,
+  stimulusLabelIssues,
+  type SetupSnapshot,
+} from '../lib/setup-status.ts';
 
 const blank: SetupSnapshot = {
   paradigmChosen: false,
@@ -30,6 +36,13 @@ const blank: SetupSnapshot = {
   deconTool: 'other',
 };
 const s = (over: Partial<SetupSnapshot>): SetupSnapshot => ({ ...blank, ...over });
+
+describe('setup cards', () => {
+  it('Spatial setup is the first card and opens by default', () => {
+    expect(CARDS[0].id).toBe('spatial');
+    expect(setupCard()).toBe('spatial');
+  });
+});
 
 describe('setup card status', () => {
   it('everything is Empty with defaults only', () => {
