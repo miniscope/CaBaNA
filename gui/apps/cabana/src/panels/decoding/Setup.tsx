@@ -14,6 +14,7 @@ import { prep } from '../../lib/preprocess.ts';
 import { InfoTip } from '../InfoTip.tsx';
 import { AdvancedSeed, SpeedFilterField } from '../parts.tsx';
 import { Unavailable } from '../results/FrameworkNotice.tsx';
+import { exclusionFrames, gapFrames, type SeparationSuggestion } from '../../lib/fold-gap.ts';
 import { FoldStrip } from './FoldStrip.tsx';
 import { correctionFamily, framesText, RANGE } from './logic.ts';
 import { Choice, Num, Row } from './Parts.tsx';
@@ -25,6 +26,7 @@ import {
   isLogistic,
   isPosition,
   selectedBehaviors,
+  separationSuggestion,
   shared,
 } from './state.ts';
 import { samplingRate } from '../../lib/store.ts';
@@ -529,17 +531,21 @@ export function FramesView(): JSX.Element {
 
 export function FoldsView(): JSX.Element {
   const s = () => shared();
+  const applied = () => !gates().foldGap.disabled;
+  // the Bayesian decoder also leaves out half its test window next to a nonzero separation
+  const windowS = () => (isLogistic() ? 0 : s().windowS);
+  const suggestion = () => separationSuggestion();
   return (
     <div class="cb-dec-cols cb-dec-cols--one">
       <section class="cb-setgroup">
         <h3>Cross-validation</h3>
         <Row
-          label="Folds"
+          label="Number of train/test splits"
           range={RANGE.folds}
-          tip="The used frames are cut into this many contiguous blocks of time. Each block is decoded by a model trained on the others."
+          tip="Divides the recording into separate time blocks. The decoder is repeatedly trained on some blocks and evaluated on a held-out block."
         >
           <Num
-            label="Folds"
+            label="Number of train/test splits"
             value={s().folds}
             def={def().folds}
             min={2}
@@ -549,28 +555,134 @@ export function FoldsView(): JSX.Element {
           />
         </Row>
         <Row
-          label="Fold gap"
+          label="Training/test separation"
           range={RANGE.foldGapS}
-          tip="When applied, frames within this time of a test fold are left out of training, so slow drift cannot carry information across the border. The browser engine never applies it."
+          tip="Excludes a period of data around each held-out test block from training. This reduces the chance that nearby, highly correlated neural activity makes decoding performance appear better than it really is."
         >
           <Num
-            label="Fold gap (s)"
+            label="Training/test separation (s)"
             value={s().foldGapS}
             def={def().foldGapS}
             min={0}
             step={0.5}
             unit="s"
-            disabled={gates().foldGap.disabled}
+            disabled={!applied()}
             onSet={(v) => set('foldGapS', v)}
           />
         </Row>
-        <Show when={gates().foldGap.disabled}>
-          <p class="cb-dec-why">Fold gap: {gates().foldGap.reason}</p>
+        <Show when={!applied()}>
+          <p class="cb-dec-why">Training/test separation: {gates().foldGap.reason}</p>
         </Show>
-        {/* The strip draws the browser engine's folds, and that engine never applies the gap. */}
-        <FoldStrip folds={s().folds} gapS={s().foldGapS} gapApplied={false} />
+        <Show when={applied()}>
+          <SeparationNotes
+            gapS={s().foldGapS}
+            windowS={windowS()}
+            suggestion={suggestion()}
+            onUse={(v) => set('foldGapS', v)}
+          />
+        </Show>
+        <FoldStrip
+          folds={s().folds}
+          gapS={s().foldGapS}
+          windowS={windowS()}
+          gapApplied={applied()}
+        />
+        <details class="cb-notebox">
+          <summary>How blocked cross-validation and the separation work</summary>
+          <div>
+            <p class="cb-dec-note">
+              Decoding uses blocked cross-validation. The frames the decoder uses are cut into equal
+              contiguous folds (the train/test splits). Each fold is held out in turn and decoded by
+              a model trained on the other folds, so every frame is decoded by a model that never
+              saw it. Random frame-by-frame splits are not used, because neighboring frames are
+              nearly identical and would inflate performance.
+            </p>
+            <p class="cb-dec-note">
+              The training/test separation is a temporal gap: training frames within that time of
+              the held-out fold are left out of training. Test frames are never dropped. The gap is
+              rounded up to whole frames (whole time bins for logistic regression) and counted in
+              recording time, so frames already left out (for example below the speed threshold)
+              count toward it. The first and last folds have a gap on one side only. For the
+              Bayesian decoder, a nonzero separation also leaves out half the test window, so no
+              test frame's window reads activity from a training frame. Normalization, maps,
+              per-state means and s.d., the occupancy prior and class balancing are all fitted on
+              the training frames only.
+            </p>
+            <p class="cb-dec-note">
+              A gap lowers, but does not remove, dependence between training and test data. Slow
+              drift and behavior that persists longer than the gap still link the two. A larger gap
+              also leaves fewer training frames.
+            </p>
+          </div>
+        </details>
       </section>
     </div>
+  );
+}
+
+/** Excluded time, the 0 s caveat, and the separation suggested from the data. */
+function SeparationNotes(props: {
+  gapS: number;
+  windowS: number;
+  suggestion: SeparationSuggestion;
+  onUse: (v: number) => void;
+}): JSX.Element {
+  const fs = () => samplingRate();
+  /** Frames left out on each side of a test block, and how many of them are half the window. */
+  const frames = () => {
+    const f = fs();
+    if (!f) return undefined;
+    const all = exclusionFrames(props.gapS, f, props.windowS);
+    return { all, half: all - gapFrames(props.gapS, f), f };
+  };
+  const ok = () => {
+    const x = props.suggestion;
+    return 'error' in x ? undefined : x;
+  };
+  return (
+    <>
+      <Show when={props.gapS > 0 && frames()?.half}>
+        <p class="cb-dec-note">
+          The framework rounds the separation up to whole frames and adds half the {props.windowS} s
+          test window ({frames()!.half} frames), so {(frames()!.all / frames()!.f).toFixed(2)} s of
+          training frames are excluded on each side of a test block.
+        </p>
+      </Show>
+      <Show when={props.gapS === 0 && props.windowS > 0}>
+        <p class="cb-dec-note">
+          With 0 s, the test window of frames at the edge of a test block reads activity from the
+          training frames next to it.
+        </p>
+      </Show>
+      <Show
+        when={ok()}
+        fallback={
+          <p class="cb-dec-note">
+            No separation is suggested: {(props.suggestion as { error: string }).error} The starting
+            value is 1 s, a fixed choice not estimated from the data.
+          </p>
+        }
+      >
+        {(x) => (
+          <p class="cb-dec-note">
+            Suggested separation: <b>{x().suggestedS} s</b>{' '}
+            <Show when={x().suggestedS !== props.gapS}>
+              <button type="button" class="cb-link" onClick={() => props.onUse(x().suggestedS)}>
+                Use
+              </button>
+            </Show>
+            <InfoTip label="How the suggested separation is estimated">
+              The first lag at which the autocorrelation of binarized deconvolved events, averaged
+              over the {x().cells} accepted cells, reaches zero ({x().decorrelationS.toFixed(2)} s),
+              rounded up to 0.1 s. Beyond it, a cell's activity is on average no more similar to its
+              own earlier activity than chance. It uses all frames and ignores correlations between
+              cells, slow drift and behavior, so it is a starting point, not a guarantee of
+              independence. Any value can be entered instead.
+            </InfoTip>
+          </p>
+        )}
+      </Show>
+    </>
   );
 }
 

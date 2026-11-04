@@ -11,6 +11,8 @@ import {
   OTHER_NAME,
   positionDecoding,
 } from '../../lib/decoding-settings.ts';
+import { decodeEvents } from '../../lib/decode-data.ts';
+import { suggestSeparation, type SeparationSuggestion } from '../../lib/fold-gap.ts';
 import { active, blockers } from '../../lib/runs.ts';
 import { behaviorDecodingPipeline, positionDecodingPipeline } from '../../lib/spec/decoding.ts';
 import {
@@ -40,6 +42,12 @@ export const shared = () => (isPosition() ? positionDecoding : behaviorDecoding)
 export const isLogistic = () => !isPosition() && behaviorDecoding.decoder === 'logistic';
 
 export const gates = () => choiceGates(hasCapability);
+
+/** Training/test separation suggested from the accepted cells' deconvolved events. */
+export const separationSuggestion = createMemo<SeparationSuggestion>(() => {
+  const e = decodeEvents();
+  return 'error' in e ? e : suggestSeparation(e.neural, e.cells, e.frames, e.fs);
+});
 
 /** Behaviors that will be decoded, in priority order: the selection, or every usable label. */
 export const selectedBehaviors = () => {
