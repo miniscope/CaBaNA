@@ -2,8 +2,18 @@
 
 import type { Response } from './auroc.ts';
 import { aurocColor } from './auroc-view.ts';
-import { bouts, pethGeometry, pethResponse, type Align, type OnsetReport } from './peth.ts';
 import {
+  boutVerdicts,
+  bouts,
+  pethGeometry,
+  pethResponse,
+  type Align,
+  type BoutVerdict,
+  type OnsetReport,
+  type PethParams,
+} from './peth.ts';
+import {
+  pethInputOf,
   pethOutcome,
   pethSettings,
   pethUses,
@@ -270,9 +280,19 @@ export function summarize(o: PethOutcome, align?: Align): Summary {
 }
 
 /** Bouts of one behavior in seconds, with whether each onset was kept (all are, without a report); for the session timeline. */
-export function boutTimeline(d: PethData, b: number, report?: OnsetReport, align: Align = 'onset') {
+export function boutTimeline(
+  d: PethData,
+  b: number,
+  report?: OnsetReport,
+  align: Align = 'onset',
+  /** With the parameters, each bout also carries the rule that excluded it. */
+  params?: PethParams,
+) {
   const { onsets, lengths } = bouts(d.behaviors.subarray(b * d.frames, (b + 1) * d.frames));
   const kept = report && new Set(report.onsets);
+  const verdicts: BoutVerdict[] | undefined = params
+    ? boutVerdicts(pethInputOf(d), params, align, b).verdicts
+    : undefined;
   return Array.from(onsets, (o, i) => {
     const aligned = align === 'onset' ? o : o + lengths[i];
     return {
@@ -281,17 +301,21 @@ export function boutTimeline(d: PethData, b: number, report?: OnsetReport, align
       /** Where the circle goes: the aligned end of the bout. */
       markS: aligned / d.fs,
       included: !kept || kept.has(aligned),
+      verdict: verdicts?.[i],
     };
   });
 }
 
 /** Frames per curve bin, from the first bin's centre (the mean of its frame offsets). */
-export function binFrames(o: PethOutcome): number {
+/** The parts of a run the time axis needs, so a preview from the loaded data can use it too. */
+export type CurveAxis = Pick<PethOutcome, 'curves' | 'input' | 'params'>;
+
+export function binFrames(o: CurveAxis): number {
   return Math.max(1, Math.round(2 * (o.curves.timeS[0] * o.input.fs + pethGeometry(o.params, o.input.fs).pre) + 1));
 }
 
 /** Time axis of the curves in seconds from the onset: frame k is centred on k / fs, so a bin spans its frames' edges. */
-export function timeDomain(o: PethOutcome): [number, number] {
+export function timeDomain(o: CurveAxis): [number, number] {
   const { fs } = o.input;
   const lo = (-pethGeometry(o.params, fs).pre - 0.5) / fs;
   return [lo, lo + (o.curves.bins * binFrames(o)) / fs];

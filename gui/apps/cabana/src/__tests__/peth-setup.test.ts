@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzePeth,
+  boutVerdicts,
   DEFAULT_PETH_PARAMS,
   onsetReport,
   pethCurves,
@@ -15,6 +16,7 @@ import {
   columnsOf,
   countsText,
   eventCounts,
+  columnMean,
   latencyTicks,
   pethCards,
   reasonLines,
@@ -188,5 +190,32 @@ describe('result cards', () => {
     expect(significant).toBe(1);
     expect(ticks.length).toBeLessThanOrEqual(significant);
     for (const t of ticks) expect(t.cell).toBe(0);
+  });
+});
+
+describe('preview curves', () => {
+  it('averages each column over the cells with a value and leaves one cell without SEM', () => {
+    // 2 cells x 1 column x 2 bins
+    const curves = { peth: Float64Array.from([1, 2, 3, NaN]), bins: 2 } as unknown as Parameters<typeof columnMean>[0];
+    const { mean, sem } = columnMean(curves, 2, 1, 0);
+    expect(mean[0]).toBe(2);
+    expect(mean[1]).toBe(2);
+    expect(sem[0]).toBeCloseTo(1);
+    expect(sem[1]).toBeNaN();
+  });
+});
+
+describe('bout verdicts', () => {
+  it('give the same counts as the report, so hover reasons match the table', () => {
+    const p = { ...params, minDurationS: 1.5 };
+    const r = onsetReport(input, p);
+    r.forEach((rep, b) => {
+      const v = boutVerdicts(input, p, 'onset', b).verdicts;
+      expect(v.filter((x) => x === 'kept')).toHaveLength(rep.onsets.length);
+      expect(v.filter((x) => x === 'short')).toHaveLength(rep.short);
+      expect(v.filter((x) => x === 'gap')).toHaveLength(rep.gap);
+      expect(v.filter((x) => x === 'edge')).toHaveLength(rep.edge);
+    });
+    expect(r[0].short).toBe(5);
   });
 });

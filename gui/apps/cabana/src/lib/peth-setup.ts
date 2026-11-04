@@ -3,8 +3,15 @@
 
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { denomText, percentText } from './metrics.ts';
-import type { Align, OnsetReport, PethParams } from './peth.ts';
-import { alignsOf, type PethOutcome } from './peth-run.ts';
+import { pethCurves, type Align, type OnsetReport, type PethCurves, type PethParams } from './peth.ts';
+import {
+  alignsOf,
+  pethPlan,
+  type AlignedReports,
+  type PethData,
+  type PethOutcome,
+  type PethSettings,
+} from './peth-run.ts';
 import { hasTest, labelAt, latencyDirOf, latencyOf, summarize } from './peth-view.ts';
 
 /** Bouts of the given behaviors and how many each rule left out. */
@@ -46,21 +53,32 @@ export function eventCounts(reports: OnsetReport[], behaviors: number[]): EventC
 export const countsText = (c: Pick<EventCounts, 'included' | 'excluded'>) =>
   `${c.included.toLocaleString()} included · ${c.excluded.toLocaleString()} excluded`;
 
-/** The exclusion reasons that occurred, in the order the code checks them. Empty when nothing was excluded. */
+type Reason = 'short' | 'gap' | 'outside' | 'edge';
+
+/** Why a bout was excluded, in words; the gap side follows the alignment. */
+export function reasonText(
+  why: Reason,
+  p: Pick<PethParams, 'minDurationS' | 'minGapS'>,
+  align: Align,
+): string {
+  const gapWhere = align === 'offset' ? 'before the next bout' : 'after the end of the previous bout';
+  return {
+    short: `too short (under ${p.minDurationS} s)`,
+    gap: `too close: under ${p.minGapS} s ${gapWhere}`,
+    outside: 'aligned frame excluded',
+    edge: 'window runs past the recording edge',
+  }[why];
+}
+
+/** The exclusion reasons that occurred with their counts, in the order the code checks them. Empty when nothing was excluded. */
 export function reasonLines(
   c: EventCounts,
   p: Pick<PethParams, 'minDurationS' | 'minGapS'>,
   align: Align,
 ): string[] {
-  const gapWhere =
-    align === 'offset' ? 'before the next bout' : 'after the end of the previous bout';
-  const reasons: [number, string][] = [
-    [c.short, `too short (under ${p.minDurationS} s)`],
-    [c.gap, `too close: under ${p.minGapS} s ${gapWhere}`],
-    [c.outside, 'aligned frame excluded'],
-    [c.edge, 'window runs past the recording edge'],
-  ];
-  return reasons.flatMap(([n, why]) => (n ? [`${n} ${why}`] : []));
+  return (['short', 'gap', 'outside', 'edge'] as const).flatMap((why) =>
+    c[why] ? [`${c[why]} ${reasonText(why, p, align)}`] : [],
+  );
 }
 
 export type SettingTag = 'test' | 'display';
@@ -198,4 +216,43 @@ export function latencyTicks(o: PethOutcome, b: number) {
       ticks.push({ cell: c, latencyS: t, dir: latencyDirOf(o, c, b) > 0 ? 1 : -1 });
   }
   return { ticks, significant };
+}
+
+/** Mean and SEM (ddof 1, NaN for one cell) over cells of column `col` of curves from `pethCurves`, skipping non-finite values. */
+export function columnMean(curves: PethCurves, cells: number, columns: number, col: number) {
+  const { bins } = curves;
+  const mean = new Float64Array(bins).fill(NaN);
+  const sem = new Float64Array(bins).fill(NaN);
+  for (let i = 0; i < bins; i++) {
+    const v: number[] = [];
+    for (let c = 0; c < cells; c++) {
+      const x = curves.peth[(c * columns + col) * bins + i];
+      if (Number.isFinite(x)) v.push(x);
+    }
+    if (!v.length) continue;
+    const m = v.reduce((a, x) => a + x, 0) / v.length;
+    mean[i] = m;
+    if (v.length > 1) sem[i] = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1) / v.length);
+  }
+  return { mean, sem };
+}
+
+/**
+ * The Review preview: mean curve over cells for each tested behavior, from the loaded data and the
+ * current settings. No shuffle test, band or labels. A column below the minimum bouts has no curve.
+ */
+export function previewCurves(
+  d: PethData,
+  cfg: Pick<PethSettings, 'params' | 'unselected' | 'align'>,
+  reports: AlignedReports,
+) {
+  const plan = pethPlan(d, cfg, reports);
+  const curves = pethCurves(plan.input, plan.onsets, cfg.params);
+  const columns = plan.columns.map((col, j) => ({
+    ...col,
+    label: d.labels[col.b],
+    bouts: plan.onsets[j].length,
+    ...columnMean(curves, d.cells, plan.columns.length, j),
+  }));
+  return { axis: { curves, input: plan.input, params: cfg.params }, columns };
 }

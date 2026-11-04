@@ -145,31 +145,50 @@ export interface OnsetReport {
  * mask; window not inside the session. Same 1e-9 s tolerance as the framework.
  */
 export function onsetReport(m: PethInput, p: PethParams, align: Align = 'onset'): OnsetReport[] {
-  const { pre, post } = pethGeometry(p, m.fs);
   return Array.from({ length: m.nBehaviors }, (_, b) => {
-    const { onsets: starts, lengths } = bouts(behaviorRow(m, b));
     const kept: number[] = [];
     const r = { short: 0, gap: 0, outside: 0, edge: 0 };
-    starts.forEach((start, i) => {
-      // Offset alignment (GUI only, not in the framework): the aligned frame is the first frame after the bout,
-      // and the gap runs from this offset to the next bout's onset (the mirror of the onset rule).
-      const o = align === 'onset' ? start : start + lengths[i];
-      const gapS =
-        align === 'onset'
-          ? i > 0
-            ? (start - (starts[i - 1] + lengths[i - 1])) / m.fs
-            : Infinity
-          : i < starts.length - 1
-            ? (starts[i + 1] - o) / m.fs
-            : Infinity;
-      if (lengths[i] / m.fs < p.minDurationS - 1e-9) r.short++;
-      else if (p.minGapS > 0 && gapS < p.minGapS - 1e-9) r.gap++;
-      else if (!m.mask[Math.min(o, m.frames - 1)]) r.outside++;
-      else if (o - pre < 0 || o + post > m.frames) r.edge++;
-      else kept.push(o);
-    });
-    return { bouts: starts.length, onsets: Int32Array.from(kept), ...r };
+    const v = boutVerdicts(m, p, align, b);
+    v.verdicts.forEach((x, i) => (x === 'kept' ? kept.push(v.aligned[i]) : r[x]++));
+    return { bouts: v.aligned.length, onsets: Int32Array.from(kept), ...r };
   });
+}
+
+/** What happened to one bout: kept, or the first rule that removed it. */
+export type BoutVerdict = 'kept' | 'short' | 'gap' | 'outside' | 'edge';
+
+/** The aligned frame of every bout of behavior `b` and its verdict, in time order. `onsetReport` counts these. */
+export function boutVerdicts(m: PethInput, p: PethParams, align: Align, b: number) {
+  const { pre, post } = pethGeometry(p, m.fs);
+  const { onsets: starts, lengths } = bouts(behaviorRow(m, b));
+  const aligned: number[] = [];
+  const verdicts: BoutVerdict[] = [];
+  starts.forEach((start, i) => {
+    // Offset alignment (GUI only, not in the framework): the aligned frame is the first frame after the bout,
+    // and the gap runs from this offset to the next bout's onset (the mirror of the onset rule).
+    const o = align === 'onset' ? start : start + lengths[i];
+    const gapS =
+      align === 'onset'
+        ? i > 0
+          ? (start - (starts[i - 1] + lengths[i - 1])) / m.fs
+          : Infinity
+        : i < starts.length - 1
+          ? (starts[i + 1] - o) / m.fs
+          : Infinity;
+    aligned.push(o);
+    verdicts.push(
+      lengths[i] / m.fs < p.minDurationS - 1e-9
+        ? 'short'
+        : p.minGapS > 0 && gapS < p.minGapS - 1e-9
+          ? 'gap'
+          : !m.mask[Math.min(o, m.frames - 1)]
+            ? 'outside'
+            : o - pre < 0 || o + post > m.frames
+              ? 'edge'
+              : 'kept',
+    );
+  });
+  return { aligned, verdicts };
 }
 
 /** The frames that carry weight for one behavior, and the weights (response +, baseline -). */
