@@ -47,9 +47,15 @@ import {
   TrajectoryPlot,
   type TrajectoryData,
 } from './decoding/Plots.tsx';
+import { analysisDetails } from './decoding/review.ts';
+import type { EngineId } from './decoding/engines.ts';
 import { PlotFrame } from './results/PlotFrame.tsx';
 import { RunBanner, type Match } from './results/RunBanner.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
+
+/** A record's engine name as the two engines the page distinguishes. */
+const engineOf = (e?: string): EngineId | undefined =>
+  e === 'framework' ? 'framework' : e ? 'browser' : undefined;
 
 export type DecodingSource = ResultSource & { offline?: () => boolean };
 
@@ -116,7 +122,7 @@ const Check = (props: {
 
 type PosView = 'map' | 'trajectory' | 'errors';
 const POS_VIEWS: [PosView, string][] = [
-  ['map', 'Error map'],
+  ['map', 'Spatial error map'],
   ['trajectory', 'Decoded vs true'],
   ['errors', 'Error distribution'],
 ];
@@ -200,7 +206,11 @@ function PositionResults(props: {
         notes={[props.v.exclusionRule]}
       />
       <div class="cb-dec-views" role="tablist" aria-label="Position decoding views">
-        <For each={POS_VIEWS}>
+        <For
+          each={POS_VIEWS.filter(
+            ([id]) => id !== 'trajectory' || (hasTrajectory() && !!props.record),
+          )}
+        >
           {([id, label]) => (
             <button
               type="button"
@@ -460,7 +470,7 @@ function PositionResults(props: {
   );
 }
 
-type BehView = 'scores' | 'confusion' | 'timeline';
+type BehView = 'scores' | 'confusion';
 
 function BehaviorResults(props: { v: BehaviorDecodingView; record?: RunRecord }): JSX.Element {
   const bayes = () => props.v.classifier === 'bayesian_decoder';
@@ -484,9 +494,8 @@ function BehaviorResults(props: { v: BehaviorDecodingView; record?: RunRecord })
     });
   const t = () => props.v.tested;
   const views = (): [BehView, string][] => [
-    ['scores', 'Scores'],
+    ['scores', 'Per-class scores'],
     ['confusion', bayes() ? 'Confusion matrix' : 'One-vs-rest tables'],
-    ...(bayes() ? ([['timeline', 'Decoded vs true']] as [BehView, string][]) : []),
   ];
   return (
     <>
@@ -665,15 +674,6 @@ function BehaviorResults(props: { v: BehaviorDecodingView; record?: RunRecord })
             )}
           </PlotFrame>
         </Show>
-        <Show when={view() === 'timeline'}>
-          <div class="cb-dec-empty">
-            <b>Decoded vs true timeline</b>
-            <p>
-              The installed framework provides no plot data for behavior decoding, so no timeline is
-              drawn. Scores and the confusion matrix come from the saved arrays.
-            </p>
-          </div>
-        </Show>
       </div>
     </>
   );
@@ -693,7 +693,16 @@ export function DecodingResults(props: {
   overallTested?: boolean;
   /** The overall p-value, when the engine tested the overall value. */
   overallP?: number | null;
+  /** The settings saved with the run and its engine, for Analysis details (a record carries its own). */
+  settings?: Record<string, unknown>;
+  engine?: EngineId;
 }): JSX.Element {
+  const details = () => {
+    const saved =
+      props.settings ??
+      (props.record?.gui.settings as { analysis?: Record<string, unknown> })?.analysis;
+    return saved ? analysisDetails(saved, props.engine ?? engineOf(props.record?.engine)) : [];
+  };
   const [loaded] = createResource(
     () => props.source,
     async (src) => {
@@ -758,6 +767,23 @@ export function DecodingResults(props: {
             <Show when={d().beh}>{(v) => <BehaviorResults v={v()} record={props.record} />}</Show>
           </Show>
         )}
+      </Show>
+      <Show when={details().length}>
+        <details class="cb-notebox cb-dec-details">
+          <summary>Analysis details</summary>
+          <table class="cb-rd__t">
+            <tbody>
+              <For each={details()}>
+                {([k, v]) => (
+                  <tr>
+                    <th scope="row">{k}</th>
+                    <td>{v}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </details>
       </Show>
       <Show when={loaded.loading}>
         <p class="cb-muted">Reading the saved results.</p>

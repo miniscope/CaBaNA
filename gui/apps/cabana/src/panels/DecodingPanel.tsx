@@ -61,6 +61,17 @@ function loadSettingsOf(rec: RunRecord): void {
   }
 }
 
+const savedSettings = (rec: RunRecord) =>
+  ((rec.gui.settings as { analysis?: Record<string, unknown> }).analysis ?? {}) as Record<
+    string,
+    unknown
+  >;
+/** "Position decoding" or "Behavior decoding (logistic regression)", from a run's saved settings. */
+const subtitle = (saved: Record<string, unknown>) =>
+  saved.type === 'behaviors'
+    ? `Behavior decoding, ${saved.decoder === 'logistic' ? 'logistic regression' : 'Bayesian'}`
+    : 'Position decoding, Bayesian';
+
 /** The record to show: the opened saved run, or the latest one. */
 const shownRecord = (): RunRecord | undefined => {
   const id = openedRun('decoding');
@@ -84,10 +95,13 @@ function Results(props: { onBack: () => void }): JSX.Element {
       <div class="cb-place-head">
         <div>
           <h2>Decoding results</h2>
+          <Show when={record()}>
+            <p class="cb-muted">{subtitle(savedSettings(record()!))}</p>
+          </Show>
         </div>
         <div class="cb-controls">
           <button type="button" class="btn-secondary" onClick={() => props.onBack()}>
-            Back to settings
+            Edit setup
           </button>
         </div>
       </div>
@@ -132,13 +146,14 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
       <div class="cb-place-head">
         <div>
           <h2>Decoding results</h2>
+          <p class="cb-muted">{subtitle(r().settings)}</p>
         </div>
         <div class="cb-controls">
           <Show when={browserOutdated()}>
             <span class="cb-badge cb-badge--warn">Results are outdated</span>
           </Show>
           <button type="button" class="btn-secondary" onClick={() => props.onBack()}>
-            Back to settings
+            Edit setup
           </button>
         </div>
       </div>
@@ -152,7 +167,13 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
           <For each={r().notes}>{(n) => <li>{n}</li>}</For>
         </ul>
       </div>
-      <DecodingResults source={r().source} overallTested overallP={r().overallP} />
+      <DecodingResults
+        source={r().source}
+        overallTested
+        overallP={r().overallP}
+        settings={r().settings}
+        engine="browser"
+      />
     </div>
   );
 }

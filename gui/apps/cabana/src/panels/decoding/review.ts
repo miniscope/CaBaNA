@@ -5,7 +5,7 @@ import type { MetricCard } from '../../components/MetricCards.tsx';
 import type { SummaryGroup } from '../../components/GuidedReview.tsx';
 import { OTHER_NAME } from '../../lib/decoding-settings.ts';
 import { correctionFamily } from './logic.ts';
-import { gapRecord, type EngineId } from './engines.ts';
+import { ENGINE_NAMES, gapRecord, type EngineId } from './engines.ts';
 
 /** The settings of the chosen target, as the setup holds them. Fields a decoder does not use are ignored. */
 export interface DecodeView {
@@ -182,4 +182,48 @@ export function runCards(r: LastRun): MetricCard[] {
       tone: r.outdated ? 'warn' : 'ok',
     },
   ];
+}
+
+const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+
+/**
+ * The rows of Analysis details, from the settings saved with a run (framework or browser). Only
+ * what the record holds is listed; a field it lacks reads as not recorded, never as a default.
+ */
+export function analysisDetails(
+  saved: Record<string, unknown>,
+  engine: EngineId | undefined,
+): [string, string][] {
+  const target = saved.type === 'behaviors' ? 'behaviors' : 'position';
+  const v = {
+    target,
+    decoder: saved.decoder === 'logistic' ? 'logistic' : 'bayesian',
+    likelihood: saved.likelihood === 'poisson' ? 'poisson' : 'gaussian',
+    sigma: saved.sigma === 'pooled' ? 'pooled' : 'per_state',
+    mode: saved.mode === 'multiclass' ? 'multiclass' : 'one_vs_rest',
+  } as DecodeView;
+  const folds = num(saved.folds);
+  const shuffles = num(saved.shuffles);
+  const alpha = num(saved.alpha);
+  const significance = [
+    shuffles === undefined ? undefined : `${shuffles.toLocaleString()} shuffles`,
+    saved.correction === 'none'
+      ? 'uncorrected'
+      : saved.correction === 'max_stat'
+        ? `max-stat ${correctionFamily(target)}`
+        : undefined,
+    alpha === undefined ? undefined : `alpha ${alpha}`,
+  ].filter(Boolean);
+  const rows: [string, string][] = [
+    ['Target', target === 'position' ? 'Position' : 'Behavior'],
+    ['Decoder', decoderName(v)],
+    [
+      'Cross-validation',
+      folds === undefined ? 'Not recorded' : `${folds} blocked train/test splits`,
+    ],
+    ['Training/test separation', gapRecord(num(saved.foldGapS))],
+    ['Significance', significance.join(' · ') || 'Not recorded'],
+  ];
+  if (engine) rows.push(['Engine', ENGINE_NAMES[engine]]);
+  return rows;
 }

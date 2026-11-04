@@ -61,6 +61,8 @@ export interface BrowserDecodingRun {
   notes: string[];
   /** The settings the run used, to tell when the results are outdated. */
   settingsKey: string;
+  /** The settings as saved with the run, for Analysis details. */
+  settings: Record<string, unknown>;
 }
 
 export type BrowserStatus =
@@ -357,7 +359,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
     const keep = (d: EngineDump) => ((dump = d), dumpSource(d));
     let run: Omit<
       BrowserDecodingRun,
-      'seconds' | 'shuffles' | 'target' | 'decoder' | 'notes' | 'settingsKey'
+      'seconds' | 'shuffles' | 'target' | 'decoder' | 'notes' | 'settingsKey' | 'settings'
     >;
     if (position) {
       const d = p.data as PositionDecodeData;
@@ -444,6 +446,7 @@ export async function runBrowserDecoding(): Promise<boolean> {
         shuffles: s.shuffles,
         notes: NOTES,
         settingsKey,
+        settings: JSON.parse(JSON.stringify({ type: decodeTarget.type, ...s })),
       });
       setShownEngine('browser');
       setBrowserStatus({ kind: 'idle' });
