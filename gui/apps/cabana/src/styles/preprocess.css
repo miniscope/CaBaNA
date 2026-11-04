@@ -1,0 +1,117 @@
+/* Preprocess: settings column (Behavioral, Neural, Standard) beside the preview. */
+.cb-pp-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(340px, 30%) minmax(0, 1fr);
+  gap: 16px;
+}
+.cb-pp-settings {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cb-pp-sec {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.cb-pp-sec__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: #f6f8fa;
+}
+.cb-pp-sec__head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.cb-pp-row,
+.cb-pp-std {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border-left: 3px solid transparent;
+}
+.cb-pp-row + .cb-pp-row,
+.cb-pp-row + .cb-pp-std,
+.cb-pp-std + .cb-pp-std {
+  border-top: 1px solid var(--border);
+}
+.cb-pp-row--shown {
+  border-left-color: var(--accent);
+}
+.cb-pp-row__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-pp-row__head .cb-link {
+  margin-left: auto;
+}
+.cb-pp-row__used {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.cb-pp-row__set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+  margin-top: 4px;
+}
+.cb-pp-std {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+.cb-pp-std__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  border: 2px solid #8c959f;
+  box-sizing: border-box;
+}
+.cb-pp-sec .cb-prep-fold {
+  padding: 0 10px 6px;
+}
+.cb-pp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.cb-pp-tabs [role='tab'] {
+  padding: 4px 12px;
+  font: inherit;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cb-pp-tabs .cb-pp-tab--on {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: var(--font-weight-semibold);
+}
+.cb-pp-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 12.5px;
+}
+
+@media (max-width: 1100px) {
+  .cb-pp-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cb-pp-settings {
+    overflow-y: visible;
+  }
+}
