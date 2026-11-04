@@ -1,4 +1,14 @@
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from 'solid-js';
 import { arena, effectiveBin } from '../lib/arena.ts';
 import { setAnalysisId } from '../lib/analyses.ts';
 import { aurocChanges } from '../lib/auroc-view.ts';
@@ -11,7 +21,6 @@ import {
   helpTab,
   isOn,
   labelRows,
-  numKey,
   prepStep,
   prepWindow,
   runs,
@@ -27,6 +36,7 @@ import {
   winS,
   winStart,
 } from '../lib/prep-view.ts';
+import { prepSummary } from '../lib/prep-summary.ts';
 import { placeChanges } from '../lib/place-ui.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { positionOnNeural } from '../lib/prepared.ts';
@@ -39,51 +49,25 @@ import { PrepPlots } from './PrepPlots.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PopButton, StatusIcon } from './QcParts.tsx';
 
-const stepsOf = (kind: 'optional' | 'automatic') =>
-  (Object.keys(STEPS) as StepId[]).filter((s) => STEPS[s].kind === kind);
-
-const AUTO_LINE: Partial<Record<StepId, () => string>> = {
-  positionOnFrames: () => `gaps over ${prep.maxGapS} s stay missing`,
-  speed: () => `${prep.speedWindowS} s window`,
-  boutLabels: () => 'one label per neural frame',
-};
+/** What each preview tab holds, in the order shown. */
+const GROUPS = {
+  behavior: {
+    label: 'Behavioral',
+    optional: ['posSmooth', 'fillGaps', 'boutPad'],
+    standard: ['positionOnFrames', 'speed', 'boutLabels'],
+  },
+  neural: { label: 'Neural', optional: ['eventSmooth', 'traceSmooth'], standard: [] },
+} as const satisfies Record<string, { label: string; optional: StepId[]; standard: StepId[] }>;
+type GroupId = keyof typeof GROUPS;
+const viewsOf = (g: GroupId): StepId[] => [...GROUPS[g].optional, ...GROUPS[g].standard];
+const groupOf = (s: StepId): GroupId => (viewsOf('neural').includes(s) ? 'neural' : 'behavior');
 
 const toAnalysis = (id: keyof typeof DEPS) => {
   setAnalysisId(id);
   goToStep('analyze');
 };
 
-// ---- Navigator
-
-function StepRow(props: { id: StepId }): JSX.Element {
-  const on = () => prepStep() === props.id;
-  const optional = () => STEPS[props.id].kind === 'optional';
-  return (
-    <li>
-      <button
-        type="button"
-        class="cb-prep-row"
-        classList={{ 'cb-prep-row--on': on() }}
-        aria-current={on() ? 'true' : undefined}
-        onClick={() => setPrepStep(props.id)}
-      >
-        <Show when={optional()}>
-          <span
-            class="cb-prep-dot"
-            classList={{ 'cb-prep-dot--on': isOn(props.id) }}
-            aria-hidden="true"
-          />
-        </Show>
-        <span class="cb-prep-row__text">
-          <span class="cb-prep-row__name">{STEPS[props.id].label}</span>
-          <span class="cb-muted">
-            {optional() ? (isOn(props.id) ? 'On' : 'Off') : AUTO_LINE[props.id]?.()}
-          </span>
-        </span>
-      </button>
-    </li>
-  );
-}
+// ---- Settings column
 
 function Fold(props: { title: string; children: JSX.Element }): JSX.Element {
   const [open, setOpen] = createSignal(false);
@@ -97,58 +81,6 @@ function Fold(props: { title: string; children: JSX.Element }): JSX.Element {
   );
 }
 
-function Navigator(): JSX.Element {
-  const onSteps = () => stepsOf('optional').filter(isOn);
-  const atDefault = () =>
-    onSteps().some(
-      (s) => DEFAULT_PREP[numKey(s)] > 0 && prep[numKey(s)] === DEFAULT_PREP[numKey(s)],
-    );
-  return (
-    <nav class="cb-prep__nav" aria-label="Preprocessing steps">
-      <h3 class="cb-prep__label">Optional steps</h3>
-      <ul>
-        <For each={stepsOf('optional')}>{(s) => <StepRow id={s} />}</For>
-      </ul>
-      <Fold title="Automatic preparation">
-        <ul>
-          <For each={stepsOf('automatic')}>{(s) => <StepRow id={s} />}</For>
-        </ul>
-      </Fold>
-      <Fold title="Analysis-specific settings">
-        <div class="cb-prep-ro">
-          <div>
-            <b>Speed filter</b> {prep.minSpeed} cm/s <span class="cb-prep-tag">shared</span>
-            <div class="cb-muted">{usedList('speedFilter')}</div>
-          </div>
-          <div>
-            <b>Spatial bins</b> {effectiveBin()} cm
-            <div class="cb-muted">min time per bin {arena.minOccupancy} s</div>
-          </div>
-          <div class="cb-muted">
-            Edit in each analysis's setup:{' '}
-            <For each={usedBy('speedFilter')}>
-              {(u, i) => (
-                <>
-                  {i() > 0 && ', '}
-                  <button class="cb-link" onClick={() => toAnalysis(u.id)}>
-                    {u.label}
-                  </button>
-                </>
-              )}
-            </For>
-          </div>
-        </div>
-      </Fold>
-      <div class="cb-prep__count cb-muted">
-        {onSteps().length} optional {onSteps().length === 1 ? 'step' : 'steps'} on
-        {atDefault() ? ' (software defaults)' : ''}
-      </div>
-    </nav>
-  );
-}
-
-// ---- Settings
-
 type FieldDef = {
   k: Exclude<keyof typeof PARAM_TIP, 'posMethod'>;
   label: string;
@@ -157,11 +89,12 @@ type FieldDef = {
 };
 const FIELDS: Partial<Record<StepId, FieldDef[]>> = {
   eventSmooth: [{ k: 'eventSigmaS', label: 'Width', unit: 's', step: 0.05 }],
+  traceSmooth: [{ k: 'traceSigmaS', label: 'Width', unit: 's', step: 0.05 }],
   fillGaps: [{ k: 'fillGapS', label: 'Fill runs up to', unit: 's', step: 0.1 }],
   posSmooth: [{ k: 'posWindowS', label: 'Window', unit: 's', step: 0.05 }],
   boutPad: [{ k: 'labelPadS', label: 'Widen each bout by', unit: 's each side', step: 0.05 }],
   positionOnFrames: [{ k: 'maxGapS', label: 'Gap limit', unit: 's', step: 0.1 }],
-  speed: [{ k: 'speedWindowS', label: 'Window', unit: 's', step: 0.05 }],
+  speed: [{ k: 'speedWindowS', label: 'Speed window', unit: 's', step: 0.05 }],
 };
 
 /** A number box. Optional steps take only values above 0 here; the switch turns them off. */
@@ -194,44 +127,155 @@ function Field(props: { f: FieldDef; zeroOk: boolean }): JSX.Element {
   );
 }
 
-function Settings(props: { step: StepId }): JSX.Element {
-  const optional = () => STEPS[props.step].kind === 'optional';
-  const changed = () => STEPS[props.step].keys.some((k) => prep[k] !== DEFAULT_PREP[k]);
-  const reset = () => STEPS[props.step].keys.forEach((k) => setPrep(k, DEFAULT_PREP[k]));
+/** Selects a step in the preview column. */
+function PreviewLink(props: { id: StepId }): JSX.Element {
   return (
-    <div class="cb-prep-set">
-      <Show
-        when={!optional() || isOn(props.step)}
-        fallback={<span class="cb-muted">Off. Turn on to set the value.</span>}
-      >
-        <Show when={props.step === 'posSmooth'}>
-          <div class="cb-prep-set__field">
-            <label>
-              Method{' '}
-              <select
-                value={prep.posMethod}
-                onChange={(e) =>
-                  setPrep('posMethod', e.currentTarget.value as 'median' | 'gaussian')
-                }
-              >
-                <option value="median">Median</option>
-                <option value="gaussian">Gaussian</option>
-              </select>
-            </label>
-            <InfoTip label="About method">{PARAM_TIP.posMethod}</InfoTip>
-            <span class="cb-muted">Default {DEFAULT_PREP.posMethod}</span>
+    <button
+      type="button"
+      class="cb-link"
+      aria-current={prepStep() === props.id ? 'true' : undefined}
+      onClick={() => setPrepStep(props.id)}
+    >
+      {prepStep() === props.id ? 'Previewing' : 'Preview'}
+    </button>
+  );
+}
+
+/** "Used by" text of a step. Nothing in DEPS reads it only for trace smoothing, which says "yet". */
+const usedText = (id: StepId) =>
+  usedBy(id).length ? usedLine(id) : 'Not used by any analysis yet';
+
+/** One optional step: switch, title, its values inline, and what uses it. */
+function OptionRow(props: { id: StepId }): JSX.Element {
+  const on = () => isOn(props.id);
+  const changed = () => STEPS[props.id].keys.some((k) => prep[k] !== DEFAULT_PREP[k]);
+  const reset = () => STEPS[props.id].keys.forEach((k) => setPrep(k, DEFAULT_PREP[k]));
+  return (
+    <div class="cb-pp-row" classList={{ 'cb-pp-row--shown': prepStep() === props.id }}>
+      <div class="cb-pp-row__head">
+        <button
+          type="button"
+          role="switch"
+          class="cb-prep-switch"
+          aria-checked={on()}
+          aria-label={`${STEPS[props.id].label}: ${on() ? 'on' : 'off'}`}
+          onClick={() => {
+            setOn(props.id, !on());
+            setPrepStep(props.id);
+          }}
+        >
+          <span aria-hidden="true" />
+          {on() ? 'On' : 'Off'}
+        </button>
+        <strong>{STEPS[props.id].label}</strong>
+        <PreviewLink id={props.id} />
+      </div>
+      <div class="cb-muted">{STEP_HELP[props.id]?.short}</div>
+      <div class="cb-pp-row__used">{usedText(props.id)}</div>
+      <Show when={on()}>
+        <div class="cb-pp-row__set" onFocusIn={() => setPrepStep(props.id)}>
+          <Show when={props.id === 'posSmooth'}>
+            <div class="cb-prep-set__field">
+              <label>
+                Method{' '}
+                <select
+                  value={prep.posMethod}
+                  onChange={(e) =>
+                    setPrep('posMethod', e.currentTarget.value as 'median' | 'gaussian')
+                  }
+                >
+                  <option value="median">Median</option>
+                  <option value="gaussian">Gaussian</option>
+                </select>
+              </label>
+              <InfoTip label="About method">{PARAM_TIP.posMethod}</InfoTip>
+              <span class="cb-muted">Default {DEFAULT_PREP.posMethod}</span>
+            </div>
+          </Show>
+          <For each={FIELDS[props.id]}>{(f) => <Field f={f} zeroOk={false} />}</For>
+          <Show when={changed()}>
+            <button class="cb-link" onClick={reset}>
+              Reset
+            </button>
+          </Show>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/** A standard step: information only, no switch. */
+function StandardRow(props: { id: StepId }): JSX.Element {
+  return (
+    <div class="cb-pp-std" classList={{ 'cb-pp-row--shown': prepStep() === props.id }}>
+      <span class="cb-pp-std__dot" aria-hidden="true" />
+      <div>
+        <strong>{STEPS[props.id].label}</strong>
+        <span class="cb-muted"> {STEP_HELP[props.id]?.short}</span>
+        <div class="cb-pp-row__used">{usedText(props.id)}</div>
+      </div>
+      <PreviewLink id={props.id} />
+    </div>
+  );
+}
+
+function SectionHead(props: { title: string; note: string }): JSX.Element {
+  return (
+    <header class="cb-pp-sec__head">
+      <h3>{props.title}</h3>
+      <span class="cb-muted">{props.note}</span>
+    </header>
+  );
+}
+
+function Settings(): JSX.Element {
+  const std = GROUPS.behavior.standard;
+  return (
+    <div class="cb-pp-settings">
+      <section class="cb-pp-sec" aria-label="Behavioral preprocessing">
+        <SectionHead title="Behavioral" note="Position tracking and behavior labels." />
+        <For each={GROUPS.behavior.optional}>{(s) => <OptionRow id={s} />}</For>
+      </section>
+      <section class="cb-pp-sec" aria-label="Neural preprocessing">
+        <SectionHead title="Neural" note="Deconvolved events and traces." />
+        <For each={GROUPS.neural.optional}>{(s) => <OptionRow id={s} />}</For>
+      </section>
+      <section class="cb-pp-sec" aria-label="Standard preparation">
+        <SectionHead title="Standard" note="Automatically performed as needed for analysis." />
+        <For each={std}>{(s) => <StandardRow id={s} />}</For>
+        <Fold title="Advanced">
+          <div class="cb-pp-row__set">
+            <For each={std.flatMap((s) => FIELDS[s] ?? [])}>
+              {(f) => <Field f={f} zeroOk={true} />}
+            </For>
           </div>
-        </Show>
-        <For each={FIELDS[props.step]}>{(f) => <Field f={f} zeroOk={!optional()} />}</For>
-        <Show when={changed()}>
-          <button class="cb-link" onClick={reset}>
-            Reset
-          </button>
-        </Show>
-      </Show>
-      <Show when={!(FIELDS[props.step] ?? []).length}>
-        <span class="cb-muted">No settings. Padding is set under Bout padding.</span>
-      </Show>
+        </Fold>
+      </section>
+      <Fold title="Analysis settings (edited in each analysis)">
+        <div class="cb-prep-ro">
+          <div>
+            <b>Speed filter</b> {prep.minSpeed} cm/s <span class="cb-prep-tag">shared</span>
+            <div class="cb-muted">{usedList('speedFilter')}</div>
+          </div>
+          <div>
+            <b>Spatial bins</b> {effectiveBin()} cm
+            <div class="cb-muted">min time per bin {arena.minOccupancy} s</div>
+          </div>
+          <div class="cb-muted">
+            Edit in each analysis's setup:{' '}
+            <For each={usedBy('speedFilter')}>
+              {(u, i) => (
+                <>
+                  {i() > 0 && ', '}
+                  <button class="cb-link" onClick={() => toAnalysis(u.id)}>
+                    {u.label}
+                  </button>
+                </>
+              )}
+            </For>
+          </div>
+        </div>
+      </Fold>
     </div>
   );
 }
@@ -262,7 +306,6 @@ function PreviewBar(props: { step: StepId }): JSX.Element {
   return (
     <div class="cb-prep-bar">
       <strong>Preview</strong>
-      <span class="cb-muted">Live</span>
       <label class="cb-prep-bar__win">
         Window{' '}
         <select value={winS()} onChange={(e) => setWinS(+e.currentTarget.value)}>
@@ -409,13 +452,43 @@ function OutOfDate(props: { step: StepId }): JSX.Element {
 
 // ---- Page
 
+const POSITION_VIEWS: StepId[] = ['posSmooth', 'fillGaps', 'positionOnFrames', 'speed'];
+
+/** Counts for the position views: before is the position as put on the neural frames. */
+function Summary(): JSX.Element {
+  const s = createMemo(() => {
+    const p = positionOnNeural();
+    return p ? prepSummary(p) : undefined;
+  });
+  const speed = (v: number | undefined) => (v === undefined ? 'none' : `${v.toFixed(1)} cm/s`);
+  return (
+    <Show when={s()}>
+      {(d) => (
+        <div class="cb-pp-summary" aria-label="Preview summary">
+          <strong>Summary</strong>
+          <span>
+            Frames filled: {d().framesFilled} of {d().frames}
+          </span>
+          <span>
+            Frames with position: {d().validBefore} before, {d().validAfter} after
+          </span>
+          <span>
+            Peak speed: {speed(d().peakSpeedBefore)} without position smoothing,{' '}
+            {speed(d().peakSpeedAfter)} with it
+          </span>
+        </div>
+      )}
+    </Show>
+  );
+}
+
 export function PreprocessPanel(): JSX.Element {
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   onCleanup(() => setHelpTab(undefined));
   createEffect(on(prepStep, () => setHelpTab(undefined), { defer: true }));
   const step = prepStep;
-  const optional = () => STEPS[step()].kind === 'optional';
+  const group = () => groupOf(step());
   const download = () => {
     const url = URL.createObjectURL(new Blob([preprocessYaml()], { type: 'text/yaml' }));
     Object.assign(document.createElement('a'), { href: url, download: 'preprocess.yaml' }).click();
@@ -425,37 +498,40 @@ export function PreprocessPanel(): JSX.Element {
     <div class="cb-prep" ref={root}>
       <div class="cb-prep__top">
         <h2>Preprocess</h2>
-        <span class="cb-muted">Optional changes before analysis. Loaded files stay unchanged.</span>
-        <span class="cb-prep__rel">
-          Analysis relevance
-          <InfoTip label="About analysis relevance">
-            The "Used by" lines come from what each analysis reads. Turning a step on affects only
-            the analyses that use it.
-          </InfoTip>
+        <span class="cb-muted">
+          Prepare behavioral and neural data for analysis: smooth, fill gaps and adjust behavior
+          label timing. Every optional step can stay off, and loaded files stay unchanged.
         </span>
       </div>
-      <div class="cb-prep__body">
-        <Navigator />
-        <main class="cb-prep__main">
-          <div class="cb-prep__head">
-            <h3>{STEPS[step()].label}</h3>
-            <Show when={optional()} fallback={<span class="cb-muted">Always on</span>}>
-              <button
-                type="button"
-                role="switch"
-                class="cb-prep-switch"
-                aria-checked={isOn(step())}
-                aria-label={`${STEPS[step()].label}: ${isOn(step()) ? 'on' : 'off'}`}
-                onClick={() => setOn(step(), !isOn(step()))}
-              >
-                <span aria-hidden="true" />
-                {isOn(step()) ? 'On' : 'Off'}
-              </button>
-            </Show>
+      <div class="cb-pp-body">
+        <Settings />
+        <main class="cb-prep__main cb-pp-preview">
+          <div class="cb-pp-tabs" role="tablist" aria-label="Preview data type">
+            <For each={Object.keys(GROUPS) as GroupId[]}>
+              {(g) => (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={group() === g}
+                  classList={{ 'cb-pp-tab--on': group() === g }}
+                  onClick={() => group() !== g && setPrepStep(viewsOf(g)[0])}
+                >
+                  {GROUPS[g].label}
+                </button>
+              )}
+            </For>
+            <label class="cb-pp-view">
+              View{' '}
+              <select value={step()} onChange={(e) => setPrepStep(e.currentTarget.value as StepId)}>
+                <For each={viewsOf(group())}>
+                  {(s) => <option value={s}>{STEPS[s].label}</option>}
+                </For>
+              </select>
+            </label>
+            <span class="cb-muted">Previews update as settings change.</span>
           </div>
-          <p class="cb-prep__short">{STEP_HELP[step()]?.short}</p>
           <p class="cb-prep__used">
-            {usedLine(step())}.{' '}
+            {STEP_HELP[step()]?.short} {usedText(step())}.{' '}
             <button
               class="cb-link"
               aria-haspopup="dialog"
@@ -465,7 +541,6 @@ export function PreprocessPanel(): JSX.Element {
               About this step
             </button>
           </p>
-          <Settings step={step()} />
           <PreviewBar step={step()} />
           <Show
             when={!stepIssue(step())}
@@ -477,6 +552,9 @@ export function PreprocessPanel(): JSX.Element {
           </Show>
           <div class="cb-prep__impact">
             <Show when={!stepIssue(step())}>
+              <Show when={POSITION_VIEWS.includes(step())}>
+                <Summary />
+              </Show>
               <Impact step={step()} />
             </Show>
             <OutOfDate step={step()} />
