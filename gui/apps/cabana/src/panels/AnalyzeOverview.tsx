@@ -1,4 +1,13 @@
-import { createEffect, createMemo, createSignal, For, onMount, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from 'solid-js';
 import { StatusBadge } from '../components/StatusBadge.tsx';
 import { openItem } from '../components/Requirements.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
@@ -32,6 +41,7 @@ import { formatWhen, goToAnalysis, listedRecords, openResult } from '../lib/resu
 import { cachedRecords } from '../lib/results-store.ts';
 import { active, history, refreshHistory } from '../lib/runs.ts';
 import { experiment } from '../lib/store.ts';
+import { fitToWindow } from './QcPanel.tsx';
 
 const label = (id: AnalysisItem) => ANALYSES.find((a) => a.id === id)!.label;
 
@@ -141,8 +151,11 @@ export function AnalyzeOverview(): JSX.Element {
     experiment().recommended.length < ANALYSIS_ORDER.length &&
     experiment().recommended.includes(id);
 
+  // The page fills the window; the analysis list and the side panel scroll inside it.
+  let root!: HTMLDivElement;
+  onMount(() => onCleanup(fitToWindow(root)));
   return (
-    <div class="cb-panel cb-panel--wide cb-an">
+    <div class="cb-panel cb-panel--wide cb-an" ref={root}>
       <div class="cb-an__head">
         <div>
           <h2>Analyze</h2>

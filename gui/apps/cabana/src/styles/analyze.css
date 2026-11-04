@@ -1,4 +1,8 @@
 /* Analyze dashboard: analysis table on the left, recent results and quick links on the right. */
+.cb-an {
+  display: flex;
+  flex-direction: column;
+}
 .cb-an__head {
   display: flex;
   align-items: flex-start;
@@ -23,10 +27,17 @@
 }
 .cb-an__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 270px;
   gap: var(--space-md);
   margin-top: var(--space-md);
   align-items: start;
+  flex: 1;
+  min-height: 0;
+}
+.cb-an__grid > .cb-an__card,
+.cb-an__side {
+  max-height: 100%;
+  overflow-y: auto;
 }
 .cb-an__card {
   border: 1px solid var(--border-default);
@@ -48,10 +59,10 @@
 }
 .cb-an__row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1.3fr) minmax(0, 1.1fr) 110px auto;
+  grid-template-columns: 20px minmax(0, 1.7fr) minmax(0, 1.1fr) 130px auto;
   gap: var(--space-md);
   align-items: start;
-  padding: 10px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
 }
