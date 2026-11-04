@@ -21,14 +21,95 @@ import {
 export type CardId = 'experiment' | 'session' | 'spatial' | 'tracking' | 'stimuli' | 'neural';
 export type Status = 'Empty' | 'Incomplete' | 'Complete';
 
-export const CARDS: { id: CardId; title: string; priority: 'Required' | 'Recommended' }[] = [
-  { id: 'spatial', title: 'Spatial setup', priority: 'Required' },
-  { id: 'experiment', title: 'Experiment & subjects', priority: 'Recommended' },
-  { id: 'session', title: 'Session structure', priority: 'Recommended' },
-  { id: 'tracking', title: 'Tracking & coordinates', priority: 'Recommended' },
-  { id: 'stimuli', title: 'Stimuli & cues', priority: 'Recommended' },
-  { id: 'neural', title: 'Neural acquisition', priority: 'Recommended' },
+export type Priority = 'Required' | 'Recommended' | 'Optional';
+
+export const CARDS: {
+  id: CardId;
+  title: string;
+  priority: Priority;
+  /** One sentence: what the component describes. Shown on hover and as the workspace subtitle. */
+  purpose: string;
+}[] = [
+  {
+    id: 'spatial',
+    title: 'Spatial setup',
+    priority: 'Required',
+    purpose: 'Define the recording arena, its scale, and zones.',
+  },
+  {
+    id: 'experiment',
+    title: 'Experiment & subjects',
+    priority: 'Recommended',
+    purpose: 'Describe the paradigm, the subject and the recorded brain region.',
+  },
+  {
+    id: 'session',
+    title: 'Session structure',
+    priority: 'Recommended',
+    purpose: 'Check the session length, frame rates and how the behavior clock lines up.',
+  },
+  {
+    id: 'tracking',
+    title: 'Tracking & coordinates',
+    priority: 'Recommended',
+    purpose: 'Say how position and behavior annotations were recorded and in which units.',
+  },
+  {
+    id: 'stimuli',
+    title: 'Stimuli & cues',
+    priority: 'Optional',
+    purpose: 'List what the animal was shown or given, each timed by a loaded label.',
+  },
+  {
+    id: 'neural',
+    title: 'Neural acquisition',
+    priority: 'Recommended',
+    purpose: 'Name the miniscope and the tools that extracted and deconvolved the cells.',
+  },
 ];
+
+/** What a card shows: an unused optional card is not a problem, so it reads Optional, not Not configured. */
+export type CardLabel = 'Complete' | 'Needs attention' | 'Not configured' | 'Optional';
+export function cardLabel(priority: Priority, status: Status, blocked = false): CardLabel {
+  if (blocked) return 'Needs attention';
+  if (status === 'Complete') return 'Complete';
+  if (status === 'Incomplete') return 'Needs attention';
+  return priority === 'Optional' ? 'Optional' : 'Not configured';
+}
+
+/** What a card still needs, in words. Empty when it is Complete or when nothing in it is required. */
+export function remainingFor(id: CardId, s: SetupSnapshot): string[] {
+  const missing = (pairs: [string, boolean][]) => pairs.filter(([, ok]) => !ok).map(([t]) => t);
+  switch (id) {
+    case 'experiment':
+      return missing([
+        ['Subject ID', filled(s.subjectId)],
+        ['Species', filled(s.species)],
+        ['Brain region', filled(s.brainRegion)],
+      ]);
+    case 'session':
+      return missing([
+        ['Session duration (load timestamps or type it)', positive(s.durationS)],
+        ['Miniscope frame rate', positive(s.neuralFps)],
+        ['Camera frame rate', positive(s.cameraFps)],
+        ['Behavior clock scale above 0', positive(s.clockScale)],
+      ]);
+    case 'tracking':
+      return missing([['Body part tracked', filled(s.bodyPart)]]);
+    case 'stimuli':
+      return [
+        ...s.stimuli.flatMap((x, i) => (filled(x.name) ? [] : [`Name stimulus ${i + 1}`])),
+        ...stimulusLabelIssues(s).map(
+          (x) => `${x.name || 'Unnamed stimulus'}: ${x.message.toLowerCase()}`,
+        ),
+      ];
+    case 'neural':
+      return missing([['Miniscope', filled(s.device)]]);
+    case 'spatial':
+      // The spatial checks (lib/spatial-checks.ts) say this in more detail.
+      return [];
+  }
+}
 
 /** The card shown below the cards. Shared so a warning elsewhere can open its section. */
 export const [setupCard, setSetupCard] = createSignal<CardId>('spatial');

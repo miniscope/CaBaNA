@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CARDS,
+  cardLabel,
+  remainingFor,
   setupCard,
   statusOf,
   stimulusLabelIssues,
@@ -75,7 +77,10 @@ describe('setup card status', () => {
   it('spatial: pixel positions without a calibration keep it Incomplete', () => {
     // A known-distance line gives a scale but no arena outline, so pixels have no origin.
     expect(
-      statusOf('spatial', s({ arenaDrawn: true, pxPerCm: 7.5, positionUnit: 'px', calibrated: false })),
+      statusOf(
+        'spatial',
+        s({ arenaDrawn: true, pxPerCm: 7.5, positionUnit: 'px', calibrated: false }),
+      ),
     ).toBe('Incomplete');
   });
   it('tracking: body part needed; the inactive likelihood threshold does not count; the pixel scale belongs to spatial', () => {
@@ -130,5 +135,43 @@ describe('setup card status', () => {
   it('neural: the miniscope completes it; tools alone do not', () => {
     expect(statusOf('neural', s({ deconTool: 'caiman' }))).toBe('Incomplete');
     expect(statusOf('neural', s({ device: 'UCLA Miniscope V4' }))).toBe('Complete');
+  });
+});
+
+describe('card labels and what remains', () => {
+  it('six cards in the page order, Spatial required and Stimuli optional', () => {
+    expect(CARDS.map((c) => c.id)).toEqual([
+      'spatial',
+      'experiment',
+      'session',
+      'tracking',
+      'stimuli',
+      'neural',
+    ]);
+    expect(CARDS.find((c) => c.id === 'spatial')!.priority).toBe('Required');
+    expect(CARDS.find((c) => c.id === 'stimuli')!.priority).toBe('Optional');
+    expect(CARDS.every((c) => c.purpose.endsWith('.'))).toBe(true);
+  });
+  it('an unused optional card reads Optional; an unused required or recommended one, Not configured', () => {
+    expect(cardLabel('Optional', 'Empty')).toBe('Optional');
+    expect(cardLabel('Recommended', 'Empty')).toBe('Not configured');
+    expect(cardLabel('Required', 'Empty')).toBe('Not configured');
+    expect(cardLabel('Optional', 'Incomplete')).toBe('Needs attention');
+    expect(cardLabel('Required', 'Complete')).toBe('Complete');
+  });
+  it('a blocker turns a filled-in card into Needs attention', () => {
+    expect(cardLabel('Required', 'Complete', true)).toBe('Needs attention');
+  });
+  it('names the missing required fields', () => {
+    expect(remainingFor('experiment', s({ subjectId: 'M1' }))).toEqual(['Species', 'Brain region']);
+    expect(remainingFor('neural', s({ device: 'V4' }))).toEqual([]);
+    expect(remainingFor('tracking', blank)).toEqual(['Body part tracked']);
+    expect(
+      remainingFor(
+        'stimuli',
+        s({ loadedLabels: ['tone'], stimuli: [{ name: '', label: 'tone' }] }),
+      ),
+    ).toEqual(['Name stimulus 1']);
+    expect(remainingFor('stimuli', blank)).toEqual([]);
   });
 });
