@@ -5,9 +5,11 @@ import { timeAxisLabel } from '../lib/peth-view.ts';
 import { For, Show, type JSX } from 'solid-js';
 import { DEFAULT_PETH_SETTINGS, pethSettings, setPethSettings } from '../lib/peth-run.ts';
 import { pethGeometry, windowProblems } from '../lib/peth.ts';
+import { WINDOW_CAVEAT } from '../lib/peth-setup.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { NumField } from './PethFields.tsx';
 import { ORANGE, PURPLE, timeTicks } from './PethPlots.tsx';
+import { Tag } from './PethShared.tsx';
 
 const D = DEFAULT_PETH_SETTINGS.params;
 const p = () => pethSettings.params;
@@ -21,8 +23,22 @@ function Diagram(): JSX.Element {
   const x = (s: number) => L + ((s - lo()) / (hi() - lo())) * W;
   const interval = (iv: readonly [number, number], color: string, name: string) => (
     <Show when={iv[1] > iv[0]}>
-      <rect x={x(iv[0])} y="40" width={x(iv[1]) - x(iv[0])} height="18" fill={color} opacity="0.85" />
-      <text x={(x(iv[0]) + x(iv[1])) / 2} y="22" text-anchor="middle" font-size="12" fill={color} font-weight="600">
+      <rect
+        x={x(iv[0])}
+        y="40"
+        width={x(iv[1]) - x(iv[0])}
+        height="18"
+        fill={color}
+        opacity="0.85"
+      />
+      <text
+        x={(x(iv[0]) + x(iv[1])) / 2}
+        y="22"
+        text-anchor="middle"
+        font-size="12"
+        fill={color}
+        font-weight="600"
+      >
         {name}
       </text>
       <text x={(x(iv[0]) + x(iv[1])) / 2} y="35" text-anchor="middle" font-size="11" fill={color}>
@@ -76,7 +92,8 @@ export function PethWindow(props: { fs: number }): JSX.Element {
   const problems = () => windowProblems(p(), props.fs);
   const bad = (word: string) => problems().some((m) => m.startsWith(word));
   const badWindow = () => problems().some((m) => /before the onset|after the onset/.test(m));
-  const set = (iv: 'baselineS' | 'responseS', i: 0 | 1) => (v: number) => setPethSettings('params', iv, i, v);
+  const set = (iv: 'baselineS' | 'responseS', i: 0 | 1) => (v: number) =>
+    setPethSettings('params', iv, i, v);
   const row = (name: JSX.Element, a: JSX.Element, b: JSX.Element) => (
     <>
       <span>{name}</span>
@@ -91,37 +108,107 @@ export function PethWindow(props: { fs: number }): JSX.Element {
       <div class="cb-pe-wgrid">
         {row(
           <>
-            Full window
+            Full window <Tag id="window" />
             <InfoTip label="About the full window">
-              Time before and after each onset that is cut out and shown. The baseline and response intervals must lie
-              inside it. Time before the onset is entered as a negative number.
+              Time before and after each onset that is cut out and shown. The baseline and response
+              intervals must lie inside it. Time before the onset is entered as a negative number.{' '}
+              {WINDOW_CAVEAT}
             </InfoTip>
           </>,
-          <NumField label="Window start (s)" value={-p().preS} def={-D.preS} max={0} bad={badWindow()} onSet={(v) => setPethSettings('params', 'preS', -v)} />,
-          <NumField label="Window end (s)" value={p().postS} def={D.postS} min={0} bad={badWindow()} onSet={(v) => setPethSettings('params', 'postS', v)} />,
+          <NumField
+            label="Window start (s)"
+            value={-p().preS}
+            def={-D.preS}
+            max={0}
+            bad={badWindow()}
+            onSet={(v) => setPethSettings('params', 'preS', -v)}
+          />,
+          <NumField
+            label="Window end (s)"
+            value={p().postS}
+            def={D.postS}
+            min={0}
+            bad={badWindow()}
+            onSet={(v) => setPethSettings('params', 'postS', v)}
+          />,
         )}
         {row(
           <>
-            <span style={{ color: PURPLE }}>■</span> Baseline
+            <span style={{ color: PURPLE }}>■</span> Baseline <Tag id="baseline" />
             <InfoTip label="About the baseline">
-              The reference interval. The response is measured as the mean in the response interval minus the mean in
-              this one, for each onset, then averaged over onsets. The interval is half-open: it includes its start
-              and excludes its end.
+              The reference interval. The response is measured as the mean in the response interval
+              minus the mean in this one, for each onset, then averaged over onsets. The interval is
+              half-open: it includes its start and excludes its end.
             </InfoTip>
           </>,
-          <NumField label="Baseline start (s)" value={p().baselineS[0]} def={D.baselineS[0]} bad={bad('Baseline')} onSet={set('baselineS', 0)} />,
-          <NumField label="Baseline end (s)" value={p().baselineS[1]} def={D.baselineS[1]} bad={bad('Baseline')} onSet={set('baselineS', 1)} />,
+          <NumField
+            label="Baseline start (s)"
+            value={p().baselineS[0]}
+            def={D.baselineS[0]}
+            bad={bad('Baseline')}
+            onSet={set('baselineS', 0)}
+          />,
+          <NumField
+            label="Baseline end (s)"
+            value={p().baselineS[1]}
+            def={D.baselineS[1]}
+            bad={bad('Baseline')}
+            onSet={set('baselineS', 1)}
+          />,
         )}
         {row(
           <>
-            <span style={{ color: ORANGE }}>■</span> Response
+            <span style={{ color: ORANGE }}>■</span> Response <Tag id="response" />
             <InfoTip label="About the response interval">
               The interval in which the neural response is measured. Half-open, like the baseline.
             </InfoTip>
           </>,
-          <NumField label="Response start (s)" value={p().responseS[0]} def={D.responseS[0]} bad={bad('Response')} onSet={set('responseS', 0)} />,
-          <NumField label="Response end (s)" value={p().responseS[1]} def={D.responseS[1]} bad={bad('Response')} onSet={set('responseS', 1)} />,
+          <NumField
+            label="Response start (s)"
+            value={p().responseS[0]}
+            def={D.responseS[0]}
+            bad={bad('Response')}
+            onSet={set('responseS', 0)}
+          />,
+          <NumField
+            label="Response end (s)"
+            value={p().responseS[1]}
+            def={D.responseS[1]}
+            bad={bad('Response')}
+            onSet={set('responseS', 1)}
+          />,
         )}
+      </div>
+      <div class="cb-pe-sub">
+        <div class="cb-pe-small cb-muted">
+          The test always compares the response and baseline intervals, unbinned, whatever window
+          and bin size are shown. {WINDOW_CAVEAT}
+        </div>
+        <div class="cb-pe-inline">
+          <span class="cb-pe-inline cb-pe-small">
+            Bin size <Tag id="binSize" />
+            <NumField
+              label="Bin size (s)"
+              value={p().binS ?? 0}
+              def={D.binS ?? 0}
+              min={0.001}
+              step={0.05}
+              unit="s"
+              bad={bad('Bin')}
+              onSet={(v) => setPethSettings('params', 'binS', v)}
+            />
+          </span>
+          <label class="cb-as-check cb-pe-small">
+            <input
+              type="checkbox"
+              checked={p().baselineSubtract}
+              onChange={(e) =>
+                setPethSettings('params', 'baselineSubtract', e.currentTarget.checked)
+              }
+            />
+            Subtract each bout's baseline in the curves <Tag id="baselineSubtract" />
+          </label>
+        </div>
       </div>
       <Show when={problems().length}>
         <div class="cb-pe-err" role="alert">
