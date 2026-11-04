@@ -57,7 +57,9 @@ import { setSetupCard } from '../lib/setup-status.ts';
 import { SpatialLanding } from './SpatialLanding.tsx';
 import {
   ZONE_COLORS,
+  adjustBox,
   arenaOutline,
+  boxCorners,
   drawZones,
   shapePath as drawShape,
   tracePath,
@@ -76,7 +78,9 @@ import {
 } from '../lib/region-notice.ts';
 import { exampleMedia, loaded, setSource, source } from '../lib/store.ts';
 
-type Tool = 'none' | 'arena' | 'distance' | 'zone' | 'animal';
+type Tool = 'none' | 'arena' | 'distance' | 'zone' | 'animal' | 'pan';
+const MAX_ZOOM = 8;
+type Box = NonNullable<typeof arena.box>;
 
 /** Describe the arena on a picture: its outline, scale, zones and the animal's size. */
 export function SpatialSetup(): JSX.Element {
@@ -110,6 +114,46 @@ export function SpatialSetup(): JSX.Element {
   const [hover, setHover] = createSignal<
     { i: number; j: number; sec?: number; open: boolean } | undefined
   >();
+  const snap = spatialSnapshot;
+  const stage = () => chosenStage() ?? openStage(snap());
+
+  // ---- zoom, pan, and adjusting the outline by its corners or by moving it
+  const [zoom, setZoom] = createSignal(1);
+  const [pan, setPan] = createSignal<Pt>([0, 0]);
+  const zoomBy = (k: number) => {
+    const z = Math.min(MAX_ZOOM, Math.max(1, zoom() * k));
+    setZoom(z);
+    if (z === 1) setPan([0, 0]);
+    else setPan(([x, y]) => [(x * z) / zoom(), (y * z) / zoom()]);
+  };
+  const fit = () => {
+    setZoom(1);
+    setPan([0, 0]);
+  };
+  /** A drag in progress: panning (screen pixels) or changing the outline (picture pixels). */
+  const [gesture, setGesture] = createSignal<
+    | { kind: 'pan'; from: Pt; pan0: Pt }
+    | { kind: 'move' | 'corner'; from: Pt; box0: Box; corner: number }
+  >();
+  /** The outline while it is being adjusted; written to the arena when the mouse is let go. */
+  const [editBox, setEditBox] = createSignal<Box>();
+  const [cursor, setCursor] = createSignal('');
+  const adjustable = () => tool() === 'none' && stage() === 'outline' && !!arena.box;
+  const corners = boxCorners;
+  /** The corner under the pointer (within 9 screen pixels), -1 inside the outline, or undefined. */
+  const hit = (p: Pt): number | undefined => {
+    const b = arena.box;
+    if (!b || !canvas) return undefined;
+    const r = (9 * canvas.width) / canvas.getBoundingClientRect().width;
+    const i = corners(b).findIndex((c) => Math.hypot(c[0] - p[0], c[1] - p[1]) <= r);
+    if (i >= 0) return i;
+    return p[0] > b.x && p[0] < b.x + b.w && p[1] > b.y && p[1] < b.y + b.h ? -1 : undefined;
+  };
+  const adjusted = (
+    g: { kind: 'move' | 'corner'; from: Pt; box0: Box; corner: number },
+    p: Pt,
+  ): Box =>
+    adjustBox(g.box0, g.kind === 'move' ? 'move' : g.corner, g.from, p, arena.shape === 'circle');
 
   /** The bin grid for the current bin size, and the seconds the animal spent in each bin. */
   const binData = createMemo(() => {
@@ -203,7 +247,7 @@ export function SpatialSetup(): JSX.Element {
     const lw = Math.max(2, c.width / 400);
     const fontPx = Math.max(12, c.width / 50);
     ctx.drawImage(f.canvas, 0, 0);
-    const b = arena.box;
+    const b = editBox() ?? arena.box;
     const path = (pts: Pt[], close = true) => tracePath(ctx, pts, close);
     const shapePath = (z: { shape: string; pts: Pt[] }) => drawShape(ctx, z);
     const arenaPath = () => arenaOutline(ctx, b, arena.shape);
@@ -271,6 +315,16 @@ export function SpatialSetup(): JSX.Element {
       ctx.strokeStyle = '#2171b5';
       ctx.lineWidth = lw;
       ctx.stroke();
+      if (adjustable()) {
+        const r = Math.max(5, c.width / 160);
+        ctx.fillStyle = '#fff';
+        for (const [x, y] of corners(b)) {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
     }
     drawZones(ctx, arena.zones, lw, fontPx);
     // After a change with regions drawn: the old outline dashed, and the regions as "Keep
@@ -385,10 +439,9 @@ export function SpatialSetup(): JSX.Element {
               ? 'Drag from the center to the edge.'
               : 'Drag from one corner to the opposite corner.',
       animal: 'Click the tip of the nose, then the base of the tail.',
+      pan: 'Drag the picture to move it. Ctrl or Cmd with the scroll wheel zooms.',
     })[tool()];
 
-  const snap = spatialSnapshot;
-  const stage = () => chosenStage() ?? openStage(snap());
   const stages = () => stagesFor(snap());
   const go = (st: Stage) => {
     setChosenStage(st);
@@ -481,7 +534,11 @@ export function SpatialSetup(): JSX.Element {
       <p class="cb-muted">
         {arena.shape === 'circle'
           ? 'Drag from one side of the arena to the other.'
-          : 'Drag from one corner of the arena to the opposite corner.'}
+          : 'Drag from one corner of the arena to the opposite corner.'}{' '}
+        <Show when={arena.box}>
+          To adjust, drag a corner handle, or drag inside the outline to move it. Zoom in for
+          precise corners.
+        </Show>
       </p>
       <Show when={frame()?.kind === 'blank'}>
         <p class="cb-muted">
@@ -845,6 +902,31 @@ export function SpatialSetup(): JSX.Element {
                   )}
                 </For>
               </div>
+              <Show when={viewTab() === 'top' && frame()}>
+                <div class="cb-sp-zoom" role="group" aria-label="Zoom">
+                  <button
+                    class="btn-secondary btn-small"
+                    aria-label="Zoom out"
+                    disabled={zoom() <= 1}
+                    onClick={() => zoomBy(1 / 1.5)}
+                  >
+                    −
+                  </button>
+                  <span class="cb-muted">{Math.round(zoom() * 100)}%</span>
+                  <button
+                    class="btn-secondary btn-small"
+                    aria-label="Zoom in"
+                    disabled={zoom() >= MAX_ZOOM}
+                    onClick={() => zoomBy(1.5)}
+                  >
+                    +
+                  </button>
+                  <button class="btn-secondary btn-small" disabled={zoom() === 1} onClick={fit}>
+                    Fit
+                  </button>
+                  {toolBtn('pan', 'Pan')}
+                </div>
+              </Show>
             </div>
             <Show when={viewTab() === 'tracking'}>
               <Trajectory bare mode="path" />
@@ -900,11 +982,54 @@ export function SpatialSetup(): JSX.Element {
                     ref={canvas}
                     class="cb-arena-canvas"
                     classList={{ 'cb-arena-canvas--draw': tool() !== 'none' }}
+                    style={{
+                      transform: `translate(${pan()[0]}px, ${pan()[1]}px) scale(${zoom()})`,
+                      cursor: cursor() || undefined,
+                    }}
+                    onWheel={(e) => {
+                      if (!e.ctrlKey && !e.metaKey) return;
+                      e.preventDefault();
+                      zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15);
+                    }}
                     onMouseDown={(e) => {
+                      if (tool() === 'pan')
+                        return setGesture({
+                          kind: 'pan',
+                          from: [e.clientX, e.clientY],
+                          pan0: pan(),
+                        });
+                      const h = adjustable() ? hit(pt(e)) : undefined;
+                      if (h !== undefined)
+                        return setGesture({
+                          kind: h < 0 ? 'move' : 'corner',
+                          from: pt(e),
+                          box0: { ...arena.box! },
+                          corner: h,
+                        });
                       if (dragTool()) setDrag([pt(e), pt(e)]);
                       else if (freehand()) setPoly([pt(e)]);
                     }}
                     onMouseMove={(e) => {
+                      const g = gesture();
+                      if (g?.kind === 'pan')
+                        setPan([
+                          g.pan0[0] + e.clientX - g.from[0],
+                          g.pan0[1] + e.clientY - g.from[1],
+                        ]);
+                      else if (g) setEditBox(adjusted(g, pt(e)));
+                      else if (adjustable()) {
+                        const h = hit(pt(e));
+                        setCursor(
+                          h === undefined
+                            ? ''
+                            : h < 0
+                              ? 'move'
+                              : h % 2
+                                ? 'nesw-resize'
+                                : 'nwse-resize',
+                        );
+                      } else setCursor(tool() === 'pan' ? 'grab' : '');
+                      if (g) return;
                       if (drag()) setDrag([drag()![0], pt(e)]);
                       else if (freehand() && poly().length) {
                         const p = pt(e);
@@ -913,8 +1038,21 @@ export function SpatialSetup(): JSX.Element {
                           setPoly((q) => [...q, p]);
                       } else onHover(e);
                     }}
-                    onMouseLeave={() => setHover(undefined)}
+                    onMouseLeave={() => {
+                      setHover(undefined);
+                      setGesture(undefined);
+                      setEditBox(undefined);
+                    }}
                     onMouseUp={(e) => {
+                      const g = gesture();
+                      if (g) {
+                        setGesture(undefined);
+                        const nb = editBox();
+                        setEditBox(undefined);
+                        // One change of the outline, so regions are asked about once.
+                        if (nb && g.kind !== 'pan') setArena('box', nb);
+                        return;
+                      }
                       if (freehand() && poly().length > 2) {
                         addZone(poly());
                         setTool('none');

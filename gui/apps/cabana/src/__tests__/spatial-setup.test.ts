@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { arena, frame, pendingZones, setArena, setFrame } from '../lib/arena.ts';
+import { adjustBox, boxCorners } from '../lib/draw.ts';
 import { blankFrame } from '../lib/frame.ts';
 import { sessionYaml } from '../lib/session-config.ts';
 import {
@@ -192,5 +193,22 @@ describe('configs', () => {
     ]);
     expect(frame()).toBeUndefined();
     expect(entryOf(spatialSnapshot())).toBe('landing');
+  });
+});
+
+describe('adjusting the outline', () => {
+  const b = { x: 10, y: 10, w: 100, h: 50 };
+  it('a corner drag keeps the opposite corner', () => {
+    expect(adjustBox(b, 2, [110, 60], [130, 90], false)).toEqual({ x: 10, y: 10, w: 120, h: 80 });
+    expect(adjustBox(b, 0, [10, 10], [0, 0], false)).toEqual({ x: 0, y: 0, w: 110, h: 60 });
+  });
+  it('dragging past the opposite corner flips instead of going negative', () => {
+    expect(adjustBox(b, 2, [110, 60], [0, 0], false)).toEqual({ x: 0, y: 0, w: 10, h: 10 });
+  });
+  it('moving keeps the size; a circle stays square', () => {
+    expect(adjustBox(b, 'move', [50, 30], [60, 25], false)).toEqual({ x: 20, y: 5, w: 100, h: 50 });
+    const c = adjustBox({ x: 0, y: 0, w: 40, h: 40 }, 2, [40, 40], [60, 50], true);
+    expect(c.w).toBe(c.h);
+    expect(boxCorners(c)[2]).toEqual([60, 60]);
   });
 });

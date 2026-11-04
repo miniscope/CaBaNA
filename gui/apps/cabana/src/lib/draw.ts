@@ -67,3 +67,31 @@ export function drawZones(
     ctx.fillText(z.name, z.pts[0][0] + 4, z.pts[0][1] - 4);
   });
 }
+
+type Box = { x: number; y: number; w: number; h: number };
+
+/** The outline's corners, clockwise from the top left. */
+export const boxCorners = (b: Box): Pt[] => [
+  [b.x, b.y],
+  [b.x + b.w, b.y],
+  [b.x + b.w, b.y + b.h],
+  [b.x, b.y + b.h],
+];
+
+/**
+ * The outline after a drag from `from` to `p`: moved, or with one corner (index into boxCorners)
+ * dragged while the opposite corner stays. A circle's outline stays square.
+ */
+export function adjustBox(b: Box, what: 'move' | number, from: Pt, p: Pt, square: boolean): Box {
+  if (what === 'move') return { ...b, x: b.x + p[0] - from[0], y: b.y + p[1] - from[1] };
+  const fixed = boxCorners(b)[(what + 2) % 4];
+  let w = Math.max(4, Math.abs(p[0] - fixed[0]));
+  let h = Math.max(4, Math.abs(p[1] - fixed[1]));
+  if (square) w = h = Math.max(w, h);
+  return {
+    x: p[0] < fixed[0] ? fixed[0] - w : fixed[0],
+    y: p[1] < fixed[1] ? fixed[1] - h : fixed[1],
+    w,
+    h,
+  };
+}

@@ -540,3 +540,20 @@
     grid-template-rows: auto minmax(360px, 1fr);
   }
 }
+.cb-sp-zoom {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cb-sp-zoom .cb-muted {
+  min-width: 40px;
+  text-align: center;
+  font-size: 12px;
+}
+.cb-spatial .cb-arena-holder {
+  overflow: hidden;
+}
+.cb-spatial .cb-arena-canvas {
+  transform-origin: center;
+}
