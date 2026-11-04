@@ -438,194 +438,139 @@ export function SpatialSetup(): JSX.Element {
         </nav>
         <div class="cb-arena-controls">
           <RegionNoticeBox />
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 'arena' }}>
-            <h3>Picture of the arena</h3>
-            <Note>
-              Upload one frame from the behavior camera, or a video. For a video, CaBaNA builds a
-              picture of the empty arena from the median over many frames, since the animal is in a
-              different place in each one. Drag the slider to a frame with the animal in it to
-              measure the animal.
-            </Note>
-            <Show when={exampleMedia()}>
-              <div class="cb-note">
-                Example loaded: {EXAMPLES.find((x) => x.id === exampleMedia()!.id)?.note}
-                <div class="cb-controls">
-                  <Show when={exampleMedia()!.frame}>
-                    <button
-                      class="btn-secondary btn-small"
-                      onClick={() => void onFile(exampleMedia()!.frame)}
-                    >
-                      Use the example picture
-                    </button>
-                  </Show>
-                  <Show when={exampleMedia()!.video}>
-                    <button
-                      class="btn-secondary btn-small"
-                      onClick={() => void onFile(exampleMedia()!.video)}
-                    >
-                      Use the example video
-                    </button>
-                  </Show>
+          <div class="cb-sp-cards" classList={{ 'cb-hide': section() !== 'arena' }}>
+            <section class="cb-sp-card">
+              <h3>
+                <span class="cb-sp-num">1</span> Draw the arena
+              </h3>
+              <div class="cb-muted">Define the arena boundary.</div>
+              <div class="cb-controls">
+                <label>
+                  Shape
+                  <select
+                    value={arena.shape}
+                    onChange={(e) =>
+                      setArena('shape', e.currentTarget.value as 'rectangle' | 'circle')
+                    }
+                  >
+                    <option value="rectangle">Rectangle</option>
+                    <option value="circle">Circle</option>
+                  </select>
+                </label>
+                {toolBtn('arena', 'Draw the arena')}
+              </div>
+              <div class="cb-muted">
+                {arena.shape === 'circle'
+                  ? 'Drag from one side of the arena to the other.'
+                  : 'Drag from one corner to the opposite corner.'}
+              </div>
+            </section>
+
+            <section class="cb-sp-card">
+              <h3>
+                <span class="cb-sp-num">2</span> Set the scale
+              </h3>
+              <div class="cb-muted">Convert pixels to real-world size.</div>
+              <div class="cb-controls">
+                <span>Position file units</span>
+                <div class="cb-seg">
+                  <For
+                    each={
+                      [
+                        ['cm', 'cm'],
+                        ['px', 'pixels'],
+                      ] as const
+                    }
+                  >
+                    {([v, label]) => (
+                      <button
+                        classList={{ 'cb-seg__on': source.positionUnit === v }}
+                        onClick={() => setSource('positionUnit', v)}
+                      >
+                        {label}
+                      </button>
+                    )}
+                  </For>
                 </div>
               </div>
-            </Show>
-            <div class="cb-controls">
-              <label class="btn-secondary btn-small cb-file">
-                Choose image or video
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*,video/*"
-                  onChange={(e) => void onFile(e.currentTarget.files?.[0])}
-                />
-              </label>
-              <button class="btn-secondary btn-small" onClick={startBlank}>
-                No picture: use a blank arena
-              </button>
-            </div>
-            <Show when={busy()}>
-              <div class="cb-muted">{busy()}</div>
-            </Show>
-            <Show when={error()}>
-              <div class="cb-error">{error()}</div>
-            </Show>
-            <Show when={frame()?.kind === 'video'}>
               <div class="cb-controls">
                 <label>
-                  Frame at
-                  <input
-                    type="range"
-                    min="0"
-                    max={frame()!.duration}
-                    step="0.1"
-                    value={t()}
-                    onChange={(e) => void scrub(+e.currentTarget.value)}
-                  />
-                  {t().toFixed(1)} s
+                  Scale from
+                  <select
+                    value={arena.scaleMode}
+                    onChange={(e) =>
+                      setArena('scaleMode', e.currentTarget.value as 'arena' | 'distance')
+                    }
+                  >
+                    <option value="arena">The arena's real size</option>
+                    <option value="distance">A known distance</option>
+                  </select>
                 </label>
-                <button class="btn-secondary btn-small" onClick={() => void showBackground()}>
-                  Show the empty arena
-                </button>
               </div>
-            </Show>
-          </section>
-
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 'arena' }}>
-            <h3>Arena outline and scale</h3>
-            <div class="cb-controls">
-              <label>
-                Shape
-                <select
-                  value={arena.shape}
-                  onChange={(e) =>
-                    setArena('shape', e.currentTarget.value as 'rectangle' | 'circle')
-                  }
-                >
-                  <option value="rectangle">Rectangle</option>
-                  <option value="circle">Circle</option>
-                </select>
-              </label>
-              {toolBtn('arena', 'Draw the arena')}
-            </div>
-            <div class="cb-controls">
-              <span>Position file units</span>
-              <div class="cb-seg">
-                <For
-                  each={
-                    [
-                      ['cm', 'cm'],
-                      ['px', 'pixels'],
-                    ] as const
-                  }
-                >
-                  {([v, label]) => (
-                    <button
-                      classList={{ 'cb-seg__on': source.positionUnit === v }}
-                      onClick={() => setSource('positionUnit', v)}
-                    >
-                      {label}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </div>
-            <div class="cb-controls">
-              <label>
-                Scale from
-                <select
-                  value={arena.scaleMode}
-                  onChange={(e) =>
-                    setArena('scaleMode', e.currentTarget.value as 'arena' | 'distance')
-                  }
-                >
-                  <option value="arena">The arena's real size</option>
-                  <option value="distance">A known distance</option>
-                </select>
-              </label>
-            </div>
-            <Show when={arena.scaleMode === 'arena'}>
-              <div class="cb-controls">
-                <label>
-                  {arena.shape === 'circle' ? 'Diameter' : 'Width'}
-                  <input
-                    type="number"
-                    min="1"
-                    value={arena.width}
-                    onInput={num((v) => setArena('width', v), 1)}
-                  />{' '}
-                  cm
-                </label>
-                <Show when={arena.shape === 'rectangle'}>
+              <Show when={arena.scaleMode === 'arena'}>
+                <div class="cb-controls">
                   <label>
-                    Height
+                    {arena.shape === 'circle' ? 'Diameter' : 'Width'}
                     <input
                       type="number"
                       min="1"
-                      value={arena.height}
-                      onInput={num((v) => setArena('height', v), 1)}
+                      value={arena.width}
+                      onInput={num((v) => setArena('width', v), 1)}
                     />{' '}
                     cm
                   </label>
+                  <Show when={arena.shape === 'rectangle'}>
+                    <label>
+                      Height
+                      <input
+                        type="number"
+                        min="1"
+                        value={arena.height}
+                        onInput={num((v) => setArena('height', v), 1)}
+                      />{' '}
+                      cm
+                    </label>
+                  </Show>
+                </div>
+                <Show
+                  when={
+                    arena.box &&
+                    arena.shape === 'rectangle' &&
+                    Math.abs(arena.box.w / arena.width - arena.box.h / arena.height) /
+                      (arena.box.w / arena.width) >
+                      0.05
+                  }
+                >
+                  <div class="cb-note">
+                    The drawn shape and the width and height do not have the same proportions.
+                    Redraw the arena, or check the sizes.
+                  </div>
                 </Show>
-              </div>
-              <Show
-                when={
-                  arena.box &&
-                  arena.shape === 'rectangle' &&
-                  Math.abs(arena.box.w / arena.width - arena.box.h / arena.height) /
-                    (arena.box.w / arena.width) >
-                    0.05
-                }
-              >
-                <div class="cb-note">
-                  The drawn shape and the width and height do not have the same proportions. Redraw
-                  the arena, or check the sizes.
+              </Show>
+              <Show when={arena.scaleMode === 'distance'}>
+                <div class="cb-controls">
+                  {toolBtn('distance', 'Draw a known distance')}
+                  <label>
+                    It is
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.5"
+                      value={arena.lineCm}
+                      onInput={num((v) => setArena('lineCm', v), 0.1)}
+                    />{' '}
+                    cm
+                  </label>
                 </div>
               </Show>
-            </Show>
-            <Show when={arena.scaleMode === 'distance'}>
-              <div class="cb-controls">
-                {toolBtn('distance', 'Draw a known distance')}
-                <label>
-                  It is
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.5"
-                    value={arena.lineCm}
-                    onInput={num((v) => setArena('lineCm', v), 0.1)}
-                  />{' '}
-                  cm
-                </label>
+              <div class="cb-muted">
+                Scale:{' '}
+                {pxPerCm()
+                  ? `${pxPerCm()!.toFixed(2)} pixels per cm. Arena ${sizeCm()[0].toFixed(1)}${arena.shape === 'circle' ? '' : ` x ${sizeCm()[1].toFixed(1)}`} cm.`
+                  : 'draw the arena and set the scale.'}
               </div>
-            </Show>
-            <div class="cb-muted">
-              Scale:{' '}
-              {pxPerCm()
-                ? `${pxPerCm()!.toFixed(2)} pixels per cm. Arena ${sizeCm()[0].toFixed(1)}${arena.shape === 'circle' ? '' : ` x ${sizeCm()[1].toFixed(1)}`} cm.`
-                : 'draw the arena and set the scale.'}
-            </div>
-          </section>
+            </section>
+          </div>
 
           <section class="cb-group" classList={{ 'cb-hide': section() !== 'zones' }}>
             <h3>Zones and excluded regions</h3>
@@ -923,6 +868,76 @@ export function SpatialSetup(): JSX.Element {
                 {frame()!.name}. Blue outline: arena. Dashed red: excluded region.
               </div>
             </Show>
+            <section class="cb-sp-picture">
+              <Note>
+                Upload one frame from the behavior camera, or a video. For a video, CaBaNA builds a
+                picture of the empty arena from the median over many frames, since the animal is in
+                a different place in each one. Drag the slider to a frame with the animal in it to
+                measure the animal.
+              </Note>
+              <Show when={exampleMedia()}>
+                <div class="cb-note">
+                  Example loaded: {EXAMPLES.find((x) => x.id === exampleMedia()!.id)?.note}
+                  <div class="cb-controls">
+                    <Show when={exampleMedia()!.frame}>
+                      <button
+                        class="btn-secondary btn-small"
+                        onClick={() => void onFile(exampleMedia()!.frame)}
+                      >
+                        Use the example picture
+                      </button>
+                    </Show>
+                    <Show when={exampleMedia()!.video}>
+                      <button
+                        class="btn-secondary btn-small"
+                        onClick={() => void onFile(exampleMedia()!.video)}
+                      >
+                        Use the example video
+                      </button>
+                    </Show>
+                  </div>
+                </div>
+              </Show>
+              <div class="cb-controls">
+                <label class="btn-secondary btn-small cb-file">
+                  Choose image or video
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/*,video/*"
+                    onChange={(e) => void onFile(e.currentTarget.files?.[0])}
+                  />
+                </label>
+                <button class="btn-secondary btn-small" onClick={startBlank}>
+                  No picture: use a blank arena
+                </button>
+              </div>
+              <Show when={busy()}>
+                <div class="cb-muted">{busy()}</div>
+              </Show>
+              <Show when={error()}>
+                <div class="cb-error">{error()}</div>
+              </Show>
+              <Show when={frame()?.kind === 'video'}>
+                <div class="cb-controls">
+                  <label>
+                    Frame at
+                    <input
+                      type="range"
+                      min="0"
+                      max={frame()!.duration}
+                      step="0.1"
+                      value={t()}
+                      onChange={(e) => void scrub(+e.currentTarget.value)}
+                    />
+                    {t().toFixed(1)} s
+                  </label>
+                  <button class="btn-secondary btn-small" onClick={() => void showBackground()}>
+                    Show the empty arena
+                  </button>
+                </div>
+              </Show>
+            </section>
           </div>
         </div>
       </div>
