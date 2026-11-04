@@ -279,6 +279,8 @@ export const blocked = (checks: SpatialCheck[]) =>
   checks.some((c) => c.state === 'block' || c.state === 'todo' || c.state === 'warn');
 
 /** The most important open point, in one sentence, or undefined when nothing is open. */
-export const firstOpen = (checks: SpatialCheck[]) =>
-  (['block', 'todo', 'warn'] as const).map((st) => checks.find((c) => c.state === st)).find(Boolean)
-    ?.text;
+export const firstOpenCheck = (checks: SpatialCheck[]) =>
+  (['block', 'todo', 'warn'] as const)
+    .map((st) => checks.find((c) => c.state === st))
+    .find(Boolean);
+export const firstOpen = (checks: SpatialCheck[]) => firstOpenCheck(checks)?.text;

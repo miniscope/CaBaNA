@@ -78,24 +78,26 @@ export function SetupCards(props: { spatialBlocked: () => boolean }): JSX.Elemen
               title={`${c.purpose} ${c.priority}.`}
               onClick={() => setSetupCard(c.id)}
             >
-              <span
-                class="cb-es-card__prio"
-                classList={{ 'cb-es-card__prio--req': c.priority === 'Required' }}
-              >
-                {c.priority}
+              <span class="cb-es-card__top">
+                <svg
+                  class="cb-es-card__icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  {ICONS[c.id]}
+                </svg>
+                <span
+                  class="cb-es-card__prio"
+                  classList={{ 'cb-es-card__prio--req': c.priority === 'Required' }}
+                >
+                  {c.priority}
+                </span>
               </span>
-              <svg
-                class="cb-es-card__icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                {ICONS[c.id]}
-              </svg>
               <span class="cb-es-card__title">{c.title}</span>
               <span class={`cb-es-status cb-es-status--${label().replace(' ', '-').toLowerCase()}`}>
                 <i aria-hidden="true">{MARK[label()]}</i> {label()}
@@ -109,7 +111,7 @@ export function SetupCards(props: { spatialBlocked: () => boolean }): JSX.Elemen
 }
 
 /** Title, purpose and what is still needed, above a component's controls. Spatial setup shows its own checks. */
-export function WorkspaceHead(props: { id: CardId }): JSX.Element {
+export function WorkspaceHead(props: { id: CardId; children?: JSX.Element }): JSX.Element {
   const card = () => CARDS.find((c) => c.id === props.id)!;
   const remaining = () => remainingFor(props.id, setupSnapshot());
   const status = () => statusOf(props.id, setupSnapshot());
@@ -132,6 +134,9 @@ export function WorkspaceHead(props: { id: CardId }): JSX.Element {
             Still needed: {remaining().join(', ')}.
           </Show>
         </span>
+      </Show>
+      <Show when={props.children}>
+        <span class="cb-es-head__extra">{props.children}</span>
       </Show>
     </div>
   );

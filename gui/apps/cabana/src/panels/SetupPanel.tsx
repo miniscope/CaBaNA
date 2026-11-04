@@ -36,7 +36,7 @@ import { rangeText, showLabel } from '../lib/label-view.ts';
 import { LabelRoles, RolesHelp, setStimuliView, stimuliView } from './LabelRoles.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Note } from './parts.tsx';
-import { SpatialSetup } from './SpatialSetup.tsx';
+import { SpatialSetup, SpatialStageBar } from './SpatialSetup.tsx';
 import { SetupCards, WorkspaceHead } from './SetupCards.tsx';
 import { blocked } from '../lib/spatial-checks.ts';
 import { spatialCheckList } from '../lib/spatial-state.ts';
@@ -702,7 +702,7 @@ export function SetupPanel(): JSX.Element {
         <For each={WORKSPACES}>
           {([id, Body]) => (
             <div class="cb-es-workspace" style={only(id)}>
-              <WorkspaceHead id={id} />
+              <WorkspaceHead id={id}>{id === 'spatial' && <SpatialStageBar />}</WorkspaceHead>
               <div class="cb-es-body">
                 <Body />
               </div>

@@ -1,4 +1,13 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  Show,
+  type JSX,
+} from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import {
   type Pt,
@@ -33,7 +42,7 @@ import {
 import {
   STAGE_LABEL,
   entryOf,
-  firstOpen,
+  firstOpenCheck,
   openStage,
   stageDone,
   stagesFor,
@@ -244,8 +253,11 @@ export function SpatialSetup(): JSX.Element {
     c.width = f.canvas.width;
     c.height = f.canvas.height;
     fitCanvas(holderEl);
-    const lw = Math.max(2, c.width / 400);
-    const fontPx = Math.max(12, c.width / 50);
+    // Canvas pixels per screen pixel: lines and labels keep a readable size however small the
+    // picture is shown, and do not grow when zoomed in.
+    const px = c.width / ((c.getBoundingClientRect().width || c.width) / zoom());
+    const lw = Math.max(2, c.width / 400, 2 * px);
+    const fontPx = Math.max(12, c.width / 50, 12 * px);
     ctx.drawImage(f.canvas, 0, 0);
     const b = editBox() ?? arena.box;
     const path = (pts: Pt[], close = true) => tracePath(ctx, pts, close);
@@ -316,7 +328,7 @@ export function SpatialSetup(): JSX.Element {
       ctx.lineWidth = lw;
       ctx.stroke();
       if (adjustable()) {
-        const r = Math.max(5, c.width / 160);
+        const r = Math.max(5, 5 * px);
         ctx.fillStyle = '#fff';
         for (const [x, y] of corners(b)) {
           ctx.beginPath();
@@ -443,12 +455,15 @@ export function SpatialSetup(): JSX.Element {
     })[tool()];
 
   const stages = () => stagesFor(snap());
-  const go = (st: Stage) => {
-    setChosenStage(st);
-    setTool('none');
-    setClicks([]);
-    setPoly([]);
-  };
+  const go = (st: Stage) => setChosenStage(st);
+  // A drawing tool belongs to its stage: leaving the stage puts it down.
+  createEffect(
+    on(stage, () => {
+      setTool('none');
+      setClicks([]);
+      setPoly([]);
+    }),
+  );
   const step = (d: number) => stages()[stages().indexOf(stage()) + d];
   const check = (key: SpatialCheck['key']) => spatialCheckList().filter((c) => c.key === key);
   const unverified = (z: { name: string; kind: Zone['kind']; shape: string }) =>
@@ -845,10 +860,6 @@ export function SpatialSetup(): JSX.Element {
   return (
     <Show when={entryOf(snap()) === 'workspace'} fallback={<SpatialLanding />}>
       <div class="cb-spatial">
-        <div class="cb-sp-top">
-          <StageBar stages={stages()} current={stage()} snap={snap()} onPick={go} />
-          <BackgroundRow onChangeFrame={() => go('frame')} />
-        </div>
         <div class="cb-sp-grid">
           <div class="cb-sp-side">
             <div class="cb-sp-stage">
@@ -857,8 +868,18 @@ export function SpatialSetup(): JSX.Element {
               <Dynamic component={STAGE_BODY[stage()]} />
             </div>
             <div class="cb-sp-foot">
-              <Show when={stage() !== 'review' && firstOpen(spatialCheckList())}>
-                <div class="cb-sp-remaining">{firstOpen(spatialCheckList())}</div>
+              {/* The most important open point, unless the stage shown already lists it. */}
+              <Show when={stage() !== 'review' && firstOpenCheck(spatialCheckList())}>
+                {(c) => (
+                  <Show when={c().stage !== stage()}>
+                    <div class="cb-sp-remaining">
+                      {c().text}{' '}
+                      <button class="cb-link" onClick={() => go(c().stage)}>
+                        Go to {STAGE_LABEL[c().stage]}
+                      </button>
+                    </div>
+                  </Show>
+                )}
               </Show>
               <div class="cb-controls">
                 <button
@@ -1115,8 +1136,9 @@ export function SpatialSetup(): JSX.Element {
                         .
                       </b>{' '}
                     </Show>
-                    Blue outline: arena. Dashed red: excluded region.
+                    Blue: arena outline. Dashed red: excluded region.
                   </span>
+                  <BackgroundRow />
                 </div>
               </Show>
             </div>
@@ -1159,8 +1181,26 @@ function CheckRow(props: { c: SpatialCheck; onFix?: () => void }): JSX.Element {
   );
 }
 
-/** The stages as a compact row; each can be opened at any time. Done stages show a check. */
-function StageBar(props: {
+/**
+ * The stages as a compact row beside the workspace title; each can be opened at any time. Done
+ * stages show a check. Shown once there is a background or an outline.
+ */
+export function SpatialStageBar(): JSX.Element {
+  const snap = spatialSnapshot;
+  const current = () => chosenStage() ?? openStage(snap());
+  return (
+    <Show when={entryOf(snap()) === 'workspace'}>
+      <StageList
+        stages={stagesFor(snap())}
+        current={current()}
+        snap={snap()}
+        onPick={setChosenStage}
+      />
+    </Show>
+  );
+}
+
+function StageList(props: {
   stages: Stage[];
   current: Stage;
   snap: SpatialSnapshot;
@@ -1192,7 +1232,7 @@ function StageBar(props: {
 }
 
 /** What the picture is, with ways to replace it. Replacing keeps the outline, scale and zones. */
-function BackgroundRow(props: { onChangeFrame: () => void }): JSX.Element {
+function BackgroundRow(): JSX.Element {
   const f = () => frame();
   const kind = () =>
     f()?.kind === 'video' ? 'video' : f()?.kind === 'image' ? 'image' : 'blank canvas';
@@ -1202,7 +1242,7 @@ function BackgroundRow(props: { onChangeFrame: () => void }): JSX.Element {
         Background: {f()?.kind === 'blank' ? 'blank canvas' : `${f()?.name} (${kind()})`}
       </span>
       <Show when={f()?.kind === 'video'}>
-        <button class="cb-link" onClick={() => props.onChangeFrame()}>
+        <button class="cb-link" onClick={() => setChosenStage('frame')}>
           Change frame
         </button>
       </Show>

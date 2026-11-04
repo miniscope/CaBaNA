@@ -6,12 +6,11 @@
   margin: 8px 0;
 }
 .cb-es-card {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 8px 6px 7px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px 5px;
   font: inherit;
   font-size: 13px;
   color: var(--text-primary);
@@ -19,7 +18,13 @@
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   cursor: pointer;
-  text-align: center;
+  text-align: left;
+}
+.cb-es-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
 }
 .cb-es-card:hover {
   border-color: var(--accent);
@@ -38,8 +43,8 @@
   color: var(--accent);
 }
 .cb-es-card__icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   color: var(--text-primary);
 }
 .cb-es-card__title {
@@ -47,9 +52,6 @@
   line-height: 1.2;
 }
 .cb-es-card__prio {
-  position: absolute;
-  top: 4px;
-  right: 6px;
   font-size: 10.5px;
   color: var(--text-secondary);
 }
@@ -58,7 +60,7 @@
   font-weight: var(--font-weight-medium);
 }
 .cb-es-status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
@@ -301,17 +303,19 @@
   flex-direction: column;
   gap: 8px;
 }
-.cb-sp-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 16px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border-subtle);
-}
 .cb-spatial .cb-arena-view > div.cb-sp-viewbar,
 .cb-spatial .cb-arena-view > div > .cb-sp-under {
   flex: none;
+}
+.cb-spatial .cb-arena-view > div.cb-sp-viewbar {
+  flex-direction: row;
+  align-items: flex-end;
+}
+.cb-es-head__extra {
+  margin-left: auto;
+}
+.cb-sp-under .cb-sp-bg {
+  margin-left: auto;
 }
 .cb-sp-grid {
   flex: 1;
@@ -504,11 +508,13 @@
 }
 .cb-sp-viewbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 12px;
 }
 .cb-sp-viewbar .cb-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
 }
 .cb-sp-bg {
@@ -526,6 +532,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.cb-es-head__extra {
+  margin-left: auto;
+}
+.cb-sp-under .cb-sp-bg {
+  margin-left: auto;
+}
 .cb-sp-under {
   flex: none;
   display: flex;
@@ -541,7 +553,7 @@
   }
 }
 .cb-sp-zoom {
-  margin-left: auto;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -556,4 +568,13 @@
 }
 .cb-spatial .cb-arena-canvas {
   transform-origin: center;
+}
+
+/* The page heading keeps to one line; the subtitle wraps beside it if it must. */
+.cb-setup-head h2,
+.cb-setup-head button {
+  white-space: nowrap;
+}
+.cb-setup-head > .cb-muted {
+  font-size: 13px;
 }
