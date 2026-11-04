@@ -3,7 +3,13 @@
 
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { denomText, percentText } from './metrics.ts';
-import { pethCurves, type Align, type OnsetReport, type PethCurves, type PethParams } from './peth.ts';
+import {
+  pethCurves,
+  type Align,
+  type OnsetReport,
+  type PethCurves,
+  type PethParams,
+} from './peth.ts';
 import {
   alignsOf,
   pethPlan,
@@ -61,7 +67,8 @@ export function reasonText(
   p: Pick<PethParams, 'minDurationS' | 'minGapS'>,
   align: Align,
 ): string {
-  const gapWhere = align === 'offset' ? 'before the next bout' : 'after the end of the previous bout';
+  const gapWhere =
+    align === 'offset' ? 'before the next bout' : 'after the end of the previous bout';
   return {
     short: `too short (under ${p.minDurationS} s)`,
     gap: `too close: under ${p.minGapS} s ${gapWhere}`,
@@ -232,7 +239,8 @@ export function columnMean(curves: PethCurves, cells: number, columns: number, c
     if (!v.length) continue;
     const m = v.reduce((a, x) => a + x, 0) / v.length;
     mean[i] = m;
-    if (v.length > 1) sem[i] = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1) / v.length);
+    if (v.length > 1)
+      sem[i] = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1) / v.length);
   }
   return { mean, sem };
 }

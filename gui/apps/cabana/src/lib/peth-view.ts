@@ -146,7 +146,7 @@ export const SORT_LABEL: Record<CellSort, string> = {
   peak: 'peak time',
 };
 
-/** The cell list filter: all cells, or only those labelled Higher (excited) or Lower (inhibited) for the behavior. */
+/** The cell list filter: all cells, or only those labelled Higher or Lower for the behavior. */
 export type CellFilter = 'all' | 'excited' | 'inhibited';
 export const filterCells = (o: PethOutcome, b: number, cells: number[], filter: CellFilter) =>
   filter === 'all' ? cells : cells.filter((c) => labelAt(o, c, b) === filter);

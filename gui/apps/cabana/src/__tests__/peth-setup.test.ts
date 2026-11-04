@@ -196,7 +196,9 @@ describe('result cards', () => {
 describe('preview curves', () => {
   it('averages each column over the cells with a value and leaves one cell without SEM', () => {
     // 2 cells x 1 column x 2 bins
-    const curves = { peth: Float64Array.from([1, 2, 3, NaN]), bins: 2 } as unknown as Parameters<typeof columnMean>[0];
+    const curves = { peth: Float64Array.from([1, 2, 3, NaN]), bins: 2 } as unknown as Parameters<
+      typeof columnMean
+    >[0];
     const { mean, sem } = columnMean(curves, 2, 1, 0);
     expect(mean[0]).toBe(2);
     expect(mean[1]).toBe(2);
