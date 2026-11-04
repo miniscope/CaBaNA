@@ -65,6 +65,8 @@ export function RunChoice(props: {
   preview: number;
   /** Why Quick preview can't run here (e.g. it needs the framework engine), if it can't. */
   previewBlocked?: string;
+  /** The analysis has no reduced-shuffle run at all, so the card only says why (with `previewBlocked`). */
+  noPreview?: boolean;
   /** Why neither can run, if neither can. */
   blocked?: string;
   /** Text for a test that has no shuffles (PETH curves only, say); replaces the shuffle lines. */
@@ -76,10 +78,12 @@ export function RunChoice(props: {
     <div class="cb-gs-choice">
       <div class="cb-gs-card" classList={{ 'cb-gs-card--off': !!props.previewBlocked }}>
         <h4>Quick preview</h4>
-        <p>
-          The full analysis with up to {props.preview} shuffles ({pFloorText(props.preview)}). For
-          checking settings, not for reporting or ranking cells. Saved as Preliminary.
-        </p>
+        <Show when={!props.noPreview}>
+          <p>
+            The full analysis with up to {props.preview} shuffles ({pFloorText(props.preview)}).
+            For checking settings, not for reporting or ranking cells. Saved as Preliminary.
+          </p>
+        </Show>
         <Show when={props.previewBlocked}>
           <p class="cb-warn">{props.previewBlocked}</p>
         </Show>

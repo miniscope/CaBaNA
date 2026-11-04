@@ -122,6 +122,7 @@ function PethSetup(): JSX.Element {
           <RunChoice
             full={ps.nShuffles}
             preview={shufflesFor('preview', ps.nShuffles)}
+            noPreview
             previewBlocked="PETH has no framework engine, so no reduced-shuffle run."
             blocked={blocked()}
             noTest={
