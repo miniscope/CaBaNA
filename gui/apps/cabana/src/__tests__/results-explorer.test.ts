@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import {
   browserTestSettings,
+  frameworkStatRow,
   categoryCounts,
   parseSavedCsv,
   plotsOf,
@@ -77,7 +78,7 @@ describe('statistics from a saved table', () => {
   const t = parseSavedCsv('auroc.csv', AUROC);
   const spec = TABLE_SPECS.auroc!;
   it('counts values and p-values below alpha, without computing anything else', () => {
-    const [s] = tableStatRows(t, spec, 0.05);
+    const [s] = tableStatRows(t, spec, { alpha: 0.05 });
     expect(s).toMatchObject({
       name: 'auROC',
       n: 3,
@@ -94,7 +95,7 @@ describe('statistics from a saved table', () => {
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(4);
   });
   it('skips a statistic whose column is absent', () => {
-    expect(tableStatRows({ ...t, columns: ['cell'] }, spec, 0.05)).toEqual([]);
+    expect(tableStatRows({ ...t, columns: ['cell'] }, spec, { alpha: 0.05 })).toEqual([]);
   });
 });
 
@@ -129,7 +130,7 @@ describe('summarySentences', () => {
   const sentences = summarySentences({
     record: record(),
     settings,
-    stats: tableStatRows(t, spec, 0.05),
+    stats: tableStatRows(t, spec, { alpha: 0.05 }),
     categories: { title: 'Response', counts: categoryCounts(t, spec) },
   });
   it('states only saved numbers', () => {
@@ -172,5 +173,48 @@ describe('plotsOf', () => {
       'pairwise',
     ]);
     expect(plotsOf('population', [])).toEqual([]);
+  });
+});
+
+describe('frameworkStatRow', () => {
+  const nd = (data: (number | null)[]) => ({ shape: [data.length], data });
+  const loaded = {
+    meta: { name: 'peth', metric: 'peth_mean', level: 'cell' },
+    values: nd([0.5, null, 1.5, 1]),
+    extras: {},
+    nullDraws: async () => undefined,
+    tested: {
+      tail: 'two',
+      alpha: 0.05,
+      nShuffles: 200,
+      nullName: 'circular_shift',
+      nullParams: {},
+      correction: 'max_stat',
+      correctionScope: 'behaviors',
+      p: nd([0.01, 0.2, null, 0.04]),
+      pAdj: nd([0.03, 0.4, null, 0.06]),
+      nullLo: null,
+      nullHi: null,
+      significant: null,
+      significantAdj: null,
+    },
+  } as never;
+  it('counts saved values and p-values and carries the saved test', () => {
+    const row = frameworkStatRow(loaded);
+    expect(row).toMatchObject({
+      name: 'peth (peth_mean)',
+      n: 3,
+      range: [0.5, 1.5],
+      basis: 'cell values',
+      pRaw: { n: 3, below: 2 },
+      pAdj: { n: 3, below: 1 },
+    });
+    expect(row.test).toEqual({
+      nullMethod: 'circular shift',
+      shuffles: 200,
+      alpha: 0.05,
+      correction: 'max stat across behaviors',
+      tail: 'two',
+    });
   });
 });

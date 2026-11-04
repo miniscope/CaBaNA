@@ -7,6 +7,7 @@ import { RESPONSE_CSV, RESPONSE_LABEL } from './auroc-view.ts';
 import { OVERALL, type Overall } from './place-outcome.ts';
 import { POPULATION_RESULT } from './population-results.ts';
 import { preliminaryText } from './preview.ts';
+import { finite, type LoadedResult, type Nd } from './results-load.ts';
 import { analysisLabel, formatWhen } from './results-overview.ts';
 import type { AnalysisId } from './runs.ts';
 
@@ -308,6 +309,8 @@ export interface StatRow {
   pAdj?: Count;
   /** What one value belongs to: a cell, a behavior pair, a population. */
   basis?: string;
+  /** The shuffle test these p-values come from, when the run was tested. */
+  test?: TestSettings;
 }
 
 const finiteColumn = (t: SavedTable, name: string): number[] | undefined => {
@@ -323,7 +326,8 @@ const countBelow = (values: number[] | undefined, alpha: number | undefined): Co
   };
 
 /** One row per statistic of a saved table. */
-export function tableStatRows(table: SavedTable, spec: TableSpec, alpha?: number): StatRow[] {
+export function tableStatRows(table: SavedTable, spec: TableSpec, test: TestSettings): StatRow[] {
+  const alpha = test.alpha;
   return spec.stats.flatMap((s) => {
     const values = finiteColumn(table, s.value);
     if (!values) return [];
@@ -336,9 +340,39 @@ export function tableStatRows(table: SavedTable, spec: TableSpec, alpha?: number
         pRaw: s.p ? countBelow(finiteColumn(table, s.p), alpha) : undefined,
         pAdj: s.pAdj ? countBelow(finiteColumn(table, s.pAdj), alpha) : undefined,
         basis: spec.basis,
+        test,
       } satisfies StatRow,
     ];
   });
+}
+
+const finiteValues = (nd: Nd | null | undefined): number[] | undefined =>
+  nd ? Array.from(nd.data).filter(finite) : undefined;
+
+/** One statistic of a framework result, read from its saved arrays and manifest entry. */
+export function frameworkStatRow(r: LoadedResult): StatRow {
+  const t = r.tested;
+  const values = finiteValues(r.values) ?? [];
+  const alpha = t?.alpha ?? undefined;
+  const scope = t?.correctionScope ? ` across ${t.correctionScope.replace(/_/g, ' ')}` : '';
+  return {
+    name: `${r.meta.name} (${r.meta.metric})`,
+    unit: '',
+    n: values.length,
+    range: values.length ? [Math.min(...values), Math.max(...values)] : undefined,
+    pRaw: t && countBelow(finiteValues(t.p), alpha),
+    pAdj: t?.pAdj ? countBelow(finiteValues(t.pAdj), alpha) : undefined,
+    basis: r.meta.level === 'cell' ? 'cell values' : 'population-level values',
+    test: t && {
+      nullMethod: text(t.nullName),
+      shuffles: t.nShuffles ?? undefined,
+      alpha,
+      correction: t.correction
+        ? `${t.correction.replace(/_/g, ' ')}${t.correction === 'none' ? '' : scope}`
+        : undefined,
+      tail: text(t.tail),
+    },
+  };
 }
 
 /** How many rows hold each value of a text column, in first-seen order. */
