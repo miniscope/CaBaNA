@@ -694,7 +694,7 @@ export function SetupPanel(): JSX.Element {
         <span class="cb-spacer" />
         <UpdateConfig />
         <button class="btn-primary" onClick={downloadConfig}>
-          Download Config
+          Download config
         </button>
       </div>
       <ImportedConfig />

@@ -257,10 +257,10 @@ function PlaceSetup(): JSX.Element {
         <button
           class="btn-secondary"
           disabled={!ready() || !ok() || ok()?.used === 0}
-          title={`Runs ${shufflesFor('preview', placeSettings.nShuffles)} shuffles. The result is saved as Preliminary.`}
+          title={`The full analysis with ${shufflesFor('preview', placeSettings.nShuffles)} shuffles instead of ${placeSettings.nShuffles}. Results are marked Preliminary.`}
           onClick={() => void runPlaceCells({ preview: true })}
         >
-          Quick preview
+          Quick preview ({shufflesFor('preview', placeSettings.nShuffles)} shuffles)
         </button>
       </Show>
       <button

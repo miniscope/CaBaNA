@@ -1,5 +1,5 @@
 // Getting the loaded session to the Python bridge: upload each input file once (by hash), then
-// register the same config the Download Config button writes (plan D-4).
+// register the same config the Download config button writes (plan D-4).
 
 import { bridge, type Capabilities } from '../bridge-client.ts';
 import { buildSessionConfig, type Section } from '../session-config.ts';

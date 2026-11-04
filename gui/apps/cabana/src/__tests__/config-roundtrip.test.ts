@@ -1,4 +1,4 @@
-// A loaded config comes back unchanged from Download Config except for what was edited in the
+// A loaded config comes back unchanged from Download config except for what was edited in the
 // GUI: zone shapes, order, paths and keys the GUI does not know all survive. The copy the
 // framework runs drops only the keys its strict loader would reject.
 
@@ -33,7 +33,7 @@ const original = (dir: string) =>
 // Order matters too: JSON text compares keys in order.
 const asText = (v: unknown) => JSON.stringify(v);
 
-describe('Download Config after loading a config', () => {
+describe('Download config after loading a config', () => {
   it.each(SIMULATED)('%s comes back as it was loaded', async (dir) => {
     clearAll();
     await addFiles(filesOf(dir));
