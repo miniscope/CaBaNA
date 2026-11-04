@@ -12,6 +12,8 @@ import {
   positionDecoding,
 } from '../../lib/decoding-settings.ts';
 import { decodeEvents } from '../../lib/decode-data.ts';
+import { gapBlock } from './engines.ts';
+import type { DecodeView } from './review.ts';
 import { suggestSeparation, type SeparationSuggestion } from '../../lib/fold-gap.ts';
 import { active, blockers } from '../../lib/runs.ts';
 import { behaviorDecodingPipeline, positionDecodingPipeline } from '../../lib/spec/decoding.ts';
@@ -114,9 +116,11 @@ export function checks(): Checks {
 /** The reason Run is unavailable, as one line next to the button; empty when it can run. */
 export function runBlock(): string {
   const c = checks();
-  if (c.engineOff) return 'The Python engine is not running. See Checks.';
+  if (c.engineOff) return 'The Python engine is not running.';
   if (c.needsInput.length)
-    return `Needs input: ${c.needsInput[0]}${c.needsInput.length > 1 ? ` (+${c.needsInput.length - 1} more, see Checks)` : ''}`;
+    return `Needs input: ${c.needsInput[0]}${c.needsInput.length > 1 ? ` (+${c.needsInput.length - 1} more, see Review)` : ''}`;
+  const gap = gapBlock('framework', shared().foldGapS, hasCapability);
+  if (gap) return gap;
   if (c.framework.length)
     return `Framework update required: ${c.framework.map((f) => f.short).join('; ')}`;
   const rest = blockers('decoding');
@@ -124,3 +128,33 @@ export function runBlock(): string {
 }
 export const canRun = () => !active() && runBlock() === '';
 export { OTHER_NAME };
+
+/** The settings of the chosen target in the shape the Review labels read. */
+export function decodeView(): DecodeView {
+  const s = shared();
+  const b = behaviorDecoding;
+  const position = isPosition();
+  return {
+    target: target(),
+    decoder: position ? 'bayesian' : b.decoder,
+    likelihood: s.likelihood,
+    sigma: s.sigma,
+    windowS: s.windowS,
+    smoothSigmaBins: s.smoothSigmaBins,
+    prior: s.prior,
+    mode: b.mode,
+    C: b.C,
+    binS: b.binS,
+    folds: s.folds,
+    foldGapS: s.foldGapS,
+    shuffles: s.shuffles,
+    blockS: s.blockS,
+    correction: s.correction,
+    alpha: s.alpha,
+    seed: s.seed,
+    minFramesPerClass: s.minFramesPerClass,
+    overlap: b.overlap,
+    other: !position && b.other,
+    selected: position ? [] : selectedBehaviors(),
+  };
+}
