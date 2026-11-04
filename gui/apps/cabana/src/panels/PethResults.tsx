@@ -11,6 +11,7 @@ import {
   Show,
   type JSX,
 } from 'solid-js';
+import { takePlotRequest } from '../lib/results-nav.ts';
 import { pethCsv, pethCurvesCsv, pethMetadata } from '../lib/peth-export.ts';
 import type { PethOutcome } from '../lib/peth-run.ts';
 import type { Align } from '../lib/peth.ts';
@@ -359,6 +360,14 @@ export function PethResults(props: { out: PethOutcome; onEdit: () => void }): JS
   const o = () => props.out;
   // Selection and sort live here, so no view loses them when another opens.
   const [view, setView] = createSignal<View>('population');
+  // A plot chosen in the Results Explorer opens this view.
+  createEffect(() => {
+    const v = takePlotRequest(
+      'peth',
+      VIEWS.map(([id]) => id),
+    );
+    if (v) setView(v as View);
+  });
   const [details, setDetails] = createSignal(false);
   // With both alignments, one is shown at a time; cards, lists and classifications never mix them.
   const [alignPick, setAlignPick] = createSignal<Align>('onset');

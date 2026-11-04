@@ -40,3 +40,6 @@ export function takePlotRequest(
   untrack(() => setPlotRequest(undefined));
   return req.view;
 }
+
+/** A plot is waiting for the analysis page to open it (without taking it). */
+export const plotPending = (analysis: AnalysisId): boolean => plotRequest()?.analysis === analysis;

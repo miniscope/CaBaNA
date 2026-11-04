@@ -22,7 +22,7 @@ import {
   runPlaceCells,
   type PlaceOutcome,
 } from '../lib/place-run.ts';
-import { openedRun } from '../lib/results-nav.ts';
+import { openedRun, takePlotRequest } from '../lib/results-nav.ts';
 import { latest } from '../lib/runs.ts';
 import {
   buildRows,
@@ -77,6 +77,11 @@ export function PlaceResults(props: {
   changes: string[];
   onEdit: () => void;
 }): JSX.Element {
+  // A plot chosen in the Results Explorer opens this view.
+  createEffect(() => {
+    const v = takePlotRequest('place', ['gallery', 'population', 'inspector']);
+    if (v) setView(v as View);
+  });
   const [drawer, setDrawer] = createSignal(false);
   let detailsButton: HTMLButtonElement | undefined;
 

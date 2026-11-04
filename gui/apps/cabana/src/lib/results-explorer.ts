@@ -8,7 +8,7 @@ import { OVERALL, type Overall } from './place-outcome.ts';
 import { POPULATION_RESULT } from './population-results.ts';
 import { preliminaryText } from './preview.ts';
 import { finite, type LoadedResult, type Nd } from './results-load.ts';
-import { analysisLabel, formatWhen } from './results-overview.ts';
+import { analysisLabel, formatWhen, openness } from './results-overview.ts';
 import type { AnalysisId } from './runs.ts';
 
 // ---------------------------------------------------------------- plots
@@ -148,6 +148,26 @@ export function plotsOf(analysis: AnalysisId, resultNames: string[] = [], target
   if (analysis !== 'decoding' || !target) return all;
   const position = ['map', 'trajectory', 'errors'];
   return all.filter((p) => (target === 'position') === position.includes(p.id));
+}
+
+/** Why a browser-engine run cannot open its plots, in the words the Explorer shows. */
+export const BROWSER_PLOTS_TEXT =
+  'Browser-engine runs keep their tables and metadata, not the plots. Interactive plots need the run again, or this run still in memory.';
+
+/**
+ * Whether a saved run can open its interactive plots. A framework run reads its saved results; a
+ * browser-engine run can only while its outcome is still in memory, and only the newest one is.
+ */
+export function plotsAvailable(
+  r: RunRecord,
+  browser: { inMemory: boolean; newestRunId?: string },
+): { ok: true } | { ok: false; reason: string } {
+  const how = openness(r);
+  if (how.kind === 'blocked') return { ok: false, reason: how.reason };
+  if (how.kind === 'full') return { ok: true };
+  return browser.inMemory && browser.newestRunId === r.run_id
+    ? { ok: true }
+    : { ok: false, reason: BROWSER_PLOTS_TEXT };
 }
 
 // ---------------------------------------------------------------- tables

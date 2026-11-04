@@ -5,6 +5,8 @@ import {
   frameworkStatRow,
   categoryCounts,
   parseSavedCsv,
+  plotsAvailable,
+  BROWSER_PLOTS_TEXT,
   plotsOf,
   sortRows,
   summarySentences,
@@ -216,5 +218,25 @@ describe('frameworkStatRow', () => {
       correction: 'max stat across behaviors',
       tail: 'two',
     });
+  });
+});
+
+describe('plotsAvailable', () => {
+  const fw = record({ engine: 'framework', results_file: 'results.zip' });
+  const br = record({ files: ['auroc.csv'] });
+  it('opens a framework run from its saved results', () => {
+    expect(plotsAvailable(fw, { inMemory: false })).toEqual({ ok: true });
+  });
+  it('opens a browser run only while it is the newest one in memory', () => {
+    expect(plotsAvailable(br, { inMemory: true, newestRunId: br.run_id })).toEqual({ ok: true });
+    expect(plotsAvailable(br, { inMemory: false, newestRunId: br.run_id })).toEqual({
+      ok: false,
+      reason: BROWSER_PLOTS_TEXT,
+    });
+    expect(plotsAvailable(br, { inMemory: true, newestRunId: 'other' }).ok).toBe(false);
+  });
+  it('refuses a run from a newer version or without results', () => {
+    expect(plotsAvailable({ ...fw, record_version: 2 }, { inMemory: false }).ok).toBe(false);
+    expect(plotsAvailable({ ...fw, results_file: null }, { inMemory: false }).ok).toBe(false);
   });
 });

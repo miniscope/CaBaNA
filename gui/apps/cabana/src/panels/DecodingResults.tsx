@@ -1,4 +1,5 @@
 import {
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -10,6 +11,7 @@ import {
 } from 'solid-js';
 import { bridge, decodeFloats, type Manifest, type RunRecord } from '../lib/bridge-client.ts';
 import { hasCapability } from '../lib/bridge-status.ts';
+import { takePlotRequest } from '../lib/results-nav.ts';
 import {
   loadBehaviorDecoding,
   loadPositionDecoding,
@@ -134,6 +136,14 @@ function PositionResults(props: {
   manifest: Manifest;
 }): JSX.Element {
   const [view, setView] = createSignal<PosView>('map');
+  // A plot chosen in the Results Explorer opens this view.
+  createEffect(() => {
+    const v = takePlotRequest(
+      'decoding',
+      POS_VIEWS.map(([id]) => id),
+    );
+    if (v) setView(v as PosView);
+  });
   const [swap, setSwap] = createSignal(false);
   const [exploratory, setExploratory] = createSignal(false);
   const [lo, setLo] = createSignal<number | undefined>();
@@ -481,6 +491,13 @@ function BehaviorResults(props: {
 }): JSX.Element {
   const bayes = () => props.v.classifier === 'bayesian_decoder';
   const [view, setView] = createSignal<BehView>('scores');
+  createEffect(() => {
+    const v = takePlotRequest(
+      'decoding',
+      views().map(([id]) => id),
+    );
+    if (v) setView(v as BehView);
+  });
   const [byScore, setByScore] = createSignal(false);
   const [normalize, setNormalize] = createSignal(true);
   const rows = createMemo(() => {

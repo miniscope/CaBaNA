@@ -31,7 +31,7 @@ import { bridge } from '../lib/bridge-client.ts';
 import { bridgeReady } from '../lib/bridge-status.ts';
 import { BROWSER_ENGINE_TEXT, engineText, frameworkReady, runMatch } from '../lib/engine.ts';
 import { download } from '../lib/export-figure.ts';
-import { openedRun } from '../lib/results-nav.ts';
+import { openedRun, takePlotRequest } from '../lib/results-nav.ts';
 import { latest } from '../lib/runs.ts';
 import {
   aurocOf,
@@ -1302,6 +1302,14 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
   const o = () => props.out;
   // Selection, filters and pages live here, so no overlay or view loses them when it opens or closes.
   const [view, setView] = createSignal<View>('inspector');
+  // A plot chosen in the Results Explorer opens this view.
+  createEffect(() => {
+    const v = takePlotRequest(
+      'auroc',
+      VIEWS.map(([id]) => id),
+    );
+    if (v) setView(v as View);
+  });
   const [details, setDetails] = createSignal(false);
   const [b, setB] = createSignal(0);
   const [c, setC] = createSignal(rankedCells(props.out)[0] ?? 0);

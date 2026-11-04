@@ -31,7 +31,7 @@ import {
   setPositionDecoding,
 } from '../lib/decoding-settings.ts';
 import { prep } from '../lib/preprocess.ts';
-import { openedRun, openRunOf } from '../lib/results-nav.ts';
+import { openedRun, openRunOf, plotPending } from '../lib/results-nav.ts';
 import { cachedRecords, runSource } from '../lib/results-store.ts';
 import type { ResultSource } from '../lib/results-load.ts';
 import { compareToLatest, history, latest, setLatest } from '../lib/runs.ts';
@@ -206,6 +206,7 @@ export function DecodingPanel(): JSX.Element {
     );
   // Without the engine, the newest saved decoding result comes from this browser's copy.
   onMount(async () => {
+    if (plotPending('decoding')) open(); // a plot chosen in the Results Explorer
     if (!latest.decoding && bridgeState().kind !== 'ready') {
       const saved = (await cachedRecords()).filter((r) => r.analysis === 'decoding').at(-1);
       if (saved) setLatest('decoding', saved);
