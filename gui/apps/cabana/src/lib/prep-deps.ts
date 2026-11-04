@@ -11,6 +11,7 @@ export type StepId =
   | 'speed'
   | 'boutLabels'
   | 'eventSmooth'
+  | 'traceSmooth'
   | 'fillGaps'
   | 'posSmooth'
   | 'boutPad'
@@ -32,6 +33,7 @@ export const STEPS: Record<
   speed: { label: 'Speed estimate', kind: 'automatic', keys: ['speedWindowS'] },
   boutLabels: { label: 'Bouts to frame labels', kind: 'automatic', keys: [] },
   eventSmooth: { label: 'Event smoothing', kind: 'optional', keys: ['eventSigmaS'] },
+  traceSmooth: { label: 'Smooth traces', kind: 'optional', keys: ['traceSigmaS'] },
   fillGaps: { label: 'Fill tracking gaps', kind: 'optional', keys: ['fillGapS'] },
   posSmooth: { label: 'Position smoothing', kind: 'optional', keys: ['posMethod', 'posWindowS'] },
   boutPad: { label: 'Bout padding', kind: 'optional', keys: ['labelPadS'] },

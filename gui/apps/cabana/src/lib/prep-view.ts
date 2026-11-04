@@ -147,6 +147,7 @@ export function stepIssue(s: StepId): string | undefined {
       : !frameTimes()
         ? 'Events need neural timestamps.'
         : undefined;
+  if (s === 'traceSmooth') return 'No preview: no analysis reads the raw or denoised traces yet.';
   if (s === 'boutPad' || s === 'boutLabels')
     return !labels().length
       ? 'Frame labels need behavior annotations.'

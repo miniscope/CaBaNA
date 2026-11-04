@@ -61,6 +61,16 @@ export const STEP_HELP: Partial<Record<StepId, StepHelp>> = {
       'Blurs event timing and lowers peaks. Events just before or after a behavior can be counted during it. Place cells, auROC and PETH all use the smoothed events.',
     default: '0 (off). A software default, not a recommendation.',
   },
+  // smooth_activity on raw and denoised traces (preprocess.yaml only; no analysis reads traces)
+  traceSmooth: {
+    short: 'Smooths the raw and denoised traces. No analysis uses it yet.',
+    what:
+      'The raw and denoised traces would be smoothed along time with a Gaussian whose standard deviation is the value in seconds (smooth_activity). 0 leaves the traces as they are.',
+    adjust: 'A larger value removes more fast fluctuation and rounds off the rise of each transient.',
+    tradeoffs:
+      'Not used by any analysis yet, so it changes no result here. The value is written to preprocess.yaml as a comment for the framework.',
+    default: '0 (off). A software default, not a recommendation.',
+  },
   // interpolate_gaps (linear), max_gap_s, after resample_signal
   fillGaps: {
     short: 'Fills short runs of missing position with a straight line.',
@@ -112,6 +122,7 @@ export const PARAM_TIP = {
   speedWindowS:
     'Time between the two frames compared, in seconds. Rounded to whole frames, at least one.',
   eventSigmaS: 'Standard deviation of the Gaussian, in seconds. 0 leaves events unchanged.',
+  traceSigmaS: 'Standard deviation of the Gaussian, in seconds. 0 leaves traces unchanged.',
   fillGapS:
     'Longest run of missing frames that is filled, in seconds. Rounded down to whole frames. Runs at the session start or end are never filled.',
   posMethod: 'Median keeps sharp turns and removes single-frame jumps. Gaussian blurs them.',
