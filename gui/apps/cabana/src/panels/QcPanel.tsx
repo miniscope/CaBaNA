@@ -1,22 +1,14 @@
-import { createMemo, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
+import { createMemo, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import type { Check } from '../lib/qc.ts';
-import { experiment, missingRequired, proceed, type Section } from '../lib/store.ts';
-import {
-  qcCategory,
-  qcTab,
-  reviewed,
-  setQcCategory,
-  setQcTab,
-  type QcTab,
-} from '../lib/qc-view.ts';
+import { experiment, missingRequired, type Section } from '../lib/store.ts';
+import { qcCategory, qcTab, setQcTab, type QcTab } from '../lib/qc-view.ts';
 import { behaviorCategories, behaviorSettings } from './BehaviorQc.tsx';
-import { neuralCategories } from './NeuralQc.tsx';
+import { neuralCategories, neuralNote, neuralSettings } from './NeuralQc.tsx';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { PlotTabs, QcRail, QcSummary, plotTabOf, testCounts } from './QcShell.tsx';
-import { StatusIcon, worst, type Shown } from './QcParts.tsx';
 
-/** One entry in the QC navigator. Its view fills the center and right-hand columns. */
+/** One test in the QC list: its checks, plot tabs, summary cards and tools. */
 export interface Category {
   id: string;
   name: string;
@@ -28,16 +20,14 @@ export interface Category {
   flaggedWord: string;
   section?: Section;
   /** One line under the name in the list of tests. */
-  description?: string;
+  description: string;
   /** Plot tabs and what each shows, for a test in the tabbed layout. */
-  tabs?: { id: string; label: string }[];
-  plot?: (tab: string) => JSX.Element;
+  tabs: { id: string; label: string }[];
+  plot: (tab: string) => JSX.Element;
   /** Summary cards for this test. */
-  metrics?: () => MetricCard[];
+  metrics: () => MetricCard[];
   /** Flagged items and corrections, under the checks in the right-hand column. */
-  detail?: () => JSX.Element;
-  /** The earlier three-column view, for a tab not yet moved to the tabbed layout. */
-  view?: () => JSX.Element;
+  detail: () => JSX.Element;
 }
 
 const TABS: {
@@ -45,8 +35,10 @@ const TABS: {
   label: string;
   list: () => Category[];
   empty: string;
-  /** The QC settings button of a tab in the tabbed layout. */
-  settings?: () => JSX.Element;
+  /** The QC settings button. */
+  settings: () => JSX.Element;
+  /** Replaces the list of flagged items in the summary. */
+  note?: () => string | undefined;
 }[] = [
   {
     id: 'behavior',
@@ -59,99 +51,12 @@ const TABS: {
     id: 'neural',
     label: 'Neural',
     list: neuralCategories,
+    settings: neuralSettings,
+    note: neuralNote,
     empty:
       'Load raw or denoised traces, deconvolved events, or footprints to check the neural data.',
   },
 ];
-
-const WORD: Record<Shown, string> = {
-  pass: 'Passed',
-  warn: 'Passed, with notes',
-  fail: 'Failed',
-  reviewed: 'Reviewed',
-  none: 'Not checked',
-};
-
-/** What the navigator shows for a category: reviewed and continuing-with-issues override the check result. */
-function shown(c: Category): { status: Shown; word: string } {
-  const s = worst(c.checks);
-  if (reviewed[c.id]) return { status: 'reviewed', word: `Reviewed, ${WORD[s].toLowerCase()}` };
-  if (s === 'fail' && c.section && proceed[c.section])
-    return { status: 'fail', word: 'Failed, continuing' };
-  return { status: s, word: WORD[s] };
-}
-
-function Navigator(props: { list: Category[] }): JSX.Element {
-  const groups = (i: number) =>
-    props.list[i].group && props.list[i].group !== props.list[i - 1]?.group;
-  return (
-    <nav class="cb-qnav" aria-label="QC categories">
-      <div class="cb-qnav__head">
-        <span>Checks</span>
-        <InfoTip label="What the status icons mean">
-          <span class="cb-legend-tip">
-            <StatusIcon status="pass" /> Passed: every check is within its limit.
-            <br />
-            <StatusIcon status="warn" /> Notes: worth a look, does not count as a failure.
-            <br />
-            <StatusIcon status="fail" /> Failed: a check is over its limit.
-            <br />
-            <StatusIcon status="reviewed" /> Reviewed: marked as looked at.
-            <br />
-            The orange count is the number of items flagged for review. A category can pass and
-            still have flagged items, when they are under the limit.
-          </span>
-        </InfoTip>
-      </div>
-      <ul>
-        <For each={props.list}>
-          {(c, i) => {
-            const s = () => shown(c);
-            return (
-              <>
-                <Show when={groups(i())}>
-                  <li class="cb-qnav__group">
-                    {c.group}{' '}
-                    <span class="cb-muted">
-                      {props.list.filter((x) => x.group === c.group).length} files
-                    </span>
-                  </li>
-                </Show>
-                <li>
-                  <button
-                    type="button"
-                    class="cb-qnav__item"
-                    classList={{
-                      'cb-qnav__item--on': qcCategory[qcTab()] === c.id,
-                      'cb-qnav__item--file': !!c.group,
-                    }}
-                    aria-current={qcCategory[qcTab()] === c.id ? 'page' : undefined}
-                    onClick={() => setQcCategory(qcTab(), c.id)}
-                  >
-                    <StatusIcon status={s().status} />
-                    <span>
-                      <span class="cb-qnav__name">{c.name.replace(/_/g, '_\u200b')}</span>
-                      <span class={`cb-qnav__state cb-qnav__state--${s().status}`}>{s().word}</span>
-                      <Show when={c.flagged}>
-                        <span class="cb-qnav__flagged">
-                          {c.flagged} flagged{' '}
-                          {c.flagged === 1 ? c.flaggedWord.replace(/s$/, '') : c.flaggedWord}
-                        </span>
-                      </Show>
-                    </span>
-                  </button>
-                </li>
-              </>
-            );
-          }}
-        </For>
-      </ul>
-      <div class="cb-qnav__foot cb-muted">
-        Selections, settings and plot zoom are kept when switching.
-      </div>
-    </nav>
-  );
-}
 
 /** Keep the workspace inside the window: its height runs from its top to the bottom of the window. */
 export function fitToWindow(el: HTMLElement): () => void {
@@ -194,7 +99,6 @@ export function QcPanel(): JSX.Element {
   const tab = () => TABS.find((t) => t.id === qcTab())!;
   const list = createMemo(() => tab().list());
   const current = () => list().find((c) => c.id === qcCategory[qcTab()]) ?? list()[0];
-  const tabbed = () => !!current()?.plot;
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   return (
@@ -240,27 +144,17 @@ export function QcPanel(): JSX.Element {
         </div>
       </Show>
       <Show when={list().length} fallback={<div class="cb-empty cb-qc__empty">{tab().empty}</div>}>
-        <Show
-          when={tabbed()}
-          fallback={
-            <div class="cb-qc__body">
-              <Navigator list={list()} />
-              <Show when={current()?.id} keyed>
-                {(_id) => untrack(() => current()!.view!())}
-              </Show>
-            </div>
-          }
-        >
-          <QcSummary
-            list={list()}
-            cards={current().metrics?.() ?? []}
-            settings={tab().settings?.()}
-          />
-          <div class="cb-qc__body cb-qc__body--tabbed">
-            <PlotTabs cat={current()}>{current().plot!(plotTabOf(current()))}</PlotTabs>
-            <QcRail list={list()} cat={current()} />
-          </div>
-        </Show>
+        <QcSummary
+          list={list()}
+          cards={current().metrics()}
+          settings={tab().settings()}
+          note={tab().note?.()}
+          listFlagged={!tab().note}
+        />
+        <div class="cb-qc__body cb-qc__body--tabbed">
+          <PlotTabs cat={current()}>{current().plot(plotTabOf(current()))}</PlotTabs>
+          <QcRail list={list()} cat={current()} />
+        </div>
       </Show>
       <div class="cb-qc__foot">
         <span class="cb-muted">
