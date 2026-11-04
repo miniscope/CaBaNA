@@ -155,3 +155,13 @@ export function rankedCells(out: AurocOutcome): number[] {
   const cells = out.cellIds.map((_, i) => i);
   return cells.sort((a, b) => strength(out, b) - strength(out, a) || a - b);
 }
+
+/**
+ * Why "Another behavior" can't be chosen, or nothing when it can. The pairwise comparison needs two
+ * behaviors in the behavior annotation file; zone epochs are not offered to auROC.
+ */
+export function pairUnavailable(labels: string[]): string | undefined {
+  if (labels.length >= 2) return undefined;
+  if (!labels.length) return 'Needs two behaviors; the behavior annotation file has none.';
+  return `Needs two behaviors; this file has one: ${labels[0]}.`;
+}

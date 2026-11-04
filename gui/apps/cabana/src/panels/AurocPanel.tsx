@@ -34,7 +34,7 @@ import {
   watchAurocRuns,
   type AurocData,
 } from '../lib/auroc-run.ts';
-import { aurocChanges, aurocColor } from '../lib/auroc-view.ts';
+import { aurocChanges, aurocColor, pairUnavailable } from '../lib/auroc-view.ts';
 import { engineFor, frameworkReady, startRunTracking } from '../lib/engine.ts';
 import { prep } from '../lib/preprocess.ts';
 import { annotationResults, goToStep } from '../lib/store.ts';
@@ -424,10 +424,10 @@ function AurocSetup(): JSX.Element {
         <button
           class="btn-secondary"
           disabled={!ok() || !selected().length || !!settingIssues().length}
-          title={`Runs ${shufflesFor('preview', aurocSettings.nShuffles)} shuffles. The result is saved as Preliminary.`}
+          title={`The full analysis with ${shufflesFor('preview', aurocSettings.nShuffles)} shuffles instead of ${aurocSettings.nShuffles}. Results are marked Preliminary.`}
           onClick={() => void runAuroc({ preview: true })}
         >
-          Quick preview
+          Quick preview ({shufflesFor('preview', aurocSettings.nShuffles)} shuffles)
         </button>
       </Show>
       <button
@@ -581,10 +581,13 @@ function AurocSetup(): JSX.Element {
                       }
                     >
                       <option value="rest">All other included frames</option>
-                      <option value="behavior" disabled={ok()!.labels.length < 2}>
+                      <option value="behavior" disabled={!!pairUnavailable(ok()!.labels)}>
                         Another behavior
                       </option>
                     </select>
+                    <Show when={pairUnavailable(ok()!.labels)}>
+                      {(why) => <div class="cb-muted">Another behavior: {why()}</div>}
+                    </Show>
                     <Show when={!pairMode()}>
                       <div class="cb-muted">
                         Uses included frames outside the selected behavior, including unlabeled
