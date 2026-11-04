@@ -1,4 +1,228 @@
-/* Population page: setup (Data & methods, Statistical settings) and results. */
+/* Population page: guided setup (target, methods, statistical testing) and results. */
+
+/* guided sections */
+.cb-pn-sec,
+.cb-pn-mcards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.cb-pn-intro {
+  margin: 0;
+  font-size: 13px;
+}
+.cb-pn-twocol {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+}
+.cb-pn-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.cb-pn-statebox {
+  min-width: 0;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+.cb-pn-h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+.cb-pn-h4 .cb-muted {
+  font-weight: normal;
+  margin-left: 6px;
+}
+
+/* target cards */
+.cb-pn-targets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+.cb-pn-tcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: #fff;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cb-pn-tcard:hover {
+  background: var(--bg-inset);
+}
+.cb-pn-tcard--on {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+  background: #f5f9ff;
+}
+.cb-pn-tcard b {
+  font-size: 14px;
+}
+
+/* example drawings */
+.cb-pn-ex {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-self: center;
+}
+.cb-pn-ex svg {
+  width: 120px;
+  height: 44px;
+  background: #fbfcfe;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 4px;
+}
+.cb-pn-ex figcaption {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+/* data summary */
+.cb-pn-data {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.cb-pn-data dt {
+  color: var(--text-secondary);
+}
+.cb-pn-data dd {
+  margin: 0;
+}
+
+/* method cards */
+.cb-pn-mcard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) 130px minmax(0, 1fr);
+  grid-template-areas:
+    'head head head'
+    'text ex opts';
+  gap: 4px 12px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.cb-pn-mcard--off {
+  background: var(--bg-inset);
+}
+.cb-pn-mcard--off .cb-pn-ex {
+  opacity: 0.55;
+}
+.cb-pn-mcard__head {
+  grid-area: head;
+}
+.cb-pn-mcard__text {
+  grid-area: text;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.cb-pn-mcard .cb-pn-ex {
+  grid-area: ex;
+}
+.cb-pn-mcard__opts {
+  grid-area: opts;
+  min-width: 0;
+}
+
+/* statistics */
+.cb-pn-stats .cb-pn-scope {
+  width: 100%;
+}
+.cb-pn-scopenote {
+  font-size: 11.5px;
+  max-width: 180px;
+}
+
+/* review preview */
+.cb-pn-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cb-pn-tl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+}
+.cb-pn-tl__row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 110px;
+  gap: 8px;
+  align-items: center;
+}
+.cb-pn-tl__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-pn-tl__track {
+  position: relative;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 2px;
+}
+.cb-pn-tl__track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #60a5fa;
+}
+.cb-pn-tl__axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* results overview */
+.cb-pn-ov {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-sm);
+  align-content: start;
+  overflow-y: auto;
+}
+.cb-pn-ovcard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: #fff;
+  font-size: 13px;
+}
+.cb-pn-ovcard h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.cb-pn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
 .cb-pn {
   gap: 6px;
 }
