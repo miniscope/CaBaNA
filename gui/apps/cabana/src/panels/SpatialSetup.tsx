@@ -1,12 +1,4 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-  type JSX,
-} from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import {
   type Pt,
   arena,
@@ -51,18 +43,18 @@ import {
 import { EXAMPLES, exampleMedia, loaded, setSource, source } from '../lib/store.ts';
 
 const SECTIONS = [
-  [1, '1. Picture'],
-  [2, '2. Outline, scale'],
-  [3, '3. Zones'],
-  [4, '4. Animal size'],
+  ['arena', 'Arena outline & scale', 'Draw the outline and set the scale'],
+  ['zones', 'Zones', 'Places to compare, and regions to exclude'],
+  ['animal', 'Animal size', 'Nose tip to tail base'],
 ] as const;
+type SectionId = (typeof SECTIONS)[number][0];
 
 type Tool = 'none' | 'arena' | 'distance' | 'zone' | 'animal';
 
 /** Describe the arena on a picture: its outline, scale, zones and the animal's size. */
 export function SpatialSetup(): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
-  const [section, setSection] = createSignal<1 | 2 | 3 | 4>(1);
+  const [section, setSection] = createSignal<SectionId>('arena');
 
   /** Gives the canvas the largest size that fits its box, keeping the picture's proportions. */
   const fitCanvas = (holder: HTMLElement | undefined) => {
@@ -429,24 +421,25 @@ export function SpatialSetup(): JSX.Element {
         </div>
       </Show>
       <div class="cb-arena-grid">
+        <nav class="cb-sp-list" aria-label="Spatial setup sections">
+          <For each={SECTIONS}>
+            {([id, label, hint]) => (
+              <button
+                class="cb-sp-item"
+                classList={{ 'cb-sp-item--on': section() === id }}
+                aria-current={section() === id ? 'true' : undefined}
+                onClick={() => setSection(id)}
+              >
+                <b>{label}</b>
+                <span>{hint}</span>
+              </button>
+            )}
+          </For>
+        </nav>
         <div class="cb-arena-controls">
-          <div class="cb-tabs" role="tablist" aria-label="Spatial setup sections">
-            <For each={SECTIONS}>
-              {([id, label]) => (
-                <button
-                  role="tab"
-                  aria-selected={section() === id}
-                  classList={{ 'cb-tab--on': section() === id }}
-                  onClick={() => setSection(id)}
-                >
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
           <RegionNoticeBox />
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 1 }}>
-            <h3>1. Picture of the arena</h3>
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 'arena' }}>
+            <h3>Picture of the arena</h3>
             <Note>
               Upload one frame from the behavior camera, or a video. For a video, CaBaNA builds a
               picture of the empty arena from the median over many frames, since the animal is in a
@@ -517,8 +510,8 @@ export function SpatialSetup(): JSX.Element {
             </Show>
           </section>
 
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 2 }}>
-            <h3>2. Arena outline and scale</h3>
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 'arena' }}>
+            <h3>Arena outline and scale</h3>
             <div class="cb-controls">
               <label>
                 Shape
@@ -634,8 +627,8 @@ export function SpatialSetup(): JSX.Element {
             </div>
           </section>
 
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 3 }}>
-            <h3>3. Zones and excluded regions</h3>
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 'zones' }}>
+            <h3>Zones and excluded regions</h3>
             <Note>
               Zones are places the analyses compare, such as center, reward or an object. Excluded
               regions are places the animal cannot go, such as walls or an enclosure. They are left
@@ -722,8 +715,8 @@ export function SpatialSetup(): JSX.Element {
             </div>
           </section>
 
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 4 }}>
-            <h3>4. Animal size</h3>
+          <section class="cb-group" classList={{ 'cb-hide': section() !== 'animal' }}>
+            <h3>Animal size</h3>
             <Note>
               Use a frame where the animal is walking and stretched out, not rearing or curled up.
               Type it in, or draw it on a frame with the animal in it (this needs the scale).
@@ -755,7 +748,8 @@ export function SpatialSetup(): JSX.Element {
             </div>
             <Show when={arena.bodyLine && !pxPerCm()}>
               <div class="cb-note">
-                The line is drawn, but the length needs the scale. Draw the arena first (section 2).
+                The line is drawn, but the length needs the scale. Draw the arena first (Arena
+                outline and scale).
               </div>
             </Show>
           </section>
@@ -789,42 +783,43 @@ export function SpatialSetup(): JSX.Element {
           </Show>
           <Show when={viewTab() === 'zones'}>
             <div class="cb-arena-zones">
-            <Trajectory bare mode="time" />
-            <Show
-              when={zoneShare().length}
-              fallback={
-                <div class="cb-note">
-                  Draw zones and load position to see how much time the animal spends in each zone.
-                </div>
-              }
-            >
-              <table class="cb-stats">
-                <thead>
-                  <tr>
-                    <th>Zone</th>
-                    <th>Time inside</th>
-                    <th>Share of tracked time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={zoneShare()}>
-                    {(z) => (
-                      <tr>
-                        <td>
-                          <i
-                            class="cb-dot"
-                            style={{ background: ZONE_COLORS[z.index % ZONE_COLORS.length] }}
-                          />{' '}
-                          {z.name}
-                        </td>
-                        <td>{z.seconds.toFixed(0)} s</td>
-                        <td>{z.pct.toFixed(1)}%</td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
+              <Trajectory bare mode="time" />
+              <Show
+                when={zoneShare().length}
+                fallback={
+                  <div class="cb-note">
+                    Draw zones and load position to see how much time the animal spends in each
+                    zone.
+                  </div>
+                }
+              >
+                <table class="cb-stats">
+                  <thead>
+                    <tr>
+                      <th>Zone</th>
+                      <th>Time inside</th>
+                      <th>Share of tracked time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={zoneShare()}>
+                      {(z) => (
+                        <tr>
+                          <td>
+                            <i
+                              class="cb-dot"
+                              style={{ background: ZONE_COLORS[z.index % ZONE_COLORS.length] }}
+                            />{' '}
+                            {z.name}
+                          </td>
+                          <td>{z.seconds.toFixed(0)} s</td>
+                          <td>{z.pct.toFixed(1)}%</td>
+                        </tr>
+                      )}
+                    </For>
+                  </tbody>
+                </table>
+              </Show>
             </div>
           </Show>
           <div style={{ display: viewTab() === 'top' ? 'flex' : 'none' }}>
@@ -833,8 +828,8 @@ export function SpatialSetup(): JSX.Element {
             </Show>
             <Show when={frame() && !pxPerCm() && tool() === 'none'}>
               <div class="cb-note">
-                Next: press Draw the arena (section 2) and drag across the arena. That sets the
-                scale, and the bins and the time in each bin appear.
+                Next: press Draw the arena (Arena outline and scale) and drag across the arena. That
+                sets the scale, and the bins and the time in each bin appear.
               </div>
             </Show>
             <Show
@@ -846,43 +841,43 @@ export function SpatialSetup(): JSX.Element {
               }
             >
               <div class="cb-arena-holder" ref={fitHolder}>
-              <canvas
-                ref={canvas}
-                class="cb-arena-canvas"
-                classList={{ 'cb-arena-canvas--draw': tool() !== 'none' }}
-                onMouseDown={(e) => {
-                  if (dragTool()) setDrag([pt(e), pt(e)]);
-                  else if (freehand()) setPoly([pt(e)]);
-                }}
-                onMouseMove={(e) => {
-                  if (drag()) setDrag([drag()![0], pt(e)]);
-                  else if (freehand() && poly().length) {
-                    const p = pt(e);
-                    const last = poly()[poly().length - 1];
-                    if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3) setPoly((q) => [...q, p]);
-                  } else onHover(e);
-                }}
-                onMouseLeave={() => setHover(undefined)}
-                onMouseUp={(e) => {
-                  if (freehand() && poly().length > 2) {
-                    addZone(poly());
-                    setTool('none');
-                    return;
-                  }
-                  const d = drag();
-                  setDrag(undefined);
-                  if (d && Math.hypot(d[0][0] - pt(e)[0], d[0][1] - pt(e)[1]) > 4)
-                    commitDrag(d[0], pt(e));
-                }}
-                onClick={onClick}
-                onDblClick={() => {
-                  if (tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2) {
-                    addZone(poly());
-                    setTool('none');
-                  }
-                }}
-                aria-label="Picture of the arena"
-              />
+                <canvas
+                  ref={canvas}
+                  class="cb-arena-canvas"
+                  classList={{ 'cb-arena-canvas--draw': tool() !== 'none' }}
+                  onMouseDown={(e) => {
+                    if (dragTool()) setDrag([pt(e), pt(e)]);
+                    else if (freehand()) setPoly([pt(e)]);
+                  }}
+                  onMouseMove={(e) => {
+                    if (drag()) setDrag([drag()![0], pt(e)]);
+                    else if (freehand() && poly().length) {
+                      const p = pt(e);
+                      const last = poly()[poly().length - 1];
+                      if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3) setPoly((q) => [...q, p]);
+                    } else onHover(e);
+                  }}
+                  onMouseLeave={() => setHover(undefined)}
+                  onMouseUp={(e) => {
+                    if (freehand() && poly().length > 2) {
+                      addZone(poly());
+                      setTool('none');
+                      return;
+                    }
+                    const d = drag();
+                    setDrag(undefined);
+                    if (d && Math.hypot(d[0][0] - pt(e)[0], d[0][1] - pt(e)[1]) > 4)
+                      commitDrag(d[0], pt(e));
+                  }}
+                  onClick={onClick}
+                  onDblClick={() => {
+                    if (tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2) {
+                      addZone(poly());
+                      setTool('none');
+                    }
+                  }}
+                  aria-label="Picture of the arena"
+                />
               </div>
               <label class="cb-muted">
                 <input

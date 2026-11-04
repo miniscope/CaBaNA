@@ -97,7 +97,7 @@
 .cb-spatial .cb-arena-grid {
   height: 100%;
   min-height: 0;
-  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  grid-template-columns: 190px minmax(300px, 420px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 .cb-spatial .cb-arena-controls,
@@ -202,4 +202,41 @@
 .cb-spatial .cb-arena-controls .cb-tabs button {
   white-space: nowrap;
   padding: 4px 8px;
+}
+
+/* Left list of Spatial setup sections. */
+.cb-sp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-sm);
+  border-right: 1px solid var(--border-subtle);
+}
+.cb-sp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.cb-sp-item span {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.cb-sp-item:hover {
+  background: var(--bg-inset);
+}
+.cb-sp-item--on {
+  background: var(--accent-soft, #eaf2fb);
+  border-color: var(--accent);
+}
+.cb-spatial .cb-arena-controls {
+  overflow-y: auto;
 }
