@@ -135,12 +135,14 @@ const table = (id: SlotId) => (version(), data[id] as Table | undefined);
 
 async function load(slot: SlotId, file: File): Promise<void> {
   const base = { name: file.name, size: file.size };
+  // Replace the slot's info whole, so an error or warning from an earlier file does not stay.
+  const show = (info: LoadedInfo) => setLoaded(slot, reconcile(info));
   files[slot] = file;
   try {
     if (slot.startsWith('neural_') && slot !== 'neural_timestamps') {
       const { matrix: m, note } = await readMatrix(file);
       data[slot] = m;
-      setLoaded(slot, {
+      show({
         ...base,
         summary: `${m.cells} cells x ${m.frames.toLocaleString()} frames`,
         warning: note,
@@ -148,18 +150,18 @@ async function load(slot: SlotId, file: File): Promise<void> {
     } else if (slot === 'footprints') {
       const f = await readFootprints(file);
       data[slot] = f;
-      setLoaded(slot, { ...base, summary: `${f.cells} cells, ${f.height} x ${f.width} px` });
+      show({ ...base, summary: `${f.cells} cells, ${f.height} x ${f.width} px` });
     } else if (slot === 'config') {
       const text = await file.text();
       configHooks.forEach((f) => f(text));
-      setLoaded(slot, { ...base, summary: 'Loaded' });
+      show({ ...base, summary: 'Loaded' });
     } else if (slot === 'time_markers') {
       const text = await file.text();
       const m = readMarkers(text);
       if (!m.markers.length) throw new Error(m.problems.join(' ') || 'The file has no markers.');
       texts[slot] = text;
       const n = new Set(m.markers.map((x) => x.label)).size;
-      setLoaded(slot, {
+      show({
         ...base,
         summary: `${m.markers.length.toLocaleString()} markers, ${n} label${n === 1 ? '' : 's'}`,
         warning: m.problems.join(' ') || undefined,
@@ -170,16 +172,16 @@ async function load(slot: SlotId, file: File): Promise<void> {
       if (!t.rows.length) throw new Error('The file has no data rows.');
       texts[slot] = text;
       setFrameRoles(rolesFor(t, configuredFrameMapping));
-      setLoaded(slot, { ...base, summary: `${t.rows.length.toLocaleString()} rows` });
+      show({ ...base, summary: `${t.rows.length.toLocaleString()} rows` });
     } else {
       const t = await readTable(file);
       data[slot] = t;
-      setLoaded(slot, { ...base, summary: `${t.rows.length.toLocaleString()} rows` });
+      show({ ...base, summary: `${t.rows.length.toLocaleString()} rows` });
     }
   } catch (e) {
     delete data[slot];
     delete files[slot];
-    setLoaded(slot, { ...base, summary: '', error: e instanceof Error ? e.message : String(e) });
+    show({ ...base, summary: '', error: e instanceof Error ? e.message : String(e) });
   }
   setVersion((v) => v + 1);
 }
