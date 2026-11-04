@@ -2,6 +2,7 @@ import { createMemo, Match, Switch, type JSX } from 'solid-js';
 import type { StabilityView } from '../../lib/population-results.ts';
 import { DotPlot, Scatter } from './charts.tsx';
 import { fmt, perStateCsv } from './logic.ts';
+import { StabilityDiagram } from './Schematics.tsx';
 import { Figure, Message, Row, Summary, recorded, useView, type ViewProps } from './shared.tsx';
 import { plotSettings, setPlotSettings } from './view-store.ts';
 
@@ -87,11 +88,16 @@ export function PvStability(p: ViewProps): JSX.Element {
                   howTo={
                     <>
                       <p>
-                        The session is cut into equal blocks. For each state, the population vector
-                        (mean neural value of each cell) over the even-numbered blocks (half A) is
-                        correlated with the one over the odd-numbered blocks (half B); with 2 blocks
-                        these are the first and second half. A high r means the pattern of the state
-                        is reproducible.
+                        The frames used are cut, in time order, into equal contiguous blocks. For
+                        each state, the population vector (mean neural value of each cell) over the
+                        even-numbered blocks (half A) is correlated with the one over the
+                        odd-numbered blocks (half B); with 2 blocks these are the first and second
+                        half. A high r means the pattern of the state is reproducible.
+                      </p>
+                      <StabilityDiagram blocks={Number(meta()?.params.n_blocks ?? 2)} />
+                      <p>
+                        The diagonal in the half A versus half B plot marks equal values in both
+                        halves.
                       </p>
                       <p>
                         The dot is the observed r; the gray bar is the null range of the shuffled

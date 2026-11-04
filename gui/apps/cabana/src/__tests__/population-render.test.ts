@@ -9,6 +9,7 @@ import {
   type StabilityView,
 } from '../lib/population-results.ts';
 import { histogram, matrixCsv, pairsCsv, perStateCsv } from '../panels/population/logic.ts';
+import { lineOf } from '../panels/population/overview-lines.ts';
 import { openFixture } from './fixture-source.ts';
 
 describe('population views equal the framework arrays', () => {
@@ -50,6 +51,20 @@ describe('population views equal the framework arrays', () => {
         a.sh_p_value.data[i],
       ]);
     });
+  });
+
+  it('the overview lines count the framework p-values', async () => {
+    const sim = await lineOf(src, d.manifest, 'similarity');
+    const p = d.arrays.pv_similarity.sh_p_value.data;
+    const n = 3;
+    const below = [p[0 * n + 1], p[0 * n + 2], p[1 * n + 2]].filter(
+      (x) => x != null && x <= 0.05,
+    ).length;
+    expect(sim?.text).toBe(
+      `${below} of 3 state pairs more similar than the null (p ≤ 0.05, uncorrected)`,
+    );
+    const stab = await lineOf(src, d.manifest, 'stability');
+    expect(stab?.text).toMatch(/of 3 states with p ≤ 0.05 \(uncorrected\)/);
   });
 
   it('the framework records alpha, shuffles and correction that the summary line prints', () => {

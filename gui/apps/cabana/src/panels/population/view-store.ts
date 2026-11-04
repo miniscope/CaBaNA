@@ -32,5 +32,8 @@ export const [plotSettings, setPlotSettings] = createStore({ ...DEFAULT_PLOT_SET
 /** Whether the page shows the results instead of the guided setup. */
 export const [showResults, setShowResults] = createSignal(false);
 
+/** Whether the results show the overview of every analysis instead of one method. */
+export const [showOverview, setShowOverview] = createSignal(true);
+
 /** The method whose results are shown. */
 export const [resultMethod, setResultMethod] = createSignal<PopulationMethod>('similarity');

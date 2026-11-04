@@ -23,7 +23,13 @@ import { PairwiseCorr } from './population/PairwiseCorr.tsx';
 import { PvSimilarity } from './population/PvSimilarity.tsx';
 import { PvStability } from './population/PvStability.tsx';
 import { StateSeparation } from './population/StateSeparation.tsx';
-import { resultMethod, setResultMethod } from './population/view-store.ts';
+import { Overview } from './population/Overview.tsx';
+import {
+  resultMethod,
+  setResultMethod,
+  setShowOverview,
+  showOverview,
+} from './population/view-store.ts';
 import type { ViewProps } from './population/shared.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
@@ -169,14 +175,28 @@ export function PopulationResults(props: { onSetup: () => void }): JSX.Element {
                   <div class="cb-pn-resbody">
                     <nav class="cb-pn-nav" aria-label="Population analyses in this run">
                       <div class="cb-muted">Analyses in this run</div>
+                      <button
+                        type="button"
+                        class="cb-pn-nav__item"
+                        aria-current={showOverview()}
+                        classList={{ 'cb-pn-nav__item--on': showOverview() }}
+                        onClick={() => setShowOverview(true)}
+                      >
+                        Overview
+                      </button>
                       <For each={available()}>
                         {(m) => (
                           <button
                             type="button"
                             class="cb-pn-nav__item"
-                            aria-current={current() === m.id}
-                            classList={{ 'cb-pn-nav__item--on': current() === m.id }}
-                            onClick={() => setResultMethod(m.id)}
+                            aria-current={!showOverview() && current() === m.id}
+                            classList={{
+                              'cb-pn-nav__item--on': !showOverview() && current() === m.id,
+                            }}
+                            onClick={() => {
+                              setResultMethod(m.id);
+                              setShowOverview(false);
+                            }}
                           >
                             {NAV_LABEL[m.id]}
                           </button>
@@ -191,7 +211,21 @@ export function PopulationResults(props: { onSetup: () => void }): JSX.Element {
                     <div class="cb-pn-main">
                       <Show when={manifest()} keyed>
                         {(mf) => (
-                          <Show when={current()} keyed>
+                          <Show
+                            when={!showOverview() && current()}
+                            keyed
+                            fallback={
+                              <Overview
+                                src={src()!}
+                                manifest={mf}
+                                methods={available().map((m) => m.id)}
+                                onOpen={(m) => {
+                                  setResultMethod(m);
+                                  setShowOverview(false);
+                                }}
+                              />
+                            }
+                          >
                             {(method) => (
                               <Dynamic
                                 component={VIEWS[method]}

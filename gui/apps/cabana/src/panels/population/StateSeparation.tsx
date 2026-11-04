@@ -162,7 +162,9 @@ export function StateSeparation(p: ViewProps): JSX.Element {
                           Each point is one state: the mean of its frames projected on the chosen
                           principal components (axes in Plot settings, with the variance each
                           explains). States that sit far apart are separated along these components.
-                          The axes are z-scored units; the plot shows means only, not spread.
+                          The axes are z-scored units. The plot shows state means only, not the
+                          spread of individual time bins: the saved result holds the state means but
+                          not the projected bins.
                         </p>
                       }
                     >

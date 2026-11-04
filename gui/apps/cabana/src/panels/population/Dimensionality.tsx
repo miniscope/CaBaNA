@@ -1,7 +1,8 @@
-import { Match, Switch, type JSX } from 'solid-js';
+import { Match, Show, Switch, type JSX } from 'solid-js';
 import type { DimensionalityView } from '../../lib/population-results.ts';
 import { Bars, Spectrum } from './charts.tsx';
-import { fmt, perStateCsv, seriesCsv } from './logic.ts';
+import { perStateCsv, seriesCsv } from './logic.ts';
+import { dimensionalityText } from './setup-logic.ts';
 import {
   Check,
   currentFigure,
@@ -33,8 +34,7 @@ export function Dimensionality(p: ViewProps): JSX.Element {
           const names = () => (perState() ? v().states : ['Session (all frames)']);
           const pr = () => v().participationRatio;
           const eig = () => Array.from(v().eigenvalues.data, (x) => Number(x ?? NaN));
-          const first = () =>
-            `Participation ratio ${fmt(pr()[0], 2)}${perState() ? ' (first state)' : ''}; null range ${fmt(v().nullLo[0], 2)} to ${fmt(v().nullHi[0], 2)}; two-sided p ${fmt(v().p[0], 3)}`;
+          const first = () => dimensionalityText(v(), perState());
           return (
             <div class="cb-pn-view">
               <div class="cb-pn-viewhead">
@@ -75,12 +75,23 @@ export function Dimensionality(p: ViewProps): JSX.Element {
                             of the covariance of z-scored cells. It is 1 when one pattern dominates
                             and approaches the number of cells when variance is spread evenly.
                           </p>
-                          <p>
-                            The black line runs from the α/2 to the 1 − α/2 percentile of the
-                            shuffled (cell-shift) null (the middle 95% at α = 0.05); the test is
-                            two-sided. It is computed on all included frames and says nothing about
-                            generalization.
-                          </p>
+                          <Show
+                            when={v().nullLo.some((x) => x != null)}
+                            fallback={
+                              <p>
+                                This run returned no null, so the value is descriptive only. It is
+                                computed on all included frames and says nothing about
+                                generalization. It is not a count of ensembles.
+                              </p>
+                            }
+                          >
+                            <p>
+                              The black line runs from the α/2 to the 1 − α/2 percentile of the
+                              shuffled (cell-shift) null (the middle 95% at α = 0.05); the test is
+                              two-sided. It is computed on all included frames and says nothing
+                              about generalization. It is not a count of ensembles.
+                            </p>
+                          </Show>
                         </>
                       }
                     >
