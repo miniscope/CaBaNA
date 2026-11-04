@@ -247,3 +247,53 @@
 .cb-gs-how__body h4 {
   margin: 0 0 6px;
 }
+
+/* Summary cards (components/MetricCards.tsx). Orange and purple match the auROC higher / lower colors. */
+.cb-mc {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.cb-mc__card {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 8px var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-left: 4px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.cb-mc__value {
+  font-size: 20px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+}
+.cb-mc__label {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+}
+.cb-mc__denom {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cb-mc__card--blue {
+  border-left-color: var(--accent);
+}
+.cb-mc__card--orange {
+  border-left-color: rgb(242, 140, 30);
+}
+.cb-mc__card--purple {
+  border-left-color: rgb(106, 61, 184);
+}
+.cb-mc__card--gray {
+  border-left-color: #9a9a9a;
+}
+.cb-mc__card--ok {
+  border-left-color: var(--success);
+}
+.cb-mc__card--warn {
+  border-left-color: var(--warning);
+}
+.cb-mc__card--fail {
+  border-left-color: var(--error);
+}
