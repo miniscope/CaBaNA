@@ -297,3 +297,21 @@
 .cb-mc__card--fail {
   border-left-color: var(--error);
 }
+
+/* QC settings popover (QcSettings in panels/QcParts.tsx). */
+.cb-qcset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.cb-qcset__grp + .cb-qcset__grp {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-sm);
+}
+.cb-qcset__grp h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.cb-qcset__btn {
+  white-space: nowrap;
+}
