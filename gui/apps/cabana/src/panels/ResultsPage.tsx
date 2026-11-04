@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onMount, onCleanup, Show, type JSX } from 'solid-js';
+import { PlotEditorEntry } from './results/PlotEditor.tsx';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { bridgeReady } from '../lib/bridge-status.ts';
 import { explorerTarget, openedRun, openRunOf } from '../lib/results-nav.ts';
@@ -142,7 +143,7 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
                 cards={cards()}
                 matchOf={matchOf}
                 onDeleted={afterDelete}
-                plotEditor={props.plotEditor}
+                plotEditor={props.plotEditor ?? <PlotEditorEntry />}
               />
             </Show>
             <Show when={tab() === 'history'}>

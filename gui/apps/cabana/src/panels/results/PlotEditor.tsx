@@ -37,6 +37,28 @@ export function EditPlotButton(props: { spec: () => PlotSpec | undefined }): JSX
 const fileStem = (s: PlotSpec) =>
   s.source.label.replace(/[^\w.-]+/g, '_').replace(/^_|_$/g, '') || 'plot';
 
+/** The Results Hub entry: what the editor does and where it opens from. */
+export function PlotEditorEntry(): JSX.Element {
+  return (
+    <div class="cb-ped-entry">
+      <h4>Plot editor (preview)</h4>
+      <p class="cb-muted">
+        Restyle one saved plot and export it as SVG, PNG or CSV without changing the result. Open it
+        from the "Plot editor (preview)" link beside a plot: the auROC cell inspector's null
+        histogram and the PETH inspector's mean response.
+      </p>
+      <div class="cb-controls">
+        <button type="button" class="cb-link" onClick={() => goToAnalysis('auroc')}>
+          auROC
+        </button>
+        <button type="button" class="cb-link" onClick={() => goToAnalysis('peth')}>
+          PETH
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The editor dialog; rendered once at the top of the app. */
 export function PlotEditor(): JSX.Element {
   return (

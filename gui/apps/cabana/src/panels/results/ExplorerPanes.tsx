@@ -186,7 +186,7 @@ export function StatisticsPane(props: { data: ExplorerData }): JSX.Element {
     <>
       <div class="cb-ex__bar">
         <h3>Statistics</h3>
-        <HowTo title="Statistics">
+        <HowTo title="Statistics" what="table">
           <p>
             Read from the saved run. Observed values are summarized by their count and smallest and
             largest value. P-values are counted against the saved alpha; no new test is run here.

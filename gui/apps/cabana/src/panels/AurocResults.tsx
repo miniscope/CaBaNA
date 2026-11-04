@@ -100,7 +100,12 @@ export const RESPONSE_NOTE = (
 );
 
 /** A "How to read this plot" link that opens its explanation in a popover. */
-export function HowTo(props: { title: string; children: JSX.Element }): JSX.Element {
+export function HowTo(props: {
+  title: string;
+  /** What is explained: a plot unless said otherwise. */
+  what?: 'plot' | 'table';
+  children: JSX.Element;
+}): JSX.Element {
   const [open, setOpen] = createSignal(false);
   let btn!: HTMLButtonElement;
   return (
@@ -113,7 +118,7 @@ export function HowTo(props: { title: string; children: JSX.Element }): JSX.Elem
         aria-expanded={open()}
         onClick={() => setOpen(!open())}
       >
-        How to read this plot
+        How to read this {props.what ?? 'plot'}
       </button>
       <Show when={open()}>
         <Popover

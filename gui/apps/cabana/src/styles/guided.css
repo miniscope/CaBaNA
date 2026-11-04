@@ -418,3 +418,10 @@
 .cb-ped-dl dd {
   margin: 0;
 }
+.cb-ped-entry h4 {
+  margin: 0;
+}
+.cb-ped-entry p {
+  margin: 2px 0;
+  font-size: 13px;
+}
