@@ -4,6 +4,16 @@ import type { JSX } from 'solid-js';
 
 type Help = { title: string; text: JSX.Element };
 
+/** Added to every plot that shares the time axis. */
+const OVERLAYS = (
+  <p>
+    Shaded bands mark behavioral bouts (user-annotated epochs), one color per behavior. Choose them
+    under Behavior overlays; hiding only removes the shading. Bouts that overlap in time split the
+    band into one stripe each, so colors never blend. Point at a bout to outline it here and in its
+    timeline row, with its behavior, start, stop and duration.
+  </p>
+);
+
 export const HELP: Record<string, Help> = {
   footprints: {
     title: 'Cell footprints',
@@ -39,28 +49,37 @@ export const HELP: Record<string, Help> = {
   raw: {
     title: 'Raw fluorescence',
     text: (
-      <p>
-        Extracted fluorescence of this cell before denoising, in the units of the loaded file
-        (arbitrary). It includes noise and baseline drift.
-      </p>
+      <>
+        <p>
+          Extracted fluorescence of this cell before denoising, in the units of the loaded file
+          (arbitrary). It includes noise and baseline drift.
+        </p>
+        {OVERLAYS}
+      </>
     ),
   },
   denoised: {
     title: 'Denoised trace',
     text: (
-      <p>
-        Fluorescence of this cell fitted by the denoising model, in the same arbitrary units. It is
-        not ΔF/F unless the loaded data was.
-      </p>
+      <>
+        <p>
+          Fluorescence of this cell fitted by the denoising model, in the same arbitrary units. It
+          is not ΔF/F unless the loaded data was.
+        </p>
+        {OVERLAYS}
+      </>
     ),
   },
   events: {
     title: 'Deconvolved events',
     text: (
-      <p>
-        Event amplitudes inferred by deconvolution: an estimate of when the cell became active, not
-        measured spikes. Height is the inferred amplitude.
-      </p>
+      <>
+        <p>
+          Event amplitudes inferred by deconvolution: an estimate of when the cell became active,
+          not measured spikes. Height is the inferred amplitude.
+        </p>
+        {OVERLAYS}
+      </>
     ),
   },
   heat: {
@@ -77,6 +96,7 @@ export const HELP: Record<string, Help> = {
           windows average out brief events.
         </p>
         <p>Click a row to select that cell. The white tick marks the selected cell.</p>
+        {OVERLAYS}
       </>
     ),
   },
@@ -85,7 +105,9 @@ export const HELP: Record<string, Help> = {
     text: (
       <p>
         User-annotated behavior epochs, one row per label. A bar runs from the start to the stop of
-        an epoch. Hidden tracks are chosen under Tracks.
+        an epoch. Point at a bar to outline it in the plots above, with its start, stop and
+        duration. Hidden tracks are chosen under Tracks. Rows stay when the overlay for that
+        behavior is hidden.
       </p>
     ),
   },
@@ -96,19 +118,25 @@ export const HELP: Record<string, Help> = {
   position: {
     title: 'Position',
     text: (
-      <p>
-        The x (blue) and y (orange) coordinates over time, in the position units of the loaded file.
-        Both share one vertical scale.
-      </p>
+      <>
+        <p>
+          The x (blue) and y (orange) coordinates over time, in the position units of the loaded
+          file. Both share one vertical scale.
+        </p>
+        {OVERLAYS}
+      </>
     ),
   },
   speed: {
     title: 'Speed',
     text: (
-      <p>
-        Speed in cm/s: the distance between consecutive tracked positions divided by the time
-        between them. No smoothing is applied, so tracking jitter shows as spikes.
-      </p>
+      <>
+        <p>
+          Speed in cm/s: the distance between consecutive tracked positions divided by the time
+          between them. No smoothing is applied, so tracking jitter shows as spikes.
+        </p>
+        {OVERLAYS}
+      </>
     ),
   },
   navigator: {
