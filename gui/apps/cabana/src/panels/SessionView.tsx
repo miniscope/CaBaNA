@@ -1,11 +1,13 @@
-import { createEffect, For, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { viridisRGB } from '@calab/ui/chart';
 import { cameraTimes, cell, selectCell } from '../lib/store.ts';
 import { lowerBound } from '../lib/framework.ts';
 import { hoverT, setHoverT, win } from '../lib/viz.ts';
+import { allBouts, hoverBout, intensity, setHoverBout, stripes } from '../lib/overlay-state.ts';
+import { ALPHA, boutTip, hitRow, hitStripe, sameBout, stripeBox } from '../lib/overlays.ts';
 import {
   colorOf,
-  epochs,
   frameBands,
   heat,
   markersInView,
@@ -103,16 +105,21 @@ function drawBars(
   });
 }
 
-/** Epochs shaded across a row, and time markers as thin lines, so every row shows when things happened. */
+/**
+ * Shown behavior bouts shaded across a row, and time markers as thin lines. Bouts that overlap
+ * share the height, one stripe per behavior, so colors are never blended.
+ */
 function drawOverlay(ctx: CanvasRenderingContext2D, H: number, [t0, t1]: [number, number]): void {
   const X = (v: number) => ((v - t0) / (t1 - t0)) * W;
   ctx.save();
-  ctx.globalAlpha = 0.13;
-  for (const e of epochs()) {
-    if (e.stop < t0 || e.start > t1) continue;
-    ctx.fillStyle = colorOf(e.label);
-    const a = X(Math.max(e.start, t0));
-    ctx.fillRect(a, 0, Math.max(X(Math.min(e.stop, t1)) - a, 1), H);
+  ctx.globalAlpha = ALPHA[intensity()];
+  for (const s of stripes()) {
+    const { start, stop, label } = s.bout;
+    if (stop < t0 || start > t1) continue;
+    const [top, h] = stripeBox(s);
+    ctx.fillStyle = colorOf(label);
+    const a = X(Math.max(start, t0));
+    ctx.fillRect(a, top * H, Math.max(X(Math.min(stop, t1)) - a, 1), h * H);
   }
   ctx.globalAlpha = 0.8;
   ctx.lineWidth = 1;
@@ -147,8 +154,12 @@ function Track(props: {
   overlay?: boolean;
   /** Show the label of the nearest time marker beside the cursor. */
   markerLabels?: boolean;
+  /** A timeline row of this behavior: hovering a bout in it links to the plots. */
+  rowLabel?: string;
 }): JSX.Element {
   let c: HTMLCanvasElement | undefined;
+  let hl: HTMLCanvasElement | undefined;
+  const [mouse, setMouse] = createSignal<{ x: number; y: number }>();
   createEffect(() => {
     const ctx = c?.getContext('2d');
     if (!c || !ctx) return;
@@ -156,6 +167,30 @@ function Track(props: {
     ctx.fillRect(0, 0, W, props.height);
     props.draw(ctx, props.height);
     if (props.overlay !== false) drawOverlay(ctx, props.height, win());
+  });
+  // The outline of the hovered bout, on its own canvas so hovering never redraws the plot.
+  createEffect(() => {
+    const ctx = hl?.getContext('2d');
+    if (!hl || !ctx) return;
+    const [t0, t1] = win();
+    const hb = hoverBout();
+    ctx.clearRect(0, 0, W, props.height);
+    if (!hb || hb.stop < t0 || hb.start > t1) return;
+    const X = (v: number) => ((v - t0) / (t1 - t0)) * W;
+    let top = 0;
+    let h = 1;
+    if (props.rowLabel !== undefined) {
+      if (hb.label !== props.rowLabel) return;
+    } else if (props.overlay !== false) {
+      const s = stripes().find((x) => sameBout(x.bout, hb));
+      if (!s) return;
+      [top, h] = stripeBox(s);
+    } else return;
+    const a = X(Math.max(hb.start, t0));
+    const w = Math.max(X(Math.min(hb.stop, t1)) - a, 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#1b2733';
+    ctx.strokeRect(a + 1, top * props.height + 1, Math.max(w - 2, 1), h * props.height - 2);
   });
   const nearMarker = () =>
     props.markerLabels && hoverT() !== undefined
@@ -179,9 +214,28 @@ function Track(props: {
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           const f = (e.clientX - r.left) / r.width;
-          setHoverT(f >= 0 && f <= 1 ? win()[0] + f * (win()[1] - win()[0]) : undefined);
+          const inside = f >= 0 && f <= 1;
+          const t = win()[0] + f * (win()[1] - win()[0]);
+          setHoverT(inside ? t : undefined);
+          // Bouts thinner than 3 pixels stay hoverable.
+          const tol = (3 / r.width) * (win()[1] - win()[0]);
+          const fy = (e.clientY - r.top) / r.height;
+          setHoverBout(
+            !inside
+              ? undefined
+              : props.rowLabel !== undefined
+                ? hitRow(allBouts(), props.rowLabel, t, tol)
+                : props.overlay !== false
+                  ? hitStripe(stripes(), t, fy, tol)?.bout
+                  : undefined,
+          );
+          setMouse({ x: e.clientX, y: e.clientY });
         }}
-        onMouseLeave={() => setHoverT(undefined)}
+        onMouseLeave={() => {
+          setHoverT(undefined);
+          setHoverBout(undefined);
+          setMouse(undefined);
+        }}
       >
         <canvas
           ref={c}
@@ -192,6 +246,24 @@ function Track(props: {
             props.onClick?.((e.clientY - r.top) / r.height);
           }}
         />
+        <canvas ref={hl} class="cb-trk__hl" width={W} height={props.height} aria-hidden="true" />
+        <Show when={mouse() && hoverBout()}>
+          {(hb) => (
+            <Portal>
+              <div
+                class="cb-bouttip"
+                role="tooltip"
+                style={{ left: `${mouse()!.x + 12}px`, top: `${mouse()!.y + 14}px` }}
+              >
+                <strong>
+                  <i style={{ background: colorOf(hb().label) }} />
+                  {boutTip(hb()).title}
+                </strong>
+                <For each={boutTip(hb()).lines}>{(l) => <span>{l}</span>}</For>
+              </div>
+            </Portal>
+          )}
+        </Show>
         <Show when={hoverT() !== undefined && left() >= 0 && left() <= 100}>
           <div class="cb-trk__line" style={{ left: `${left()}%` }} />
         </Show>
@@ -330,6 +402,7 @@ export function Timeline(): JSX.Element {
             min={18}
             height={20}
             overlay={false}
+            rowLabel={r.kind === 'Behavior' ? r.name : undefined}
             draw={(ctx, H) => drawBars(ctx, [r], H, win())}
           />
         )}

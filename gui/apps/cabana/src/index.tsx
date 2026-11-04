@@ -11,6 +11,7 @@ import './styles/decoding.css';
 import './styles/labels.css';
 import './styles/setup.css';
 import './styles/guided.css';
+import './styles/overlays.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.
