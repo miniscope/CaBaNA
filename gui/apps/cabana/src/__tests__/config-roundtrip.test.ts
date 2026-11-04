@@ -16,6 +16,7 @@ import {
   patchConfig,
   sessionYaml,
 } from '../lib/session-config.ts';
+import { setBackground } from '../lib/spatial-background.ts';
 import { addFiles, clearAll, loaded, setSource } from '../lib/store.ts';
 
 const EXAMPLES = resolve(process.cwd(), '../../../example_data');
@@ -56,6 +57,10 @@ describe('Download config after loading a config', () => {
   it('does not rewrite zones when the arena outline is drawn and they are placed on the picture', async () => {
     clearAll();
     await addFiles(filesOf('simulated_3chamber'));
+    // The config opens on a blank canvas; a picture sends the zones back to waiting in cm.
+    const canvas = Object.assign(document.createElement('canvas'), { width: 800, height: 600 });
+    await setBackground({ kind: 'image', name: 'arena.png', canvas, scale: 1 });
+    expect(arena.zones.length).toBe(0);
     setArena('box', { x: 37, y: 21, w: 613, h: 307 });
     expect(arena.zones.length).toBeGreaterThan(0);
     expect(asText(exportedConfig().arena)).toBe(asText(original('simulated_3chamber').arena));

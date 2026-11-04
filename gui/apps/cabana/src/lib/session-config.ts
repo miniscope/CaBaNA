@@ -15,6 +15,7 @@ import {
 } from './arena.ts';
 import { arenaProblem, configReport } from './config-import.ts';
 import { regionNoticeProblem } from './region-notice.ts';
+import { backgroundMeta } from './spatial-state.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
@@ -191,6 +192,8 @@ function configFromSettings(omit: Section[] = []): Obj {
   if (arena.shape === 'circle') meta.arena_shape = 'circle';
   if (source.yDown && source.positionUnit === 'cm') meta.y_increases = 'down';
   if (arena.bodyLength) meta.body_length_cm = round(arena.bodyLength);
+  const background = backgroundMeta();
+  if (background) meta.arena_background = background;
   const stimuli = source.stimuli.filter((s) => s.name);
   if (stimuli.length)
     meta.stimuli = stimuli.map((s) => ({

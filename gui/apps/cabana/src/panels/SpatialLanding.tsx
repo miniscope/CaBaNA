@@ -11,6 +11,7 @@ export function SpatialLanding(): JSX.Element {
   const [over, setOver] = createSignal(false);
   const [blankHint, setBlankHint] = createSignal(false);
   const configArena = () => configReport()?.values.arena;
+  const savedBg = () => configReport()?.values.arenaBackground;
   const steps = (): [string, string][] => [
     blankHint()
       ? [
@@ -39,6 +40,19 @@ export function SpatialLanding(): JSX.Element {
               ? 'Positions are in video pixels, so the outline has to be drawn on a picture from the same camera: load an image or video from it.'
               : 'Load a picture to place it on, or continue without a file.'}
           </div>
+        </Show>
+        <Show when={savedBg()}>
+          {(b) => (
+            <div class="cb-note">
+              The config names {b().file} ({b().kind}
+              {b().frame === 'median'
+                ? ', empty arena'
+                : b().frame !== undefined
+                  ? `, frame at ${b().frame} s`
+                  : ''}
+              ) as the background. Choose that file to use it again.
+            </div>
+          )}
         </Show>
         <label
           class="cb-sl-drop"

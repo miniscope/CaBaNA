@@ -126,6 +126,9 @@ function finish(apply: () => void): void {
 const isOld = (n: RegionNotice) => (z: Zone) =>
   n.regionsCm.some((r) => unwrap(r.zone) === unwrap(z));
 
+/** Apply a change that keeps every region's place in cm, so there is nothing to ask. */
+export const withoutNotice = (apply: () => void) => finish(apply);
+
 /** Keep the regions' cm coordinates: they move with the new outline or scale, in the same order. */
 export function keepInCm(): void {
   const n = regionNotice();

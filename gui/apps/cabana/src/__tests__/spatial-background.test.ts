@@ -99,3 +99,71 @@ describe('one workflow for image, video and blank canvas', () => {
     expect(entryOf(st.spatialSnapshot())).toBe('landing');
   });
 });
+
+describe('the background in the config', () => {
+  it('is written to metadata, read back, and the recorded frame is used again', async () => {
+    const { sessionYaml } = await import('../lib/session-config.ts');
+    const { readConfig } = await import('../lib/config-read.ts');
+    const { addFiles } = await import('../lib/store.ts');
+    clearAll();
+    await bg.loadBackground(new File(['x'], 'session.mp4', { type: 'video/mp4' }));
+    await bg.showVideoAt(12.5);
+    bg.useShownFrame();
+    const yaml = sessionYaml();
+    expect(readConfig(yaml).values.arenaBackground).toEqual({
+      file: 'session.mp4',
+      kind: 'video',
+      frame: 12.5,
+    });
+    clearAll();
+    await addFiles([new File([yaml], 'config.yaml')]);
+    await bg.loadBackground(new File(['x'], 'session.mp4', { type: 'video/mp4' }));
+    expect(st.videoChoice()).toEqual({ t: 12.5 });
+    expect(stage()).not.toBe('frame');
+  });
+
+  it('a blank canvas writes nothing; an image writes its file name', async () => {
+    const { readConfig } = await import('../lib/config-read.ts');
+    const { sessionYaml } = await import('../lib/session-config.ts');
+    clearAll();
+    bg.useBlankCanvas();
+    expect(readConfig(sessionYaml()).values.arenaBackground).toBeUndefined();
+    await bg.loadBackground(new File(['x'], 'arena.png', { type: 'image/png' }));
+    expect(readConfig(sessionYaml()).values.arenaBackground).toEqual({
+      file: 'arena.png',
+      kind: 'image',
+      frame: undefined,
+    });
+  });
+});
+
+describe('a picture after a blank canvas', () => {
+  it('sends regions back to waiting in cm; drawing the outline puts them back at the same cm', async () => {
+    const { pendingZones, cmPts } = await import('../lib/arena.ts');
+    const { regionNotice } = await import('../lib/region-notice.ts');
+    clearAll();
+    setArena({ width: 60, height: 30 });
+    st.setSizeEntered(true);
+    bg.useBlankCanvas();
+    setArena('zones', [
+      {
+        name: 'left',
+        kind: 'zone',
+        shape: 'rect',
+        pts: [
+          [30, 30],
+          [250, 360],
+        ],
+      },
+    ]);
+    const cm = cmPts(arena.zones[0]);
+    await bg.loadBackground(new File(['x'], 'arena.png', { type: 'image/png' }));
+    expect(regionNotice()).toBeUndefined();
+    expect(arena.box).toBeUndefined();
+    expect(pendingZones()!.length).toBe(1);
+    expect(stage()).toBe('outline');
+    setArena('box', { x: 100, y: 100, w: 600, h: 300 });
+    expect(pendingZones()).toBeUndefined();
+    expect(cmPts(arena.zones[0])).toEqual(cm);
+  });
+});

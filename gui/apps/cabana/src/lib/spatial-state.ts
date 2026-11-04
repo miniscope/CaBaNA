@@ -132,6 +132,22 @@ export const spatialSnapshot = createRoot(() =>
   }),
 );
 
+/** The background for the config's metadata: file name, kind and the video frame used. */
+export function backgroundMeta(): Record<string, string | number> | undefined {
+  const f = frame();
+  if (!f || f.kind === 'blank') return undefined;
+  const c = videoChoice();
+  return {
+    file: f.name,
+    kind: f.kind,
+    ...(c?.median
+      ? { frame: 'median' }
+      : c?.t !== undefined
+        ? { frame_s: Math.round(c.t * 100) / 100 }
+        : {}),
+  };
+}
+
 export const spatialCheckList = createRoot(() =>
   createMemo(() => spatialChecks(spatialSnapshot())),
 );

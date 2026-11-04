@@ -39,6 +39,13 @@ export interface Stimulus {
   note: string;
 }
 
+export interface ArenaBackground {
+  file: string;
+  kind: 'image' | 'video';
+  /** The video frame used, in seconds, or 'median' for the empty arena built from many frames. */
+  frame?: number | 'median';
+}
+
 export interface ConfigValues {
   name?: string;
   neuralFps?: number;
@@ -52,6 +59,8 @@ export interface ConfigValues {
   arena?: { width: number; height: number; shape: 'rectangle' | 'circle' };
   zones?: CmZone[];
   bodyLengthCm?: number;
+  /** metadata.arena_background: the picture Spatial setup drew on, and the video frame used. */
+  arenaBackground?: ArenaBackground;
   /** The position file has y growing downward (metadata.y_increases: down). */
   yDown?: boolean;
   subjectId?: string;
@@ -371,6 +380,7 @@ function readMetadata(m: Obj, r: ConfigRead): void {
     'stimuli',
     'y_increases',
     'label_roles',
+    'arena_background',
   ]);
   for (const [key, field] of META_FIELDS) {
     known.add(key);
@@ -378,6 +388,13 @@ function readMetadata(m: Obj, r: ConfigRead): void {
     if (typeof val === 'string' || typeof val === 'number') r.values.meta[field] = val;
   }
   r.values.bodyLengthCm = num(m.body_length_cm);
+  const bg = m.arena_background;
+  if (isObj(bg) && typeof bg.file === 'string' && (bg.kind === 'image' || bg.kind === 'video'))
+    r.values.arenaBackground = {
+      file: bg.file,
+      kind: bg.kind,
+      frame: bg.frame === 'median' ? 'median' : num(bg.frame_s),
+    };
   r.values.yDown = m.y_increases === 'down';
   if (Array.isArray(m.stimuli))
     r.values.stimuli = m.stimuli.filter(isObj).map((s) => ({
