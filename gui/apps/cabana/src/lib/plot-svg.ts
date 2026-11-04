@@ -48,7 +48,9 @@ export function renderSvg(spec: PlotSpec): string {
   const y0 = dp.yMin ?? ext.y[0] - pad;
   const y1 = dp.yMax ?? ext.y[1] + (d.type === 'histogram' ? 0.05 * ext.y[1] : pad);
   const f = st.fontSize;
-  const m = { l: 3.5 * f + 10, r: 12, t: st.title ? 2 * f + 8 : 10, b: 2.6 * f + 12 };
+  // A legend takes a row under the x axis label, so it never covers the data.
+  const legendH = st.showLegend ? f + 8 : 0;
+  const m = { l: 3.5 * f + 10, r: 12, t: st.title ? 2 * f + 8 : 10, b: 2.6 * f + 12 + legendH };
   const pw = Math.max(10, st.width - m.l - m.r);
   const ph = Math.max(10, st.height - m.t - m.b);
   const sx = (v: number) => num(m.l + ((v - x0) / (x1 - x0 || 1)) * pw);
@@ -121,14 +123,14 @@ export function renderSvg(spec: PlotSpec): string {
       `<text x="${m.l - 6}" y="${num(sy(v) + f / 3)}" text-anchor="end" ${font} fill="#333">${tickText(v)}</text>`,
     );
   parts.push(
-    `<text x="${num(m.l + pw / 2)}" y="${st.height - 6}" text-anchor="middle" ${font} fill="#111">${esc(spec.axes.x)}</text>`,
+    `<text x="${num(m.l + pw / 2)}" y="${st.height - 6 - legendH}" text-anchor="middle" ${font} fill="#111">${esc(spec.axes.x)}</text>`,
     `<text transform="translate(${f + 2},${num(m.t + ph / 2)}) rotate(-90)" text-anchor="middle" ${font} fill="#111">${esc(spec.axes.y)}</text>`,
   );
   if (st.title)
     parts.push(
       `<text x="${num(m.l + pw / 2)}" y="${f + 6}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${num(f * 1.15)}" font-weight="600" fill="#111">${esc(st.title)}</text>`,
     );
-  if (st.showLegend) parts.push(legend(spec, m.l + pw - 4, m.t + 4, font, color));
+  if (st.showLegend) parts.push(legend(spec, m.l, st.height - f / 2 - 4, font, color));
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${st.width}" height="${st.height}" viewBox="0 0 ${st.width} ${st.height}">` +
@@ -136,19 +138,18 @@ export function renderSvg(spec: PlotSpec): string {
   );
 }
 
-/** Legend entries in the top-right corner: series, markers and the band, each with its label. */
+/** Legend entries in one row from `left` at baseline `y`: series, markers and the band, each with its label. */
 function legend(
   spec: PlotSpec,
-  right: number,
-  top: number,
+  left: number,
+  y: number,
   font: string,
   color: (i: number) => string,
 ): string {
   const d = spec.data;
   const f = spec.style.fontSize;
   const items: { label: string; swatch: string }[] = [];
-  const line = (c: string, dash = '') =>
-    `<line x1="0" x2="14" y1="0" y2="0" stroke="${c}" stroke-width="2"${dash}/>`;
+  const line = (c: string) => `<line x1="0" x2="14" y1="0" y2="0" stroke="${c}" stroke-width="2"/>`;
   if (d.type === 'histogram') {
     items.push({
       label: 'Count',
@@ -161,10 +162,12 @@ function legend(
       });
   } else d.series.forEach((s, i) => items.push({ label: s.label, swatch: line(color(i)) }));
   d.markers.forEach((mk) => items.push({ label: mk.label, swatch: line('#d62728') }));
+  let x = left;
   return items
-    .map(
-      (it, i) =>
-        `<g transform="translate(${right - 6 * f - 60},${top + (i + 0.6) * (f + 4)})">${it.swatch}<text x="18" y="${num(f / 3)}" ${font} fill="#333">${esc(it.label)}</text></g>`,
-    )
+    .map((it) => {
+      const g = `<g transform="translate(${num(x)},${num(y - f / 3)})">${it.swatch}<text x="18" y="${num(f / 3)}" ${font} fill="#333">${esc(it.label)}</text></g>`;
+      x += 30 + 0.55 * f * it.label.length; // about one average glyph width per character
+      return g;
+    })
     .join('');
 }

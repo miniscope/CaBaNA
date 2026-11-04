@@ -80,7 +80,7 @@ export const CHANGE_TEXT: Record<ChangeClass, string> = {
 
 export const DEFAULT_STYLE: PlotSpec['style'] = {
   title: '',
-  width: 480,
+  width: 560,
   height: 300,
   fontSize: 12,
   lineWidth: 1.5,
