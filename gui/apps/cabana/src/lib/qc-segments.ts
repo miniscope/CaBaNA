@@ -63,3 +63,20 @@ export function positionSegments(p: PositionQc, maxSpeed: number, minLostS = 1):
   }
   return out.sort((a, b) => a.start - b.start);
 }
+
+/** Fastest step between tracked frames (cm/s) and the longest lost stretch (s). For the summary cards. */
+export function positionExtremes(p: PositionQc): { maxJump: number; longestGapS: number } {
+  let longestGapS = 0;
+  let run = -1;
+  for (let i = 0; i <= p.x.length; i++) {
+    const lost = i < p.x.length && !Number.isFinite(p.x[i]);
+    if (lost && run < 0) run = i;
+    if (!lost && run >= 0) {
+      // Same length as the "Longest lost stretch" check: frames lost times the frame interval.
+      const span = p.frameT[i - 1] - p.frameT[run] + p.dtFrame;
+      longestGapS = Math.max(longestGapS, Number.isFinite(span) ? span : (i - run) * p.dtFrame);
+      run = -1;
+    }
+  }
+  return { maxJump: Math.max(0, ...p.speed), longestGapS };
+}

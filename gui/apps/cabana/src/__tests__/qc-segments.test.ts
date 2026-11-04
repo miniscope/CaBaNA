@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { positionQc } from '../lib/qc.ts';
-import { positionSegments } from '../lib/qc-segments.ts';
+import { positionExtremes, positionSegments } from '../lib/qc-segments.ts';
 import type { Table } from '../lib/parse.ts';
 
 // 200 frames, 20 ms apart. Frames 20 to 99 are lost (1.6 s); frame 150 jumps away and back.
@@ -29,5 +29,25 @@ describe('positionSegments', () => {
   it('leaves out lost stretches under the limit', () => {
     const p = positionQc(pos, ts, 60, { lostPct: 5, jumpPct: 0.02 });
     expect(positionSegments(p, 60, 2).map((g) => g.kind)).toEqual(['jump']);
+  });
+});
+
+describe('positionExtremes', () => {
+  it('gives the fastest step and the longest lost stretch', () => {
+    const p = positionQc(pos, ts, 60, { lostPct: 5, jumpPct: 0.02 });
+    const { maxJump, longestGapS } = positionExtremes(p);
+    expect(maxJump).toBeCloseTo(Math.max(...p.speed));
+    expect(maxJump).toBeGreaterThan(60);
+    // 80 lost frames at 20 ms, as in the "Longest lost stretch" check.
+    expect(longestGapS).toBeCloseTo(1.6);
+  });
+
+  it('is zero with nothing lost', () => {
+    const full: Table = {
+      columns: pos.columns,
+      rows: pos.rows.map((r, i) => (i >= 20 && i < 100 ? [r[0], String(i * 0.01), '5'] : r)),
+    };
+    const p = positionQc(full, ts, 60, { lostPct: 5, jumpPct: 0.02 });
+    expect(positionExtremes(p).longestGapS).toBe(0);
   });
 });
