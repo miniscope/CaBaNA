@@ -47,8 +47,11 @@ def test_capabilities(bridge):
     for key in ("session_metadata", "session_markers", "frame_labels", "decoding_fold_gap",
                 "overlap_policy", "peth_gui_extensions", "cli_rejects_recipes"):
         assert key in caps and isinstance(caps[key], bool)
-    # the pinned framework (57c0c4b) has none of these yet
-    assert caps["session_metadata"] is False and caps["decoding_fold_gap"] is False
+    import cabana
+
+    # the pinned framework (57c0c4b) has neither; a local framework with F1 has the fold gap
+    assert caps["session_metadata"] is False
+    assert caps["decoding_fold_gap"] is ("fold_gap_s" in cabana.BayesianDecoder.model_fields)
 
 
 def test_secret_and_host(bridge):
@@ -117,8 +120,34 @@ def test_missing_capability_refused(bridge):
     client, _ = bridge
     sid = client.register_example("simulated_social_interaction")
     status, out = client.json("POST", "/runs", {"session_id": sid, "pipeline": POP,
-                                                "requires": ["decoding_fold_gap"]})
-    assert status == 409 and out["missing_capabilities"] == ["decoding_fold_gap"]
+                                                "requires": ["session_metadata"]})
+    assert status == 409 and out["missing_capabilities"] == ["session_metadata"]
+
+
+@pytest.mark.slow
+def test_fold_gap_reaches_framework(bridge, project):
+    """A decoding run that asks for a fold gap gets it from the framework, not a fallback."""
+    client, app = bridge
+    if not app.capabilities.flags["decoding_fold_gap"]:
+        pytest.skip("installed framework has no fold_gap_s (F1)")
+    sid = client.register_example("simulated_social_interaction")
+
+    def run(gap):
+        metric = {"name": "decode_states", "classifier": "logistic", "n_folds": 5, "fold_gap_s": gap}
+        pipe = {"analyses": [{"name": "dec", "metric": metric, "states": "social",
+                              "shuffle": {"n_shuffles": 2, "null": {"name": "label_shuffle", "block_s": 1.0},
+                                          "seed": 0, "n_jobs": 1}}]}
+        rid = post_run(client, sid, pipe, requires=["decoding_fold_gap"])
+        assert client.wait(rid)["status"] == "ok"
+        get = lambda key: np.load(io.BytesIO(client.call("GET", f"/runs/{rid}/arrays/dec/{key}.npy")[1]))
+        return rid, get("n_train_frames"), get("fold_exclusion_frames")[0]
+
+    rid, n_gap, excl = run(2.0)
+    _, n_none, excl0 = run(0.0)
+    assert "fold_gap_s: 2.0" in (project.run_dir(rid) / "pipeline.yaml").read_text()
+    assert excl0 == 0 and excl > 0
+    # the first fold has a one-sided gap; frames with no state inside it are not counted
+    assert 0 < n_none[0] - n_gap[0] <= excl and (n_gap < n_none).all()
 
 
 @pytest.mark.slow

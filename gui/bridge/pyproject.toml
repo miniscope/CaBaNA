@@ -20,6 +20,8 @@ packages = ["src/cabana_bridge"]
 
 # The framework is pinned to a commit so results are reproducible. For a local checkout run
 #   uv run --project gui/bridge --with-editable "$CABANA_FRAMEWORK_PATH" cabana-bridge ...
+# TODO(Samara): F1 (fold_gap_s) is on framework branch decoding-fold-gap, not pushed yet. After
+# it is pushed, set rev to that commit so decoding_fold_gap is true without --with-editable.
 [tool.uv.sources]
 cabana = { git = "https://github.com/miniscope/CaBaNA", rev = "57c0c4b9013eb16eeca286bd7b7e1acf6f486109" }
 
