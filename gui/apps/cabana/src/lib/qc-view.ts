@@ -24,6 +24,13 @@ export const [listPage, setListPage] = createStore<Record<string, number>>({});
 /** Time range shown in the position plots, in seconds; undefined is the whole session. */
 export const [posRange, setPosRange] = createSignal<[number, number] | undefined>();
 
+/** The plot tab shown for each test, by category id. */
+export const [qcPlotTab, setQcPlotTab] = createStore<Record<string, string>>({});
+
+/** Trajectory plot: which layers are drawn. */
+export const [showPath, setShowPath] = createSignal(true);
+export const [showFlagged, setShowFlagged] = createSignal(true);
+
 /** The open one of the folding right-hand boxes (Settings, Correction). */
 export const [openFold, setOpenFold] = createSignal<string | undefined>('settings');
 
@@ -33,4 +40,5 @@ onClear(() => {
   setPicked(reconcile({}));
   setListPage(reconcile({}));
   setPosRange(undefined);
+  setQcPlotTab(reconcile({}));
 });

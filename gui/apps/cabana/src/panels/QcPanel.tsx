@@ -11,7 +11,9 @@ import {
 } from '../lib/qc-view.ts';
 import { behaviorCategories } from './BehaviorQc.tsx';
 import { neuralCategories } from './NeuralQc.tsx';
+import type { MetricCard } from '../components/MetricCards.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { PlotTabs, QcRail, QcSummary, plotTabOf, testCounts } from './QcShell.tsx';
 import { StatusIcon, worst, type Shown } from './QcParts.tsx';
 
 /** One entry in the QC navigator. Its view fills the center and right-hand columns. */
@@ -25,10 +27,27 @@ export interface Category {
   flagged: number;
   flaggedWord: string;
   section?: Section;
-  view: () => JSX.Element;
+  /** One line under the name in the list of tests. */
+  description?: string;
+  /** Plot tabs and what each shows, for a test in the tabbed layout. */
+  tabs?: { id: string; label: string }[];
+  plot?: (tab: string) => JSX.Element;
+  /** Summary cards for this test. */
+  metrics?: () => MetricCard[];
+  /** Flagged items and corrections, under the checks in the right-hand column. */
+  detail?: () => JSX.Element;
+  /** The earlier three-column view, for a tab not yet moved to the tabbed layout. */
+  view?: () => JSX.Element;
 }
 
-const TABS: { id: QcTab; label: string; list: () => Category[]; empty: string }[] = [
+const TABS: {
+  id: QcTab;
+  label: string;
+  list: () => Category[];
+  empty: string;
+  /** The QC settings button of a tab in the tabbed layout. */
+  settings?: () => JSX.Element;
+}[] = [
   {
     id: 'behavior',
     label: 'Behavioral',
@@ -60,12 +79,6 @@ function shown(c: Category): { status: Shown; word: string } {
     return { status: 'fail', word: 'Failed, continuing' };
   return { status: s, word: WORD[s] };
 }
-
-const count = (checks: Check[]) => ({
-  pass: checks.filter((c) => c.status === 'pass').length,
-  warn: checks.filter((c) => c.status === 'warn').length,
-  fail: checks.filter((c) => c.status === 'fail').length,
-});
 
 function Navigator(props: { list: Category[] }): JSX.Element {
   const groups = (i: number) =>
@@ -180,8 +193,7 @@ export function QcPanel(): JSX.Element {
   const tab = () => TABS.find((t) => t.id === qcTab())!;
   const list = createMemo(() => tab().list());
   const current = () => list().find((c) => c.id === qcCategory[qcTab()]) ?? list()[0];
-  const all = createMemo(() => count(TABS.flatMap((t) => t.list().flatMap((c) => c.checks))));
-  const nReviewed = () => TABS.flatMap((t) => t.list()).filter((c) => reviewed[c.id]).length;
+  const tabbed = () => !!current()?.plot;
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   return (
@@ -195,7 +207,7 @@ export function QcPanel(): JSX.Element {
         <div class="cb-qc__toggle" role="tablist" aria-label="Data type">
           <For each={TABS}>
             {(t) => {
-              const c = () => count(t.list().flatMap((x) => x.checks));
+              const c = () => testCounts(t.list());
               return (
                 <button
                   role="tab"
@@ -205,40 +217,16 @@ export function QcPanel(): JSX.Element {
                 >
                   {t.label}
                   <span class="cb-qc__toggle-n">
-                    {c().fail
-                      ? `${c().fail} failed`
-                      : c().warn
-                        ? `${c().warn} ${c().warn === 1 ? 'note' : 'notes'}`
-                        : c().pass
-                          ? `${c().pass} passed`
-                          : 'not checked'}
+                    {c().testsFailed
+                      ? `${c().testsFailed} failed`
+                      : c().tests
+                        ? `${c().tests} passed`
+                        : 'not checked'}
                   </span>
                 </button>
               );
             }}
           </For>
-        </div>
-        <div class="cb-qc__pills">
-          <span class="cb-pill-s cb-pill-s--pass">
-            <StatusIcon status="pass" />
-            {all().pass} passed
-          </span>
-          <span class="cb-pill-s cb-pill-s--warn">
-            <StatusIcon status="warn" />
-            {all().warn} {all().warn === 1 ? 'note' : 'notes'}
-          </span>
-          <span class="cb-pill-s cb-pill-s--fail">
-            <StatusIcon status="fail" />
-            {all().fail} failed
-          </span>
-          <span class="cb-pill-s cb-pill-s--reviewed">
-            <StatusIcon status="reviewed" />
-            {nReviewed()} reviewed
-          </span>
-          <InfoTip label="How these counts work">
-            Counts of individual checks over both the Behavioral and Neural tabs. Reviewed counts
-            the categories marked as reviewed.
-          </InfoTip>
         </div>
       </div>
       <Show when={missingRequired().length}>
@@ -251,12 +239,27 @@ export function QcPanel(): JSX.Element {
         </div>
       </Show>
       <Show when={list().length} fallback={<div class="cb-empty cb-qc__empty">{tab().empty}</div>}>
-        <div class="cb-qc__body">
-          <Navigator list={list()} />
-          <Show when={current()?.id} keyed>
-            {(_id) => untrack(() => current()!.view())}
-          </Show>
-        </div>
+        <Show
+          when={tabbed()}
+          fallback={
+            <div class="cb-qc__body">
+              <Navigator list={list()} />
+              <Show when={current()?.id} keyed>
+                {(_id) => untrack(() => current()!.view!())}
+              </Show>
+            </div>
+          }
+        >
+          <QcSummary
+            list={list()}
+            cards={current().metrics?.() ?? []}
+            settings={tab().settings?.()}
+          />
+          <div class="cb-qc__body cb-qc__body--tabbed">
+            <PlotTabs cat={current()}>{current().plot!(plotTabOf(current()))}</PlotTabs>
+            <QcRail list={list()} cat={current()} />
+          </div>
+        </Show>
       </Show>
       <div class="cb-qc__foot">
         <span class="cb-muted">
