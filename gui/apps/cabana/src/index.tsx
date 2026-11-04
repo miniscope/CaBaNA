@@ -12,6 +12,7 @@ import './styles/labels.css';
 import './styles/setup.css';
 import './styles/guided.css';
 import './styles/overlays.css';
+import './styles/analyze.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.
@@ -21,13 +22,15 @@ render(() => <App />, document.getElementById('root')!);
 
 // Python engine: register the framework analyses and look for the bridge (only when the page was
 // opened with ?bridge=). Everything else works without it.
-void Promise.all([import('./lib/analysis-registry.ts'), import('./lib/bridge-status.ts'), import('./lib/runs.ts')]).then(
-  async ([registry, status, runs]) => {
-    registry.registerAnalyses();
-    await status.connectBridge();
-    if (status.bridgeReady()) await runs.refreshHistory().catch(() => undefined);
-  },
-);
+void Promise.all([
+  import('./lib/analysis-registry.ts'),
+  import('./lib/bridge-status.ts'),
+  import('./lib/runs.ts'),
+]).then(async ([registry, status, runs]) => {
+  registry.registerAnalyses();
+  await status.connectBridge();
+  if (status.bridgeReady()) await runs.refreshHistory().catch(() => undefined);
+});
 
 // Dev only: load an example on start so a restart doesn't need the Load step.
 // ?example=<id> picks one (default simulated_3chamber), ?example=none skips it,
