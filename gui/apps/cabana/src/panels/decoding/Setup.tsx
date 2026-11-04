@@ -18,6 +18,7 @@ import { exclusionFrames, gapFrames, type SeparationSuggestion } from '../../lib
 import { FoldStrip } from './FoldStrip.tsx';
 import { correctionFamily, framesText, RANGE } from './logic.ts';
 import { Choice, Num, Row } from './Parts.tsx';
+import { classKind, ClassModeRow, DecoderCards } from './Target.tsx';
 import {
   checks,
   counts,
@@ -30,7 +31,6 @@ import {
   shared,
 } from './state.ts';
 import { samplingRate } from '../../lib/store.ts';
-import { shufflesFor } from '../../lib/preview.ts';
 
 const def = () => (isPosition() ? DEFAULT_POSITION_DECODING : DEFAULT_BEHAVIOR_DECODING);
 
@@ -88,34 +88,10 @@ export function DecoderView(): JSX.Element {
   const s = () => shared();
   const b = () => behaviorDecoding;
   return (
-    <div class="cb-dec-cols">
+    <div class="cb-dec-cols cb-dec-cols--one">
       <section class="cb-setgroup">
         <h3>Decoder</h3>
-        <Row
-          label="Decoder"
-          tip="Position uses the Bayesian decoder. Behaviors can use the Bayesian decoder or logistic regression. A continuous target is not decoded here."
-        >
-          <Show when={!isPosition()} fallback={<span class="cb-dec-fixed">Bayesian</span>}>
-            <Choice
-              label="Decoder"
-              value={b().decoder}
-              options={[
-                { value: 'bayesian', label: 'Bayesian' },
-                { value: 'logistic', label: 'Logistic regression' },
-              ]}
-              onSet={(v) => setBehaviorDecoding('decoder', v)}
-            />
-          </Show>
-        </Row>
-        <p class="cb-muted cb-dec-blurb">
-          <Show
-            when={isLogistic()}
-            fallback="Each frame is assigned the most probable class given the events of all cells in a window around it, using maps learned from the training folds."
-          >
-            A logistic regression on the standardized event counts of all cells in each time bin,
-            trained on the training folds and scored on the held-out fold.
-          </Show>
-        </p>
+        <DecoderCards />
       </section>
 
       <Show
@@ -281,10 +257,16 @@ function BehaviorList(): JSX.Element {
     [list[i], list[j]] = [list[j], list[i]];
     setBehaviorDecoding('labels', list);
   };
+  // One behavior against Other: exactly one behavior is chosen, so the picker is a radio list.
+  const single = () => classKind() === 'one_vs_other';
   const toggle = (label: string) =>
     setBehaviorDecoding(
       'labels',
-      picked().includes(label) ? picked().filter((l) => l !== label) : [...picked(), label],
+      single()
+        ? [label]
+        : picked().includes(label)
+          ? picked().filter((l) => l !== label)
+          : [...picked(), label],
     );
   const n = (label: string) => counts()?.perClass[label];
   const min = () => behaviorDecoding.minFramesPerClass;
@@ -326,7 +308,8 @@ function BehaviorList(): JSX.Element {
                 <tr classList={{ 'cb-muted': !picked().includes(label) }}>
                   <td>
                     <input
-                      type="checkbox"
+                      type={single() ? 'radio' : 'checkbox'}
+                      name="cb-dec-behavior"
                       aria-label={`Decode ${label}`}
                       checked={picked().includes(label)}
                       onChange={() => toggle(label)}
@@ -471,6 +454,7 @@ export function FramesView(): JSX.Element {
             </>
           }
         >
+          <ClassModeRow />
           <Row
             label="Overlap policy"
             tip="Frames where two selected behaviors are annotated at once. Exclude leaves them out of training and testing. Priority reduces each such frame to one class, the behavior higher in the list."
@@ -489,19 +473,21 @@ export function FramesView(): JSX.Element {
               onSet={(v) => setBehaviorDecoding('overlap', v)}
             />
           </Row>
-          <Row
-            label="Other class"
-            tip={`Adds "${OTHER_NAME}" as a class made of every frame covered by none of the selected behaviors.`}
-          >
-            <label class="cb-as-check">
-              <input
-                type="checkbox"
-                checked={b().other}
-                onChange={(e) => setBehaviorDecoding('other', e.currentTarget.checked)}
-              />
-              Add "{OTHER_NAME}"
-            </label>
-          </Row>
+          <Show when={classKind() === 'several'}>
+            <Row
+              label="Other class"
+              tip={`Adds "${OTHER_NAME}" as a class made of every frame covered by none of the selected behaviors.`}
+            >
+              <label class="cb-as-check">
+                <input
+                  type="checkbox"
+                  checked={b().other}
+                  onChange={(e) => setBehaviorDecoding('other', e.currentTarget.checked)}
+                />
+                Add "{OTHER_NAME}"
+              </label>
+            </Row>
+          </Show>
           <Row
             label="Minimum frames per class"
             range={RANGE.minFramesPerClass}
@@ -687,9 +673,8 @@ function SeparationNotes(props: {
 
 export function SignificanceView(): JSX.Element {
   const s = () => shared();
-  const previewN = () => shufflesFor('preview', s().shuffles);
   return (
-    <div class="cb-dec-cols">
+    <div class="cb-dec-cols cb-dec-cols--one">
       <section class="cb-setgroup">
         <h3>Label-shuffle test</h3>
         <Row
@@ -762,21 +747,6 @@ export function SignificanceView(): JSX.Element {
           />
         </Row>
         <AdvancedSeed seed={s().seed} def={def().seed} onSet={(v) => set('seed', v)} />
-      </section>
-      <section class="cb-setgroup">
-        <h3>Quick preview</h3>
-        <p>
-          Runs the same analysis with {previewN()} shuffles to check the settings. Its results are
-          labeled Preliminary and are kept apart from the full run of{' '}
-          {s().shuffles.toLocaleString()} shuffles. Use the Quick preview button beside Run.
-        </p>
-        <p class="cb-dec-note">
-          With {previewN()} shuffles the smallest possible p-value is{' '}
-          {(1 / (previewN() + 1)).toFixed(3)}, so corrected p-values cannot reach small values.
-          <InfoTip label="About the quick preview">
-            Do not report a preview as a result. Rerun with the full number of shuffles.
-          </InfoTip>
-        </p>
       </section>
     </div>
   );

@@ -244,7 +244,7 @@ export function FoldStrip(props: {
         when={valid()}
         fallback={
           <p class="cb-muted">
-            The folds are drawn once the data and settings can run (see Checks).
+            The folds are drawn once the data and settings can run (see Review).
           </p>
         }
       >

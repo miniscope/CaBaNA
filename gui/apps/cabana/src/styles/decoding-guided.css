@@ -1,0 +1,111 @@
+/* Decoding on the guided setup: target and decoder cards, the Engine section of Review. */
+.cb-dg-h {
+  margin: 0 0 var(--space-xs);
+  font-size: 15px;
+}
+.cb-dg-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.cb-dg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  cursor: pointer;
+}
+.cb-dg-card:hover {
+  background: var(--bg-secondary);
+}
+.cb-dg-card--on {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+.cb-dg-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-dg-card__radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-default);
+  flex: none;
+}
+.cb-dg-card--on .cb-dg-card__radio {
+  border: 4px solid var(--accent);
+  background: #fff;
+}
+.cb-dg-card__text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cb-dg-icon {
+  color: var(--accent);
+  flex: none;
+}
+
+.cb-dg-engines h3 {
+  margin: 0 0 var(--space-xs);
+  font-size: 15px;
+}
+.cb-dg-engines__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+.cb-dg-eng {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  font-size: 12px;
+}
+.cb-dg-eng h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.cb-dg-eng p {
+  margin: 2px 0 var(--space-xs);
+}
+.cb-dg-eng ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cb-dg-eng li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.cb-dg-eng__mark {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+}
+.cb-dg-eng--bad {
+  color: var(--text-primary);
+}
+.cb-dg-eng--bad .cb-dg-eng__mark {
+  color: #b45309;
+}
+.cb-dg-checks {
+  font-size: 13px;
+}
+@media (max-width: 1100px) {
+  .cb-dg-engines__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
