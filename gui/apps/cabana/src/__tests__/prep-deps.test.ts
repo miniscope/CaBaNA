@@ -23,6 +23,7 @@ const READERS: Record<string, keyof typeof DEPS | 'preprocess-page'> = {
   'lib/decode-data.ts': 'decoding',
   'lib/decoding-browser.ts': 'decoding',
   'panels/decoding/state.ts': 'decoding',
+  'panels/decoding/GuidedPage.tsx': 'decoding',
   'panels/population/data.ts': 'population',
   'panels/BehaviorQc.tsx': 'preprocess-page',
   'panels/BehaviorQcPosition.tsx': 'preprocess-page',
