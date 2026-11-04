@@ -3,7 +3,7 @@ import { arena, effectiveBin } from '../lib/arena.ts';
 import { setAnalysisId } from '../lib/analyses.ts';
 import { aurocChanges } from '../lib/auroc-view.ts';
 import { pethChanges } from '../lib/peth-view.ts';
-import { ANALYSIS_LABEL, STEPS, usedBy, type StepId } from '../lib/prep-deps.ts';
+import { ANALYSIS_LABEL, DEPS, STEPS, usedBy, type StepId } from '../lib/prep-deps.ts';
 import { PARAM_TIP, STEP_HELP } from '../lib/prep-help.ts';
 import {
   frames,
@@ -48,7 +48,7 @@ const AUTO_LINE: Partial<Record<StepId, () => string>> = {
   boutLabels: () => 'one label per neural frame',
 };
 
-const toAnalysis = (id: 'place' | 'auroc' | 'peth') => {
+const toAnalysis = (id: keyof typeof DEPS) => {
   setAnalysisId(id);
   goToStep('analyze');
 };
@@ -380,16 +380,21 @@ function Impact(props: { step: StepId }): JSX.Element {
   );
 }
 
-const CHANGES = { place: placeChanges, auroc: aurocChanges, peth: pethChanges };
+// Decoding and Population mark their own results out of date (engine.ts), so they have no entry here.
+const CHANGES: Partial<Record<keyof typeof DEPS, () => string[]>> = {
+  place: placeChanges,
+  auroc: aurocChanges,
+  peth: pethChanges,
+};
 
 function OutOfDate(props: { step: StepId }): JSX.Element {
-  const stale = () => usedBy(props.step).filter((u) => CHANGES[u.id]().length);
+  const stale = () => usedBy(props.step).filter((u) => CHANGES[u.id]?.().length);
   return (
     <For each={stale()}>
       {(u) => (
         <span
           class="cb-prep-stale"
-          title={`Changed since the last run: ${CHANGES[u.id]().join(', ')}`}
+          title={`Changed since the last run: ${CHANGES[u.id]?.().join(', ')}`}
         >
           <StatusIcon status="warn" />
           {ANALYSIS_LABEL[u.id]} results are out of date

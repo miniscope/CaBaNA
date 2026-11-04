@@ -1,7 +1,8 @@
 // Which preprocessing steps each analysis uses. The Preprocess page, the analysis pages and the
 // "results out of date" checks all read this table, so a new analysis only needs its own entry.
 // Every entry follows what the analysis's input code reads (placeFrames/placeNeural in
-// prepared.ts, aurocData in auroc-run.ts), not what the step's name suggests.
+// prepared.ts, aurocData in auroc-run.ts, decode-data.ts, population/data.ts and the prep keys each
+// run records in analysis-registry.ts), not what the step's name suggests.
 
 import { DEFAULT_PREP, prep } from './preprocess.ts';
 
@@ -23,7 +24,10 @@ export type PrepKey = keyof typeof DEFAULT_PREP;
  * analysis: a setting that belongs to the analyses that use it, shown read-only on Preprocess.
  * `keys` are the `prep` values the step reads; spatial bins live in `arena` instead.
  */
-export const STEPS: Record<StepId, { label: string; kind: 'automatic' | 'optional' | 'analysis'; keys: PrepKey[] }> = {
+export const STEPS: Record<
+  StepId,
+  { label: string; kind: 'automatic' | 'optional' | 'analysis'; keys: PrepKey[] }
+> = {
   positionOnFrames: { label: 'Position onto neural frames', kind: 'automatic', keys: ['maxGapS'] },
   speed: { label: 'Speed estimate', kind: 'automatic', keys: ['speedWindowS'] },
   boutLabels: { label: 'Bouts to frame labels', kind: 'automatic', keys: [] },
@@ -42,7 +46,10 @@ export const STEPS: Record<StepId, { label: string; kind: 'automatic' | 'optiona
  */
 export type Use = { use: 'required' | 'optional' } | { use: 'conditional'; when: string };
 
-export const DEPS: Record<'place' | 'auroc' | 'peth', Partial<Record<StepId, Use>>> = {
+export const DEPS: Record<
+  'place' | 'auroc' | 'peth' | 'decoding' | 'population',
+  Partial<Record<StepId, Use>>
+> = {
   // placeFrames: a frame is used only with a position in an open bin and speed >= minSpeed.
   place: {
     positionOnFrames: { use: 'required' },
@@ -69,23 +76,62 @@ export const DEPS: Record<'place' | 'auroc' | 'peth', Partial<Record<StepId, Use
     boutLabels: { use: 'required' },
     eventSmooth: { use: 'optional' },
   },
+  // decode-data.ts: events are read unsmoothed (no event smoothing, no bout padding). Position
+  // decoding uses placeFrames; behavior decoding uses the unpadded frame labels.
+  decoding: {
+    boutLabels: { use: 'conditional', when: 'for behavior decoding' },
+    positionOnFrames: { use: 'conditional', when: 'for position decoding' },
+    speed: { use: 'conditional', when: 'for position decoding' },
+    fillGaps: { use: 'conditional', when: 'for position decoding' },
+    posSmooth: { use: 'conditional', when: 'for position decoding' },
+    speedFilter: { use: 'conditional', when: 'for position decoding' },
+    spatialBins: { use: 'conditional', when: 'for position decoding' },
+  },
+  // Population (analysis-registry.ts): event smoothing feeds every target; the position steps are
+  // read only by the position target, the unpadded frame labels by behavior and zone targets.
+  population: {
+    eventSmooth: { use: 'optional' },
+    boutLabels: { use: 'conditional', when: 'for behavior and zone targets' },
+    positionOnFrames: { use: 'conditional', when: 'for the position target' },
+    speed: { use: 'conditional', when: 'for the position target' },
+    fillGaps: { use: 'conditional', when: 'for the position target' },
+    posSmooth: { use: 'conditional', when: 'for the position target' },
+    speedFilter: { use: 'conditional', when: 'for the position target' },
+    spatialBins: { use: 'conditional', when: 'for the position target' },
+  },
 };
 
-export const ANALYSIS_LABEL: Record<keyof typeof DEPS, string> = { place: 'Place cells', auroc: 'auROC', peth: 'PETH' };
+export const ANALYSIS_LABEL: Record<keyof typeof DEPS, string> = {
+  place: 'Place cells',
+  auroc: 'auROC',
+  peth: 'PETH',
+  decoding: 'Decoding',
+  population: 'Population',
+};
 
 /** The analyses that use a step, with the condition when there is one. */
 export const usedBy = (step: StepId) =>
   (Object.keys(DEPS) as (keyof typeof DEPS)[]).flatMap((id) => {
     const u = DEPS[id][step];
-    return u ? [{ id, label: ANALYSIS_LABEL[id], when: u.use === 'conditional' ? u.when : undefined }] : [];
+    return u
+      ? [{ id, label: ANALYSIS_LABEL[id], when: u.use === 'conditional' ? u.when : undefined }]
+      : [];
   });
 
 /**
  * Steps whose `prep` values differ from `before` (a copy of `prep` taken when the analysis ran),
  * among the steps the analysis reads. `conditionsOn` says whether its conditional uses applied.
  */
-export function prepChanges(id: keyof typeof DEPS, before: typeof DEFAULT_PREP, conditionsOn: boolean): string[] {
+export function prepChanges(
+  id: keyof typeof DEPS,
+  before: typeof DEFAULT_PREP,
+  conditionsOn: boolean,
+): string[] {
   return (Object.entries(DEPS[id]) as [StepId, Use][])
-    .filter(([s, u]) => (u.use !== 'conditional' || conditionsOn) && STEPS[s].keys.some((k) => prep[k] !== before[k]))
+    .filter(
+      ([s, u]) =>
+        (u.use !== 'conditional' || conditionsOn) &&
+        STEPS[s].keys.some((k) => prep[k] !== before[k]),
+    )
     .map(([s]) => STEPS[s].label.toLowerCase());
 }
