@@ -68,6 +68,19 @@ export function scoreCells(
   });
 }
 
+/**
+ * The flagged cell to go to from `current` (which need not be flagged): the next one after it, or
+ * with `dir` -1 the one before it. Undefined when there is none in that direction.
+ */
+export function stepFlagged(flagged: number[], current: number, dir: 1 | -1): number | undefined {
+  const sorted = flagged.slice().sort((a, b) => a - b);
+  return dir === 1 ? sorted.find((c) => c > current) : sorted.reverse().find((c) => c < current);
+}
+
+/** Number of frames with an event, from the fraction scored for the cell; undefined without events. */
+export const eventCount = (frac: number, frames: number): number | undefined =>
+  Number.isNaN(frac) ? undefined : Math.round(frac * frames);
+
 export function cellChecks(
   all: CellScore[],
   hasFootprints: boolean,
