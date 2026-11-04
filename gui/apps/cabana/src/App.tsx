@@ -8,6 +8,7 @@ import { QcPanel } from './panels/QcPanel.tsx';
 import { VizPanel } from './panels/VizPanel.tsx';
 import { AnalyzePanel } from './panels/AnalyzePanel.tsx';
 import { ResultsPage } from './panels/ResultsPage.tsx';
+import { PlotEditor } from './panels/results/PlotEditor.tsx';
 
 const STEPS: Step[] = [
   { id: 'load', label: 'Load data', panel: LoadPanel },
@@ -19,6 +20,11 @@ const STEPS: Step[] = [
   { id: 'results', label: 'Results', panel: ResultsPage },
 ];
 
-const App: Component = () => <SidebarShell steps={STEPS} />;
+const App: Component = () => (
+  <>
+    <SidebarShell steps={STEPS} />
+    <PlotEditor />
+  </>
+);
 
 export default App;

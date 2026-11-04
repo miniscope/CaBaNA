@@ -342,3 +342,79 @@
   margin: 0 0 var(--space-sm);
   font-size: 13px;
 }
+
+/* Plot editor (panels/results/PlotEditor.tsx). */
+.cb-pe-open {
+  font-size: 12px;
+  margin-left: var(--space-sm);
+}
+.cb-ped {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--space-md);
+  max-height: calc(100vh - 160px);
+}
+.cb-ped-view {
+  min-width: 0;
+  overflow: auto;
+}
+.cb-ped-canvas {
+  border: 1px solid var(--border-subtle);
+  display: inline-block;
+}
+.cb-ped-canvas {
+  max-width: 100%;
+  height: auto;
+}
+.cb-ped-src {
+  font-size: 12px;
+}
+.cb-ped-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  overflow-y: auto;
+  font-size: 13px;
+}
+.cb-ped-side section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+}
+.cb-ped-side h4 {
+  margin: 0;
+}
+.cb-ped-side p {
+  margin: 2px 0 6px;
+  font-size: 12px;
+}
+.cb-ped-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--space-sm);
+  align-items: flex-end;
+}
+.cb-ped-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.cb-ped-field input[type='number'] {
+  width: 72px;
+}
+.cb-ped-field--wide input {
+  width: 100%;
+}
+.cb-ped-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--space-sm);
+  margin: 0 0 6px;
+}
+.cb-ped-dl dt {
+  color: var(--text-secondary);
+}
+.cb-ped-dl dd {
+  margin: 0;
+}

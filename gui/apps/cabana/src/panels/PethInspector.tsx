@@ -1,6 +1,8 @@
 // PETH results, cell inspector: one cell and behavior in detail.
 
 import { createMemo, For, Show, type JSX } from 'solid-js';
+import { pethCurveSpec } from '../lib/plot-builders.ts';
+import { EditPlotButton } from './results/PlotEditor.tsx';
 import { shiftedValues } from '../lib/peth-run.ts';
 import {
   curveOf,
@@ -194,6 +196,7 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
           <section class="cb-plot cb-pe-mean">
             <div class="cb-plot__head">
               <h3>Mean response</h3>
+              <EditPlotButton spec={() => pethCurveSpec(o(), cell(), c().b)} />
               <MeanHelp out={o()} />
             </div>
             <div class="cb-muted cb-pe-small">

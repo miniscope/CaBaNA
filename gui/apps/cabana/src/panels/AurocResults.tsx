@@ -9,6 +9,8 @@ import {
   Show,
   type JSX,
 } from 'solid-js';
+import { aurocNullSpec } from '../lib/plot-builders.ts';
+import { EditPlotButton } from './results/PlotEditor.tsx';
 import { Portal } from 'solid-js/web';
 import { Heatmap } from './AurocPopulationHeatmap.tsx';
 import { BehaviorSummary } from './AurocPopulationSummary.tsx';
@@ -952,6 +954,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
           <section class="cb-ar-plot cb-ar-plot--hist">
             <div class="cb-ar-plot__head">
               <h4>auROC vs time-shifted data</h4>
+              <EditPlotButton spec={() => aurocNullSpec(o(), c().c, c().b)} />
               <HowTo title="Observed auROC versus time-shifted data">
                 <p>
                   The x axis is auROC. Gray bars count how many of the shifted copies of this cell’s
