@@ -144,7 +144,13 @@ export function CellsPlot(): JSX.Element {
               </>
             }
           >
-            {(s) => <CellTraces height={Math.max(40, (s().h - 84) / 3)} />}
+            {(s) => (
+              // Each panel keeps room for its trace under its own time axis; in a short window the
+              // card scrolls rather than squeezing the traces flat.
+              <div class="cb-plot__scroll" style={{ height: `${s().h}px` }}>
+                <CellTraces height={Math.max(90, (s().h - 84) / 3)} />
+              </div>
+            )}
           </PlotCard>
         </div>
         <CellBar />
