@@ -325,7 +325,7 @@ async function decodeAndTest<O extends { values: Float64Array }>(
 
 const NOTES = [
   'Random draws differ from the framework, so p-values agree only within shuffling error.',
-  'The fold gap setting is not applied; training folds are contiguous blocks of frames.',
+  'The training/test separation is not applied: training frames run up to each test block. The Python framework applies it.',
   'The overall value is tested here (a GUI extension); the framework does not test it yet.',
 ];
 

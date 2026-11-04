@@ -62,10 +62,10 @@ export const FEATURES: Record<string, Pick<FrameworkNeed, 'text'>> = {
   peth_markers: { text: 'PETH aligned to time markers is not supported yet.' },
   frame_labels: { text: 'Frame-label files are not supported yet.' },
   decoding_fold_gap: {
-    text: 'Decoding needs a fold-local test window and a gap between folds.',
+    text: 'Decoding needs a training/test separation around each test block.',
   },
   decoding_fold_local_window: {
-    text: 'The Bayesian decoder needs a fold-local test window.',
+    text: 'The Bayesian decoder needs a test window that stays inside the test block.',
   },
   decoding_overall_test: { text: 'The overall decoding test is not available yet.' },
   overlap_policy: {

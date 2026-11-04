@@ -10,7 +10,7 @@ export type Decoder = 'bayesian' | 'logistic';
 
 export interface CommonDecoding {
   folds: number;
-  /** Frames within this gap of a test fold are left out of training (framework F1). */
+  /** Training/test separation: training frames this close to a test block are left out (framework F1 `fold_gap_s`). */
   foldGapS: number;
   shuffles: number;
   blockS: number;

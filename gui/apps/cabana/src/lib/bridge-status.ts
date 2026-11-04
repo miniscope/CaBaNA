@@ -47,9 +47,9 @@ export const CAPABILITY_TEXT: Record<CapabilityName, string> = {
   session_markers: 'Needs framework support for time marker files.',
   peth_markers: 'Needs framework support for aligning PETH to time markers.',
   frame_labels: 'Needs framework support for frame-label files.',
-  decoding_fold_gap: 'Needs a framework update: fold-local test window and fold gap for decoding.',
+  decoding_fold_gap: 'Needs a framework update: training/test separation for decoding.',
   decoding_fold_local_window:
-    'Needs a framework update: fold-local test window for the Bayesian decoder.',
+    'Needs a framework update: Bayesian test window that stays inside the test block.',
   decoding_overall_test:
     'Needs a framework update: overall decoding test. The overall value is shown without a p-value.',
   overlap_policy:

@@ -13,9 +13,9 @@ import { foldSpans } from '../../lib/fold-strip.ts';
 /** Plain-language statement of each missing framework feature (contract codes stay in details). */
 export const PLAIN_REQUIREMENT: Partial<Record<CapabilityName, string>> = {
   decoding_fold_gap:
-    'Leaving a gap of frames around each test fold out of training is not in the installed framework. Without it, neighboring frames leak between training and test.',
+    'A training/test separation is not in the installed framework. Without it, frames right next to each test block are used for training, and their correlated activity can make decoding look better than it is.',
   decoding_fold_local_window:
-    'The installed framework builds the Bayesian window across fold borders.',
+    'The installed framework builds the Bayesian test window across the border of each test block.',
   decoding_overall_test:
     'The installed framework does not test the overall value. The per-bin and per-behavior tests are unaffected.',
   overlap_policy:
@@ -28,7 +28,7 @@ export const PLAIN_REQUIREMENT: Partial<Record<CapabilityName, string>> = {
 };
 
 const SHORT_REQUIREMENT: Partial<Record<CapabilityName, string>> = {
-  decoding_fold_gap: 'fold gap is not in the installed framework',
+  decoding_fold_gap: 'training/test separation is not in the installed framework',
   overlap_policy: 'overlap policy is not in the installed framework',
 };
 
@@ -73,7 +73,7 @@ export function choiceGates(has: (c: CapabilityName) => boolean): Gates {
       : {
           disabled: true,
           reason:
-            'Not applied. Neither the browser engine nor the installed framework leaves frames out next to a test fold; the value is kept for when one does.',
+            'Not applied. Neither the browser engine nor the installed framework leaves frames out next to a test block; the value is kept for a framework that does.',
         },
     overlapExclude: has('overlap_policy')
       ? open
@@ -255,8 +255,8 @@ interface RangeSettings {
 export function settingProblems(s: RangeSettings, logistic: boolean): string[] {
   const out: string[] = [];
   const bad = (ok: boolean, text: string) => ok || out.push(text);
-  bad(Number.isInteger(s.folds) && s.folds >= 2, `Folds: ${RANGE.folds}.`);
-  bad(s.foldGapS >= 0, `Fold gap: ${RANGE.foldGapS}.`);
+  bad(Number.isInteger(s.folds) && s.folds >= 2, `Number of train/test splits: ${RANGE.folds}.`);
+  bad(s.foldGapS >= 0, `Training/test separation: ${RANGE.foldGapS}.`);
   bad(Number.isInteger(s.shuffles) && s.shuffles >= 1, `Shuffles: ${RANGE.shuffles}.`);
   bad(s.blockS > 0, `Block length: ${RANGE.blockS}.`);
   bad(s.alpha > 0 && s.alpha < 1, `Alpha: ${RANGE.alpha}.`);

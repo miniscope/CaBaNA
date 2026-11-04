@@ -358,7 +358,7 @@ function Setup(props: { onResults: () => void }): JSX.Element {
                   type="button"
                   class="btn-secondary"
                   disabled={!!run() || browserBlock() !== ''}
-                  title="Runs the TypeScript port in this browser. Random draws differ from the framework, so p-values differ slightly. The fold gap setting is not applied."
+                  title="Runs the TypeScript port in this browser. Random draws differ from the framework, so p-values differ slightly. The training/test separation is not applied."
                   onClick={onBrowserRun}
                 >
                   {BROWSER_DECODING_RUN_LABEL}
