@@ -240,3 +240,45 @@
 .cb-spatial .cb-arena-controls {
   overflow-y: auto;
 }
+
+/* Arena outline and scale: two cards; picture controls sit under the picture. */
+.cb-sp-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-md);
+}
+.cb-sp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+.cb-sp-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.cb-sp-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+.cb-spatial .cb-arena-view > div > .cb-sp-picture {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
