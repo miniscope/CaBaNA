@@ -29,5 +29,8 @@ export const DEFAULT_PLOT_SETTINGS = {
 };
 export const [plotSettings, setPlotSettings] = createStore({ ...DEFAULT_PLOT_SETTINGS });
 
+/** Whether the page shows the results instead of the guided setup. */
+export const [showResults, setShowResults] = createSignal(false);
+
 /** The method whose results are shown. */
 export const [resultMethod, setResultMethod] = createSignal<PopulationMethod>('similarity');

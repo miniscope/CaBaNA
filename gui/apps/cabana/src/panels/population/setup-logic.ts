@@ -178,3 +178,50 @@ export function pairwiseLine(v: PairwiseView): OverviewLine {
     tested: false,
   };
 }
+
+// ---------- data preview ----------
+
+export interface StateTime {
+  name: string;
+  bins: number;
+  seconds: number;
+  /** Share of all time bins of the session, 0 to 1. */
+  share: number;
+}
+
+/** Time in each state at the chosen bin size, from the preview bin counts. */
+export function stateTimes(
+  rows: { name: string; bins: number }[],
+  binS: number,
+  totalBins: number,
+): StateTime[] {
+  return rows.map((r) => ({
+    name: r.name,
+    bins: r.bins,
+    seconds: r.bins * binS,
+    share: totalBins > 0 ? r.bins / totalBins : 0,
+  }));
+}
+
+export interface TimelineBar {
+  /** Left edge and width as fractions of the session. */
+  left: number;
+  width: number;
+}
+
+/** The epochs of each label as bars on a 0 to 1 time axis; epochs outside the session are clipped. */
+export function timelineBars(
+  epochs: { label: string; start: number; stop: number }[],
+  labels: string[],
+  duration: number,
+): Record<string, TimelineBar[]> {
+  const out: Record<string, TimelineBar[]> = Object.fromEntries(labels.map((l) => [l, []]));
+  if (!(duration > 0)) return out;
+  for (const e of epochs) {
+    if (!out[e.label]) continue;
+    const a = Math.max(0, e.start);
+    const b = Math.min(duration, e.stop);
+    if (b > a) out[e.label].push({ left: a / duration, width: (b - a) / duration });
+  }
+  return out;
+}

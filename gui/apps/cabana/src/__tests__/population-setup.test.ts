@@ -7,7 +7,9 @@ import {
   methodSummaries,
   stabilityBlocks,
   stabilityLine,
+  stateTimes,
   statsTable,
+  timelineBars,
 } from '../panels/population/setup-logic.ts';
 
 const settings = (o: Partial<PopulationSettings> = {}): PopulationSettings => ({
@@ -95,6 +97,33 @@ describe('setup summary', () => {
     const t = methodSummaries(settings());
     expect(t).toHaveLength(4);
     expect(t[2]).toBe('State separation (PCA, 10 components, euclidean)');
+  });
+});
+
+describe('data preview', () => {
+  it('turns bin counts into seconds and a share of the session', () => {
+    const t = stateTimes([{ name: 'a', bins: 20 }], 0.5, 100);
+    expect(t[0]).toEqual({ name: 'a', bins: 20, seconds: 10, share: 0.2 });
+    expect(stateTimes([{ name: 'a', bins: 5 }], 0.5, 0)[0].share).toBe(0);
+  });
+  it('draws epochs as fractions of the session and clips to its length', () => {
+    const bars = timelineBars(
+      [
+        { label: 'a', start: 10, stop: 20 },
+        { label: 'a', start: 90, stop: 120 },
+        { label: 'b', start: 0, stop: 5 },
+        { label: 'other', start: 0, stop: 5 },
+      ],
+      ['a', 'b'],
+      100,
+    );
+    expect(bars.a).toEqual([
+      { left: 0.1, width: 0.1 },
+      { left: 0.9, width: 0.1 },
+    ]);
+    expect(bars.b).toEqual([{ left: 0, width: 0.05 }]);
+    expect(bars.other).toBeUndefined();
+    expect(timelineBars([], ['a'], 0)).toEqual({ a: [] });
   });
 });
 
