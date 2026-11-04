@@ -11,6 +11,7 @@ import {
 } from '../lib/store.ts';
 import { mss, setWinLen, setWinStartClamped, WINDOW_CHOICES, win, winLen } from '../lib/viz.ts';
 import {
+  colorOf,
   heat,
   isOn,
   pos,
@@ -24,6 +25,17 @@ import {
   tracksAnchor,
   type Source,
 } from '../lib/viz-tracks.ts';
+import {
+  behaviorCount,
+  groups,
+  intensity,
+  isolateBehavior,
+  setIntensity,
+  setShown,
+  shown,
+  showAll,
+} from '../lib/overlay-state.ts';
+import { coverageText, type Intensity } from '../lib/overlays.ts';
 import { FootprintViewer } from './FootprintViewer.tsx';
 import { Popover } from './Popover.tsx';
 import { fitToWindow } from './QcPanel.tsx';
@@ -113,6 +125,95 @@ function TracksMenu(props: { anchor: HTMLElement }): JSX.Element {
   );
 }
 
+const [overlaysAnchor, setOverlaysAnchor] = createSignal<HTMLElement>();
+
+const INTENSITIES: { value: Intensity; label: string }[] = [
+  { value: 'subtle', label: 'Subtle' },
+  { value: 'strong', label: 'Strong' },
+];
+
+/** Which behaviors are shaded over the plots, grouped by annotation file. Hiding changes the shading only. */
+function OverlaysMenu(props: { anchor: HTMLElement }): JSX.Element {
+  return (
+    <Popover
+      anchor={props.anchor}
+      onClose={() => setOverlaysAnchor()}
+      width={340}
+      label="Behavior overlays"
+    >
+      <div class="cb-pop__head">
+        <strong>Behavior overlays</strong>
+        <span class="cb-ovl__all">
+          <button type="button" class="cb-link" onClick={() => showAll(true)}>
+            Show all
+          </button>
+          <button type="button" class="cb-link" onClick={() => showAll(false)}>
+            Hide all
+          </button>
+        </span>
+      </div>
+      <div class="cb-ovl__intensity" role="radiogroup" aria-label="Overlay intensity">
+        Intensity
+        <For each={INTENSITIES}>
+          {(o) => (
+            <label>
+              <input
+                type="radio"
+                name="overlay-intensity"
+                checked={intensity() === o.value}
+                onChange={() => setIntensity(o.value)}
+              />
+              {o.label}
+            </label>
+          )}
+        </For>
+      </div>
+      <For each={groups()}>
+        {(g) => (
+          <div class="cb-trackgroup">
+            <div class="cb-muted" title={g.name}>
+              {g.name} · {coverageText(g.coverage)}
+              <Show when={g.startsOff}> · starts hidden, covers most of the session</Show>
+            </div>
+            <For each={g.behaviors}>
+              {(b) => (
+                <div class="cb-ovl__row">
+                  <label class="cb-trackopt">
+                    <input
+                      type="checkbox"
+                      checked={shown().has(b.name)}
+                      onChange={(e) => setShown(b.name, e.currentTarget.checked)}
+                    />
+                    <i style={{ background: colorOf(b.name) }} />
+                    <span class="cb-ovl__name" title={b.name}>
+                      {b.name}
+                    </span>
+                    <span class="cb-muted">
+                      {b.bouts} {b.bouts === 1 ? 'bout' : 'bouts'} · {Math.round(b.seconds)} s
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    class="cb-link"
+                    aria-label={`Show only ${b.name}`}
+                    onClick={() => isolateBehavior(b.name)}
+                  >
+                    Only
+                  </button>
+                </div>
+              )}
+            </For>
+          </div>
+        )}
+      </For>
+      <p class="cb-muted cb-ovl__note">
+        Shaded regions mark behavioral bouts aligned to the neural data. Hiding a behavior removes
+        its shading only; the data, analyses and timeline rows are unchanged.
+      </p>
+    </Popover>
+  );
+}
+
 const WindowControls = (): JSX.Element => {
   const half = () => (win()[1] - win()[0]) / 2;
   return (
@@ -175,6 +276,23 @@ export function VizPanel(): JSX.Element {
               </select>
             </label>
           </Show>
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            aria-haspopup="dialog"
+            aria-expanded={!!overlaysAnchor()}
+            disabled={behaviorCount() === 0}
+            title={
+              behaviorCount() === 0
+                ? 'Load behavior annotations to shade bouts over the plots.'
+                : undefined
+            }
+            onClick={(e) =>
+              setOverlaysAnchor((a) => (a === e.currentTarget ? undefined : e.currentTarget))
+            }
+          >
+            Behavior overlays ({shown().size}/{behaviorCount()}) ▾
+          </button>
           <button
             type="button"
             class="btn-secondary btn-small"
@@ -275,7 +393,7 @@ export function VizPanel(): JSX.Element {
                 <p>
                   The raw, denoised and deconvolved signals of the selected cell over the shared
                   window. Pick the cell with the arrows, the footprints or a row of the heat map.
-                  Each row has its own help button.
+                  Each row has its own help button, which also explains the behavior shading.
                 </p>
               }
               class="cb-plot--grow2"
@@ -292,7 +410,8 @@ export function VizPanel(): JSX.Element {
                 <p>
                   Neural data and behavior on one time axis, aligned with the selected cell above.
                   Hover over any plot to place the dashed cursor on all of them. Each track has its
-                  own help button. Choose tracks under Tracks.
+                  own help button. Choose tracks under Tracks and the shaded behavior bouts under
+                  Behavior overlays.
                 </p>
               }
               class="cb-plot--grow3"
@@ -311,6 +430,7 @@ export function VizPanel(): JSX.Element {
           <SessionNavigator />
         </div>
       </Show>
+      <Show when={overlaysAnchor()}>{(a) => <OverlaysMenu anchor={a()} />}</Show>
       <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>
     </div>
   );
