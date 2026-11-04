@@ -16,6 +16,7 @@ import './styles/analyze.css';
 import './styles/preprocess.css';
 import './styles/qc.css';
 import './styles/auroc-results.css';
+import './styles/auroc-setup.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.

@@ -1,0 +1,192 @@
+/* auROC guided setup (panels/AurocPanel.tsx, panels/AurocComparisonTimeline.tsx). */
+
+/* Comparison type cards. */
+.cb-au-types {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+.cb-au-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+}
+.cb-au-type b {
+  font-size: 14px;
+}
+.cb-au-type--on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cb-au-type--off {
+  background: var(--bg-secondary);
+  cursor: not-allowed;
+}
+
+/* Reference group choices. */
+.cb-au-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cb-au-ref {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+.cb-au-ref input {
+  width: auto;
+  margin-top: 3px;
+}
+.cb-au-ref > span {
+  display: flex;
+  flex-direction: column;
+}
+.cb-au-ref--off {
+  opacity: 0.85;
+}
+.cb-au-ref--off b {
+  color: var(--text-secondary);
+}
+
+/* Live frame counts. */
+.cb-au-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  margin: var(--space-sm) 0;
+  font-size: 13px;
+}
+.cb-au-pickhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-sm);
+}
+.cb-au-pick {
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin: 4px 0;
+}
+.cb-au-pick__src th {
+  text-align: left;
+  background: var(--bg-secondary);
+  font-size: 12px;
+  position: sticky;
+  top: 0;
+}
+.cb-au-kept {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px var(--space-lg);
+  margin: var(--space-sm) 0 4px;
+  font-size: 13px;
+}
+.cb-au-kept dd {
+  margin: 0;
+}
+
+/* Significance testing: one column, each setting stacked. */
+.cb-au-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: 520px;
+}
+.cb-au-col p {
+  margin: 0;
+}
+.cb-au-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cb-au-field select {
+  width: 100%;
+}
+.cb-au-field__help {
+  font-size: 12px;
+}
+.cb-au-sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--border-subtle);
+}
+
+/* Review: summary on the left, timeline and run choice on the right. */
+.cb-au-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--space-md);
+  overflow: hidden;
+}
+.cb-au-review__left,
+.cb-au-review__right {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.cb-au-plot {
+  flex: none;
+  height: 240px;
+}
+.cb-au-tl-box {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.cb-au-tl {
+  display: block;
+}
+.cb-au-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+}
+.cb-au-key__sw {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border: 1px solid #bbb;
+}
+.cb-au-key__sw--behavior {
+  background: var(--accent);
+}
+.cb-au-key__sw--comparison {
+  background: #d5dbe6;
+}
+.cb-au-key__sw--excluded {
+  background: repeating-linear-gradient(45deg, #eee 0 3px, #888 3px 4px);
+}
+.cb-au-key__sw--leftOut {
+  background: #fff;
+}
+
+@media (max-width: 1100px) {
+  .cb-au-types,
+  .cb-au-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
