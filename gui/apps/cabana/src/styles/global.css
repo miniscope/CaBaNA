@@ -1830,12 +1830,12 @@ textarea {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
 }
 
-/* Map appearance */
+/* Map appearance. Scoped, so the general fixed-position .cb-pop rule below doesn't move it off-screen. */
 .cb-appearance {
   position: relative;
   display: inline-block;
 }
-.cb-pop {
+.cb-appearance > .cb-pop {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
