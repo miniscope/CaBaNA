@@ -73,7 +73,7 @@ export function choiceGates(has: (c: CapabilityName) => boolean): Gates {
       : {
           disabled: true,
           reason:
-            'Not applied. Neither the browser engine nor the installed framework leaves frames out next to a test block; the value is kept for a framework that does.',
+            'Not applied. Neither the browser engine nor the installed framework leaves frames out next to a test block. A run needs this set to 0 s; the result then records no temporal gap.',
         },
     overlapExclude: has('overlap_policy')
       ? open
@@ -99,6 +99,8 @@ export interface InputFacts {
   /** Frames per selected class after the overlap policy; undefined when not countable. */
   usable?: ClassCounts;
   minFramesPerClass: number;
+  /** "Other" is added as a class (one behavior against everything else is then enough). */
+  other?: boolean;
 }
 
 /** What the user can fix, in the order the page lists it. */
@@ -113,11 +115,12 @@ export function localChecks(target: DecodeTarget, f: InputFacts): string[] {
     if (!f.positionLoaded) out.push('Load a position file.');
     if (!f.arenaOutline) out.push('Draw the arena outline in Experimental setup (Spatial).');
   } else {
-    if (f.usableBehaviors.length < 2)
+    if (f.usableBehaviors.length < (f.other ? 1 : 2))
       out.push(
-        `Behavior decoding needs at least 2 usable behavior labels (found ${f.usableBehaviors.length}).`,
+        `Behavior decoding needs at least 2 usable behavior labels, or 1 with Other (found ${f.usableBehaviors.length}).`,
       );
-    else if (f.selected.length < 2) out.push('Select at least 2 behaviors to decode.');
+    else if (f.selected.length + (f.other ? 1 : 0) < 2)
+      out.push('Select at least 2 behaviors, or one behavior against Other.');
     else if (f.usable) {
       const enough = Object.values(f.usable.perClass).filter((n) => n >= f.minFramesPerClass);
       if (enough.length < 1)

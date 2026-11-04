@@ -566,7 +566,6 @@ export function FoldsView(): JSX.Element {
             min={0}
             step={0.5}
             unit="s"
-            disabled={!applied()}
             onSet={(v) => set('foldGapS', v)}
           />
         </Row>

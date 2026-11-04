@@ -41,6 +41,7 @@ import { canonicalJson } from './settings-hash.ts';
 import { annotationResults, onClear } from './store.ts';
 import type { ShuffleBatch } from '../workers/decoding-types.ts';
 import { saveBrowserRun } from './browser-records.ts';
+import { gapBlock } from '../panels/decoding/engines.ts';
 
 export const BROWSER_DECODING_RUN_LABEL = 'Run in browser engine (different random draws)';
 export const BROWSER_DECODING_ENGINE_TEXT =
@@ -199,8 +200,12 @@ function plan(): Plan | { error: string } {
 /** The reason the browser engine cannot run the current settings; empty when it can. */
 export function browserBlock(): string {
   const p = plan();
-  return 'error' in p ? p.error : '';
+  if ('error' in p) return p.error;
+  // The browser engine has no training/test separation; a run with one set is not offered.
+  return gapBlock('browser', currentSettings().foldGapS, () => false);
 }
+const currentSettings = () =>
+  decodeTarget.type === 'position' ? positionDecoding : behaviorDecoding;
 
 /**
  * The frames (or, for logistic regression, time bins) the browser engine splits into folds, as
@@ -325,17 +330,19 @@ async function decodeAndTest<O extends { values: Float64Array }>(
 
 const NOTES = [
   'Random draws differ from the framework, so p-values agree only within shuffling error.',
-  'The training/test separation is not applied: training frames run up to each test block. The Python framework applies it.',
+  'No temporal gap: the separation is 0 s, so training frames run up to each test block. The Python framework can apply a separation.',
   'The overall value is tested here (a GUI extension); the framework does not test it yet.',
 ];
 
 /** Runs the current decoding settings on the browser engine and, when done, shows the result. */
 export async function runBrowserDecoding(): Promise<boolean> {
   const p = plan();
-  if ('error' in p) {
-    setBrowserStatus({ kind: 'error', message: p.error });
+  const refused = 'error' in p ? p.error : browserBlock();
+  if (refused) {
+    setBrowserStatus({ kind: 'error', message: refused });
     return false;
   }
+  if ('error' in p) return false;
   cancelBrowserDecoding();
   pool = createDecodingWorkerPool();
   const mine = pool;

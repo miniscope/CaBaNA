@@ -30,6 +30,9 @@ const test = (c: CommonDecoding, n: number): Obj => ({
   n_jobs: -1,
 });
 
+/** A separation of 0 s is the same without the feature, so only a positive one needs it. */
+const gapRequires = (c: CommonDecoding) => (c.foldGapS > 0 ? ['decoding_fold_gap'] : []);
+
 /** Without the smoothing step: decoding never smooths the events. */
 const withoutSmoothing = (steps: Obj[]) => steps.filter((s) => s.name !== 'smooth_activity');
 
@@ -61,7 +64,7 @@ export function positionDecodingPipeline(s: PositionDecoding, ctx: DecodingConte
         },
       ],
     },
-    requires: ['decoding_fold_gap'],
+    requires: gapRequires(s),
     problems: ctx.common.hasArenaBox
       ? common.problems
       : ['Position decoding needs the arena outline (Experimental setup, Spatial).'],
@@ -72,7 +75,7 @@ export function positionDecodingPipeline(s: PositionDecoding, ctx: DecodingConte
 export function behaviorDecodingPipeline(s: BehaviorDecoding, ctx: DecodingContext): BuiltSpec {
   const common = commonSteps(ctx.common, { rejected: 'omit', grid: false, position: false });
   const labels = s.labels.length ? s.labels : ctx.labels.behaviors;
-  const requires = ['decoding_fold_gap', ...(s.overlap === 'exclude' ? ['overlap_policy'] : [])];
+  const requires = [...gapRequires(s), ...(s.overlap === 'exclude' ? ['overlap_policy'] : [])];
   const toStates: Obj = {
     name: 'bouts_to_states',
     source: ctx.behaviorSource,
@@ -114,7 +117,8 @@ export function behaviorDecodingPipeline(s: BehaviorDecoding, ctx: DecodingConte
       min_fraction: 0.5,
     });
   const problems: string[] = [];
-  if (labels.length < 2) problems.push('Behavior decoding needs at least 2 behaviors.');
+  if (labels.length + (s.other ? 1 : 0) < 2)
+    problems.push('Behavior decoding needs at least 2 behaviors, or one behavior against Other.');
   if (!bayes && s.mode === 'multiclass' && !ctx.has('overlap_policy'))
     problems.push(
       'Multiclass logistic regression needs exclusive states, which needs a framework update.',

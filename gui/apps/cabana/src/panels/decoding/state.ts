@@ -81,6 +81,7 @@ export const facts = (): InputFacts => {
     selected: selectedBehaviors(),
     usable: counts(),
     minFramesPerClass: behaviorDecoding.minFramesPerClass,
+    other: behaviorDecoding.other,
   };
 };
 
