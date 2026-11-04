@@ -12,7 +12,7 @@ import { bridge } from '../lib/bridge-client.ts';
 import { bridgeReady } from '../lib/bridge-status.ts';
 import { BROWSER_ENGINE_TEXT, frameworkReady, runMatch } from '../lib/engine.ts';
 import { download } from '../lib/export-figure.ts';
-import { OVERALL, OVERALL_ORDER } from '../lib/place-outcome.ts';
+import { notEvaluatedCounts, OVERALL, OVERALL_ORDER } from '../lib/place-outcome.ts';
 import { downloadText, placeCsv, placeMetadata } from '../lib/place-export.ts';
 import {
   cancelPlaceRun,
@@ -85,6 +85,7 @@ export function PlaceResults(props: {
   const ids = () => out().data.cellIds;
   const rows = createMemo(() => buildRows(out()));
   const counts = createMemo(() => countOutcomes(rows()));
+  const notEvaluated = createMemo(() => notEvaluatedCounts(out(), rows()));
   const list = createMemo(() =>
     listRows(rows(), out(), { filter: filter(), query: query(), sort: sortKey(), desc: desc() }),
   );
@@ -348,6 +349,19 @@ export function PlaceResults(props: {
         </div>
       </Show>
 
+      <Show when={counts().cannot > 0}>
+        <div class="cb-note cb-notevals" role="note">
+          <b>
+            {counts().cannot} {counts().cannot === 1 ? 'cell' : 'cells'} not evaluated
+          </b>
+          {': '}
+          {notEvaluated()
+            .map((c) => `${c.n} ${c.reason}`)
+            .join(' · ')}
+          . A test had no defined result, so the cell is neither called nor rejected; this is not a
+          failed test. Hover a Not evaluated cell for its own reason.
+        </div>
+      </Show>
       <div class="cb-resview">
         <Show
           when={view() !== 'inspector'}

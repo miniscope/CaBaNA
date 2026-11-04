@@ -9,7 +9,13 @@ import {
   type JSX,
 } from 'solid-js';
 import { HowToRead } from './parts.tsx';
-import { OVERALL, TEST_ICON, whyUndefined, type Test } from '../lib/place-outcome.ts';
+import {
+  notEvaluatedReason,
+  OVERALL,
+  TEST_ICON,
+  whyUndefined,
+  type Test,
+} from '../lib/place-outcome.ts';
 import { displayMap, gradientCss, maxOf, placeDisplay } from '../lib/place-display.ts';
 import { SORTS, type SortKey } from '../lib/place-table.ts';
 import { fieldCentroid } from '../lib/placecells.ts';
@@ -137,7 +143,14 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
                 >
                   <td>{row.id + 1}</td>
                   <td>
-                    <span class={outcomeClass(row.overall)} title={OVERALL[row.overall].label}>
+                    <span
+                      class={outcomeClass(row.overall)}
+                      title={
+                        row.overall === 'cannot'
+                          ? `${OVERALL.cannot.label}: ${notEvaluatedReason(c().out, row.i)}`
+                          : OVERALL[row.overall].label
+                      }
+                    >
                       <span aria-hidden="true">{OVERALL[row.overall].icon}</span>
                       <span class="cb-sr">{OVERALL[row.overall].label}</span>
                     </span>

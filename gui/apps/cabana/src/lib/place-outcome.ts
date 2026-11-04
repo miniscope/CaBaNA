@@ -75,3 +75,31 @@ export function whyUndefined(
     ? 'No region reached the minimum field size.'
     : 'There are no bins outside the fields, or the mean outside them is zero.';
 }
+
+/** Why cell row `i` is Not evaluated: the reason of the first test with no result. */
+export const notEvaluatedReason = (out: PlaceOutcome, i: number): string | undefined =>
+  whyUndefined(out, i, 'information') ?? whyUndefined(out, i, 'stability');
+
+// The reasons `whyUndefined` gives, as short groups for a count; matched by how each starts.
+const REASON_GROUPS: [RegExp, string][] = [
+  [/^The neural data/, 'missing neural values'],
+  [/^The cell is silent/, 'silent in the used frames'],
+  [/^No bin was visited/, 'no bin visited for the minimum time'],
+  [/^Only \d+ bins/, 'fewer than 3 bins visited long enough in both halves'],
+  [/^One of the two half maps/, 'a constant half map'],
+];
+
+/** How many Not evaluated cells there are for each reason, largest first. */
+export function notEvaluatedCounts(
+  out: PlaceOutcome,
+  rows: { i: number; overall: Overall }[],
+): { reason: string; n: number }[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.overall !== 'cannot') continue;
+    const why = notEvaluatedReason(out, row.i) ?? '';
+    const reason = REASON_GROUPS.find(([re]) => re.test(why))?.[1] ?? 'other';
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return [...counts].map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n);
+}

@@ -10,7 +10,7 @@ import {
   type JSX,
 } from 'solid-js';
 import { HowToRead } from './parts.tsx';
-import { OVERALL } from '../lib/place-outcome.ts';
+import { notEvaluatedReason, OVERALL } from '../lib/place-outcome.ts';
 import { SORTS } from '../lib/place-table.ts';
 import { displayMap, gradientCss, maxOf, placeDisplay } from '../lib/place-display.ts';
 import { InfoTip } from './InfoTip.tsx';
@@ -156,13 +156,16 @@ export function PlaceGallery(props: { ctx: ResultsCtx }): JSX.Element {
           {(row) => {
             const m = () => displayMap(slice(row.i), [ny, nx]);
             const on = () => row.i === c().selected();
+            const why = () =>
+              row.overall === 'cannot' ? notEvaluatedReason(c().out, row.i) : undefined;
             return (
               <button
                 type="button"
                 class="cb-gcard"
                 classList={{ 'cb-gcard--on': on() }}
                 aria-pressed={on()}
-                aria-label={`Cell ${row.id + 1}, ${OVERALL[row.overall].label}`}
+                aria-label={`Cell ${row.id + 1}, ${OVERALL[row.overall].label}${why() ? `: ${why()}` : ''}`}
+                title={why()}
                 onClick={() => c().pick(row.i)}
               >
                 <span class="cb-gcard__head">

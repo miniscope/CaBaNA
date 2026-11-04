@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { outcomeOf, whyUndefined } from '../lib/place-outcome.ts';
+import {
+  notEvaluatedCounts,
+  notEvaluatedReason,
+  outcomeOf,
+  whyUndefined,
+} from '../lib/place-outcome.ts';
 import { DEFAULT_PLACE_SETTINGS, type PlaceOutcome } from '../lib/place-run.ts';
 import { DEFAULT_PLACE, analyzePlaceCells, type PlaceInput } from '../lib/placecells.ts';
 import ref from './placecells_reference.json';
@@ -46,5 +51,14 @@ describe('place-cell outcomes', () => {
       result: { ...few, stability: few.stability.map(() => NaN) },
     } as unknown as PlaceOutcome;
     expect(whyUndefined(o, 0, 'stability')).toMatch(/Only 0 bins/);
+  });
+  it('counts Not evaluated cells per reason, from the same reasons as the inspector', () => {
+    const rows = Array.from({ length: ref.cells }, (_, i) => ({ i, ...outcomeOf(out, i) }));
+    const counts = notEvaluatedCounts(out, rows);
+    const total = rows.filter((r) => r.overall === 'cannot').length;
+    expect(counts.reduce((k, c) => k + c.n, 0)).toBe(total);
+    expect(counts.find((c) => c.reason === 'silent in the used frames')?.n).toBeGreaterThan(0);
+    expect(notEvaluatedReason(out, 13)).toMatch(/silent/);
+    expect(notEvaluatedReason(out, 0)).toBeUndefined();
   });
 });
