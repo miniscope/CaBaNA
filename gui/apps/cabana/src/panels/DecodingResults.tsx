@@ -128,6 +128,7 @@ const POS_VIEWS: [PosView, string][] = [
 ];
 
 function PositionResults(props: {
+  config: string[];
   v: PositionDecodingView;
   record?: RunRecord;
   manifest: Manifest;
@@ -180,6 +181,7 @@ function PositionResults(props: {
     positionCsv(
       props.v,
       props.record ?? { scope: 'full', analysis: 'decoding', run_id: 'fixture' },
+      props.config,
     );
   const exportsOf = (name: string, kind?: string) =>
     plotExports({
@@ -472,7 +474,11 @@ function PositionResults(props: {
 
 type BehView = 'scores' | 'confusion';
 
-function BehaviorResults(props: { v: BehaviorDecodingView; record?: RunRecord }): JSX.Element {
+function BehaviorResults(props: {
+  config: string[];
+  v: BehaviorDecodingView;
+  record?: RunRecord;
+}): JSX.Element {
   const bayes = () => props.v.classifier === 'bayesian_decoder';
   const [view, setView] = createSignal<BehView>('scores');
   const [byScore, setByScore] = createSignal(false);
@@ -489,7 +495,7 @@ function BehaviorResults(props: { v: BehaviorDecodingView; record?: RunRecord })
     plotExports({
       name,
       svg: () => svg,
-      csv: () => behaviorCsv(props.v, run()),
+      csv: () => behaviorCsv(props.v, run(), props.config),
       record: props.record,
     });
   const t = () => props.v.tested;
@@ -697,6 +703,7 @@ export function DecodingResults(props: {
   settings?: Record<string, unknown>;
   engine?: EngineId;
 }): JSX.Element {
+  const config = () => details().map(([k, v]) => `${k}: ${v}`);
   const details = () => {
     const saved =
       props.settings ??
@@ -762,9 +769,18 @@ export function DecodingResults(props: {
             }
           >
             <Show when={d().pos}>
-              {(v) => <PositionResults v={v()} record={props.record} manifest={d().manifest} />}
+              {(v) => (
+                <PositionResults
+                  v={v()}
+                  config={config()}
+                  record={props.record}
+                  manifest={d().manifest}
+                />
+              )}
             </Show>
-            <Show when={d().beh}>{(v) => <BehaviorResults v={v()} record={props.record} />}</Show>
+            <Show when={d().beh}>
+              {(v) => <BehaviorResults v={v()} config={config()} record={props.record} />}
+            </Show>
           </Show>
         )}
       </Show>

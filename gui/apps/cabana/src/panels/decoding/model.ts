@@ -203,7 +203,8 @@ export function confusionMatrix(
 type RunLike = { scope: string; analysis: string; run_id: string };
 const bool = (b: boolean) => (b ? 'yes' : 'no');
 
-export function positionCsv(v: PositionDecodingView, run: RunLike): string {
+/** `config` lines (decoder, separation, significance) are written into the file's notes. */
+export function positionCsv(v: PositionDecodingView, run: RunLike, config: string[] = []): string {
   const cells = binCells(v);
   return toCsv(
     [
@@ -233,6 +234,7 @@ export function positionCsv(v: PositionDecodingView, run: RunLike): string {
     }),
     [
       ...exportNotes(run),
+      ...config,
       `overall median error ${v.overall.value}; chance error ${v.overall.chance}`,
       v.overall.testNote ? OVERALL_NOT_TESTED : 'overall value tested',
       v.label,
@@ -240,7 +242,7 @@ export function positionCsv(v: PositionDecodingView, run: RunLike): string {
   );
 }
 
-export function behaviorCsv(v: BehaviorDecodingView, run: RunLike): string {
+export function behaviorCsv(v: BehaviorDecodingView, run: RunLike, config: string[] = []): string {
   return toCsv(
     ['behavior', 'score', 'null_low', 'null_high', 'p_uncorrected', 'p_corrected', 'significant'],
     behaviorRows(v).map((r) => [
@@ -254,6 +256,7 @@ export function behaviorCsv(v: BehaviorDecodingView, run: RunLike): string {
     ]),
     [
       ...exportNotes(run),
+      ...config,
       `overall accuracy ${v.overall.value}; chance ${v.overall.chance}`,
       v.overall.testNote ? OVERALL_NOT_TESTED_BEHAVIOR : 'overall value tested',
       v.label,

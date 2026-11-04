@@ -196,6 +196,13 @@ describe('position result views (every number equals the array)', () => {
     expect(body).toHaveLength(170);
     expect(body[1].split(',')[5]).toBe(String(a.sh_p_value.data[0]));
   });
+  it('writes the configuration, with the separation, into the notes', async () => {
+    const v = (await loadPositionDecoding(src, d.manifest))!;
+    const text = positionCsv(v, { scope: 'full', analysis: 'decoding', run_id: 'r1' }, [
+      'Training/test separation: None: no temporal gap (0 s)',
+    ]);
+    expect(text).toMatch(/# .*Training\/test separation: None: no temporal gap/);
+  });
 });
 
 describe('behavior result views', () => {
