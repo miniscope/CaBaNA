@@ -17,13 +17,6 @@
 .cb-setup-head h2 {
   margin: 0;
 }
-.cb-setup-cards {
-  margin: 8px 0;
-}
-.cb-setup-card {
-  padding: 6px 10px;
-  gap: 3px;
-}
 .cb-setup-view {
   flex: 1;
   min-height: 0;
@@ -165,26 +158,6 @@
   align-self: flex-start;
   width: 280px;
   flex: none;
-}
-.cb-setup-card {
-  font-size: 13px;
-  padding: 6px 8px;
-  gap: 2px;
-}
-.cb-setup-card__title {
-  white-space: nowrap;
-}
-.cb-setup-card__meta {
-  flex-wrap: nowrap;
-  gap: 4px;
-  white-space: nowrap;
-}
-.cb-setup-card .cb-pill {
-  font-size: 11px;
-  padding: 0 6px;
-}
-.cb-setup-status {
-  font-size: 11.5px;
 }
 .cb-spatial {
   display: flex;

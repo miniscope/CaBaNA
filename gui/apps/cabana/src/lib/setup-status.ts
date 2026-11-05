@@ -34,7 +34,7 @@ export const CARDS: {
     id: 'spatial',
     title: 'Spatial setup',
     priority: 'Required',
-    purpose: 'Define the recording arena, its scale, and zones.',
+    purpose: 'Define your recording arena, scale, and zones.',
   },
   {
     id: 'experiment',

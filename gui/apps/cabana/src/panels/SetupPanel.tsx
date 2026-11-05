@@ -1,13 +1,6 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { configReport } from '../lib/config-import.ts';
-import {
-  CARDS,
-  setSetupCard,
-  setupCard,
-  setupSnapshot,
-  statusOf,
-  type CardId,
-} from '../lib/setup-status.ts';
+import { CARDS, setSetupCard, setupCard, type CardId } from '../lib/setup-status.ts';
 import {
   arena,
   arenaSummary,
@@ -44,6 +37,7 @@ import { LabelRoles, RolesHelp, setStimuliView, stimuliView } from './LabelRoles
 import { InfoTip } from './InfoTip.tsx';
 import { Note } from './parts.tsx';
 import { SpatialSetup } from './SpatialSetup.tsx';
+import { SetupCards, WorkspaceHead } from './SetupCards.tsx';
 
 const BRAIN_REGIONS = [
   'CA1',
@@ -678,19 +672,22 @@ function ImportedConfig(): JSX.Element {
 
 /** Where the user describes the experiment, the session, the arena and how the data was made. */
 export function SetupPanel(): JSX.Element {
-  const tab = setupCard;
-  const only = (id: string) => ({ display: tab() === id ? 'block' : 'none' });
-  const status = (id: CardId) => statusOf(id, setupSnapshot());
+  // Every workspace stays mounted, so nothing typed or drawn is lost when another card is chosen.
+  const only = (id: CardId) => ({ display: setupCard() === id ? 'flex' : 'none' });
   return (
     <div class="cb-panel cb-panel--wide cb-setup">
       <div class="cb-setup-head">
         <h2>Experimental Setup</h2>
         <InfoTip label="About Experimental Setup">
-          Describe your experiment so CaBaNA can interpret your data and identify available
-          analyses. Spatial setup is required for many spatial analyses. Complete the other sections
-          when they apply to your experiment; some settings may be required for particular analyses.
+          Spatial setup is required for spatial analyses. Complete the other components when they
+          apply to your experiment; some analyses need particular settings. Choose a card to open
+          its workspace below. Changes are kept when you switch cards, and Update config records
+          them as the session's config.
         </InfoTip>
-        <span class="cb-muted">Describe the experiment so CaBaNA can offer the right analyses.</span>
+        <span class="cb-muted">
+          Configure your experiment so CaBaNA can interpret your data and offer the appropriate
+          analyses.
+        </span>
         <span class="cb-spacer" />
         <UpdateConfig />
         <button class="btn-primary" onClick={downloadConfig}>
@@ -698,51 +695,28 @@ export function SetupPanel(): JSX.Element {
         </button>
       </div>
       <ImportedConfig />
-      <div class="cb-setup-cards" role="tablist" aria-label="Setup sections">
-        <For each={CARDS}>
-          {(c) => (
-            <button
-              role="tab"
-              class="cb-setup-card"
-              aria-selected={tab() === c.id}
-              classList={{ 'cb-setup-card--on': tab() === c.id }}
-              onClick={() => setSetupCard(c.id)}
-            >
-              <span class="cb-setup-card__title">{c.title}</span>
-              <span class="cb-setup-card__meta">
-                <span class={`cb-pill cb-pill--${c.priority === 'Required' ? 'warn' : 'plain'}`}>
-                  {c.priority}
-                </span>
-                <span class={`cb-setup-status cb-setup-status--${status(c.id).toLowerCase()}`}>
-                  {status(c.id) === 'Complete' ? '✓ ' : status(c.id) === 'Incomplete' ? '◐ ' : '○ '}
-                  {status(c.id)}
-                </span>
-              </span>
-            </button>
+      <SetupCards spatialBlocked={() => false} />
+      <div class="cb-setup-view">
+        <For each={WORKSPACES}>
+          {([id, Body]) => (
+            <div class="cb-es-workspace" style={only(id)}>
+              <WorkspaceHead id={id} />
+              <div class="cb-es-body">
+                <Body />
+              </div>
+            </div>
           )}
         </For>
-      </div>
-      <div class="cb-setup-view">
-      <div style={only('experiment')}>
-        <ExperimentTab />
-      </div>
-      <div style={only('session')}>
-        <SessionTab />
-      </div>
-      {/* Kept mounted so the picture and tools survive a change of section. */}
-      <div style={only('spatial')}>
-        <SpatialSetup />
-      </div>
-      <div style={only('tracking')}>
-        <TrackingTab />
-      </div>
-      <div style={only('stimuli')}>
-        <StimuliTab />
-      </div>
-      <div style={only('neural')}>
-        <NeuralTab />
-      </div>
       </div>
     </div>
   );
 }
+
+const WORKSPACES: [CardId, () => JSX.Element][] = [
+  ['spatial', SpatialSetup],
+  ['experiment', ExperimentTab],
+  ['session', SessionTab],
+  ['tracking', TrackingTab],
+  ['stimuli', StimuliTab],
+  ['neural', NeuralTab],
+];
