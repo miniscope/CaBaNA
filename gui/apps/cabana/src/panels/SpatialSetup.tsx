@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 import {
   type Pt,
   arena,
@@ -16,19 +17,45 @@ import {
   setArena,
   sizeCm,
   zoneShare,
+  type Zone,
 } from '../lib/arena.ts';
 import {
   busy,
+  keepChosenFrame,
   loadBackground,
   loadError,
+  replacedSize,
   scrubT,
   setArenaSize,
   showVideoAt,
   useBlankCanvas,
   useEmptyArena,
+  useShownFrame,
 } from '../lib/spatial-background.ts';
-import { entryOf } from '../lib/spatial-checks.ts';
-import { spatialSnapshot } from '../lib/spatial-state.ts';
+import {
+  STAGE_LABEL,
+  entryOf,
+  firstOpen,
+  openStage,
+  stageDone,
+  stagesFor,
+  type CheckLevel,
+  type CheckState,
+  type SpatialCheck,
+  type SpatialSnapshot,
+  type Stage,
+} from '../lib/spatial-checks.ts';
+import {
+  chosenStage,
+  regionKey,
+  setChosenStage,
+  spatialCheckList,
+  spatialSnapshot,
+  unverifiedZones,
+  verifyZones,
+  videoChoice,
+} from '../lib/spatial-state.ts';
+import { setSetupCard } from '../lib/setup-status.ts';
 import { SpatialLanding } from './SpatialLanding.tsx';
 import {
   ZONE_COLORS,
@@ -903,6 +930,118 @@ export function SpatialSetup(): JSX.Element {
       </div>
     </div>
     </Show>
+  );
+}
+
+const STATE_MARK: Record<CheckState, string> = {
+  ok: '✓',
+  todo: '○',
+  warn: '!',
+  block: '✕',
+  info: 'i',
+};
+const LEVEL: Record<CheckLevel, string> = { set: 'set', valid: 'valid', verified: 'verified' };
+
+/** One check: its state as a mark and a word, its level, and a link to the stage that fixes it. */
+function CheckRow(props: { c: SpatialCheck; onFix?: () => void }): JSX.Element {
+  const word = { ok: 'Done', todo: 'To do', warn: 'Check', block: 'Needed', info: 'Note' };
+  return (
+    <li class={`cb-sp-check cb-sp-check--${props.c.state}`}>
+      <i aria-hidden="true">{STATE_MARK[props.c.state]}</i>
+      <span class="cb-visually-hidden">{word[props.c.state]}: </span>
+      <span>{props.c.text}</span>
+      <span
+        class="cb-sp-level"
+        title="Set: a value is there. Valid: consistent with the setup. Verified: checked against the loaded data."
+      >
+        {LEVEL[props.c.level]}
+      </span>
+      <Show when={props.onFix && props.c.state !== 'ok' && props.c.state !== 'info'}>
+        <button class="cb-link" onClick={() => props.onFix!()}>
+          Go to {STAGE_LABEL[props.c.stage]}
+        </button>
+      </Show>
+    </li>
+  );
+}
+
+/** The stages as a compact row; each can be opened at any time. Done stages show a check. */
+function StageBar(props: {
+  stages: Stage[];
+  current: Stage;
+  snap: SpatialSnapshot;
+  onPick: (s: Stage) => void;
+}): JSX.Element {
+  return (
+    <ol class="cb-sp-stages" aria-label="Spatial setup stages">
+      <For each={props.stages}>
+        {(s, i) => (
+          <li>
+            <button
+              classList={{
+                'cb-sp-stages__on': props.current === s,
+                'cb-sp-stages__done': s !== 'review' && stageDone(s, props.snap),
+              }}
+              aria-current={props.current === s ? 'step' : undefined}
+              onClick={() => props.onPick(s)}
+            >
+              <span class="cb-sp-num">
+                {s !== 'review' && stageDone(s, props.snap) ? '✓' : i() + 1}
+              </span>
+              {STAGE_LABEL[s]}
+            </button>
+          </li>
+        )}
+      </For>
+    </ol>
+  );
+}
+
+/** What the picture is, with ways to replace it. Replacing keeps the outline, scale and zones. */
+function BackgroundRow(props: { onChangeFrame: () => void }): JSX.Element {
+  const f = () => frame();
+  const kind = () =>
+    f()?.kind === 'video' ? 'video' : f()?.kind === 'image' ? 'image' : 'blank canvas';
+  return (
+    <div class="cb-sp-bg">
+      <span class="cb-muted" title={f()?.name}>
+        Background: {f()?.kind === 'blank' ? 'blank canvas' : `${f()?.name} (${kind()})`}
+      </span>
+      <Show when={f()?.kind === 'video'}>
+        <button class="cb-link" onClick={() => props.onChangeFrame()}>
+          Change frame
+        </button>
+      </Show>
+      <label class="cb-link cb-file">
+        {f()?.kind === 'blank' ? 'Load image or video' : 'Replace'}
+        <input
+          type="file"
+          hidden
+          accept="image/*,video/*"
+          onChange={(e) => void loadBackground(e.currentTarget.files?.[0])}
+        />
+      </label>
+      <Show when={exampleMedia()?.frame && f()?.name !== exampleMedia()!.frame!.name}>
+        <button class="cb-link" onClick={() => void loadBackground(exampleMedia()!.frame)}>
+          Example picture
+        </button>
+      </Show>
+      <Show when={exampleMedia()?.video && f()?.name !== exampleMedia()!.video!.name}>
+        <button class="cb-link" onClick={() => void loadBackground(exampleMedia()!.video)}>
+          Example video
+        </button>
+      </Show>
+      <Show when={busy()}>
+        <span class="cb-muted" role="status">
+          {busy()}
+        </span>
+      </Show>
+      <Show when={loadError()}>
+        <span class="cb-error" role="alert">
+          {loadError()}
+        </span>
+      </Show>
+    </div>
   );
 }
 
