@@ -25,9 +25,12 @@ export function blankFrame(width: number, height: number): FrameSource {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#f4f4f2';
-  ctx.fillRect(0, 0, width, height);
+  // No 2D context outside a browser (tests); the canvas then stays transparent.
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#f4f4f2';
+    ctx.fillRect(0, 0, width, height);
+  }
   return { kind: 'blank', name: 'blank arena', canvas, scale: 1 };
 }
 

@@ -1,7 +1,13 @@
 // Spatial setup: where it opens, which stage is next, and what its checks say, for a picture, a
 // video, a blank canvas and configs with and without an arena.
 
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import { arena, frame, pendingZones, setArena, setFrame } from '../lib/arena.ts';
+import { blankFrame } from '../lib/frame.ts';
+import { sessionYaml } from '../lib/session-config.ts';
 import {
   blocked,
   entryOf,
@@ -11,6 +17,14 @@ import {
   stagesFor,
   type SpatialSnapshot,
 } from '../lib/spatial-checks.ts';
+import {
+  setSizeEntered,
+  spatialSnapshot,
+  startBlankCanvas,
+  unverifiedZones,
+  verifyZones,
+} from '../lib/spatial-state.ts';
+import { addFiles, clearAll, setSource } from '../lib/store.ts';
 
 const none: SpatialSnapshot = {
   videoFrameChosen: false,
@@ -112,5 +126,71 @@ describe('checks', () => {
   });
   it('an unchosen video frame is a step to do', () => {
     expect(states(s({ frameKind: 'video' })).background).toBe('todo');
+  });
+});
+
+const EXAMPLES = resolve(process.cwd(), '../../../example_data');
+const filesOf = (dir: string) =>
+  readdirSync(resolve(EXAMPLES, dir))
+    .filter((n) => /\.(csv|ya?ml)$/i.test(n))
+    .map((n) => new File([readFileSync(resolve(EXAMPLES, dir, n))], n));
+
+describe('configs', () => {
+  it('a config with an arena and cm positions opens on a blank canvas with its zones placed', async () => {
+    clearAll();
+    await addFiles(filesOf('simulated_3chamber'));
+    expect(frame()?.kind).toBe('blank');
+    expect(arena.box).toBeDefined();
+    expect(pendingZones()).toBeUndefined();
+    expect(arena.zones.length).toBe(7);
+    const snap = spatialSnapshot();
+    expect(entryOf(snap)).toBe('workspace');
+    expect(snap.sizeEntered).toBe(true);
+    expect(snap.unverified).toBe(7);
+    expect(openStage(snap)).toBe('zones');
+    verifyZones();
+    expect(unverifiedZones().size).toBe(0);
+    expect(openStage(spatialSnapshot())).toBe('review');
+  });
+
+  it.each(readdirSync(EXAMPLES).filter((d) => d.startsWith('simulated_')))(
+    '%s: opening on a blank canvas leaves Download config unchanged',
+    async (dir) => {
+      clearAll();
+      await addFiles(filesOf(dir));
+      expect(JSON.stringify(parse(sessionYaml()))).toBe(
+        JSON.stringify(parse(readFileSync(resolve(EXAMPLES, dir, 'config.yaml'), 'utf8'))),
+      );
+    },
+  );
+
+  it('a partial config (no arena) stays on the landing screen', async () => {
+    clearAll();
+    await addFiles([new File(['neural: {file: n.npy}\n'], 'config.yaml')]);
+    expect(entryOf(spatialSnapshot())).toBe('landing');
+  });
+
+  it('a blank canvas started by hand keeps an existing outline', () => {
+    clearAll();
+    setArena({ width: 60, height: 30 });
+    setSizeEntered(true);
+    startBlankCanvas();
+    const box = { ...arena.box! };
+    setFrame(blankFrame(800, 400));
+    startBlankCanvas();
+    expect(arena.box).toEqual(box);
+  });
+
+  it('pixel positions are not put on a blank canvas automatically', async () => {
+    clearAll();
+    setSource('positionUnit', 'px');
+    await addFiles([
+      new File(
+        ['arena: {size: [60, 30], units: cm}\nbehavior: {position: {file: p.csv, units: px}}\n'],
+        'config.yaml',
+      ),
+    ]);
+    expect(frame()).toBeUndefined();
+    expect(entryOf(spatialSnapshot())).toBe('landing');
   });
 });
