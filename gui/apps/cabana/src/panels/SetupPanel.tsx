@@ -38,6 +38,8 @@ import { InfoTip } from './InfoTip.tsx';
 import { Note } from './parts.tsx';
 import { SpatialSetup } from './SpatialSetup.tsx';
 import { SetupCards, WorkspaceHead } from './SetupCards.tsx';
+import { blocked } from '../lib/spatial-checks.ts';
+import { spatialCheckList } from '../lib/spatial-state.ts';
 
 const BRAIN_REGIONS = [
   'CA1',
@@ -695,7 +697,7 @@ export function SetupPanel(): JSX.Element {
         </button>
       </div>
       <ImportedConfig />
-      <SetupCards spatialBlocked={() => false} />
+      <SetupCards spatialBlocked={() => blocked(spatialCheckList())} />
       <div class="cb-setup-view">
         <For each={WORKSPACES}>
           {([id, Body]) => (

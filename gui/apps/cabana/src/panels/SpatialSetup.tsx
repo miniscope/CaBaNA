@@ -3,7 +3,6 @@ import {
   type Pt,
   arena,
   binGrid,
-  bumpFrame,
   effectiveBin,
   frame,
   frameVersion,
@@ -15,11 +14,22 @@ import {
   regionGroup,
   pxPerCm,
   setArena,
-  setFrame,
   sizeCm,
   zoneShare,
 } from '../lib/arena.ts';
-import { backgroundFrame, blankFrame, loadFrameFile, seekVideo } from '../lib/frame.ts';
+import {
+  busy,
+  loadBackground,
+  loadError,
+  scrubT,
+  setArenaSize,
+  showVideoAt,
+  useBlankCanvas,
+  useEmptyArena,
+} from '../lib/spatial-background.ts';
+import { entryOf } from '../lib/spatial-checks.ts';
+import { spatialSnapshot } from '../lib/spatial-state.ts';
+import { SpatialLanding } from './SpatialLanding.tsx';
 import {
   ZONE_COLORS,
   arenaOutline,
@@ -80,9 +90,6 @@ export function SpatialSetup(): JSX.Element {
   const [poly, setPoly] = createSignal<Pt[]>([]);
   const [clicks, setClicks] = createSignal<Pt[]>([]);
   const [showBins, setShowBins] = createSignal(false);
-  const [error, setError] = createSignal('');
-  const [busy, setBusy] = createSignal('');
-  const [t, setT] = createSignal(0);
   const [viewTab, setViewTab] = createSignal<'top' | 'tracking' | 'zones'>('top');
   const [hover, setHover] = createSignal<
     { i: number; j: number; sec?: number; open: boolean } | undefined
@@ -97,54 +104,6 @@ export function SpatialSetup(): JSX.Element {
     const times = occ ? [...occ].filter((_, i) => g.open[i]).sort((p, q) => p - q) : [];
     return { grid: g, occ, top: times[Math.floor(times.length * 0.95)] || 1 };
   });
-
-  // ---- the picture
-  async function onFile(file: File | undefined) {
-    if (!file) return;
-    setError('');
-    setBusy('Loading…');
-    try {
-      const f = await loadFrameFile(file);
-      setFrame(f);
-      setArena('box', undefined);
-      setArena('line', undefined);
-      setTool('arena');
-      if (f.kind === 'video') {
-        setBusy('Finding the empty arena…');
-        await backgroundFrame(f);
-        bumpFrame((v) => v + 1);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-    setBusy('');
-  }
-
-  function startBlank() {
-    const [w, h] = sizeCm();
-    const W = 720;
-    const s = (W - 60) / w;
-    setFrame(blankFrame(W, Math.round(h * s + 60)));
-    setArena('scaleMode', 'arena');
-    setArena('box', { x: 30, y: 30, w: w * s, h: h * s });
-  }
-
-  async function scrub(v: number) {
-    const f = frame();
-    if (!f?.video) return;
-    setT(v);
-    await seekVideo(f, v);
-    bumpFrame((n) => n + 1);
-  }
-
-  async function showBackground() {
-    const f = frame();
-    if (!f?.video) return;
-    setBusy('Finding the empty arena…');
-    await backgroundFrame(f);
-    bumpFrame((n) => n + 1);
-    setBusy('');
-  }
 
   // ---- drawing on the picture
   const pt = (e: MouseEvent): Pt => {
@@ -413,6 +372,7 @@ export function SpatialSetup(): JSX.Element {
     })[tool()];
 
   return (
+    <Show when={entryOf(spatialSnapshot()) === 'workspace'} fallback={<SpatialLanding />}>
     <div class="cb-panel cb-panel--wide cb-spatial">
       <Show when={pendingZones()?.length}>
         <div class="cb-note">
@@ -515,7 +475,7 @@ export function SpatialSetup(): JSX.Element {
                       type="number"
                       min="1"
                       value={arena.width}
-                      onInput={num((v) => setArena('width', v), 1)}
+                      onChange={num((v) => setArenaSize(v, arena.height), 1)}
                     />{' '}
                     cm
                   </label>
@@ -526,7 +486,7 @@ export function SpatialSetup(): JSX.Element {
                         type="number"
                         min="1"
                         value={arena.height}
-                        onInput={num((v) => setArena('height', v), 1)}
+                        onChange={num((v) => setArenaSize(arena.width, v), 1)}
                       />{' '}
                       cm
                     </label>
@@ -882,7 +842,7 @@ export function SpatialSetup(): JSX.Element {
                     <Show when={exampleMedia()!.frame}>
                       <button
                         class="btn-secondary btn-small"
-                        onClick={() => void onFile(exampleMedia()!.frame)}
+                        onClick={() => void loadBackground(exampleMedia()!.frame)}
                       >
                         Use the example picture
                       </button>
@@ -890,7 +850,7 @@ export function SpatialSetup(): JSX.Element {
                     <Show when={exampleMedia()!.video}>
                       <button
                         class="btn-secondary btn-small"
-                        onClick={() => void onFile(exampleMedia()!.video)}
+                        onClick={() => void loadBackground(exampleMedia()!.video)}
                       >
                         Use the example video
                       </button>
@@ -905,18 +865,18 @@ export function SpatialSetup(): JSX.Element {
                     type="file"
                     hidden
                     accept="image/*,video/*"
-                    onChange={(e) => void onFile(e.currentTarget.files?.[0])}
+                    onChange={(e) => void loadBackground(e.currentTarget.files?.[0])}
                   />
                 </label>
-                <button class="btn-secondary btn-small" onClick={startBlank}>
+                <button class="btn-secondary btn-small" onClick={useBlankCanvas}>
                   No picture: use a blank arena
                 </button>
               </div>
               <Show when={busy()}>
                 <div class="cb-muted">{busy()}</div>
               </Show>
-              <Show when={error()}>
-                <div class="cb-error">{error()}</div>
+              <Show when={loadError()}>
+                <div class="cb-error">{loadError()}</div>
               </Show>
               <Show when={frame()?.kind === 'video'}>
                 <div class="cb-controls">
@@ -927,12 +887,12 @@ export function SpatialSetup(): JSX.Element {
                       min="0"
                       max={frame()!.duration}
                       step="0.1"
-                      value={t()}
-                      onChange={(e) => void scrub(+e.currentTarget.value)}
+                      value={scrubT()}
+                      onChange={(e) => void showVideoAt(+e.currentTarget.value)}
                     />
-                    {t().toFixed(1)} s
+                    {scrubT().toFixed(1)} s
                   </label>
-                  <button class="btn-secondary btn-small" onClick={() => void showBackground()}>
+                  <button class="btn-secondary btn-small" onClick={() => void useEmptyArena()}>
                     Show the empty arena
                   </button>
                 </div>
@@ -942,6 +902,7 @@ export function SpatialSetup(): JSX.Element {
         </div>
       </div>
     </div>
+    </Show>
   );
 }
 

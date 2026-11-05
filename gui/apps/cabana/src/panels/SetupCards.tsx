@@ -59,11 +59,8 @@ const MARK: Record<CardLabel, string> = {
  */
 export function labelOf(id: CardId, spatialBlocked: boolean): CardLabel {
   const card = CARDS.find((c) => c.id === id)!;
-  return cardLabel(
-    card.priority,
-    statusOf(id, setupSnapshot()),
-    id === 'spatial' && spatialBlocked,
-  );
+  const status = statusOf(id, setupSnapshot());
+  return cardLabel(card.priority, status, id === 'spatial' && status !== 'Empty' && spatialBlocked);
 }
 
 export function SetupCards(props: { spatialBlocked: () => boolean }): JSX.Element {
@@ -111,14 +108,14 @@ export function SetupCards(props: { spatialBlocked: () => boolean }): JSX.Elemen
   );
 }
 
-/** Title, purpose and what is still needed, above a component's controls. Spatial setup lists its own checks. */
+/** Title, purpose and what is still needed, above a component's controls. Spatial setup shows its own checks. */
 export function WorkspaceHead(props: { id: CardId }): JSX.Element {
   const card = () => CARDS.find((c) => c.id === props.id)!;
   const remaining = () => remainingFor(props.id, setupSnapshot());
   const status = () => statusOf(props.id, setupSnapshot());
   return (
     <div class="cb-es-head">
-      <h3>{card().title}</h3>
+      <h3>{card().title.replace(/\b\w/g, (c) => c.toUpperCase())}</h3>
       <span class="cb-muted">{card().purpose}</span>
       <Show when={props.id !== 'spatial'}>
         <span class="cb-es-remaining">
