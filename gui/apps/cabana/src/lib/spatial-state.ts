@@ -11,6 +11,8 @@ import {
   pxPerCm,
   regionGroup,
   setArena,
+  setSizeEntered,
+  sizeEntered,
   setFrame,
   sizeCm,
   toCm,
@@ -22,8 +24,8 @@ import { regionNoticeProblem } from './region-notice.ts';
 import { spatialChecks, type SpatialSnapshot, type Stage } from './spatial-checks.ts';
 import { loaded, onClear, onConfig, source } from './store.ts';
 
-/** The arena's real size was typed or read from config.yaml (the starting 40 x 40 cm does not count). */
-export const [sizeEntered, setSizeEntered] = createSignal(false);
+// Kept in arena.ts, which uses it for the scale; re-exported for Spatial setup.
+export { setSizeEntered, sizeEntered };
 /** A region's name within its config group (zones, enclosures, dividers), where names are unique. */
 export const regionKey = (z: { name: string; kind: Zone['kind']; shape: string }) =>
   `${regionGroup(z.kind, z.shape)}:${z.name}`;
@@ -35,7 +37,6 @@ export const [videoChoice, setVideoChoice] = createSignal<{ t?: number; median?:
 export const [chosenStage, setChosenStage] = createSignal<Stage>();
 
 onClear(() => {
-  setSizeEntered(false);
   setUnverifiedZones(new Set<string>());
   setVideoChoice(undefined);
   setChosenStage(undefined);

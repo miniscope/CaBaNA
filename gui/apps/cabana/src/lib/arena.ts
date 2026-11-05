@@ -59,6 +59,10 @@ onClear(() => {
   });
 });
 
+/** The arena's real size was typed or read from config.yaml; the starting 40 x 40 cm is not a scale. */
+export const [sizeEntered, setSizeEntered] = createSignal(false);
+onClear(() => setSizeEntered(false));
+
 /** Zones from a config.yaml, in cm, waiting for the arena outline so they can be put on the picture. */
 export const [pendingZones, setPendingZones] = createSignal<CmZone[]>();
 
@@ -96,6 +100,27 @@ export const sizeCm = createMemo<[number, number]>(() => {
     return [arena.box.w / s, arena.shape === 'circle' ? arena.box.w / s : arena.box.h / s];
   return [arena.width, arena.shape === 'circle' ? arena.width : arena.height];
 });
+
+/**
+ * Why the outline cannot set the scale, or undefined. Only once an outline exists: without one
+ * nothing on the picture is converted, and positions in cm need no scale.
+ */
+export const scaleIssue = createMemo(() => {
+  if (!arena.box) return undefined;
+  if (arena.scaleMode === 'distance')
+    return arena.line
+      ? undefined
+      : 'The arena outline is complete, but the known distance has not been drawn. Spatial analyses stay unavailable until it is (Spatial setup, Scale).';
+  return sizeEntered()
+    ? undefined
+    : "The arena outline is complete, but the arena's real size has not been entered. Spatial analyses stay unavailable until it is (Spatial setup, Scale).";
+});
+
+/** Positions in video pixels cannot be put in cm with an outline drawn on a blank canvas. */
+export const blankPixelIssue = () =>
+  source.positionUnit === 'px' && frame()?.kind === 'blank'
+    ? 'Positions are in video pixels, but the arena outline is on a blank canvas, which has no video pixels. Spatial analyses stay unavailable until the outline is drawn on a frame from the tracking video (Spatial setup), or the position file is in cm.'
+    : undefined;
 
 export const toCm = (p: Pt): Pt | undefined => {
   const s = pxPerCm();
@@ -188,16 +213,19 @@ export interface PositionTransform {
 
 export const positionTransform = createMemo<PositionTransform | undefined>(() => {
   if (source.positionUnit === 'cm')
-    return source.yDown ? { sx: 1, sy: -1, tx: 0, ty: sizeCm()[1] } : { sx: 1, sy: 1, tx: 0, ty: 0 };
+    return source.yDown
+      ? { sx: 1, sy: -1, tx: 0, ty: sizeCm()[1] }
+      : { sx: 1, sy: 1, tx: 0, ty: 0 };
   const s = pxPerCm();
   const b = arena.box;
-  if (!s || !b) return undefined;
+  if (!s || !b || scaleIssue() || blankPixelIssue()) return undefined;
   const k = frame()?.scale ?? 1; // position pixels refer to the original video, the picture may be smaller
   return { sx: 1 / (k * s), sy: -1 / (k * s), tx: -b.x / s, ty: (b.y + b.h) / s };
 });
 
 /** Why positions cannot be put in cm, or undefined when they can. */
-export const calibrationIssue = () => (positionTransform() ? undefined : UNCALIBRATED);
+export const calibrationIssue = () =>
+  positionTransform() ? undefined : (blankPixelIssue() ?? scaleIssue() ?? UNCALIBRATED);
 
 /** Position-file units per cm (1 for cm). A memo, so position QC reruns only when the scale changes. */
 export const positionUnitsPerCm = createMemo(() => {

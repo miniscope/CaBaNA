@@ -4,7 +4,8 @@
 // the priority (Required, Recommended) is separate.
 
 import { createSignal } from 'solid-js';
-import { arena, positionTransform, pxPerCm } from './arena.ts';
+import { arena, blankPixelIssue, positionTransform, pxPerCm, scaleIssue } from './arena.ts';
+import { UNCALIBRATED } from './spec/pipeline.ts';
 import { arenaProblem } from './config-import.ts';
 import { regionNotice } from './region-notice.ts';
 import {
@@ -141,6 +142,8 @@ export interface SetupSnapshot {
   yDown: boolean;
   /** Positions can be put in arena cm (always for cm; pixels need the arena outline and scale). */
   calibrated: boolean;
+  /** The outline has no real scale yet (size not entered, or known distance not drawn), or pixel positions sit on a blank canvas. */
+  scaleIssue?: string;
   /** The config's arena could not be read and none has been set, or regions wait for a choice after the arena changed. */
   arenaBlocked: boolean;
   headOffset: number;
@@ -199,7 +202,10 @@ export function statusOf(id: CardId, s: SetupSnapshot): Status {
     }
     case 'spatial': {
       const any = s.arenaDrawn || s.zones > 0 || s.bodyLine;
-      return grade(any || s.arenaBlocked, positive(s.pxPerCm) && s.calibrated && !s.arenaBlocked);
+      return grade(
+        any || s.arenaBlocked,
+        positive(s.pxPerCm) && s.calibrated && !s.arenaBlocked && !s.scaleIssue,
+      );
     }
     case 'tracking': {
       const any =
@@ -240,6 +246,16 @@ export function stimulusLabelIssues(s: Pick<SetupSnapshot, 'stimuli' | 'loadedLa
   });
 }
 
+/** Why spatial analyses are unavailable, in words, or undefined when Spatial setup is Complete. */
+export function spatialReason(s: SetupSnapshot, problem?: string): string | undefined {
+  if (statusOf('spatial', s) === 'Complete') return undefined;
+  if (problem) return problem;
+  if (s.scaleIssue) return s.scaleIssue;
+  if (!s.arenaDrawn) return 'Draw the arena outline and set its scale in Spatial setup.';
+  if (!s.calibrated) return UNCALIBRATED;
+  return 'Finish the Spatial setup (arena outline and scale).';
+}
+
 /** The settings as they are now. */
 export function setupSnapshot(): SetupSnapshot {
   return {
@@ -265,6 +281,7 @@ export function setupSnapshot(): SetupSnapshot {
     positionUnit: source.positionUnit,
     yDown: source.yDown,
     calibrated: !!positionTransform(),
+    scaleIssue: blankPixelIssue() ?? scaleIssue(),
     arenaBlocked: !!(arenaProblem() ?? regionNotice()),
     headOffset: arena.headOffset,
     annotationTool: source.annotationTool,

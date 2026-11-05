@@ -171,8 +171,8 @@ export function spatialChecks(s: SpatialSnapshot): SpatialCheck[] {
         level: 'set',
         text:
           s.scaleMode === 'distance'
-            ? 'The arena outline is complete, but the known distance has not been drawn. Distances in cm stay unavailable until it is.'
-            : `The arena outline is complete, but the arena's real size has not been entered. Distances in cm use the starting size of ${size(s)} until it is.`,
+            ? 'The arena outline is complete, but the known distance has not been drawn. Spatial analyses stay unavailable until it is.'
+            : `The arena outline is complete, but the arena's real size has not been entered (${size(s)} is only the starting value). Spatial analyses stay unavailable until it is.`,
         stage: 'scale',
       });
     const want = s.sizeCm[0] / s.sizeCm[1];
@@ -204,7 +204,7 @@ export function spatialChecks(s: SpatialSnapshot): SpatialCheck[] {
       key: 'position',
       state: 'block',
       level: 'verified',
-      text: 'Positions are in video pixels, but the arena is on a blank canvas, which has no video pixels. Load a frame from the tracking video and draw the outline on it.',
+      text: 'Positions are in video pixels, but the arena is on a blank canvas, which has no video pixels. Spatial analyses stay unavailable until the outline is drawn on a frame from the tracking video, or the position file is in cm.',
       stage: 'outline',
     });
   else if (s.insideShare !== undefined)

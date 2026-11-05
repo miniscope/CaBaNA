@@ -9,6 +9,7 @@ import {
   positionsCm,
   setArena,
   setFrame,
+  setSizeEntered,
 } from '../lib/arena.ts';
 import type { FrameSource } from '../lib/frame.ts';
 import { positionCm, positionIssue } from '../lib/prepared.ts';
@@ -35,7 +36,7 @@ const close = (got: ArrayLike<number>, want: number[]) =>
 
 async function loadPixels(): Promise<void> {
   setSource('positionUnit', 'px');
-  setFrame({ kind: 'blank', name: 'video', canvas: {} as HTMLCanvasElement, scale: K } as FrameSource);
+  setFrame({ kind: 'video', name: 'video', canvas: {} as HTMLCanvasElement, scale: K } as FrameSource);
   const rows = PX.map(([x, y], i) => `${i},${x},${y}`).join('\n');
   const stamps = CM.map((_, i) => `${i},${i * 1000}`).join('\n');
   await addFiles([
@@ -67,6 +68,7 @@ describe('pixel calibration', () => {
 
   it('gives the same cm positions to the preview, QC speed and the framework step', async () => {
     setArena({ width: 40, height: 20, box: BOX });
+    setSizeEntered(true);
     expect(arena.box).toEqual(BOX);
 
     // Previews and browser analyses.

@@ -2,7 +2,7 @@
 
 import { createMemo, createSignal } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import { arena, inZone, positionsCm, pxPerCm, toPx } from './arena.ts';
+import { arena, inZone, positionsCm, pxPerCm, scaleIssue, toPx } from './arena.ts';
 import { ZONE_COLORS } from './draw.ts';
 import { lowerBound } from './framework.ts';
 import {
@@ -133,7 +133,8 @@ export const frameBands = createMemo(() => {
 
 const zones = createMemo(() => {
   const pos = positionsCm();
-  if (!pxPerCm() || !arena.box || !pos.x.length)
+  // Drawn zones need the real scale to find the animal in them.
+  if (!pxPerCm() || !arena.box || scaleIssue() || !pos.x.length)
     return [] as { name: string; color: string; runs: [number, number][] }[];
   const t = cameraTimes();
   if (!t) return [];

@@ -3,6 +3,8 @@
 // settings is async (it hashes the input files), so a signal holds the last answer.
 
 import { engineFor } from './engine.ts';
+import { arenaProblem } from './config-import.ts';
+import { regionNoticeProblem } from './region-notice.ts';
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { bridgeState } from './bridge-status.ts';
 import { decodeTarget } from './decoding-settings.ts';
@@ -26,7 +28,13 @@ import {
 } from './readiness.ts';
 import { active, blockers, compareToRecord, type AnalysisId } from './runs.ts';
 import { hasSavedResults, runOutcome } from './result-index.ts';
-import { CARDS, setupSnapshot, statusOf, stimulusLabelIssues } from './setup-status.ts';
+import {
+  CARDS,
+  setupSnapshot,
+  spatialReason,
+  statusOf,
+  stimulusLabelIssues,
+} from './setup-status.ts';
 import {
   deconvolved,
   denoisedTrace,
@@ -157,6 +165,8 @@ export function buildSnapshot(): Snapshot {
     deconvolved: !!deconvolved(),
     position,
     spatialComplete,
+    spatialIssue: spatialReason(setup, arenaProblem() ?? regionNoticeProblem()),
+    populationTarget: populationSettings.target,
     labels: labelCounts(reg),
     missingStimulusLabels: missingStimulusLabels(stimulusLabelIssues(setup)),
     bridge: state.kind,
@@ -170,7 +180,7 @@ export function buildSnapshot(): Snapshot {
       populationSettings.target,
       [...populationSettings.labels],
       reg,
-      position,
+      position && (populationSettings.target !== 'position' || spatialComplete),
     ),
     decodingTarget: decodeTarget.type,
     runs: {

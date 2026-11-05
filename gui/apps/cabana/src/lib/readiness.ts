@@ -108,6 +108,10 @@ export interface Snapshot {
   deconvolved: boolean;
   position: boolean;
   spatialComplete: boolean;
+  /** Why spatial analyses are unavailable, when they are. */
+  spatialIssue?: string;
+  /** The population page's target; only position needs Spatial setup. */
+  populationTarget?: 'behaviors' | 'zones' | 'position';
   /** Labels usable by analyses (not blocked), by kind; `alignable`: what PETH can align to. */
   labels: { epochs: number; behaviors: number; zones: number; alignable: number };
   /** Stimuli whose label is not loaded. */
@@ -146,6 +150,8 @@ export const ITEM_LABEL: Record<ItemId, string> = {
 
 const LOAD = { label: 'Load data', item: 'load' as const };
 const SETUP = { label: 'Experimental setup', item: 'setup' as const };
+const spatialNeed = (s: Snapshot) =>
+  s.spatialIssue ?? 'Finish the Spatial setup (arena outline and scale).';
 
 export const STATUS_TEXT: Record<StatusKind, string> = {
   not_started: 'Not started',
@@ -239,8 +245,7 @@ export function analysisNeeds(
   switch (id) {
     case 'place':
       if (!s.position) need('Load a position file.', LOAD);
-      else if (!s.spatialComplete)
-        need('Finish the Spatial setup (arena outline and scale).', SETUP);
+      else if (!s.spatialComplete) need(spatialNeed(s), SETUP);
       break;
     case 'auroc':
       if (s.labels.behaviors < 1)
@@ -259,13 +264,14 @@ export function analysisNeeds(
       if (!s.deconvolved) need('Decoding needs deconvolved events.', LOAD);
       if (s.decodingTarget === 'position') {
         if (!s.position) need('Load a position file.', LOAD);
-        else if (!s.spatialComplete)
-          need('Finish the Spatial setup (arena outline and scale).', SETUP);
+        else if (!s.spatialComplete) need(spatialNeed(s), SETUP);
       } else if (s.labels.behaviors < 2)
         need('Behavior decoding needs at least 2 usable labels.', LOAD);
       break;
     case 'population':
-      if (s.populationStates < 2) need('Choose a target with at least 2 states.');
+      if (s.populationTarget === 'position' && s.position && !s.spatialComplete)
+        need(spatialNeed(s), SETUP);
+      else if (s.populationStates < 2) need('Choose a target with at least 2 states.');
       break;
   }
   const run = s.runs[id];
