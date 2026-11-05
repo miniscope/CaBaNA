@@ -398,6 +398,232 @@ export function SpatialSetup(): JSX.Element {
       animal: 'Click the tip of the nose, then the base of the tail.',
     })[tool()];
 
+  const snap = spatialSnapshot;
+  const stage = () => chosenStage() ?? openStage(snap());
+  const stages = () => stagesFor(snap());
+  const go = (st: Stage) => {
+    setChosenStage(st);
+    setTool('none');
+    setClicks([]);
+    setPoly([]);
+  };
+  const step = (d: number) => stages()[stages().indexOf(stage()) + d];
+  const check = (key: SpatialCheck['key']) => spatialCheckList().filter((c) => c.key === key);
+  const unverified = (z: { name: string; kind: Zone['kind']; shape: string }) =>
+    unverifiedZones().has(regionKey(z));
+
+  const FrameStage = () => (
+    <>
+      <p class="cb-muted">
+        Scrub to a frame where the whole arena is visible, then use it as the background. The empty
+        arena is the median of 15 frames spread across the video; the animal moves, so it drops out.
+        Only the frames shown are decoded; the video is not read into memory.
+      </p>
+      <label class="cb-sp-scrub">
+        <span>
+          Frame at <b>{scrubT().toFixed(1)} s</b> of {(frame()?.duration ?? 0).toFixed(1)} s
+        </span>
+        <input
+          type="range"
+          min="0"
+          max={frame()?.duration ?? 0}
+          step="0.1"
+          value={scrubT()}
+          onInput={(e) => void showVideoAt(+e.currentTarget.value)}
+        />
+      </label>
+      <div class="cb-controls">
+        <button class="btn-primary btn-small" disabled={!!busy()} onClick={useShownFrame}>
+          Use this frame
+        </button>
+        <button
+          class="btn-secondary btn-small"
+          disabled={!!busy()}
+          onClick={() => void useEmptyArena()}
+        >
+          Use the empty arena
+        </button>
+      </div>
+      <Show when={videoChoice()}>
+        {(c) => (
+          <div class="cb-muted">
+            Background now: {c().median ? 'the empty arena' : `the frame at ${c().t!.toFixed(1)} s`}
+            .{' '}
+            <button class="cb-link" onClick={() => void keepChosenFrame()}>
+              Keep it
+            </button>
+          </div>
+        )}
+      </Show>
+      <p class="cb-muted">
+        Changing the frame later keeps the outline, scale and zones. To measure the animal, scrub to
+        a frame with the animal stretched out.
+      </p>
+    </>
+  );
+
+  const OutlineStage = () => (
+    <>
+      <div class="cb-controls">
+        <span>Shape</span>
+        <div class="cb-seg">
+          <For
+            each={
+              [
+                ['rectangle', 'Rectangle'],
+                ['circle', 'Circle'],
+              ] as const
+            }
+          >
+            {([v, label]) => (
+              <button
+                classList={{ 'cb-seg__on': arena.shape === v }}
+                onClick={() => setArena('shape', v)}
+              >
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      <div class="cb-controls">
+        {toolBtn('arena', arena.box ? 'Redraw the outline' : 'Draw the outline')}
+      </div>
+      <p class="cb-muted">
+        {arena.shape === 'circle'
+          ? 'Drag from one side of the arena to the other.'
+          : 'Drag from one corner of the arena to the opposite corner.'}
+      </p>
+      <Show when={frame()?.kind === 'blank'}>
+        <p class="cb-muted">
+          On a blank canvas the outline is the arena itself. It follows the size entered under
+          Scale.
+        </p>
+      </Show>
+      <Show when={replacedSize()}>
+        <div class="cb-note">
+          The outline was drawn on a {replacedSize()!.join(' × ')} picture; this one is{' '}
+          {frame()!.canvas.width} × {frame()!.canvas.height}. Check that the outline still matches
+          the arena, and redraw it if not.
+        </div>
+      </Show>
+      <For each={check('position').filter((c) => c.state === 'block')}>
+        {(c) => <div class="cb-note">{c.text}</div>}
+      </For>
+    </>
+  );
+
+  const ScaleStage = () => (
+    <>
+      <fieldset class="cb-sp-method">
+        <legend>Scale from</legend>
+        <label>
+          <input
+            type="radio"
+            name="cb-scale-mode"
+            checked={arena.scaleMode === 'arena'}
+            onChange={() => setArena('scaleMode', 'arena')}
+          />{' '}
+          The arena's real size <span class="cb-muted">(simplest)</span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="cb-scale-mode"
+            checked={arena.scaleMode === 'distance'}
+            onChange={() => setArena('scaleMode', 'distance')}
+          />{' '}
+          A known distance in the picture, such as a ruler
+        </label>
+      </fieldset>
+      <Show when={arena.scaleMode === 'arena'}>
+        <p class="cb-muted">
+          Enter the inside size of the arena, in cm, along the outline just drawn.
+        </p>
+        <div class="cb-controls">
+          <label>
+            {arena.shape === 'circle' ? 'Diameter' : 'Width'}
+            <input
+              type="number"
+              min="1"
+              value={arena.width}
+              onChange={num((v) => setArenaSize(v, arena.height), 1)}
+            />{' '}
+            cm
+          </label>
+          <Show when={arena.shape === 'rectangle'}>
+            <label>
+              Height
+              <input
+                type="number"
+                min="1"
+                value={arena.height}
+                onChange={num((v) => setArenaSize(arena.width, v), 1)}
+              />{' '}
+              cm
+            </label>
+          </Show>
+        </div>
+      </Show>
+      <Show when={arena.scaleMode === 'distance'}>
+        <p class="cb-muted">Draw a line over a length you know, then enter that length.</p>
+        <div class="cb-controls">
+          {toolBtn('distance', arena.line ? 'Redraw the distance' : 'Draw a known distance')}
+          <label>
+            It is
+            <input
+              type="number"
+              min="0.1"
+              step="0.5"
+              value={arena.lineCm}
+              onInput={num((v) => setArena('lineCm', v), 0.1)}
+            />{' '}
+            cm
+          </label>
+        </div>
+      </Show>
+      <ul class="cb-sp-checks">
+        <For each={[...check('scale'), ...check('proportions'), ...check('position')]}>
+          {(c) => <CheckRow c={c} />}
+        </For>
+      </ul>
+      <div class="cb-sp-units">
+        <div class="cb-controls">
+          <span>Position file units</span>
+          <div class="cb-seg">
+            <For
+              each={
+                [
+                  ['cm', 'cm'],
+                  ['px', 'pixels'],
+                ] as const
+              }
+            >
+              {([v, label]) => (
+                <button
+                  classList={{ 'cb-seg__on': source.positionUnit === v }}
+                  onClick={() => setSource('positionUnit', v)}
+                >
+                  {label}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+        <p class="cb-muted">
+          The picture, the video and the tracking file each have their own coordinates. Positions in
+          cm are used as they are; positions in pixels are put in cm with this outline and scale, so
+          the picture must come from the tracking camera. Direction of y and other settings are
+          under{' '}
+          <button class="cb-link" onClick={() => setSetupCard('tracking')}>
+            Tracking & coordinates
+          </button>
+          .
+        </p>
+      </div>
+    </>
+  );
+
   return (
     <Show when={entryOf(spatialSnapshot()) === 'workspace'} fallback={<SpatialLanding />}>
     <div class="cb-panel cb-panel--wide cb-spatial">
