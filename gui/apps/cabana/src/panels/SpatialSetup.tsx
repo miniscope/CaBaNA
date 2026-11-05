@@ -624,6 +624,178 @@ export function SpatialSetup(): JSX.Element {
     </>
   );
 
+  const ZonesStage = () => (
+    <>
+      <p class="cb-muted">
+        Zones are places the analyses compare, such as center, reward or an object. Excluded regions
+        are places the animal cannot go, such as walls or an enclosure; they are left out of place
+        maps so they do not look unvisited. Zones are optional.
+      </p>
+      <Show when={pendingZones()?.length}>
+        <div class="cb-note">
+          {pendingZones()!.length} regions from {loaded.config?.name ?? 'config.yaml'} wait for the
+          arena outline and scale, then appear on the picture.
+        </div>
+      </Show>
+      <div class="cb-controls">
+        <label>
+          Type
+          <select
+            value={zoneKind()}
+            onChange={(e) => setZoneKind(e.currentTarget.value as 'zone' | 'exclude')}
+          >
+            <option value="zone">Zone</option>
+            <option value="exclude">Excluded region</option>
+          </select>
+        </label>
+        <label>
+          Shape
+          <select
+            value={zoneShape()}
+            onChange={(e) => {
+              setZoneShape(e.currentTarget.value as ReturnType<typeof zoneShape>);
+              setPoly([]);
+            }}
+          >
+            <option value="rect">Rectangle</option>
+            <option value="square">Square</option>
+            <option value="circle">Circle</option>
+            <option value="polygon">Polygon (click corners)</option>
+            <option value="freehand">Free draw</option>
+          </select>
+        </label>
+        <label>
+          Name
+          <input
+            type="text"
+            placeholder="center"
+            value={zoneName()}
+            onInput={(e) => setZoneName(e.currentTarget.value)}
+            aria-invalid={!!takenName()}
+          />
+        </label>
+      </div>
+      <div class="cb-controls">
+        <Show when={takenName()} fallback={toolBtn('zone', '+ Add zone')}>
+          <span class="cb-error" role="alert">
+            {`A ${regionGroup(zoneKind(), zoneShape())} named "${takenName()}" already exists. Choose another name.`}
+          </span>
+        </Show>
+        <Show when={tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2}>
+          <button
+            class="btn-secondary btn-small"
+            onClick={() => {
+              addZone(poly());
+              setTool('none');
+            }}
+          >
+            Finish
+          </button>
+        </Show>
+      </div>
+      <div class="cb-zonelist">
+        <For each={arena.zones}>
+          {(z, i) => (
+            <div class="cb-zonelist__row">
+              <i
+                style={{
+                  background:
+                    z.kind === 'exclude' ? '#d32f2f' : ZONE_COLORS[i() % ZONE_COLORS.length],
+                }}
+              />
+              <b>{z.name}</b>
+              <span class="cb-muted">
+                {z.kind === 'exclude' ? 'excluded region' : 'zone'}, {z.shape}
+              </span>
+              <Show when={unverified(z)}>
+                <span class="cb-sp-tag" title="Read from config.yaml; placement not yet checked">
+                  loaded, not checked
+                </span>
+              </Show>
+              <span class="cb-spacer" />
+              <button
+                class="cb-link"
+                onClick={() => setArena('zones', (zs) => zs.filter((_, k) => k !== i()))}
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </For>
+      </div>
+      <Show when={snap().unverified}>
+        <div class="cb-controls">
+          <span class="cb-muted">
+            Regions from the config are loaded, but their placement on the{' '}
+            {frame()?.kind === 'blank' ? 'arena' : 'picture'} has not been checked.
+          </span>
+          <button class="btn-secondary btn-small" onClick={() => verifyZones()}>
+            Placement checked
+          </button>
+        </div>
+      </Show>
+      <For
+        each={check('zones').filter(
+          (c) => c.key === 'zones' && c.level === 'valid' && c.state === 'warn',
+        )}
+      >
+        {(c) => <div class="cb-note">{c.text}</div>}
+      </For>
+    </>
+  );
+
+  const ReviewStage = () => (
+    <>
+      <ul class="cb-sp-checks">
+        <For each={spatialCheckList()}>
+          {(c) => <CheckRow c={c} onFix={c.stage !== 'review' ? () => go(c.stage) : undefined} />}
+        </For>
+      </ul>
+      <p class="cb-muted">
+        Set: a value is there. Valid: it is consistent with the rest of the setup. Verified: checked
+        against the loaded data. Update config (top of the page) records the setup as the session's
+        config.
+      </p>
+      <details class="cb-sp-more" open={!!arena.bodyLength || tool() === 'animal'}>
+        <summary>Animal size (optional)</summary>
+        <div class="cb-instruction">
+          Measure from the <b>tip of the nose</b> to the <b>base of the tail</b>. Do not include the
+          tail. Use a frame where the animal is walking and stretched out.
+        </div>
+        <div class="cb-controls">
+          <label>
+            Length
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={arena.bodyLength?.toFixed(1) ?? ''}
+              placeholder="8"
+              onInput={(e) => {
+                setArena('bodyLine', undefined);
+                setArena('bodyLength', e.currentTarget.value ? +e.currentTarget.value : undefined);
+              }}
+            />{' '}
+            cm
+          </label>
+          {toolBtn('animal', 'Measure on the picture')}
+        </div>
+        <Show when={arena.bodyLine && !pxPerCm()}>
+          <div class="cb-note">The line is drawn, but the length needs the scale.</div>
+        </Show>
+        <p class="cb-muted">Saved in the config; no analysis uses it yet.</p>
+      </details>
+    </>
+  );
+
+  const STAGE_BODY: Record<Stage, () => JSX.Element> = {
+    frame: FrameStage,
+    outline: OutlineStage,
+    scale: ScaleStage,
+    zones: ZonesStage,
+    review: ReviewStage,
+  };
+
   return (
     <Show when={entryOf(spatialSnapshot()) === 'workspace'} fallback={<SpatialLanding />}>
     <div class="cb-panel cb-panel--wide cb-spatial">
