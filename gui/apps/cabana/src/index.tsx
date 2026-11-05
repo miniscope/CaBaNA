@@ -20,6 +20,7 @@ import './styles/auroc-setup.css';
 import './styles/peth.css';
 import './styles/decoding-guided.css';
 import './styles/results-hub.css';
+import './styles/experimental-setup.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.

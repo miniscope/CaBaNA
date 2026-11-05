@@ -1,0 +1,138 @@
+/* Experimental Setup v2: six navigation cards, and the workspace of the chosen card below. */
+.cb-es-cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin: 8px 0;
+}
+.cb-es-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 6px 7px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+.cb-es-card:hover {
+  border-color: var(--accent);
+}
+.cb-es-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cb-es-card--on {
+  border-color: var(--accent);
+  background: #eef5ff;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.cb-es-card--on .cb-es-card__title,
+.cb-es-card--on .cb-es-card__icon {
+  color: var(--accent);
+}
+.cb-es-card__icon {
+  width: 24px;
+  height: 24px;
+  color: var(--text-primary);
+}
+.cb-es-card__title {
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+}
+.cb-es-card__prio {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+.cb-es-card__prio--req {
+  color: #8a5d00;
+  font-weight: var(--font-weight-medium);
+}
+.cb-es-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cb-es-status i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 10px;
+  line-height: 1;
+}
+.cb-es-status--complete {
+  color: var(--success);
+}
+.cb-es-status--complete i {
+  background: var(--success);
+  color: #fff;
+}
+.cb-es-status--needs-attention {
+  color: #8a5d00;
+}
+.cb-es-status--needs-attention i {
+  background: #e09800;
+  color: #fff;
+  font-weight: 700;
+}
+@media (max-width: 1100px) {
+  .cb-es-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .cb-es-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cb-es-workspace {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: #fff;
+}
+.cb-es-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.cb-es-head h3 {
+  margin: 0;
+  font-size: 17px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-primary);
+}
+.cb-es-remaining {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: #8a5d00;
+}
+.cb-es-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
