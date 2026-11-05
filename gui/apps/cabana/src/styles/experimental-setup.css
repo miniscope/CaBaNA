@@ -136,3 +136,151 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Spatial setup landing: one upload area, a quieter blank-canvas action, and the steps beside it. */
+.cb-sl {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: var(--space-lg);
+  align-items: start;
+  padding: 4px 8px;
+}
+.cb-sl-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cb-sl-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px 22px;
+  border: 1.5px dashed #9bbbe3;
+  border-radius: 10px;
+  background: #f7faff;
+  text-align: center;
+  cursor: pointer;
+}
+.cb-sl-drop--over,
+.cb-sl-drop:hover {
+  border-color: var(--accent);
+  background: #eef5ff;
+}
+.cb-sl-drop:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cb-sl-drop strong {
+  font-size: 20px;
+}
+.cb-sl-drop__icon {
+  width: 84px;
+  height: 52px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.cb-sl-drop__btn {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 9px 22px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+.cb-sl-example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: center;
+}
+.cb-sl-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.cb-sl-or::before,
+.cb-sl-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-sl-blank {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 12px;
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.cb-sl-blank b {
+  color: var(--accent);
+  font-size: 15px;
+}
+.cb-sl-blank:hover b {
+  text-decoration: underline;
+}
+.cb-sl-blank span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.cb-sl-steps {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-inset);
+  padding: 12px 14px;
+}
+.cb-sl-steps h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.cb-sl-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cb-sl-steps li {
+  display: flex;
+  gap: 10px;
+}
+.cb-sl-steps li div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cb-sl-steps li span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.cb-sl-num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #dceafc;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .cb-sl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
