@@ -52,10 +52,10 @@ export function ticks(a: number, b: number, n = 6): number[] {
   return out;
 }
 
-const fmtS = (t: number, d = 1) => `${t.toFixed(d)} s`;
+export const fmtS = (t: number, d = 1) => `${t.toFixed(d)} s`;
 
 
-const posOk = () => {
+export const posOk = () => {
   const p = positionResult();
   return p && 'checks' in p ? p : undefined;
 };
@@ -65,19 +65,19 @@ export const segments = createMemo(() => {
   const p = posOk();
   return p ? positionSegments(p, maxSpeed()) : [];
 });
-const SEG = 'segments';
-const segIndex = () => Math.min(picked[SEG] ?? 0, Math.max(segments().length - 1, 0));
+export const SEG = 'segments';
+export const segIndex = () => Math.min(picked[SEG] ?? 0, Math.max(segments().length - 1, 0));
 
 /** Speed plots on screen (the card and, while open, the expanded view), so a segment can zoom them all. */
 const speedCharts = new Set<uPlot>();
-function zoomTo(range?: [number, number]): void {
+export function zoomTo(range?: [number, number]): void {
   const p = posOk();
   if (!p?.t.length) return;
   const [a, b] = range ?? [p.t[0], p.t[p.t.length - 1]];
   speedCharts.forEach((u) => u.setScale('x', { min: a, max: b }));
   setPosRange(range);
 }
-function selectSegment(i: number): void {
+export function selectSegment(i: number): void {
   const s = segments()[i];
   if (!s) return;
   setPicked(SEG, i);
@@ -86,7 +86,7 @@ function selectSegment(i: number): void {
 }
 
 /** The animal's path, in cm, with equal scales on both axes. Steps over the threshold are red. */
-function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Element {
+export function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Element {
   let canvas!: HTMLCanvasElement;
   createEffect(() => {
     const { x, y, frameT, idx, speed } = props.p;
@@ -237,7 +237,7 @@ const overlay: uPlot.Plugin = {
   },
 };
 
-function SpeedPlot(props: { p: PositionQc; h: number }): JSX.Element {
+export function SpeedPlot(props: { p: PositionQc; h: number }): JSX.Element {
   let chart: uPlot | undefined;
   /** Time of the last wheel or drag on the plot. Only those zooms are saved; loading data also resets the scale. */
   let input = 0;
@@ -294,7 +294,7 @@ function SpeedPlot(props: { p: PositionQc; h: number }): JSX.Element {
   );
 }
 
-const segLabel = (s: Segment) =>
+export const segLabel = (s: Segment) =>
   s.kind === 'jump'
     ? `Jump, ${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${s.n} steps` : ''}`
     : `Lost for ${(s.stop - s.start).toFixed(1)} s (${s.n} frames)`;
