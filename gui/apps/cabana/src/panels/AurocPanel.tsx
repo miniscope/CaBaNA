@@ -287,7 +287,12 @@ const Title = (props: { text: string; children: JSX.Element }): JSX.Element => (
 type NumKey = 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed';
 
 /** A number box; an out-of-range value is kept and marked, and the run says why it is blocked. */
-function NumInput(props: { k: NumKey; step: number; unit?: string; label?: string }): JSX.Element {
+export function NumInput(props: {
+  k: NumKey;
+  step: number;
+  unit?: string;
+  label?: string;
+}): JSX.Element {
   const r = () => AUROC_RANGES[props.k];
   const bad = () => !inRange(aurocSettings[props.k], r());
   return (
