@@ -1,14 +1,12 @@
 import { For, Show, type JSX } from 'solid-js';
-import type { CellScore, Level } from '../lib/cells.ts';
-import { eventTraceCheckList, kernelChecks } from '../lib/decon-state.ts';
+import type { CellScore } from '../lib/cells.ts';
+import { kernelChecks } from '../lib/decon-state.ts';
 import {
   cell,
   cellResult,
   cellScores,
-  colorBy,
   deconvolved,
   footprints,
-  neuralChecks,
   overlapPartner,
   pending,
   rejected,
@@ -17,13 +15,21 @@ import {
   setPendingTo,
   togglePending,
   selectCell,
-  setColorBy,
   traceMatrix,
 } from '../lib/store.ts';
 import { CellPicker } from './parts.tsx';
 import { DeconView } from './DeconQc.tsx';
 import { CellTraces } from './CellTraces.tsx';
-import { FootprintViewer } from './FootprintViewer.tsx';
+import {
+  cellChecks,
+  ColorBy,
+  flaggedCells,
+  FOOTPRINT_HELP,
+  footprintCheckList,
+  overlapPairs,
+  SquareMap,
+  WORD,
+} from './NeuralQcShared.tsx';
 import type { Category } from './QcPanel.tsx';
 import {
   Advice,
@@ -36,8 +42,6 @@ import {
   RailBox,
   ReviewActions,
 } from './QcParts.tsx';
-
-const WORD: Record<Level, string> = { good: 'Accept', warn: 'Check', bad: 'Reject' };
 
 function Score(props: { s: CellScore; partner: number }): JSX.Element {
   const s = () => props.s;
@@ -58,70 +62,6 @@ function Score(props: { s: CellScore; partner: number }): JSX.Element {
     </div>
   );
 }
-
-const cellChecks = () => [
-  ...neuralChecks().filter((c) => !c.id.startsWith('fp-')),
-  ...eventTraceCheckList(),
-];
-const footprintCheckList = () => neuralChecks().filter((c) => c.id.startsWith('fp-'));
-const overlapPairs = () => footprintCheckList().find((c) => c.id === 'fp-overlap')?.pairs ?? [];
-
-/** Cells with a Check or Reject recommendation that are not rejected yet. */
-const flaggedCells = () =>
-  (cellScores() ?? [])
-    .map((s, c) => ({ s, c }))
-    .filter((x) => x.s.overall !== 'good' && !x.s.rejected);
-
-const ColorBy = (): JSX.Element => (
-  <label class="cb-plot__tool">
-    Color by
-    <select
-      value={colorBy()}
-      onChange={(e) => setColorBy(e.currentTarget.value as 'cell' | 'quality')}
-    >
-      <option value="cell">Cell</option>
-      <option value="quality">Quality (green, amber, red)</option>
-    </select>
-  </label>
-);
-
-/** The footprint map as a square that fits the card. */
-const SquareMap = (props: { w: number; h: number }): JSX.Element => {
-  const side = () => `${Math.max(40, Math.min(props.w, props.h - 20))}px`;
-  return (
-    <>
-      <div style={{ width: side(), height: side(), margin: '0 auto' }}>
-        <FootprintViewer partners />
-      </div>
-      <div class="cb-map-key">
-        White: selected · Orange: most correlated neighbor · Cyan: overlapping partner
-      </div>
-    </>
-  );
-};
-
-const FOOTPRINT_HELP = (
-  <>
-    <Help k="What is plotted">
-      All cell footprints in one image. Each cell's pixels above a quarter of its own peak are
-      drawn, brighter closer to the peak. The overlap check counts only pixels above half the peak.
-    </Help>
-    <Help k="Axes">Pixels of the field of view, as exported by the extraction.</Help>
-    <Help k="Colors">
-      White: the selected cell. Orange: the neighbor it correlates with most. Cyan: the overlapping
-      partner picked from the pairs list. Dark gray: rejected cells. Other cells take a color per
-      cell, or green, amber or red by recommendation when Color by is Quality.
-    </Help>
-    <Help k="Linked">
-      Clicking a cell selects it everywhere: the traces, the cell scores and the lists.
-    </Help>
-    <Help k="Limits">
-      Where footprints overlap, each pixel shows the cell that is brightest there relative to its
-      own peak, except that the selected cell is drawn whole. Overlap is judged from shared pixels,
-      not from the traces.
-    </Help>
-  </>
-);
 
 function CellsView(): JSX.Element {
   const n = () => traceMatrix()?.cells ?? footprints()?.cells ?? 0;
