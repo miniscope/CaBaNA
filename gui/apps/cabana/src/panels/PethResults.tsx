@@ -1,9 +1,31 @@
 // PETH results: the header with the summary and run details, and the three views.
 
-import { createEffect, createMemo, createSignal, For, untrack, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  untrack,
+  onCleanup,
+  onMount,
+  Show,
+  type JSX,
+} from 'solid-js';
 import { pethCsv, pethCurvesCsv, pethMetadata } from '../lib/peth-export.ts';
-import { alignsOf, type PethOutcome } from '../lib/peth-run.ts';
-import { correctionText, hasTest, pUsedName, filterCells, sortCells, summarize, type CellFilter, type CellSort } from '../lib/peth-view.ts';
+import type { PethOutcome } from '../lib/peth-run.ts';
+import type { Align } from '../lib/peth.ts';
+import { alignsRun, columnsOf, inputSignalText, pethCards } from '../lib/peth-setup.ts';
+import { MetricCards } from '../components/MetricCards.tsx';
+import {
+  correctionText,
+  hasTest,
+  pUsedName,
+  filterCells,
+  sortCells,
+  summarize,
+  type CellFilter,
+  type CellSort,
+} from '../lib/peth-view.ts';
 import { downloadText } from '../lib/place-export.ts';
 import { goToStep } from '../lib/store.ts';
 import { Modal } from './AurocResults.tsx';
@@ -24,50 +46,28 @@ const VIEWS: [View, string][] = [
 
 const fmt = (n: number, d = 2) => +n.toFixed(d);
 
-function Header(props: { out: PethOutcome }): JSX.Element {
+function Header(props: { out: PethOutcome; align?: Align }): JSX.Element {
   const o = () => props.out;
-  const s = createMemo(() => summarize(o()));
-  const notEvaluated = () => o().reports.flatMap((r, b) => (r.onsets.length < o().params.minEvents ? [o().labels[b]] : []));
+  const s = createMemo(() => summarize(o(), props.align));
+  const notEvaluated = () =>
+    o().reports.flatMap((r, b) => (r.onsets.length < o().params.minEvents ? [o().labels[b]] : []));
   return (
     <div class="cb-ar-head">
       <div>
         <h2 class="cb-restitle">PETH results</h2>
         <p class="cb-muted">
+          {inputSignalText(o().prep.eventSigmaS)} aligned to bout{' '}
+          {o().settings.align === 'both' ? (props.align ?? 'onset') : o().settings.align}.{' '}
           <Show
             when={hasTest(o())}
-            fallback={
-              <>
-                Shuffle test off: curves only, no p-values and no labels · {s().evaluated} of {s().cells} cells
-                evaluated
-              </>
-            }
+            fallback={<>Shuffle test off: curves only, no p-values and no labels.</>}
           >
-            <For each={alignsOf(o().settings.align)}>
-              {(a, i) => {
-                const t = () => (o().settings.align === 'both' ? summarize(o(), a) : s());
-                return (
-                  <>
-                    <Show when={i() > 0}>
-                      <br />
-                    </Show>
-                    <Show when={o().settings.align === 'both'}>Aligned to bout {a}: </Show>
-                    <b>
-                      {t().respondingCells} of {t().evaluated}
-                    </b>{' '}
-                    cells showed a significant response to at least one selected behavior · {t().significantPairs}{' '}
-                    significant cell–behavior pairs
-                  </>
-                );
-              }}
-            </For>
-          </Show>{' '}
-          <Show when={hasTest(o())}>
-            <br />
             <span>{correctionText(o())}</span>{' '}
             <InfoTip label="About the significance test and correction">
               <p>
-                Significance compares the neural values in the response window with those in the baseline window (response
-                minus baseline), against the same difference after circular shifts of the cell's trace.
+                Significance compares the neural values in the response window with those in the
+                baseline window (response minus baseline), against the same difference after
+                circular shifts of the cell's trace.
               </p>
               <p>
                 {o().settings.align === 'both' &&
@@ -84,13 +84,16 @@ function Header(props: { out: PethOutcome }): JSX.Element {
             </p>
             <ul>
               <li>
-                <strong>Too few onsets:</strong> a behavior has fewer than {o().params.minEvents} included onsets. That
-                behavior is not evaluated for any cell.{' '}
-                {notEvaluated().length ? `In this run: ${notEvaluated().join(', ')}.` : 'None in this run.'}
+                <strong>Too few onsets:</strong> a behavior has fewer than {o().params.minEvents}{' '}
+                included onsets. That behavior is not evaluated for any cell.{' '}
+                {notEvaluated().length
+                  ? `In this run: ${notEvaluated().join(', ')}.`
+                  : 'None in this run.'}
               </li>
               <li>
-                <strong>Non-finite neural values:</strong> the cell has a missing or infinite value anywhere in the
-                session. All of its behaviors are not evaluated. {s().missingCells} cell
+                <strong>Non-finite neural values:</strong> the cell has a missing or infinite value
+                anywhere in the session. All of its behaviors are not evaluated. {s().missingCells}{' '}
+                cell
                 {s().missingCells === 1 ? '' : 's'} in this run.
               </li>
             </ul>
@@ -103,7 +106,11 @@ function Header(props: { out: PethOutcome }): JSX.Element {
 }
 
 /** Run details, Edit setup and Export, in the row of the view tabs. */
-function Actions(props: { out: PethOutcome; onEdit: () => void; onDetails: () => void }): JSX.Element {
+function Actions(props: {
+  out: PethOutcome;
+  onEdit: () => void;
+  onDetails: () => void;
+}): JSX.Element {
   const o = () => props.out;
   return (
     <div class="cb-controls">
@@ -113,7 +120,13 @@ function Actions(props: { out: PethOutcome; onEdit: () => void; onDetails: () =>
       <button class="btn-secondary" onClick={props.onEdit}>
         Edit setup
       </button>
-      <PopButton label="Export results" title="Export" width={260} class="btn-secondary" button="Export ▾">
+      <PopButton
+        label="Export results"
+        title="Export"
+        width={260}
+        class="btn-secondary"
+        button="Export ▾"
+      >
         {(close) => (
           <div class="cb-pe-menu">
             <button
@@ -137,7 +150,11 @@ function Actions(props: { out: PethOutcome; onEdit: () => void; onDetails: () =>
             <button
               class="btn-secondary"
               onClick={() => {
-                downloadText('peth_run.json', JSON.stringify(pethMetadata(o()), null, 2), 'application/json');
+                downloadText(
+                  'peth_run.json',
+                  JSON.stringify(pethMetadata(o()), null, 2),
+                  'application/json',
+                );
                 close();
               }}
             >
@@ -167,7 +184,7 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
       <div class="cb-ar-cols">
         <section>
           <h4>Inputs</h4>
-          <KV k="Neural signal" v={`Smoothed deconvolved trace (a.u.), Gaussian smoothing σ = ${o().prep.eventSigmaS} s`} />
+          <KV k="Neural signal" v={inputSignalText(o().prep.eventSigmaS)} />
           <KV k="Cells analyzed" v={o().cellIds.length.toLocaleString()} />
           <KV k="Frames in recording" v={o().input.frames.toLocaleString()} />
           <KV k="Sampling rate" v={`${fmt(o().input.fs)} Hz`} />
@@ -182,14 +199,21 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
           <KV k="Baseline" v={iv(o().params.baselineS)} />
           <KV k="Response" v={iv(o().params.responseS)} />
           <KV k="Bin size (display)" v={`${o().params.binS} s`} />
-          <KV k="Subtract each onset's baseline (display)" v={o().params.baselineSubtract ? 'Yes' : 'No'} />
+          <KV
+            k="Subtract each onset's baseline (display)"
+            v={o().params.baselineSubtract ? 'Yes' : 'No'}
+          />
         </section>
         <section>
           <h4>Bouts</h4>
           <KV k="Source" v="Unpadded behavior frame labels" />
           <KV
             k="Aligned to"
-            v={o().settings.align === 'both' ? 'Bout onset and bout offset (separate tests)' : `Bout ${o().settings.align}`}
+            v={
+              o().settings.align === 'both'
+                ? 'Bout onset and bout offset (separate tests)'
+                : `Bout ${o().settings.align}`
+            }
           />
           <KV k="Minimum bout duration" v={`${o().params.minDurationS} s`} />
           <KV k="Minimum gap to the neighboring bout" v={`${o().params.minGapS} s`} />
@@ -222,17 +246,28 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
               </For>
             </tbody>
           </table>
-          <p class="cb-muted">Each excluded bout is counted once, under the first reason that applies.</p>
+          <p class="cb-muted">
+            Each excluded bout is counted once, under the first reason that applies.
+          </p>
         </section>
         <section>
           <h4>Shuffle test</h4>
-          <Show when={hasTest(o())} fallback={<p class="cb-muted">Off: no p-values and no labels.</p>}>
+          <Show
+            when={hasTest(o())}
+            fallback={<p class="cb-muted">Off: no p-values and no labels.</p>}
+          >
             <KV k="Method" v="Circular shift of each cell's trace, onsets fixed" />
-            <KV k="Minimum shift" v={`${o().minShiftS} s${o().timescale ? ' (auto)' : ' (manual)'}`} />
+            <KV
+              k="Minimum shift"
+              v={`${o().minShiftS} s${o().timescale ? ' (auto)' : ' (manual)'}`}
+            />
             <KV k="Shuffles" v={s().nShuffles.toLocaleString()} />
             <KV k="Unique shifts" v={o().uniqueShifts.toLocaleString()} />
             <KV k="Random seed" v={s().seed} />
-            <KV k="Significance level" v={`α = ${s().alpha} (two-sided, ${pUsedName(o()).toLowerCase()})`} />
+            <KV
+              k="Significance level"
+              v={`α = ${s().alpha} (two-sided, ${pUsedName(o()).toLowerCase()})`}
+            />
             <KV
               k="Correction"
               v={
@@ -243,8 +278,8 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
             />
             <Show when={o().uniqueShifts < s().nShuffles}>
               <p class="cb-muted">
-                Only {o().uniqueShifts.toLocaleString()} distinct shifts were possible; they were reused to make{' '}
-                {s().nShuffles.toLocaleString()} shuffles.
+                Only {o().uniqueShifts.toLocaleString()} distinct shifts were possible; they were
+                reused to make {s().nShuffles.toLocaleString()} shuffles.
               </p>
             </Show>
           </Show>
@@ -255,7 +290,10 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
             <KV k="Shifts" v={s().bandShifts} />
             <KV k="Random seed" v={s().bandSeed} />
             <KV k="Minimum shift" v={`${s().bandMinShiftS} s`} />
-            <KV k="Latency" v={`first bin at or after 0 starting ${s().latencyBins} consecutive bins all above or all below the band (descriptive; same-direction rule, not in the framework)`} />
+            <KV
+              k="Latency"
+              v={`first bin at or after 0 starting ${s().latencyBins} consecutive bins all above or all below the band (descriptive; same-direction rule, not in the framework)`}
+            />
           </Show>
           <h4>Pre vs post Wilcoxon (descriptive)</h4>
           <KV k="Shown" v={s().wilcoxon ? 'Yes' : 'No'} />
@@ -264,13 +302,21 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
           <h4>Not evaluated</h4>
           <KV
             k="Cells with non-finite neural values"
-            v={o().cellsMissing.length ? o().cellsMissing.map((c) => o().cellIds[c] + 1).join(', ') : 'None'}
+            v={
+              o().cellsMissing.length
+                ? o()
+                    .cellsMissing.map((c) => o().cellIds[c] + 1)
+                    .join(', ')
+                : 'None'
+            }
           />
           <KV
             k={`Behaviors with fewer than ${o().params.minEvents} onsets`}
             v={
               o()
-                .reports.flatMap((r, b) => (r.onsets.length < o().params.minEvents ? [o().labels[b]] : []))
+                .reports.flatMap((r, b) =>
+                  r.onsets.length < o().params.minEvents ? [o().labels[b]] : [],
+                )
                 .join(', ') || 'None'
             }
           />
@@ -281,8 +327,8 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
               <h4>Calculation details</h4>
               <div class="cb-muted">
                 <p>
-                  Neural data decorrelates in {fmt(t().tauNeuralS)} s (median over cells) and behavior in{' '}
-                  {fmt(t().tauBehaviorS)} s. {t().note}.
+                  Neural data decorrelates in {fmt(t().tauNeuralS)} s (median over cells) and
+                  behavior in {fmt(t().tauBehaviorS)} s. {t().note}.
                 </p>
               </div>
             </section>
@@ -290,12 +336,18 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
         </Show>
       </div>
       <p class="cb-muted">
-        Completed in {Math.max(1, Math.round(o().seconds))} s. Shifted values for a cell are recomputed from the stored
-        shifts, so they are the draws the p-values came from.
+        Completed in {Math.max(1, Math.round(o().seconds))} s. Shifted values for a cell are
+        recomputed from the stored shifts, so they are the draws the p-values came from.
       </p>
       <button
         class="btn-secondary"
-        onClick={() => downloadText('peth_run.json', JSON.stringify(pethMetadata(o()), null, 2), 'application/json')}
+        onClick={() =>
+          downloadText(
+            'peth_run.json',
+            JSON.stringify(pethMetadata(o()), null, 2),
+            'application/json',
+          )
+        }
       >
         Export run metadata
       </button>
@@ -308,8 +360,18 @@ export function PethResults(props: { out: PethOutcome; onEdit: () => void }): JS
   // Selection and sort live here, so no view loses them when another opens.
   const [view, setView] = createSignal<View>('population');
   const [details, setDetails] = createSignal(false);
-  const firstReady = () => Math.max(0, o().reports.findIndex((r) => r.onsets.length >= o().params.minEvents));
+  // With both alignments, one is shown at a time; cards, lists and classifications never mix them.
+  const [alignPick, setAlignPick] = createSignal<Align>('onset');
+  const aligns = () => alignsRun(props.out);
+  const align = (): Align | undefined => (aligns().length > 1 ? alignPick() : undefined);
+  const cols = createMemo(() => columnsOf(o(), align()));
+  const firstReady = () =>
+    cols().find((j) => o().reports[j].onsets.length >= o().params.minEvents) ?? cols()[0] ?? 0;
   const [b, setB] = createSignal(firstReady());
+  const pickAlign = (a: Align) => {
+    setAlignPick(a);
+    setB(firstReady());
+  };
   const [sort, setSort] = createSignal<CellSort>('response');
   const [filter, setFilter] = createSignal<CellFilter>('all');
   const order = createMemo(() => filterCells(o(), b(), sortCells(o(), b(), sort()), filter()));
@@ -349,12 +411,32 @@ export function PethResults(props: { out: PethOutcome; onEdit: () => void }): JS
   onMount(() => onCleanup(fitToWindow(root)));
   return (
     <div class="cb-results cb-ar cb-pe" ref={root}>
-      <Header out={props.out} />
+      <Header out={props.out} align={align()} />
+      <MetricCards label="Result summary" cards={pethCards(props.out, align())} />
       <div class="cb-ar-tool">
+        <Show when={aligns().length > 1}>
+          <div class="cb-seg" role="group" aria-label="Alignment">
+            <For each={aligns()}>
+              {(a) => (
+                <button
+                  classList={{ 'cb-seg__on': alignPick() === a }}
+                  aria-pressed={alignPick() === a}
+                  onClick={() => pickAlign(a)}
+                >
+                  {a === 'onset' ? 'Onset' : 'Offset'}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
         <div class="cb-seg" role="group" aria-label="Results view">
           <For each={VIEWS}>
             {([id, label]) => (
-              <button classList={{ 'cb-seg__on': view() === id }} aria-pressed={view() === id} onClick={() => setView(id)}>
+              <button
+                classList={{ 'cb-seg__on': view() === id }}
+                aria-pressed={view() === id}
+                onClick={() => setView(id)}
+              >
                 {label}
               </button>
             )}
