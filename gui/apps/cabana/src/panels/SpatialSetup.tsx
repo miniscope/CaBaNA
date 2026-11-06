@@ -833,248 +833,170 @@ export function SpatialSetup(): JSX.Element {
           </div>
 
 
-        <div class="cb-arena-view">
-          <div class="cb-tabs" role="tablist">
-            <For
-              each={
-                [
-                  ['top', 'Top view'],
-                  ['tracking', 'Tracking example'],
-                  ['zones', 'Zone occupancy'],
-                ] as const
-              }
-            >
-              {([id, label]) => (
-                <button
-                  role="tab"
-                  aria-selected={viewTab() === id}
-                  classList={{ 'cb-tab--on': viewTab() === id }}
-                  onClick={() => setViewTab(id)}
+          <div class="cb-arena-view">
+            <div class="cb-sp-viewbar">
+              <div class="cb-tabs" role="tablist" aria-label="Arena views">
+                <For
+                  each={
+                    [
+                      ['top', 'Arena'],
+                      ['tracking', 'Tracking example'],
+                      ['zones', 'Zone occupancy'],
+                    ] as const
+                  }
                 >
-                  {label}
-                </button>
-              )}
-            </For>
-          </div>
-          <Show when={viewTab() === 'tracking'}>
-            <Trajectory bare mode="path" />
-          </Show>
-          <Show when={viewTab() === 'zones'}>
-            <div class="cb-arena-zones">
-              <Trajectory bare mode="time" />
-              <Show
-                when={zoneShare().length}
-                fallback={
-                  <div class="cb-note">
-                    Draw zones and load position to see how much time the animal spends in each
-                    zone.
-                  </div>
-                }
-              >
-                <table class="cb-stats">
-                  <thead>
-                    <tr>
-                      <th>Zone</th>
-                      <th>Time inside</th>
-                      <th>Share of tracked time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={zoneShare()}>
-                      {(z) => (
-                        <tr>
-                          <td>
-                            <i
-                              class="cb-dot"
-                              style={{ background: ZONE_COLORS[z.index % ZONE_COLORS.length] }}
-                            />{' '}
-                            {z.name}
-                          </td>
-                          <td>{z.seconds.toFixed(0)} s</td>
-                          <td>{z.pct.toFixed(1)}%</td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              </Show>
+                  {([id, label]) => (
+                    <button
+                      role="tab"
+                      aria-selected={viewTab() === id}
+                      classList={{ 'cb-tab--on': viewTab() === id }}
+                      onClick={() => setViewTab(id)}
+                    >
+                      {label}
+                    </button>
+                  )}
+                </For>
+              </div>
             </div>
-          </Show>
-          <div style={{ display: viewTab() === 'top' ? 'flex' : 'none' }}>
-            <Show when={tool() !== 'none'}>
-              <div class="cb-note">{hint()}</div>
+            <Show when={viewTab() === 'tracking'}>
+              <Trajectory bare mode="path" />
             </Show>
-            <Show when={frame() && !pxPerCm() && tool() === 'none'}>
-              <div class="cb-note">
-                Next: press Draw the arena (Arena outline and scale) and drag across the arena. That
-                sets the scale, and the bins and the time in each bin appear.
+            <Show when={viewTab() === 'zones'}>
+              <div class="cb-arena-zones">
+                <Trajectory bare mode="time" />
+                <Show
+                  when={zoneShare().length}
+                  fallback={
+                    <div class="cb-note">
+                      Draw zones and load position to see how much time the animal spends in each
+                      zone.
+                    </div>
+                  }
+                >
+                  <table class="cb-stats">
+                    <thead>
+                      <tr>
+                        <th>Zone</th>
+                        <th>Time inside</th>
+                        <th>Share of tracked time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={zoneShare()}>
+                        {(z) => (
+                          <tr>
+                            <td>
+                              <i
+                                class="cb-dot"
+                                style={{ background: ZONE_COLORS[z.index % ZONE_COLORS.length] }}
+                              />{' '}
+                              {z.name}
+                            </td>
+                            <td>{z.seconds.toFixed(0)} s</td>
+                            <td>{z.pct.toFixed(1)}%</td>
+                          </tr>
+                        )}
+                      </For>
+                    </tbody>
+                  </table>
+                </Show>
               </div>
             </Show>
-            <Show
-              when={frame()}
-              fallback={
-                <div class="cb-empty">
-                  Choose a picture or video, or use a blank arena, to start drawing.
+            <div style={{ display: viewTab() === 'top' ? 'flex' : 'none' }}>
+              <Show when={tool() !== 'none'}>
+                <div class="cb-note">{hint()}</div>
+              </Show>
+              <Show when={frame()}>
+                <div class="cb-arena-holder" ref={fitHolder}>
+                  <canvas
+                    ref={canvas}
+                    class="cb-arena-canvas"
+                    classList={{ 'cb-arena-canvas--draw': tool() !== 'none' }}
+                    onMouseDown={(e) => {
+                      if (dragTool()) setDrag([pt(e), pt(e)]);
+                      else if (freehand()) setPoly([pt(e)]);
+                    }}
+                    onMouseMove={(e) => {
+                      if (drag()) setDrag([drag()![0], pt(e)]);
+                      else if (freehand() && poly().length) {
+                        const p = pt(e);
+                        const last = poly()[poly().length - 1];
+                        if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3)
+                          setPoly((q) => [...q, p]);
+                      } else onHover(e);
+                    }}
+                    onMouseLeave={() => setHover(undefined)}
+                    onMouseUp={(e) => {
+                      if (freehand() && poly().length > 2) {
+                        addZone(poly());
+                        setTool('none');
+                        return;
+                      }
+                      const d = drag();
+                      setDrag(undefined);
+                      if (d && Math.hypot(d[0][0] - pt(e)[0], d[0][1] - pt(e)[1]) > 4)
+                        commitDrag(d[0], pt(e));
+                    }}
+                    onClick={onClick}
+                    onDblClick={() => {
+                      if (tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2) {
+                        addZone(poly());
+                        setTool('none');
+                      }
+                    }}
+                    aria-label="Picture of the arena"
+                  />
                 </div>
-              }
-            >
-              <div class="cb-arena-holder" ref={fitHolder}>
-                <canvas
-                  ref={canvas}
-                  class="cb-arena-canvas"
-                  classList={{ 'cb-arena-canvas--draw': tool() !== 'none' }}
-                  onMouseDown={(e) => {
-                    if (dragTool()) setDrag([pt(e), pt(e)]);
-                    else if (freehand()) setPoly([pt(e)]);
-                  }}
-                  onMouseMove={(e) => {
-                    if (drag()) setDrag([drag()![0], pt(e)]);
-                    else if (freehand() && poly().length) {
-                      const p = pt(e);
-                      const last = poly()[poly().length - 1];
-                      if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3) setPoly((q) => [...q, p]);
-                    } else onHover(e);
-                  }}
-                  onMouseLeave={() => setHover(undefined)}
-                  onMouseUp={(e) => {
-                    if (freehand() && poly().length > 2) {
-                      addZone(poly());
-                      setTool('none');
-                      return;
-                    }
-                    const d = drag();
-                    setDrag(undefined);
-                    if (d && Math.hypot(d[0][0] - pt(e)[0], d[0][1] - pt(e)[1]) > 4)
-                      commitDrag(d[0], pt(e));
-                  }}
-                  onClick={onClick}
-                  onDblClick={() => {
-                    if (tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2) {
-                      addZone(poly());
-                      setTool('none');
-                    }
-                  }}
-                  aria-label="Picture of the arena"
-                />
-              </div>
-              <label class="cb-muted">
-                <input
-                  type="checkbox"
-                  checked={showBins()}
-                  onChange={(e) => setShowBins(e.currentTarget.checked)}
-                />{' '}
-                Show place map bins (size is set in Preprocess)
-              </label>
-              <Show when={showBins() && binData()}>
-                <div class="cb-legend">
-                  <Show when={binData()!.occ}>
-                    <span>Time in a bin</span>
-                    <span>0 s</span>
-                    <span class="cb-legend__bar" />
-                    <span>{binData()!.top.toFixed(1)} s or more</span>
-                    <span class="cb-legend__item">
-                      <i style={{ background: 'rgba(215,50,50,0.35)' }} />
-                      under {arena.minOccupancy} s
-                    </span>
+                <div class="cb-sp-under">
+                  <label class="cb-muted">
+                    <input
+                      type="checkbox"
+                      checked={showBins()}
+                      onChange={(e) => setShowBins(e.currentTarget.checked)}
+                    />{' '}
+                    Show place map bins (size is set in Preprocess)
+                  </label>
+                  <Show when={showBins() && binData()}>
+                    <div class="cb-legend">
+                      <Show when={binData()!.occ}>
+                        <span>Time in a bin</span>
+                        <span>0 s</span>
+                        <span class="cb-legend__bar" />
+                        <span>{binData()!.top.toFixed(1)} s or more</span>
+                        <span class="cb-legend__item">
+                          <i style={{ background: 'rgba(215,50,50,0.35)' }} />
+                          under {arena.minOccupancy} s
+                        </span>
+                      </Show>
+                      <span class="cb-legend__item">
+                        <i style={{ background: 'rgba(90,90,90,0.5)' }} />
+                        excluded
+                      </span>
+                    </div>
                   </Show>
-                  <span class="cb-legend__item">
-                    <i style={{ background: 'rgba(90,90,90,0.5)' }} />
-                    excluded
+                  <span class="cb-muted">
+                    <Show when={hover()}>
+                      <b>
+                        Bin at x {(hover()!.i * effectiveBin()).toFixed(1)} to{' '}
+                        {((hover()!.i + 1) * effectiveBin()).toFixed(1)} cm, y{' '}
+                        {(hover()!.j * effectiveBin()).toFixed(1)} to{' '}
+                        {((hover()!.j + 1) * effectiveBin()).toFixed(1)} cm:{' '}
+                        {!hover()!.open
+                          ? 'excluded'
+                          : hover()!.sec === undefined
+                            ? 'no position loaded'
+                            : `${hover()!.sec!.toFixed(2)} s`}
+                        .
+                      </b>{' '}
+                    </Show>
+                    Blue outline: arena. Dashed red: excluded region.
                   </span>
                 </div>
               </Show>
-              <div class="cb-muted">
-                <Show when={hover()}>
-                  <b>
-                    Bin at x {(hover()!.i * effectiveBin()).toFixed(1)} to{' '}
-                    {((hover()!.i + 1) * effectiveBin()).toFixed(1)} cm, y{' '}
-                    {(hover()!.j * effectiveBin()).toFixed(1)} to{' '}
-                    {((hover()!.j + 1) * effectiveBin()).toFixed(1)} cm:{' '}
-                    {!hover()!.open
-                      ? 'excluded'
-                      : hover()!.sec === undefined
-                        ? 'no position loaded'
-                        : `${hover()!.sec!.toFixed(2)} s`}
-                    .
-                  </b>{' '}
-                </Show>
-                {frame()!.name}. Blue outline: arena. Dashed red: excluded region.
-              </div>
-            </Show>
-            <section class="cb-sp-picture">
-              <Note>
-                Upload one frame from the behavior camera, or a video. For a video, CaBaNA builds a
-                picture of the empty arena from the median over many frames, since the animal is in
-                a different place in each one. Drag the slider to a frame with the animal in it to
-                measure the animal.
-              </Note>
-              <Show when={exampleMedia()}>
-                <div class="cb-note">
-                  Example loaded: {EXAMPLES.find((x) => x.id === exampleMedia()!.id)?.note}
-                  <div class="cb-controls">
-                    <Show when={exampleMedia()!.frame}>
-                      <button
-                        class="btn-secondary btn-small"
-                        onClick={() => void loadBackground(exampleMedia()!.frame)}
-                      >
-                        Use the example picture
-                      </button>
-                    </Show>
-                    <Show when={exampleMedia()!.video}>
-                      <button
-                        class="btn-secondary btn-small"
-                        onClick={() => void loadBackground(exampleMedia()!.video)}
-                      >
-                        Use the example video
-                      </button>
-                    </Show>
-                  </div>
-                </div>
-              </Show>
-              <div class="cb-controls">
-                <label class="btn-secondary btn-small cb-file">
-                  Choose image or video
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*,video/*"
-                    onChange={(e) => void loadBackground(e.currentTarget.files?.[0])}
-                  />
-                </label>
-                <button class="btn-secondary btn-small" onClick={useBlankCanvas}>
-                  No picture: use a blank arena
-                </button>
-              </div>
-              <Show when={busy()}>
-                <div class="cb-muted">{busy()}</div>
-              </Show>
-              <Show when={loadError()}>
-                <div class="cb-error">{loadError()}</div>
-              </Show>
-              <Show when={frame()?.kind === 'video'}>
-                <div class="cb-controls">
-                  <label>
-                    Frame at
-                    <input
-                      type="range"
-                      min="0"
-                      max={frame()!.duration}
-                      step="0.1"
-                      value={scrubT()}
-                      onChange={(e) => void showVideoAt(+e.currentTarget.value)}
-                    />
-                    {scrubT().toFixed(1)} s
-                  </label>
-                  <button class="btn-secondary btn-small" onClick={() => void useEmptyArena()}>
-                    Show the empty arena
-                  </button>
-                </div>
-              </Show>
-            </section>
+            </div>
           </div>
         </div>
       </div>
-    </div>
     </Show>
   );
 }
