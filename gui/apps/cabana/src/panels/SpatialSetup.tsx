@@ -797,293 +797,41 @@ export function SpatialSetup(): JSX.Element {
   };
 
   return (
-    <Show when={entryOf(spatialSnapshot()) === 'workspace'} fallback={<SpatialLanding />}>
-    <div class="cb-panel cb-panel--wide cb-spatial">
-      <Show when={pendingZones()?.length}>
-        <div class="cb-note">
-          {pendingZones()!.length} zones and excluded regions from {loaded.config?.name} are waiting
-          to be placed. Outline the arena or use a blank arena and they appear.
+    <Show when={entryOf(snap()) === 'workspace'} fallback={<SpatialLanding />}>
+      <div class="cb-spatial">
+        <div class="cb-sp-top">
+          <StageBar stages={stages()} current={stage()} snap={snap()} onPick={go} />
+          <BackgroundRow onChangeFrame={() => go('frame')} />
         </div>
-      </Show>
-      <div class="cb-arena-grid">
-        <nav class="cb-sp-list" aria-label="Spatial setup sections">
-          <For each={SECTIONS}>
-            {([id, label, hint]) => (
-              <button
-                class="cb-sp-item"
-                classList={{ 'cb-sp-item--on': section() === id }}
-                aria-current={section() === id ? 'true' : undefined}
-                onClick={() => setSection(id)}
-              >
-                <b>{label}</b>
-                <span>{hint}</span>
-              </button>
-            )}
-          </For>
-        </nav>
-        <div class="cb-arena-controls">
-          <RegionNoticeBox />
-          <div class="cb-sp-cards" classList={{ 'cb-hide': section() !== 'arena' }}>
-            <section class="cb-sp-card">
-              <h3>
-                <span class="cb-sp-num">1</span> Draw the arena
-              </h3>
-              <div class="cb-muted">Define the arena boundary.</div>
-              <div class="cb-controls">
-                <label>
-                  Shape
-                  <select
-                    value={arena.shape}
-                    onChange={(e) =>
-                      setArena('shape', e.currentTarget.value as 'rectangle' | 'circle')
-                    }
-                  >
-                    <option value="rectangle">Rectangle</option>
-                    <option value="circle">Circle</option>
-                  </select>
-                </label>
-                {toolBtn('arena', 'Draw the arena')}
-              </div>
-              <div class="cb-muted">
-                {arena.shape === 'circle'
-                  ? 'Drag from one side of the arena to the other.'
-                  : 'Drag from one corner to the opposite corner.'}
-              </div>
-            </section>
-
-            <section class="cb-sp-card">
-              <h3>
-                <span class="cb-sp-num">2</span> Set the scale
-              </h3>
-              <div class="cb-muted">Convert pixels to real-world size.</div>
-              <div class="cb-controls">
-                <span>Position file units</span>
-                <div class="cb-seg">
-                  <For
-                    each={
-                      [
-                        ['cm', 'cm'],
-                        ['px', 'pixels'],
-                      ] as const
-                    }
-                  >
-                    {([v, label]) => (
-                      <button
-                        classList={{ 'cb-seg__on': source.positionUnit === v }}
-                        onClick={() => setSource('positionUnit', v)}
-                      >
-                        {label}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <div class="cb-controls">
-                <label>
-                  Scale from
-                  <select
-                    value={arena.scaleMode}
-                    onChange={(e) =>
-                      setArena('scaleMode', e.currentTarget.value as 'arena' | 'distance')
-                    }
-                  >
-                    <option value="arena">The arena's real size</option>
-                    <option value="distance">A known distance</option>
-                  </select>
-                </label>
-              </div>
-              <Show when={arena.scaleMode === 'arena'}>
-                <div class="cb-controls">
-                  <label>
-                    {arena.shape === 'circle' ? 'Diameter' : 'Width'}
-                    <input
-                      type="number"
-                      min="1"
-                      value={arena.width}
-                      onChange={num((v) => setArenaSize(v, arena.height), 1)}
-                    />{' '}
-                    cm
-                  </label>
-                  <Show when={arena.shape === 'rectangle'}>
-                    <label>
-                      Height
-                      <input
-                        type="number"
-                        min="1"
-                        value={arena.height}
-                        onChange={num((v) => setArenaSize(arena.width, v), 1)}
-                      />{' '}
-                      cm
-                    </label>
-                  </Show>
-                </div>
-                <Show
-                  when={
-                    arena.box &&
-                    arena.shape === 'rectangle' &&
-                    Math.abs(arena.box.w / arena.width - arena.box.h / arena.height) /
-                      (arena.box.w / arena.width) >
-                      0.05
-                  }
-                >
-                  <div class="cb-note">
-                    The drawn shape and the width and height do not have the same proportions.
-                    Redraw the arena, or check the sizes.
-                  </div>
-                </Show>
+        <div class="cb-sp-grid">
+          <div class="cb-sp-side">
+            <div class="cb-sp-stage">
+              <RegionNoticeBox />
+              <h4>{STAGE_LABEL[stage()]}</h4>
+              <Dynamic component={STAGE_BODY[stage()]} />
+            </div>
+            <div class="cb-sp-foot">
+              <Show when={stage() !== 'review' && firstOpen(spatialCheckList())}>
+                <div class="cb-sp-remaining">{firstOpen(spatialCheckList())}</div>
               </Show>
-              <Show when={arena.scaleMode === 'distance'}>
-                <div class="cb-controls">
-                  {toolBtn('distance', 'Draw a known distance')}
-                  <label>
-                    It is
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.5"
-                      value={arena.lineCm}
-                      onInput={num((v) => setArena('lineCm', v), 0.1)}
-                    />{' '}
-                    cm
-                  </label>
-                </div>
-              </Show>
-              <div class="cb-muted">
-                Scale:{' '}
-                {pxPerCm()
-                  ? `${pxPerCm()!.toFixed(2)} pixels per cm. Arena ${sizeCm()[0].toFixed(1)}${arena.shape === 'circle' ? '' : ` x ${sizeCm()[1].toFixed(1)}`} cm.`
-                  : 'draw the arena and set the scale.'}
-              </div>
-            </section>
-          </div>
-
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 'zones' }}>
-            <h3>Zones and excluded regions</h3>
-            <Note>
-              Zones are places the analyses compare, such as center, reward or an object. Excluded
-              regions are places the animal cannot go, such as walls or an enclosure. They are left
-              out of place maps so they do not look unvisited.
-            </Note>
-            <div class="cb-controls">
-              <label>
-                Type
-                <select
-                  value={zoneKind()}
-                  onChange={(e) => setZoneKind(e.currentTarget.value as 'zone' | 'exclude')}
-                >
-                  <option value="zone">Zone</option>
-                  <option value="exclude">Excluded region</option>
-                </select>
-              </label>
-              <label>
-                Shape
-                <select
-                  value={zoneShape()}
-                  onChange={(e) => {
-                    setZoneShape(e.currentTarget.value as ReturnType<typeof zoneShape>);
-                    setPoly([]);
-                  }}
-                >
-                  <option value="rect">Rectangle</option>
-                  <option value="square">Square</option>
-                  <option value="circle">Circle</option>
-                  <option value="polygon">Polygon (click corners)</option>
-                  <option value="freehand">Free draw</option>
-                </select>
-              </label>
-              <label>
-                Name
-                <input
-                  type="text"
-                  placeholder="center"
-                  value={zoneName()}
-                  onInput={(e) => setZoneName(e.currentTarget.value)}
-                  aria-invalid={!!takenName()}
-                />
-              </label>
-              <Show when={takenName()} fallback={toolBtn('zone', '+ Add zone')}>
-                <span class="cb-error" role="alert">
-                  {`A ${regionGroup(zoneKind(), zoneShape())} named "${takenName()}" already exists. Choose another name.`}
-                </span>
-              </Show>
-              <Show when={tool() === 'zone' && zoneShape() === 'polygon' && poly().length > 2}>
+              <div class="cb-controls">
                 <button
                   class="btn-secondary btn-small"
-                  onClick={() => {
-                    addZone(poly());
-                    setTool('none');
-                  }}
+                  disabled={!step(-1)}
+                  onClick={() => go(step(-1)!)}
                 >
-                  Finish
+                  Back
                 </button>
-              </Show>
-            </div>
-            <div class="cb-zonelist">
-              <For each={arena.zones}>
-                {(z, i) => (
-                  <div class="cb-zonelist__row">
-                    <i
-                      style={{
-                        background:
-                          z.kind === 'exclude' ? '#d32f2f' : ZONE_COLORS[i() % ZONE_COLORS.length],
-                      }}
-                    />
-                    <b>{z.name}</b>
-                    <span class="cb-muted">
-                      {z.kind === 'exclude' ? 'excluded region' : 'zone'}, {z.shape}
-                    </span>
-                    <span class="cb-spacer" />
-                    <button
-                      class="cb-link"
-                      onClick={() => setArena('zones', (zs) => zs.filter((_, k) => k !== i()))}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </For>
-            </div>
-          </section>
-
-          <section class="cb-group" classList={{ 'cb-hide': section() !== 'animal' }}>
-            <h3>Animal size</h3>
-            <Note>
-              Use a frame where the animal is walking and stretched out, not rearing or curled up.
-              Type it in, or draw it on a frame with the animal in it (this needs the scale).
-            </Note>
-            <div class="cb-instruction">
-              Measure from the <b>tip of the nose</b> to the <b>base of the tail</b>. Do not include
-              the tail.
-            </div>
-            <div class="cb-controls">
-              <label>
-                Length, nose tip to tail base
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={arena.bodyLength?.toFixed(1) ?? ''}
-                  placeholder="8"
-                  onInput={(e) => {
-                    setArena('bodyLine', undefined);
-                    setArena(
-                      'bodyLength',
-                      e.currentTarget.value ? +e.currentTarget.value : undefined,
-                    );
-                  }}
-                />{' '}
-                cm
-              </label>
-              {toolBtn('animal', 'Measure on the picture')}
-            </div>
-            <Show when={arena.bodyLine && !pxPerCm()}>
-              <div class="cb-note">
-                The line is drawn, but the length needs the scale. Draw the arena first (Arena
-                outline and scale).
+                <span class="cb-spacer" />
+                <Show when={step(1)}>
+                  <button class="btn-primary btn-small" onClick={() => go(step(1)!)}>
+                    Continue to {STAGE_LABEL[step(1)!]}
+                  </button>
+                </Show>
               </div>
-            </Show>
-          </section>
-        </div>
+            </div>
+          </div>
+
 
         <div class="cb-arena-view">
           <div class="cb-tabs" role="tablist">
