@@ -10,7 +10,9 @@ import {
   type JSX,
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { Note } from './parts.tsx';
+import { Heatmap } from './AurocPopulationHeatmap.tsx';
+import { BehaviorSummary } from './AurocPopulationSummary.tsx';
+import { Header } from './AurocResultsHeader.tsx';
 import { MIN_FRAMES, type Response } from '../lib/auroc.ts';
 import { aurocCsv, aurocMetadata } from '../lib/auroc-export.ts';
 import {
@@ -30,7 +32,6 @@ import { download } from '../lib/export-figure.ts';
 import { openedRun } from '../lib/results-nav.ts';
 import { latest } from '../lib/runs.ts';
 import {
-  aurocColor,
   aurocOf,
   pAdjOf,
   pRawOf,
@@ -42,14 +43,13 @@ import {
   summarize,
 } from '../lib/auroc-view.ts';
 import { downloadText } from '../lib/place-export.ts';
-import { deconvolved, goToStep } from '../lib/store.ts';
+import { deconvolved, footprints, goToStep } from '../lib/store.ts';
 import { Footprint } from './FootprintStrip.tsx';
 import { createSize } from './QcParts.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Popover } from './Popover.tsx';
-import { AurocScale, behaviorColor } from './AurocPanel.tsx';
+import { behaviorColor } from './AurocPanel.tsx';
 import { fitToWindow } from './QcPanel.tsx';
-import { ExportMenu } from './results/ExportMenu.tsx';
 import { RunDetailsBody } from './results/RunDetails.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
@@ -57,10 +57,10 @@ import { SavedRunBar } from './results/SavedRunBar.tsx';
 type View = 'inspector' | 'heatmap' | 'summary';
 const VIEWS: [View, string][] = [
   ['inspector', 'Cell inspector'],
-  ['heatmap', 'Tuning heatmap'],
-  ['summary', 'Behavior summary'],
+  ['heatmap', 'Population heatmap'],
+  ['summary', 'Population summary'],
 ];
-type Sort = 'strength' | 'auroc' | 'cell';
+type Sort = 'overall' | 'strength' | 'auroc' | 'cell';
 type Filter = Response | 'all';
 // Cells per page of the list: as many rows as fit, set from the list's height.
 const [cellPage, setCellPage] = createSignal(10);
@@ -79,16 +79,16 @@ export const Resp = (props: { r: Response }): JSX.Element => (
 export const RESPONSE_NOTE = (
   <>
     <p>
-      A cell-behavior pair is <strong>Higher (excited)</strong> when the adjusted p-value (the
+      A cell-behavior pair is <strong>Higher activity</strong> when the adjusted p-value (the
       uncorrected p-value with no correction) is below α and auROC is above 0.5, and{' '}
-      <strong>Lower (inhibited)</strong> when it is below α and auROC is below 0.5. Otherwise it is{' '}
+      <strong>Lower activity</strong> when it is below α and auROC is below 0.5. Otherwise it is{' '}
       <strong>Not significant</strong>. <strong>Not evaluated</strong> means auROC was undefined:
       the cell has a missing neural value among the included frames, or the behavior has fewer than{' '}
       {MIN_FRAMES} included frames during or outside it.
     </p>
     <p>
       Higher and Lower describe neural values during the behavior relative to the reference group.
-      They do not imply a mechanism such as synaptic excitation or inhibition.
+      They do not imply a mechanism.
     </p>
     <p>
       Not significant is not evidence of no relationship. A direction is shown only for significant
@@ -721,94 +721,6 @@ function RunState(props: { out: AurocOutcome; onEdit: () => void }): JSX.Element
   );
 }
 
-function Header(props: {
-  out: AurocOutcome;
-  onEdit: () => void;
-  onDetails: () => void;
-}): JSX.Element {
-  const s = createMemo(() => summarize(props.out));
-  const o = () => props.out;
-  const method = () =>
-    `${o().settings.method === 'speed' ? 'Speed-matched circular shift' : 'Circular shift'}, ${o().settings.nShuffles.toLocaleString()} shuffles`;
-  const maxStat = () => o().settings.correction === 'max_stat';
-  return (
-    <>
-      <div class="cb-ar-head">
-        <div>
-          <h2 class="cb-restitle">auROC results</h2>
-        </div>
-        <div class="cb-controls">
-          <button class="btn-secondary" aria-haspopup="dialog" onClick={props.onDetails}>
-            Run details
-          </button>
-          <button class="btn-secondary" onClick={props.onEdit}>
-            Edit settings
-          </button>
-          <ExportMenu label="Export results" groups={exportGroups(o())} />
-        </div>
-      </div>
-      <div class="cb-ar-strip">
-        <div>
-          <strong class="cb-auroc-big">{s().respondingCells}</strong> / {s().evaluated} evaluated
-          cells ({pct(s().respondingCells, s().evaluated)})
-          <div class="cb-muted">
-            Unique cells significant for at least one behavior · {s().missingCells} not evaluated
-            <InfoTip label="Why a cell may not be evaluated">
-              <p>
-                auROC is left undefined, and the result is marked <strong>Not evaluated</strong>, in
-                two cases:
-              </p>
-              <ul>
-                <li>
-                  <strong>Missing neural values:</strong> the cell has a missing value in any
-                  included frame. All of its behaviors are not evaluated. {s().missingCells} cell
-                  {s().missingCells === 1 ? '' : 's'} in this run.
-                </li>
-                <li>
-                  <strong>Too few frames:</strong> a behavior has fewer than {MIN_FRAMES} included
-                  frames during it or outside it. That behavior is not evaluated for any cell.
-                  {s().tooFewFrames.length
-                    ? ` In this run: ${s().tooFewFrames.join(', ')}.`
-                    : ' None in this run.'}
-                </li>
-              </ul>
-              <p>
-                Not evaluated is not zero and not nonsignificant. These results are left out of the
-                evaluated-cell and evaluated-pair counts.
-              </p>
-            </InfoTip>
-          </div>
-        </div>
-        <div>
-          <strong class="cb-auroc-big">{s().significantPairs}</strong> / {s().evaluatedPairs}{' '}
-          evaluated pairs ({pct(s().significantPairs, s().evaluatedPairs)})
-          <div class="cb-muted">
-            Cell–behavior pairs · ▲ {s().excited} higher · ▼ {s().inhibited} lower
-          </div>
-        </div>
-        <p class="cb-muted cb-ar-strip__note">
-          Significant = adjusted p &lt; {o().settings.alpha}.{' '}
-          {maxStat()
-            ? `Max-stat correction across the ${o().labels.length} selected behaviors within each cell, not across cells.`
-            : 'No correction for multiple comparisons.'}{' '}
-          Completed in {Math.max(1, Math.round(o().seconds))} s · {method()}
-          <InfoTip label="About the significance test and correction">
-            <p>
-              Significance compares the observed auROC with auROC values from time-shifted copies of
-              the cell's neural data.
-            </p>
-            <p>
-              {maxStat()
-                ? 'Max-stat correction accounts for testing the selected behaviors within each cell; it does not correct across cells. Adding or removing behaviors can change adjusted p-values.'
-                : 'No correction is applied: p-values are uncorrected for the number of behaviors and cells tested.'}
-            </p>
-          </InfoTip>
-        </p>
-      </div>
-    </>
-  );
-}
-
 /** Search and sort for the shared cell list. */
 export function ListControls(props: { ctx: Ctx }): JSX.Element {
   return (
@@ -828,6 +740,7 @@ export function ListControls(props: { ctx: Ctx }): JSX.Element {
         onChange={(e) => props.ctx.setSort(e.currentTarget.value as Sort)}
       >
         <option value="strength">Sort: Strongest for this behavior</option>
+        <option value="overall">Sort: Strongest in any behavior</option>
         <option value="auroc">Sort: auROC, high to low</option>
         <option value="cell">Sort: Cell number</option>
       </select>
@@ -942,9 +855,11 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
   );
   const histCaption = () => (
     <Show when={o().nullKept}>
-      Gray: {o().shifts.length.toLocaleString()} shifted copies, this behavior only, unadjusted.
-      Dashed: their central {Math.round(cover())}%. Significance uses the{' '}
-      {maxStat() ? 'max-stat adjusted' : 'unadjusted'} p.
+      Gray bars: {o().shifts.length.toLocaleString()} time-shifted copies of this cell, this
+      behavior only. Dashed band: central {Math.round(cover())}% of this cell's null (unadjusted).{' '}
+      {maxStat()
+        ? 'Significance comes from the adjusted p across behaviors, not from this band.'
+        : 'Significance uses the unadjusted p, which no correction changes.'}
     </Show>
   );
   return (
@@ -1040,15 +955,16 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
               <HowTo title="Observed auROC versus time-shifted data">
                 <p>
                   The x axis is auROC. Gray bars count how many of the shifted copies of this cell’s
-                  neural data gave each auROC value; the orange line is the observed auROC. Dashed
-                  lines mark the central {Math.round(cover())}% of the shifted values, unadjusted.
+                  neural data gave each auROC value; the orange line is the observed auROC. The
+                  dashed band is the central {Math.round(cover())}% of this cell's null
+                  (unadjusted).
                 </p>
                 <p>
                   This plot shows the unadjusted distribution for this behavior alone. With max-stat
                   correction, the adjusted p-value instead compares the observed value with the most
                   extreme shifted value across all selected behaviors within the cell, so an
-                  observed line outside the dashed range can still be not significant. Significance
-                  follows the adjusted p-value, not the dashed lines.
+                  observed line outside the dashed band can still be not significant. Significance
+                  comes from the adjusted p across behaviors, not from this band.
                 </p>
                 <p>
                   An observed line far from the gray bars means the cell’s relation to the behavior
@@ -1132,6 +1048,29 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
                 </>
               )}
             </Paged>
+            <details class="cb-ar-neural">
+              <summary>Footprint and deconvolved events</summary>
+              <Show
+                when={footprints() && deconvolved()}
+                fallback={
+                  <p class="cb-muted">
+                    No footprints or deconvolved events are loaded, so there is nothing to draw for
+                    this cell.
+                  </p>
+                }
+              >
+                <div class="cb-fpstrip__open">
+                  <Footprint cellRow={o().cellIds[c().c]} width={110} />
+                  <div class="cb-fpstrip__main">
+                    <EventTrace out={o()} c={c().c} b={c().b} />
+                  </div>
+                </div>
+                <p class="cb-muted">
+                  Deconvolved events over the recording (the signal auROC reads), with the selected
+                  behavior marked under the trace.
+                </p>
+              </Show>
+            </details>
           </section>
         </div>
       </div>
@@ -1164,380 +1103,6 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
           <div class="cb-muted">{histCaption()}</div>
         </Modal>
       </Show>
-    </div>
-  );
-}
-
-/**
- * The current page of the shared cell list (rows) by behaviors (columns). Rows, triangles, the selection outline
- * and the labels all come from one row-height scale, so each marker sits on its own cell.
- */
-function Heatmap(props: { ctx: Ctx }): JSX.Element {
-  const c = () => props.ctx;
-  const o = () => c().out;
-  const [contrast, setContrast] = createSignal(false);
-  const [hover, setHover] = createSignal<[number, number] | undefined>();
-  const order = () => c().list.slice(c().heatPage * heatRows(), (c().heatPage + 1) * heatRows());
-  const nb = () => o().labels.length;
-  const [L, T, HEAD, RH] = [44, 8, 22, 14];
-  const colW = () => Math.min(150, 520 / nb());
-  const W = () => L + nb() * colW();
-  const H = () => HEAD + T + order().length * RH + 4;
-  const rowY = (i: number) => HEAD + T + i * RH;
-  const range = (): [number, number] => (contrast() ? [0.25, 0.75] : [0, 1]);
-  const sel = () => order().indexOf(c().c);
-  const size = 10;
-  const tip = () => {
-    const h = hover();
-    if (!h) return '';
-    return `Cell ${o().cellIds[h[0]] + 1} · ${o().labels[h[1]]} · auROC ${num(aurocOf(o(), h[0], h[1]))} · adj. p ${num(pAdjOf(o(), h[0], h[1]))} · ${RESPONSE_LABEL[responseAt(o(), h[0], h[1])]}`;
-  };
-  const r = () => responseAt(o(), c().c, c().b);
-  let plotBox!: HTMLDivElement;
-  onMount(() => {
-    const ro = new ResizeObserver(([e]) =>
-      setHeatRows(Math.max(4, Math.floor((e.contentRect.height - HEAD - T - 4) / RH) - 1)),
-    );
-    ro.observe(plotBox);
-    onCleanup(() => ro.disconnect());
-  });
-  return (
-    <div class="cb-auroc-heat cb-ar-heat">
-      <div class="cb-ar-heat__main">
-        <div class="cb-ar-plot__head">
-          <h4>Cell responses across behaviors</h4>
-          <HowTo title="Tuning heatmap">
-            <p>
-              Rows are cells in the order of the cell list (set by the response filter, search and
-              sort) and columns are behaviors. Each square shows auROC for one cell and behavior:
-              orange is higher during the behavior, purple is lower, gray is not evaluated.
-              Triangles mark significant responses after correction (▲ higher, ▼ lower). The blue
-              outline marks the selected cell and the highlighted column is the selected behavior.
-            </p>
-            <p>
-              Scan across a row to compare one cell across behaviors, or down a column to compare
-              cells for one behavior. Click a square to select that cell and behavior.
-            </p>
-            {RESPONSE_NOTE}
-          </HowTo>
-          <ListControls ctx={c()} />
-        </div>
-        <div class="cb-ar-heat__plot" ref={plotBox}>
-          <svg
-            viewBox={`0 0 ${W()} ${H()}`}
-            style={{ 'max-width': `${W()}px` }}
-            class="cb-auroc-heatmap"
-            role="img"
-            aria-label="auROC of each cell for each behavior"
-          >
-            <For each={o().labels}>
-              {(label, b) => (
-                <text
-                  x={L + colW() * (b() + 0.5)}
-                  y={14}
-                  text-anchor="middle"
-                  font-size="12"
-                  font-weight={b() === c().b ? '700' : '400'}
-                  fill={b() === c().b ? '#1f6fb2' : 'currentColor'}
-                >
-                  {label}
-                </text>
-              )}
-            </For>
-            <For each={order()}>
-              {(cell, i) => (
-                <>
-                  <text
-                    x={L - 6}
-                    y={rowY(i()) + RH / 2 + 4}
-                    text-anchor="end"
-                    font-size="11"
-                    fill="currentColor"
-                  >
-                    {o().cellIds[cell] + 1}
-                  </text>
-                  <For each={o().labels}>
-                    {(_, b) => {
-                      const rr = () => responseAt(o(), cell, b());
-                      const cx = () => L + colW() * (b() + 0.5);
-                      const cy = () => rowY(i()) + RH / 2;
-                      return (
-                        <>
-                          <rect
-                            x={L + colW() * b() + 1}
-                            y={rowY(i())}
-                            width={colW() - 2}
-                            height={RH}
-                            fill={aurocColor(aurocOf(o(), cell, b()), ...range())}
-                            onClick={() => c().setPair(cell, b())}
-                            onMouseEnter={() => setHover([cell, b()])}
-                            onMouseLeave={() => setHover(undefined)}
-                          />
-                          <Show when={rr() === 'excited' || rr() === 'inhibited'}>
-                            <polygon
-                              pointer-events="none"
-                              fill="#111"
-                              stroke="#fff"
-                              stroke-width="0.6"
-                              points={
-                                rr() === 'excited'
-                                  ? `${cx()},${cy() - size / 2} ${cx() - size / 2},${cy() + size / 2} ${cx() + size / 2},${cy() + size / 2}`
-                                  : `${cx()},${cy() + size / 2} ${cx() - size / 2},${cy() - size / 2} ${cx() + size / 2},${cy() - size / 2}`
-                              }
-                            />
-                          </Show>
-                        </>
-                      );
-                    }}
-                  </For>
-                </>
-              )}
-            </For>
-            <rect
-              x={L + colW() * c().b}
-              y={HEAD + T - 2}
-              width={colW()}
-              height={order().length * RH + 4}
-              fill="#1f6fb214"
-              stroke="#1f6fb2"
-              stroke-width="1.5"
-              pointer-events="none"
-            />
-            <Show when={sel() >= 0}>
-              <rect
-                x={L}
-                y={rowY(sel())}
-                width={W() - L}
-                height={RH}
-                fill="none"
-                stroke="#1f6fb2"
-                stroke-width="1.5"
-                pointer-events="none"
-              />
-            </Show>
-          </svg>
-        </div>
-        <div class="cb-muted" aria-live="polite">
-          {tip() || 'Hover a square for its values; click to select it.'}
-        </div>
-        <Note title="Included frames by behavior">
-          <Paged items={o().info} size={5}>
-            {(rows) => (
-              <table class="cb-auroc-table">
-                <thead>
-                  <tr>
-                    <th>Behavior</th>
-                    <th>During</th>
-                    <th>Outside</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={rows}>
-                    {(i) => (
-                      <tr>
-                        <td>{i.label}</td>
-                        <td>{i.during.toLocaleString()}</td>
-                        <td>{i.outside.toLocaleString()}</td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            )}
-          </Paged>
-        </Note>
-        <Pager
-          page={c().heatPage}
-          pages={pagesOf(c().list.length, heatRows())}
-          size={heatRows()}
-          n={c().list.length}
-          onPage={c().setHeatPage}
-        />
-      </div>
-      <div class="cb-ar-heat__side">
-        <div class="cb-setgroup">
-          <h4>
-            Selected pair: {`Cell ${o().cellIds[c().c] + 1}`} · {o().labels[c().b]}
-          </h4>
-          <div class="cb-ar-stats">
-            <div>
-              <div class="cb-muted">auROC</div>
-              <strong class="cb-auroc-big">{num(aurocOf(o(), c().c, c().b))}</strong>
-            </div>
-            <div>
-              <div class="cb-muted">
-                {o().settings.correction === 'max_stat' ? 'Adjusted p' : 'Uncorrected p'}
-              </div>
-              <strong class="cb-auroc-big">{num(pAdjOf(o(), c().c, c().b))}</strong>
-            </div>
-          </div>
-          <Resp r={r()} />{' '}
-          <button class="btn-secondary btn-small" onClick={c().openInspector}>
-            Open in cell inspector
-          </button>
-        </div>
-        <AurocScale />
-        <div class="cb-setting">
-          <div class="cb-seg" role="group" aria-label="Color range">
-            <button
-              classList={{ 'cb-seg__on': !contrast() }}
-              aria-pressed={!contrast()}
-              onClick={() => setContrast(false)}
-            >
-              Range 0–1
-            </button>
-            <button
-              classList={{ 'cb-seg__on': contrast() }}
-              aria-pressed={contrast()}
-              onClick={() => setContrast(true)}
-            >
-              Contrast 0.25–0.75
-            </button>
-          </div>
-          <InfoTip label="About the color range">
-            Lower during behavior (purple) to higher during behavior (orange).
-            {contrast()
-              ? ' Under higher contrast, values beyond the limits share the endpoint colors.'
-              : ' Higher contrast limits the scale to 0.25–0.75; values beyond share the endpoint colors.'}
-          </InfoTip>
-        </div>
-        <div class="cb-muted">
-          ▲ Higher (excited) · ▼ Lower (inhibited), significant only · Gray: not evaluated
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BehaviorSummary(props: { out: AurocOutcome }): JSX.Element {
-  const s = createMemo(() => summarize(props.out));
-  const COLORS: Record<string, string> = {
-    excited: '#e8851a',
-    inhibited: '#6a3db8',
-    'not significant': '#c9c9c9',
-  };
-  return (
-    <div class="cb-ar-sum">
-      <div class="cb-setgroup">
-        <div class="cb-ar-plot__head">
-          <h4>Responses by behavior</h4>
-          <HowTo title="Responses by behavior">
-            <p>
-              Each bar is one behavior and sums to 100% of the cells evaluated for it. Orange and
-              purple segments are cells with a significant higher or lower response after
-              correction; gray segments are not significant. Cells are counted once per behavior, so
-              one cell can appear in several bars. Cells not evaluated for a behavior are left out
-              of its percentages.
-            </p>
-          </HowTo>
-        </div>
-        <p class="cb-muted">Share of evaluated cells.</p>
-        <Paged items={s().perBehavior} size={7}>
-          {(rows) => (
-            <For each={rows}>
-              {(b) => {
-                const total = () =>
-                  b.counts.excited + b.counts.inhibited + b.counts['not significant'];
-                return (
-                  <div class="cb-auroc-bar">
-                    <span>{b.label}</span>
-                    <div
-                      class="cb-auroc-bar__track"
-                      role="img"
-                      aria-label={`${b.label}: ${b.counts.excited} higher, ${b.counts.inhibited} lower, ${b.counts['not significant']} not significant`}
-                    >
-                      <For each={['excited', 'inhibited', 'not significant'] as const}>
-                        {(r) => (
-                          <i
-                            style={{
-                              width: `${total() ? (100 * b.counts[r]) / total() : 0}%`,
-                              background: COLORS[r],
-                            }}
-                          />
-                        )}
-                      </For>
-                    </div>
-                    <span class="cb-muted">
-                      {pct(b.counts.excited, total())} ▲ · {pct(b.counts.inhibited, total())} ▼ ·{' '}
-                      {b.counts['not evaluated']} not evaluated
-                    </span>
-                  </div>
-                );
-              }}
-            </For>
-          )}
-        </Paged>
-        <div class="cb-muted">
-          Orange: higher (excited) · Purple: lower (inhibited) · Gray: not significant
-        </div>
-      </div>
-      <div>
-        <div class="cb-setgroup">
-          <div class="cb-ar-plot__head">
-            <h4>Unique cells by number of significant behaviors</h4>
-            <HowTo title="Unique cells by number of significant behaviors">
-              <p>
-                Each cell is counted once, by how many behaviors it responds to significantly. Cells
-                with 0 are not responsive to any selected behavior; larger numbers suggest responses
-                to several behaviors.
-              </p>
-            </HowTo>
-          </div>
-          <Paged items={s().bySignificantCount.map((n, k) => ({ n, k }))} size={5}>
-            {(rows) => (
-              <For each={rows}>
-                {({ n, k }) => (
-                  <div class="cb-auroc-bar">
-                    <span>{k} significant</span>
-                    <div class="cb-auroc-bar__track">
-                      <i
-                        style={{
-                          width: `${s().evaluated ? (100 * n) / s().evaluated : 0}%`,
-                          background: k ? '#1f6fb2' : '#c9c9c9',
-                        }}
-                      />
-                    </div>
-                    <span class="cb-muted">
-                      {n} cells · {pct(n, s().evaluated)}
-                    </span>
-                  </div>
-                )}
-              </For>
-            )}
-          </Paged>
-        </div>
-        <div class="cb-setgroup">
-          <h4>Response patterns</h4>
-          <Show
-            when={s().patterns.length}
-            fallback={<p class="cb-muted">No cell responds significantly to a behavior.</p>}
-          >
-            <Paged items={s().patterns} size={5}>
-              {(rows) => (
-                <table class="cb-auroc-table">
-                  <thead>
-                    <tr>
-                      <th>Pattern</th>
-                      <th>Cells</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={rows}>
-                      {(p) => (
-                        <tr>
-                          <td>{p.pattern}</td>
-                          <td>{p.cells}</td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              )}
-            </Paged>
-          </Show>
-          <div class="cb-muted">▲ higher (excited) · ▼ lower (inhibited)</div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1827,7 +1392,7 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
   const cellView = () => view() !== 'summary';
   return (
     <div class="cb-results cb-ar" ref={root}>
-      <Header out={props.out} onEdit={props.onEdit} onDetails={() => setDetails(true)} />
+      <Header out={props.out} b={b()} onEdit={props.onEdit} onDetails={() => setDetails(true)} />
       <RunState out={props.out} onEdit={props.onEdit} />
       <div class="cb-ar-tool">
         <div class="cb-seg" role="group" aria-label="Results view">
@@ -1846,9 +1411,9 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
         <label class="cb-sortpick">
           Behavior
           <select
+            aria-label="Behavior"
             value={b()}
-            disabled={!cellView()}
-            title={cellView() ? undefined : 'Not used in the behavior summary'}
+            title="Sets the Higher, Lower and Not significant cards, the list, the inspector and the histogram"
             onChange={(e) => setB(+e.currentTarget.value)}
           >
             <For each={o().labels}>{(l, i) => <option value={i()}>{l}</option>}</For>
@@ -1860,7 +1425,7 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
             aria-label="Filter cells by response"
             value={filter()}
             disabled={!cellView()}
-            title={cellView() ? undefined : 'Not used in the behavior summary'}
+            title={cellView() ? undefined : 'Not used in the population summary'}
             onChange={(e) => setFilter(e.currentTarget.value as Filter)}
           >
             <For each={['all', ...RESPONSES] as Filter[]}>
@@ -1881,7 +1446,7 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
           <Heatmap ctx={ctx} />
         </Show>
         <Show when={view() === 'summary'}>
-          <BehaviorSummary out={props.out} />
+          <BehaviorSummary ctx={ctx} />
         </Show>
       </div>
       <Show when={details()}>
