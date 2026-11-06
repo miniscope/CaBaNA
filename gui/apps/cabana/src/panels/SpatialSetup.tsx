@@ -15,7 +15,6 @@ import {
   regionGroup,
   pxPerCm,
   setArena,
-  sizeCm,
   zoneShare,
   type Zone,
 } from '../lib/arena.ts';
@@ -28,7 +27,6 @@ import {
   scrubT,
   setArenaSize,
   showVideoAt,
-  useBlankCanvas,
   useEmptyArena,
   useShownFrame,
 } from '../lib/spatial-background.ts';
@@ -65,7 +63,6 @@ import {
   tracePath,
 } from '../lib/draw.ts';
 import { Trajectory } from './Trajectory.tsx';
-import { Note } from './parts.tsx';
 import {
   keepInCm,
   keepOnPicture,
@@ -77,21 +74,13 @@ import {
   undoChange,
   type ChangeKind,
 } from '../lib/region-notice.ts';
-import { EXAMPLES, exampleMedia, loaded, setSource, source } from '../lib/store.ts';
-
-const SECTIONS = [
-  ['arena', 'Arena outline & scale', 'Draw the outline and set the scale'],
-  ['zones', 'Zones', 'Places to compare, and regions to exclude'],
-  ['animal', 'Animal size', 'Nose tip to tail base'],
-] as const;
-type SectionId = (typeof SECTIONS)[number][0];
+import { exampleMedia, loaded, setSource, source } from '../lib/store.ts';
 
 type Tool = 'none' | 'arena' | 'distance' | 'zone' | 'animal';
 
 /** Describe the arena on a picture: its outline, scale, zones and the animal's size. */
 export function SpatialSetup(): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
-  const [section, setSection] = createSignal<SectionId>('arena');
 
   /** Gives the canvas the largest size that fits its box, keeping the picture's proportions. */
   const fitCanvas = (holder: HTMLElement | undefined) => {
@@ -831,7 +820,6 @@ export function SpatialSetup(): JSX.Element {
               </div>
             </div>
           </div>
-
 
           <div class="cb-arena-view">
             <div class="cb-sp-viewbar">
