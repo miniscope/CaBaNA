@@ -66,17 +66,17 @@ type Filter = Response | 'all';
 const [cellPage, setCellPage] = createSignal(10);
 const CELL_ROW_PX = 27;
 // Rows per page of the heatmap: as many as fit the height of its plot.
-const [heatRows, setHeatRows] = createSignal(20);
+export const [heatRows, setHeatRows] = createSignal(20);
 
-const num = (v: number, d = 3) => (Number.isNaN(v) ? '–' : v.toFixed(d));
-const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '–');
+export const num = (v: number, d = 3) => (Number.isNaN(v) ? '–' : v.toFixed(d));
+export const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '–');
 const respClass = (r: Response) => `cb-resp cb-resp--${r.replace(' ', '-')}`;
 export const Resp = (props: { r: Response }): JSX.Element => (
   <span class={respClass(props.r)}>{RESPONSE_LABEL[props.r]}</span>
 );
 
 /** What the response labels mean. Shown in the Response tip and in the plots' reading notes. */
-const RESPONSE_NOTE = (
+export const RESPONSE_NOTE = (
   <>
     <p>
       A cell-behavior pair is <strong>Higher (excited)</strong> when the adjusted p-value (the
@@ -189,7 +189,7 @@ export function Modal(props: {
 }
 
 /** "a–b of n" with previous and next page buttons. */
-function Pager(props: {
+export function Pager(props: {
   page: number;
   pages: number;
   size: number;
@@ -227,7 +227,7 @@ function Pager(props: {
 }
 
 /** A short list shown a page at a time, with its own page buttons when it needs them. */
-function Paged<T>(props: {
+export function Paged<T>(props: {
   items: T[];
   size: number;
   children: (rows: T[]) => JSX.Element;
@@ -581,7 +581,7 @@ function EventTrace(props: { out: AurocOutcome; c: number; b: number }): JSX.Ele
 }
 
 /** What every view shares: the selected cell and behavior, and the filtered, sorted, paged cell list. */
-interface Ctx {
+export interface Ctx {
   out: AurocOutcome;
   b: number;
   c: number;
@@ -809,7 +809,7 @@ function Header(props: {
 }
 
 /** Search and sort for the shared cell list. */
-function ListControls(props: { ctx: Ctx }): JSX.Element {
+export function ListControls(props: { ctx: Ctx }): JSX.Element {
   return (
     <div class="cb-ar-listctl">
       <input
@@ -834,7 +834,7 @@ function ListControls(props: { ctx: Ctx }): JSX.Element {
   );
 }
 
-const pagesOf = (n: number, size: number) => Math.max(1, Math.ceil(n / size));
+export const pagesOf = (n: number, size: number) => Math.max(1, Math.ceil(n / size));
 
 function CellBrowser(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;

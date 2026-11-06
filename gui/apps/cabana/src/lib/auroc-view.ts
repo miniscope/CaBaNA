@@ -31,8 +31,8 @@ export function aurocChanges(): string[] {
 export const RESPONSES: Response[] = ['excited', 'inhibited', 'not significant', 'not evaluated'];
 /** Direction is named only for significant results; the symbol keeps it readable without color. */
 export const RESPONSE_LABEL: Record<Response, string> = {
-  excited: '▲ Higher (excited)',
-  inhibited: '▼ Lower (inhibited)',
+  excited: '▲ Higher activity',
+  inhibited: '▼ Lower activity',
   'not significant': 'Not significant',
   'not evaluated': 'Not evaluated',
 };
@@ -135,7 +135,9 @@ export function summarize(out: AurocOutcome): Summary {
     respondingCells: responding,
     perBehavior,
     bySignificantCount,
-    patterns: [...patterns].map(([pattern, n]) => ({ pattern, cells: n })).sort((a, b) => b.cells - a.cells),
+    patterns: [...patterns]
+      .map(([pattern, n]) => ({ pattern, cells: n }))
+      .sort((a, b) => b.cells - a.cells),
     tooFewFrames: out.info.filter((i) => i.during < 20 || i.outside < 20).map((i) => i.label),
   };
 }
