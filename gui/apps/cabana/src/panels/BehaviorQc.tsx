@@ -711,7 +711,7 @@ export function Ethogram(props: {
   );
 }
 
-function StatsTable(props: { epochs: Epoch[] }): JSX.Element {
+export function StatsTable(props: { epochs: Epoch[] }): JSX.Element {
   const rows = () =>
     annotationStats(
       props.epochs,
@@ -752,7 +752,7 @@ function StatsTable(props: { epochs: Epoch[] }): JSX.Element {
 }
 
 /** Optional fixes for annotations: merge bouts that are really one, and remove bouts too short to use. */
-function AnnotationFixes(): JSX.Element {
+export function AnnotationFixes(): JSX.Element {
   return (
     <div class="cb-fix">
       <div class="cb-controls">
@@ -779,7 +779,7 @@ function AnnotationFixes(): JSX.Element {
   );
 }
 
-const fileOf = (id: string) => annotationResults().find((a) => a.id === id);
+export const fileOf = (id: string) => annotationResults().find((a) => a.id === id);
 
 function AnnotationView(props: { id: string }): JSX.Element {
   const a = () => fileOf(props.id);
