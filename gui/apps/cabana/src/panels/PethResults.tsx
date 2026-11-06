@@ -388,6 +388,9 @@ export function PethResults(props: { out: PethOutcome; onEdit: () => void }): JS
     get b() {
       return b();
     },
+    get cols() {
+      return cols();
+    },
     get c() {
       return c();
     },
@@ -452,7 +455,7 @@ export function PethResults(props: { out: PethOutcome; onEdit: () => void }): JS
           <PethInspector ctx={ctx} />
         </Show>
         <Show when={view() === 'summary'}>
-          <SummaryView out={props.out} />
+          <SummaryView out={props.out} cols={cols()} />
         </Show>
       </div>
       <Show when={details()}>

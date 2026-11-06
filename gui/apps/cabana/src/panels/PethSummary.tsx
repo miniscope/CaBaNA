@@ -13,6 +13,7 @@ const LIGHT = '#c9c9c9';
 /** Latencies of significant cells, one group of bars per behavior, on the time axis after the onset. */
 function LatencyHist(props: {
   out: PethOutcome;
+  cols: number[];
   w: number;
   h: number;
 }): JSX.Element {
@@ -22,7 +23,10 @@ function LatencyHist(props: {
   const hi = () => timeDomain(o())[1];
   const nb = () => Math.max(1, Math.ceil(hi() / width() - 1e-9));
   const groups = createMemo(() => {
-    const rows = summarize(o()).perBehavior.map((p) => ({
+    const all = summarize(o()).perBehavior;
+    const rows = props.cols
+      .map((b) => all[b])
+      .map((p) => ({
         label: p.label,
         counts: (() => {
           const c = new Array<number>(nb()).fill(0);
@@ -100,9 +104,12 @@ function LatencyHist(props: {
   );
 }
 
-export function SummaryView(props: { out: PethOutcome }): JSX.Element {
+export function SummaryView(props: { out: PethOutcome; cols: number[] }): JSX.Element {
   const o = () => props.out;
-  const s = createMemo(() => summarize(o()));
+  const s = createMemo(() => {
+    const all = summarize(o());
+    return { ...all, perBehavior: props.cols.map((b) => all.perBehavior[b]) };
+  });
   const labelled = () => hasTest(o());
   const nLatency = () =>
     s().perBehavior.reduce((n, p) => n + p.latencies.higher.length + p.latencies.lower.length, 0);
@@ -269,7 +276,7 @@ export function SummaryView(props: { out: PethOutcome }): JSX.Element {
               </div>
             }
           >
-            <Fit>{(w, h) => <LatencyHist out={o()} w={w} h={h} />}</Fit>
+            <Fit>{(w, h) => <LatencyHist out={o()} cols={props.cols} w={w} h={h} />}</Fit>
           </Show>
         </div>
         <div class="cb-pe-small cb-pe-legend">

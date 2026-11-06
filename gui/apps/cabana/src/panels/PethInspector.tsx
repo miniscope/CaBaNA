@@ -42,7 +42,7 @@ function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
   const o = () => props.ctx.out;
   const range = createMemo((): [number, number] => {
     const v = [0];
-    o().labels.forEach((_, b) =>
+    props.ctx.cols.forEach((b) =>
       curveOf(o(), props.ctx.c, b).mean.forEach((x) => Number.isFinite(x) && v.push(x)),
     );
     const [lo, hi] = [Math.min(...v), Math.max(...v)];
@@ -51,9 +51,9 @@ function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
   });
   return (
     <div class="cb-pe-strip">
-      <For each={o().labels}>
-        {(label, bi) => {
-          const b = bi();
+      <For each={props.ctx.cols}>
+        {(b) => {
+          const label = o().labels[b];
           const r = () => labelAt(o(), props.ctx.c, b);
           const bad = () => !!whyNotEvaluated(o(), props.ctx.c, b);
           return (
@@ -155,13 +155,10 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
         <label class="cb-sortpick">
           Behavior
           <select value={c().b} onChange={(e) => c().setB(+e.currentTarget.value)}>
-            <For each={o().labels}>
-              {(l, b) => (
-                <option
-                  value={b()}
-                  disabled={o().reports[b()].onsets.length < o().params.minEvents}
-                >
-                  {l}
+            <For each={c().cols}>
+              {(b) => (
+                <option value={b} disabled={o().reports[b].onsets.length < o().params.minEvents}>
+                  {o().labels[b]}
                 </option>
               )}
             </For>

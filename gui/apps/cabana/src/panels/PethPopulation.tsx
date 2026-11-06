@@ -72,9 +72,9 @@ export function BehaviorList(props: { ctx: Ctx }): JSX.Element {
   return (
     <div class="cb-plot cb-pe-behaviors" role="group" aria-label="Behavior">
       <div class="cb-muted cb-pe-small">Behavior</div>
-      <For each={o().labels}>
-        {(label, bi) => {
-          const b = bi();
+      <For each={props.ctx.cols}>
+        {(b) => {
+          const label = o().labels[b];
           const reason = () => behaviorReason(o(), b);
           return (
             <button

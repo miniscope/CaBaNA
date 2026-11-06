@@ -15,6 +15,8 @@ export interface Ctx {
   out: PethOutcome;
   /** Selected behavior (index into `out.labels`) and cell (index into `out.cellIds`). */
   b: number;
+  /** Columns of the alignment shown (all of them when the run had one alignment). */
+  cols: number[];
   c: number;
   setB: (b: number) => void;
   setC: (c: number) => void;
