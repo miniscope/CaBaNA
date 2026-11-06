@@ -236,13 +236,15 @@ See [docs/CLI.md](docs/CLI.md).
 
 ## GUI
 
-`gui/` holds a browser interface for CaBaNA: load data, set up the experiment, check data
-quality, preprocess, and run analyses. See [gui/README.md](gui/README.md) for how to run it.
-`gui/bridge/` is the local server that lets the GUI run this package. `decoding/` holds the
-browser decoders the GUI can use when the Python engine is off, with tests that check them
-against this package.
+The browser GUI is not on `main` for now; it is under review in a separate pull request
+(backup branch: `gui-backup`). It was built from a copy of
+[CaLab](https://github.com/miniscope/CaLab) taken at commit
+[`06dcb34`](https://github.com/miniscope/CaLab/commit/06dcb34a6478fedfcea69fdd9a7819c3aa260fb8)
+(`main`, 2026-10-03), with the CaLab parts it does not use removed. The plan is to port it
+into CaLab as an app soon.
 
-`example_data/` holds simulated sessions for trying the GUI. Each has its own README.
+`decoding/` holds the browser decoders the GUI uses when the Python engine is off, with
+tests that check them against this package.
 
 ## Documentation
 
