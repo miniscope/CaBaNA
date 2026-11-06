@@ -512,7 +512,7 @@ function PositionView(): JSX.Element {
 }
 
 /** Each recording's progress against time on the neural clock; the two lines should start and end together. */
-function ClockPlot(props: { h: number }): JSX.Element {
+export function ClockPlot(props: { h: number }): JSX.Element {
   const both = () => {
     const [n, c] = [frameTimes(), cameraClock()];
     return n?.length && c?.length ? clockProgress(n, c) : undefined;
@@ -539,7 +539,7 @@ function ClockPlot(props: { h: number }): JSX.Element {
   );
 }
 
-const timing = createMemo(() => [
+export const timing = createMemo(() => [
   ...timingResults().flatMap((r) => timingChecks(r.name, r)),
   ...alignmentResults(),
 ]);
