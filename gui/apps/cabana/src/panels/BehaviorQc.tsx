@@ -12,33 +12,27 @@ import {
   cameraClock,
   editAnnotations,
   frameTimes,
-  goToStep,
   maxSpeed,
   positionResult,
   sessionDuration,
-  setMaxSpeed,
-  source,
   timingResults,
   tol,
   undoAnnotationEdits,
 } from '../lib/store.ts';
-import { positionIssue } from '../lib/prepared.ts';
-import { positionTransform, positionUnitsPerCm } from '../lib/arena.ts';
-import { picked, posRange, setPicked, setPosRange } from '../lib/qc-view.ts';
+import { positionTransform } from '../lib/arena.ts';
+import { picked, posRange, setPicked, setPosRange, showFlagged, showPath } from '../lib/qc-view.ts';
 import type { Category } from './QcPanel.tsx';
-import { InfoTip } from './InfoTip.tsx';
 import {
-  Advice,
-  CategoryHead,
-  Findings,
-  Help,
-  Limits,
-  PagedList,
-  PlotCard,
-  RailBox,
-  ReviewActions,
-  StepButtons,
-} from './QcParts.tsx';
+  annotationMetrics,
+  AnnotationDetail,
+  AnnotationPlot,
+  flaggedOf,
+} from './BehaviorQcAnnotations.tsx';
+import { PositionDetail, positionMetrics } from './BehaviorQcPositionRail.tsx';
+import { PositionPlot } from './BehaviorQcPosition.tsx';
+import { TimingDetail, TimingPlot, timingMetrics } from './BehaviorQcTiming.tsx';
+
+export { behaviorSettings } from './BehaviorQcSettings.tsx';
 
 export const PALETTE = ['#2171b5', '#e09800', '#2e7d32', '#8e44ad', '#16a085', '#c0392b'];
 
@@ -53,7 +47,6 @@ export function ticks(a: number, b: number, n = 6): number[] {
 }
 
 export const fmtS = (t: number, d = 1) => `${t.toFixed(d)} s`;
-
 
 export const posOk = () => {
   const p = positionResult();
@@ -97,6 +90,7 @@ export function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Ele
     const cy = (i: number) => t.sy * y[i] + t.ty;
     const thr = maxSpeed();
     const range = posRange();
+    const [path, flagged] = [showPath(), showFlagged()];
     const sel = segments()[segIndex()];
     const ctx = canvas.getContext('2d');
     if (!ctx || W < 50 || H < 50) return;
@@ -146,7 +140,7 @@ export function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Ele
     ctx.strokeStyle = 'rgba(33,113,181,0.45)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let i = 1; i < x.length; i++) {
+    for (let i = 1; i < x.length && path; i++) {
       if (!ok(i) || !ok(i - 1)) continue;
       ctx.moveTo(px(i - 1), py(i - 1));
       ctx.lineTo(px(i), py(i));
@@ -191,7 +185,7 @@ export function PathMap(props: { p: PositionQc; w: number; h: number }): JSX.Ele
     ctx.lineWidth = 2;
     speed.forEach((v, n) => {
       const i = idx[n];
-      if (v > thr && ok(i) && ok(i - 1)) step(i);
+      if (flagged && v > thr && ok(i) && ok(i - 1)) step(i);
     });
   });
   return (
@@ -299,218 +293,6 @@ export const segLabel = (s: Segment) =>
     ? `Jump, ${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${s.n} steps` : ''}`
     : `Lost for ${(s.stop - s.start).toFixed(1)} s (${s.n} frames)`;
 
-function PositionView(): JSX.Element {
-  const p = () => posOk();
-  const checks = () => p()?.checks ?? [];
-  const sel = () => segments()[segIndex()];
-  return (
-    <>
-      <div class="cb-qc-center">
-        <CategoryHead
-          title="Position tracking"
-          checks={checks()}
-          flagged={segments().length ? `${segments().length} flagged segments` : undefined}
-        >
-          <span class="cb-cat-head__tools">
-            <Show when={posRange()}>
-              <span class="cb-muted">
-                Showing {fmtS(posRange()![0])} to {fmtS(posRange()![1])}
-              </span>
-            </Show>
-            <button class="btn-secondary btn-small" onClick={() => zoomTo(undefined)}>
-              Show whole session
-            </button>
-          </span>
-        </CategoryHead>
-        <Show when={positionResult() && !p()}>
-          <div class="cb-error">{(positionResult() as { error: string }).error}</div>
-        </Show>
-        <Show when={!positionResult()}>
-          <div class="cb-empty">{positionIssue() ?? 'No position data.'}</div>
-        </Show>
-        <Show when={p()}>
-          <PlotCard
-            title="Trajectory"
-            class="cb-plot--grow3"
-            bigTools={
-              <Show when={sel()}>
-                <span class="cb-muted">
-                  Segment {segIndex() + 1} of {segments().length}
-                </span>
-                <StepButtons
-                  n={segments().length}
-                  i={segIndex()}
-                  go={selectSegment}
-                  what="segment"
-                />
-              </Show>
-            }
-            legend={
-              <>
-                <span class="cb-key" style={{ background: 'rgba(33,113,181,0.6)' }} />
-                Tracked path
-                <span class="cb-key" style={{ background: '#d32f2f' }} />
-                Faster than threshold
-                <span class="cb-key cb-key--ring" />
-                Selected segment
-              </>
-            }
-            help={
-              <>
-                <Help k="What is plotted">
-                  The tracked position at each behavior camera frame, joined in time order. Only the
-                  frames in the time range of the speed plot are drawn, so zooming the speed plot
-                  narrows the path. Lost frames leave a break in the line.
-                </Help>
-                <Help k="Axes">
-                  x and y in cm, in the arena's frame (origin at its lower left, y up)
-                  {source.positionUnit === 'px'
-                    ? `, converted from pixels with the arena calibration in Spatial setup (${positionUnitsPerCm()?.toFixed(2)} video pixels per cm)`
-                    : ''}
-                  . Both axes use the same scale, so the arena keeps its shape.
-                </Help>
-                <Help k="Colors">
-                  Blue: the path between consecutive tracked frames. Red: a step faster than the
-                  jump threshold. Black with a circle: the segment selected in Flagged segments; a
-                  dashed black line spans a lost stretch.
-                </Help>
-                <Help k="Limits">
-                  This is position as tracked, before any smoothing or gap filling in Preprocess. A
-                  tracker that locks onto a reflection and moves smoothly never exceeds the
-                  threshold, so it is not flagged. Overlapping lines do not show how long the animal
-                  stayed in a place.
-                </Help>
-              </>
-            }
-          >
-            {(s) => <PathMap p={p()!} w={s().w} h={s().h} />}
-          </PlotCard>
-          <PlotCard
-            title="Speed between tracked frames"
-            class="cb-plot--grow2"
-            legend={
-              <>
-                <span class="cb-key" style={{ background: '#2171b5' }} />
-                Speed
-                <span class="cb-key cb-key--dash" />
-                Jump threshold ({maxSpeed()} cm/s)
-              </>
-            }
-            help={
-              <>
-                <Help k="What is plotted">
-                  For each pair of consecutive tracked frames, the distance moved divided by the
-                  time between their camera timestamps.
-                </Help>
-                <Help k="Axes">Camera time in seconds; speed in cm/s.</Help>
-                <Help k="Colors">
-                  Blue: speed. Red dashed line: the jump threshold. Shaded band: the selected
-                  segment (red for a jump, gray for a lost stretch).
-                </Help>
-                <Help k="Linked">
-                  Scroll to zoom and drag to pan; the trajectory shows the same time range.
-                  Selecting a segment zooms here to it.
-                </Help>
-                <Help k="Limits">
-                  Steps next to a lost frame are not computed, so a lost stretch is a gap in the
-                  line. This frame-to-frame speed is noisier than the smoothed speed used in
-                  analyses, so short peaks below the threshold are expected.
-                </Help>
-              </>
-            }
-          >
-            {(s) => <SpeedPlot p={p()!} h={s().h} />}
-          </PlotCard>
-          <Show when={sel()}>
-            <div class={`cb-segbar cb-segbar--${sel()!.kind}`}>
-              <b>
-                Segment {segIndex() + 1} of {segments().length}
-              </b>
-              <span>
-                {segLabel(sel()!)}, {fmtS(sel()!.start, 2)} to {fmtS(sel()!.stop, 2)}
-              </span>
-              <Show when={sel()!.kind === 'jump'}>
-                <span class="cb-muted">Threshold {maxSpeed()} cm/s</span>
-              </Show>
-              <StepButtons n={segments().length} i={segIndex()} go={selectSegment} what="segment" />
-            </div>
-          </Show>
-        </Show>
-      </div>
-      <aside class="cb-qc-rail">
-        <Findings checks={checks()} />
-        <Show when={p()}>
-          <RailBox
-            title="Flagged segments"
-            grow
-            extra={
-              <InfoTip label="What is listed">
-                Steps faster than the jump threshold, grouped when they are a frame or two apart,
-                and lost stretches longer than 1 s. A category can pass with flagged segments when
-                they are under the limit.
-              </InfoTip>
-            }
-          >
-            <PagedList
-              id={SEG}
-              items={segments()}
-              selected={segIndex()}
-              onSelect={selectSegment}
-              empty="No jumps over the threshold and no lost stretches over 1 s."
-            >
-              {(s, i) => (
-                <span class="cb-segrow">
-                  <span class="cb-muted">{String(i + 1).padStart(2, '0')}</span>
-                  <span>{fmtS(s.start)}</span>
-                  <span>{s.kind === 'jump' ? 'Jump' : 'Lost'}</span>
-                  <span>
-                    {s.kind === 'jump'
-                      ? `${s.peak!.toFixed(0)} cm/s`
-                      : `${(s.stop - s.start).toFixed(1)} s`}
-                  </span>
-                </span>
-              )}
-            </PagedList>
-          </RailBox>
-        </Show>
-        <RailBox title="Settings" fold="settings">
-          <div class="cb-setting">
-            <label for="cb-jump">Jump threshold</label>
-            <InfoTip label="About the jump threshold">
-              Steps between two tracked frames faster than this speed are flagged as jumps. A jump
-              usually means the tracker lost the animal, locked onto a reflection, or swapped
-              identity. Changing it updates the flags at once. Whether the section passes depends on
-              the Jump steps limit under Pass/fail limits. Default 60 cm/s.
-            </InfoTip>
-            <input
-              id="cb-jump"
-              type="number"
-              min="1"
-              value={maxSpeed()}
-              onInput={(e) => setMaxSpeed(+e.currentTarget.value || 60)}
-            />
-            <span class="cb-muted">cm/s</span>
-          </div>
-          <Limits keys={['lostPct', 'jumpPct']} />
-        </RailBox>
-        <RailBox title="Correction" fold="correction">
-          <p class="cb-muted">
-            Short gaps are filled and position is smoothed with a median filter in Preprocess. The
-            tracking file is not changed.
-          </p>
-          <Advice checks={checks()} />
-          <div class="cb-controls">
-            <button class="btn-secondary btn-small" onClick={() => goToStep('prep')}>
-              Open Preprocess ↗
-            </button>
-          </div>
-          <ReviewActions id="position" section="position" checks={checks()} />
-        </RailBox>
-      </aside>
-    </>
-  );
-}
-
 /** Each recording's progress against time on the neural clock; the two lines should start and end together. */
 export function ClockPlot(props: { h: number }): JSX.Element {
   const both = () => {
@@ -543,117 +325,6 @@ export const timing = createMemo(() => [
   ...timingResults().flatMap((r) => timingChecks(r.name, r)),
   ...alignmentResults(),
 ]);
-
-function TimingView(): JSX.Element {
-  return (
-    <>
-      <div class="cb-qc-center">
-        <CategoryHead title="Timing and alignment" checks={timing()} />
-        <Show when={!timing().length}>
-          <div class="cb-empty">Timing and alignment need timestamps files.</div>
-        </Show>
-        <Show when={timingResults().length}>
-          <section class="cb-plot cb-plot--table">
-            <div class="cb-plot__head">
-              <h3>Recordings</h3>
-            </div>
-            <table class="cb-stats">
-              <thead>
-                <tr>
-                  <th>Recording</th>
-                  <th>Frames</th>
-                  <th>Mean rate</th>
-                  <th>Dropped (limit 1%)</th>
-                  <th>Jitter (limit)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={timingResults()}>
-                  {(r) => (
-                    <tr>
-                      <td>{r.name}</td>
-                      <td>{r.nFrames.toLocaleString()}</td>
-                      <td>{r.fsMean.toFixed(2)} Hz</td>
-                      <td>
-                        {r.nDropped} ({(100 * r.droppedFraction).toFixed(2)}%) in{' '}
-                        {r.gapStart.length} {r.gapStart.length === 1 ? 'gap' : 'gaps'}
-                      </td>
-                      <td>
-                        {(1000 * r.jitterS).toFixed(2)} ms (
-                        {((1000 * 0.25) / r.fsMedian).toFixed(1)} ms)
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </section>
-        </Show>
-        <Show when={timing().length}>
-          <PlotCard
-            title="Recording progress on the neural clock"
-            class="cb-plot--grow3"
-            legend={
-              <>
-                <span class="cb-key" style={{ background: '#2171b5' }} />
-                Miniscope
-                <span class="cb-key cb-key--dash-amber" />
-                Behavior camera
-              </>
-            }
-            help={
-              <>
-                <Help k="What is plotted">
-                  For each recording, the share of its frames recorded so far, from 0 to 100%,
-                  against time. The camera times are moved onto the neural clock by the clock offset
-                  from Experimental Setup.
-                </Help>
-                <Help k="Axes">Time on the neural clock in seconds; percent of frames.</Help>
-                <Help k="How to read">
-                  The lines should start and end together and rise in parallel. Lines that start or
-                  end apart mean one recording started or stopped first. A flat step is a run of
-                  dropped frames, and a difference in slope is a difference in frame rate.
-                </Help>
-                <Help k="Limits">
-                  The plot uses the timestamps as written. If both clocks drift together, for
-                  example from the same wrong clock, the lines still agree.
-                </Help>
-              </>
-            }
-          >
-            {(s) => <ClockPlot h={s().h} />}
-          </PlotCard>
-        </Show>
-      </div>
-      <aside class="cb-qc-rail">
-        <Findings checks={timing()} />
-        <RailBox title="Settings" fold="settings">
-          <div class="cb-setting">
-            <span>Behavior clock offset</span>
-            <InfoTip label="About the clock offset">
-              Seconds subtracted from the camera timestamps, before the clock scale, to put them on
-              the neural clock: neural time = scale × (camera time − offset). Set it in
-              Experimental Setup when the camera started before or after the miniscope.
-            </InfoTip>
-            <b>{source.clockOffsetS} s</b>
-          </div>
-        </RailBox>
-        <RailBox title="Correction" fold="correction">
-          <p class="cb-muted">
-            CaBaNA does not change timestamps. A clock offset is entered in Experimental Setup.
-          </p>
-          <Advice checks={timing()} />
-          <div class="cb-controls">
-            <button class="btn-secondary btn-small" onClick={() => goToStep('setup')}>
-              Open Experimental Setup ↗
-            </button>
-          </div>
-          <ReviewActions id="timing" checks={timing()} />
-        </RailBox>
-      </aside>
-    </>
-  );
-}
 
 /** One row per label, one bar per epoch. Problem epochs are outlined in red, and `selected` in black. */
 export function Ethogram(props: {
@@ -772,7 +443,7 @@ export function AnnotationFixes(): JSX.Element {
         </button>
       </Show>
       <div class="cb-muted">
-        These apply to every annotation file and use the pass/fail limits under Settings. The
+        These apply to every annotation file and use the pass/fail limits under QC settings. The
         annotation files themselves are not changed.
       </div>
     </div>
@@ -781,119 +452,6 @@ export function AnnotationFixes(): JSX.Element {
 
 export const fileOf = (id: string) => annotationResults().find((a) => a.id === id);
 
-function AnnotationView(props: { id: string }): JSX.Element {
-  const a = () => fileOf(props.id);
-  const listId = `epochs-${props.id}`;
-  const flagged = () => (a()?.epochs ?? []).filter((e) => e.flags.length || e.notes.length);
-  const sel = () => Math.min(picked[listId] ?? -1, flagged().length - 1);
-  return (
-    <>
-      <div class="cb-qc-center">
-        <CategoryHead
-          title={`Annotations: ${a()?.name ?? ''}`}
-          checks={a()?.checks ?? []}
-          flagged={flagged().length ? `${flagged().length} flagged epochs` : undefined}
-        />
-        <Show when={a()?.error}>
-          <div class="cb-error">
-            {a()!.name}: {a()!.error}
-          </div>
-        </Show>
-        <Show when={a() && !a()!.error}>
-          <PlotCard
-            title="Epochs over the session"
-            legend={
-              <>
-                <span class="cb-key cb-key--box-red" />
-                Error
-                <span class="cb-key cb-key--box-amber" />
-                Short or close bout
-                <span class="cb-key cb-key--dash-gray" />
-                Session end
-              </>
-            }
-            help={
-              <>
-                <Help k="What is plotted">
-                  One row per label and one bar per epoch, from its start to its stop, as read from
-                  the annotation file (after any merge or remove fixes).
-                </Help>
-                <Help k="Axes">
-                  Time across the whole session, left to right. Rows are the labels in the order
-                  they first appear.
-                </Help>
-                <Help k="Colors">
-                  Bar colors only tell labels apart. Red outline: an error, such as a stop before
-                  its start or an epoch outside the session. Amber outline: a bout that is very
-                  short, or close to another bout of the same label. Black outline: the epoch
-                  selected in Flagged epochs. Dashed line: the end of the session.
-                </Help>
-                <Help k="Limits">
-                  Very short epochs are drawn at least 2 pixels wide so they stay visible, so a bar
-                  can look longer than it is. Expand the plot for more detail.
-                </Help>
-              </>
-            }
-          >
-            {(size) => (
-              <Ethogram
-                epochs={a()!.epochs}
-                duration={sessionDuration() ?? 0}
-                selected={flagged()[sel()]}
-                rowH={Math.max(
-                  24,
-                  Math.min(64, (size().h - 12) / new Set(a()!.epochs.map((e) => e.label)).size),
-                )}
-              />
-            )}
-          </PlotCard>
-          <section class="cb-plot cb-plot--table">
-            <div class="cb-plot__head">
-              <h3>Epochs per label</h3>
-            </div>
-            <div class="cb-plot__scroll">
-              <StatsTable epochs={a()!.epochs} />
-            </div>
-          </section>
-        </Show>
-      </div>
-      <aside class="cb-qc-rail">
-        <Findings checks={a()?.checks ?? []} />
-        <RailBox title="Flagged epochs" grow>
-          <PagedList
-            id={listId}
-            rowH={46}
-            items={flagged()}
-            selected={sel()}
-            onSelect={(i) => setPicked(listId, i)}
-            empty="No flagged epochs in this file."
-          >
-            {(e) => (
-              <span class="cb-epochrow">
-                <span>
-                  {e.label} {e.start.toFixed(2)} to {e.stop.toFixed(2)} s
-                </span>
-                <span class={e.flags.length ? 'cb-error' : 'cb-warn'}>
-                  {[...e.flags, ...e.notes].join(', ')}
-                </span>
-              </span>
-            )}
-          </PagedList>
-        </RailBox>
-        <RailBox title="Settings" fold="settings">
-          <Limits keys={['annotPct', 'minBoutS', 'mergeGapS']} />
-        </RailBox>
-        <RailBox title="Correction" fold="correction">
-          <Advice checks={a()?.checks ?? []} />
-          <AnnotationFixes />
-          <ReviewActions id={props.id} section="annotations" checks={a()?.checks ?? []} />
-        </RailBox>
-      </aside>
-    </>
-  );
-}
-
-/** The Behavioral tab's categories, in the order they are listed. */
 export function behaviorCategories(): Category[] {
   const files = annotationResults();
   if (!positionResult() && !files.length && !timing().length) return [];
@@ -901,24 +459,40 @@ export function behaviorCategories(): Category[] {
     {
       id: 'timing',
       name: 'Timing and alignment',
+      description: 'Dropped frames, frame-time jitter and whether the clocks line up',
       checks: timing(),
       flagged: timing().filter((c) => c.status !== 'pass').length,
       flaggedWord: 'checks',
-      view: TimingView,
+      tabs: [
+        { id: 'clock', label: 'Clock' },
+        { id: 'recordings', label: 'Recordings' },
+      ],
+      plot: (tab) => <TimingPlot tab={tab} />,
+      metrics: timingMetrics,
+      detail: TimingDetail,
     },
     {
       id: 'position',
       name: 'Position tracking',
+      description: 'Lost frames, lost stretches and implausible jumps',
       checks: posOk()?.checks ?? [],
       flagged: segments().length,
       flaggedWord: 'segments',
       section: 'position',
-      view: PositionView,
+      tabs: [
+        { id: 'trajectory', label: 'Trajectory' },
+        { id: 'speed', label: 'Speed' },
+        { id: 'timeline', label: 'Timeline' },
+      ],
+      plot: (tab) => <PositionPlot tab={tab} />,
+      metrics: positionMetrics,
+      detail: PositionDetail,
     },
-    ...files.map((a) => ({
+    ...files.map((a): Category => ({
       id: a.id,
       name: a.name.replace(/\.[^.]+$/, ''),
       group: 'Annotations',
+      description: 'Epoch errors, short bouts and bouts of one label close together',
       checks: a.error
         ? [
             {
@@ -930,10 +504,16 @@ export function behaviorCategories(): Category[] {
             },
           ]
         : a.checks,
-      flagged: a.epochs.filter((e) => e.flags.length || e.notes.length).length,
+      flagged: flaggedOf(a.id).length,
       flaggedWord: 'epochs',
       section: 'annotations' as const,
-      view: () => <AnnotationView id={a.id} />,
+      tabs: [
+        { id: 'epochs', label: 'Epochs' },
+        { id: 'stats', label: 'Per-label stats' },
+      ],
+      plot: (tab) => <AnnotationPlot id={a.id} tab={tab} />,
+      metrics: () => annotationMetrics(a.id),
+      detail: () => <AnnotationDetail id={a.id} />,
     })),
   ];
 }

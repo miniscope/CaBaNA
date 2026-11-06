@@ -9,7 +9,7 @@ import {
   setQcTab,
   type QcTab,
 } from '../lib/qc-view.ts';
-import { behaviorCategories } from './BehaviorQc.tsx';
+import { behaviorCategories, behaviorSettings } from './BehaviorQc.tsx';
 import { neuralCategories } from './NeuralQc.tsx';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -52,6 +52,7 @@ const TABS: {
     id: 'behavior',
     label: 'Behavioral',
     list: behaviorCategories,
+    settings: behaviorSettings,
     empty: 'Load position and camera timestamps, or annotation files, to check behavior.',
   },
   {
