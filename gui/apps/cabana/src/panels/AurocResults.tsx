@@ -599,12 +599,13 @@ export interface Ctx {
   setHeatPage: (p: number) => void;
   setC: (c: number) => void;
   setPair: (c: number, b: number) => void;
+  setBehavior: (b: number) => void;
   step: (d: 1 | -1) => void;
   openInspector: () => void;
 }
 
 /** The export menu: the CSV and run metadata the page always exported, plus the framework bundle. */
-function exportGroups(out: AurocOutcome) {
+export function exportGroups(out: AurocOutcome) {
   const csv = () => downloadText('auroc_pairs.csv', aurocCsv(out), 'text/csv');
   const json = () =>
     downloadText('auroc_run.json', JSON.stringify(aurocMetadata(out), null, 2), 'application/json');
@@ -1816,6 +1817,7 @@ export function AurocResults(props: { out: AurocOutcome; onEdit: () => void }): 
       setC(cell);
       setB(beh);
     },
+    setBehavior: setB,
     step,
     openInspector: () => setView('inspector'),
   };
