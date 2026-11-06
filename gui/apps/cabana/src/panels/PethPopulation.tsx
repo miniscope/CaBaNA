@@ -24,6 +24,7 @@ import {
   timeAxisLabel,
 } from '../lib/peth-view.ts';
 import type { PethOutcome } from '../lib/peth-run.ts';
+import { latencyTicks, signalLabel } from '../lib/peth-setup.ts';
 import { Fit, HowTo } from './AurocResults.tsx';
 import {
   Canvas,
@@ -37,19 +38,30 @@ import {
   PURPLE,
   Raster,
   SIDE,
+  timeTicks,
 } from './PethPlots.tsx';
-import { alignWord, colorOf, Dot, intervalText, Label, LabelNote, type Ctx } from './PethShared.tsx';
+import {
+  alignWord,
+  colorOf,
+  Dot,
+  intervalText,
+  Label,
+  LabelNote,
+  type Ctx,
+} from './PethShared.tsx';
 
 /** Left and right margins shared by the heatmap and the mean curves under it, so their time axes line up. */
 const HEAT = { l: 48, r: 92 };
 
-const yUnit = (o: PethOutcome) => (o.params.baselineSubtract ? 'Δ from baseline (a.u.)' : 'neural (a.u.)');
+const yUnit = (o: PethOutcome) => signalLabel(o.params.baselineSubtract);
 /** The bin width of the curves, e.g. "0.1 s". */
 export const binText = (o: PethOutcome) => `${+(binFrames(o) / o.input.fs).toFixed(3)} s`;
 
 /** The cell's raw windows range for the raster: 1st to 99th percentile of the values. */
 export function rawLimits(data: Float32Array): [number, number] {
-  const v = Array.from(data).filter(Number.isFinite).sort((a, b) => a - b);
+  const v = Array.from(data)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
   if (!v.length) return [0, 1];
   const q = (p: number) => v[Math.floor(p * (v.length - 1))];
   return [q(0.01), q(0.99)];
@@ -126,21 +138,44 @@ function HeatCanvas(props: { ctx: Ctx; w: number; h: number }): JSX.Element {
         ] as const) {
           ctx.fillStyle = color;
           ctx.fillRect(x(iv[0]), T - 8, Math.max(1, x(iv[1]) - x(iv[0])), 4);
-          put(ctx, `${name} ${intervalText(iv)}`, (x(iv[0]) + x(iv[1])) / 2, T - 12, 'center', color);
+          put(
+            ctx,
+            `${name} ${intervalText(iv)}`,
+            (x(iv[0]) + x(iv[1])) / 2,
+            T - 12,
+            'center',
+            color,
+          );
         }
         drawOnset(ctx, x(0), T, T + ph);
         drawTimeAxis(ctx, x, dom, T + ph, timeAxisLabel());
         // cell rank labels, then the selected cell
         const n = c().order.length;
-        for (const rank of new Set([1, Math.round(n / 2), n])) if (rank >= 1) put(ctx, String(rank), HEAT.l - 5, T + (rank - 0.5) * rh + 4, 'right');
-        put(ctx, `Cells (sorted by ${SORT_LABEL[c().sort]})`, 11, T + ph / 2, 'center', '#666', -Math.PI / 2);
+        for (const rank of new Set([1, Math.round(n / 2), n]))
+          if (rank >= 1) put(ctx, String(rank), HEAT.l - 5, T + (rank - 0.5) * rh + 4, 'right');
+        put(
+          ctx,
+          `Cells (sorted by ${SORT_LABEL[c().sort]})`,
+          11,
+          T + ph / 2,
+          'center',
+          '#666',
+          -Math.PI / 2,
+        );
         const sel = c().order.indexOf(c().c);
         if (sel >= 0) {
           ctx.strokeStyle = '#0969da';
           ctx.lineWidth = 2;
           ctx.strokeRect(HEAT.l - 1, T + sel * rh - 1, pw + 16, Math.max(rh, 1) + 2);
           ctx.lineWidth = 1;
-          put(ctx, `Cell ${out.cellIds[c().c] + 1}`, HEAT.l - 5, T + sel * rh - 4, 'right', '#0969da');
+          put(
+            ctx,
+            `Cell ${out.cellIds[c().c] + 1}`,
+            HEAT.l - 5,
+            T + sel * rh - 4,
+            'right',
+            '#0969da',
+          );
         }
         // significance marker column
         const sx = HEAT.l + pw + 6;
@@ -171,7 +206,9 @@ function HeatCanvas(props: { ctx: Ctx; w: number; h: number }): JSX.Element {
           ctx.fillStyle = deltaColor(lim() - (2 * lim() * i) / ph, lim());
           ctx.fillRect(bx, T + i, 10, 1.2);
         }
-        [lim(), 0, -lim()].forEach((v, i) => put(ctx, String(v), bx + 13, T + (i * ph) / 2 + 4, 'left'));
+        [lim(), 0, -lim()].forEach((v, i) =>
+          put(ctx, String(v), bx + 13, T + (i * ph) / 2 + 4, 'left'),
+        );
         put(ctx, yUnit(out), bx + 52, T + ph / 2, 'center', '#666', Math.PI / 2);
       }}
     />
@@ -182,7 +219,9 @@ function MeanCurves(props: { ctx: Ctx; w: number; h: number }): JSX.Element {
   const o = () => props.ctx.out;
   const groups = createMemo(() => {
     const b = props.ctx.b;
-    const ev = o().cellIds.map((_, c) => c).filter((c) => Number.isFinite(valueOf(o(), c, b)));
+    const ev = o()
+      .cellIds.map((_, c) => c)
+      .filter((c) => Number.isFinite(valueOf(o(), c, b)));
     const pick = (r: string) => ev.filter((c) => labelAt(o(), c, b) === r);
     return { all: ev, higher: pick('excited'), lower: pick('inhibited') };
   });
@@ -216,6 +255,68 @@ function MeanCurves(props: { ctx: Ctx; w: number; h: number }): JSX.Element {
   );
 }
 
+/**
+ * Latency of each significant cell as a tick on the heatmap's time axis, one row per cell in the
+ * heatmap's order. Orange: first bins above the null band; purple: below it.
+ */
+function LatencyTicks(props: { ctx: Ctx; w: number; h: number }): JSX.Element {
+  const c = () => props.ctx;
+  const o = () => c().out;
+  const [T, B] = [4, 20];
+  const found = createMemo(() => latencyTicks(o(), c().b));
+  // Rows follow the heatmap's order, restricted to the cells that have a latency.
+  const rows = createMemo(() => {
+    const byCell = new Map(found().ticks.map((t) => [t.cell, t]));
+    return c().order.flatMap((cell) => (byCell.has(cell) ? [byCell.get(cell)!] : []));
+  });
+  const dom = () => timeDomain(o());
+  const x = (t: number) =>
+    HEAT.l + ((t - dom()[0]) / (dom()[1] - dom()[0])) * (props.w - HEAT.l - HEAT.r);
+  const rh = () => (props.h - T - B) / Math.max(1, rows().length);
+  return (
+    <svg
+      width={props.w}
+      height={props.h}
+      viewBox={`0 0 ${props.w} ${props.h}`}
+      role="img"
+      aria-label="Latency of each significant cell"
+    >
+      <line x1={x(0)} x2={x(0)} y1={T} y2={props.h - B} stroke="#222" stroke-dasharray="4 3" />
+      <For each={rows()}>
+        {(t, i) => (
+          <line
+            x1={x(t.latencyS)}
+            x2={x(t.latencyS)}
+            y1={T + i() * rh()}
+            y2={T + (i() + 1) * rh() - Math.min(1, rh() * 0.2)}
+            stroke={t.dir > 0 ? ORANGE : PURPLE}
+            stroke-width="2"
+          >
+            <title>{`Cell ${o().cellIds[t.cell] + 1}: ${t.latencyS.toFixed(2)} s (${t.dir > 0 ? 'above' : 'below'} band)`}</title>
+          </line>
+        )}
+      </For>
+      <line x1={HEAT.l} x2={props.w - HEAT.r} y1={props.h - B} y2={props.h - B} stroke="#8c959f" />
+      <For each={timeTicks(dom()[0], dom()[1])}>
+        {(t) => (
+          <text x={x(t)} y={props.h - B + 13} text-anchor="middle" font-size="11" fill="#666">
+            {t}
+          </text>
+        )}
+      </For>
+      <text
+        x={(HEAT.l + props.w - HEAT.r) / 2}
+        y={props.h - 2}
+        text-anchor="middle"
+        font-size="11"
+        fill="#666"
+      >
+        {timeAxisLabel()}
+      </text>
+    </svg>
+  );
+}
+
 /** The selected cell: its single-onset windows, its mean response, and the way into the inspector. */
 function Preview(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
@@ -233,7 +334,9 @@ function Preview(props: { ctx: Ctx }): JSX.Element {
       <div class="cb-pe-line">
         <Label out={o()} r={labelAt(o(), c().c, c().b)} />
         <Show when={hasTest(o())}>
-          <span>{pUsedName(o())} {fmtP(pAdjOf(o(), c().c, c().b))}</span>
+          <span>
+            {pUsedName(o())} {fmtP(pAdjOf(o(), c().c, c().b))}
+          </span>
         </Show>
       </div>
       <Show when={why()}>
@@ -285,8 +388,8 @@ function Preview(props: { ctx: Ctx }): JSX.Element {
         </Fit>
       </div>
       <div class="cb-muted cb-pe-small">
-        {o().params.baselineSubtract ? 'Baseline-subtracted' : 'Not baseline-subtracted'}, {binText(o())} bins, ± SEM
-        across onsets{o().band ? ' · gray: null band' : ''}. {DIR_NOTE}
+        {o().params.baselineSubtract ? 'Baseline-subtracted' : 'Not baseline-subtracted'},{' '}
+        {binText(o())} bins, ± SEM across onsets{o().band ? ' · gray: null band' : ''}. {DIR_NOTE}
       </div>
       <button class="btn-secondary cb-pe-open" onClick={c().openInspector}>
         Open cell inspector
@@ -295,16 +398,17 @@ function Preview(props: { ctx: Ctx }): JSX.Element {
   );
 }
 
-const DIR_NOTE = 'Higher and Lower describe the direction relative to the baseline interval, not a mechanism.';
+const DIR_NOTE =
+  'Higher and Lower describe the direction relative to the baseline interval, not a mechanism.';
 
 export function RasterHelp(props: { out: PethOutcome }): JSX.Element {
   return (
     <HowTo title="Single-bout windows">
       <p>
-        Each row is the raw smoothed deconvolved trace (a.u.) of this cell around one included bout, aligned to{' '}
-        {alignWord(props.out)}. The dashed line marks the aligned point. Windows are not baseline-subtracted or binned,
-        so you can see variation across occurrences. The gray scale runs from the 1st to the 99th percentile of the
-        values shown.
+        Each row is the raw smoothed deconvolved trace (a.u.) of this cell around one included bout,
+        aligned to {alignWord(props.out)}. The dashed line marks the aligned point. Windows are not
+        baseline-subtracted or binned, so you can see variation across occurrences. The gray scale
+        runs from the 1st to the 99th percentile of the values shown.
       </p>
     </HowTo>
   );
@@ -315,15 +419,17 @@ export function MeanHelp(props: { out: PethOutcome }): JSX.Element {
   return (
     <HowTo title="Mean response">
       <p>
-        The line is the average response across bouts{o().params.baselineSubtract ? ', after subtracting each window\'s baseline mean' : ''},
-        in {binText(o())} bins (a.u.). The shaded region around it is ± SEM across bouts. Colored bars mark the
-        baseline ({intervalText(o().params.baselineS)}) and response ({intervalText(o().params.responseS)}) intervals; the
-        test uses the unbinned interval means.
+        The line is the average response across bouts
+        {o().params.baselineSubtract ? ", after subtracting each window's baseline mean" : ''}, in{' '}
+        {binText(o())} bins (a.u.). The shaded region around it is ± SEM across bouts. Colored bars
+        mark the baseline ({intervalText(o().params.baselineS)}) and response (
+        {intervalText(o().params.responseS)}) intervals; the test uses the unbinned interval means.
       </p>
       <Show when={o().band} fallback={<p>The null band and latency were off in this run.</p>}>
         <p>
-          The gray band is the 2.5th to 97.5th percentile of the same curve after {o().settings.bandShifts} circular
-          shifts of this cell's trace. See "How is latency estimated?" for how it is used.
+          The gray band is the 2.5th to 97.5th percentile of the same curve after{' '}
+          {o().settings.bandShifts} circular shifts of this cell's trace. See "How is latency
+          estimated?" for how it is used.
         </p>
       </Show>
     </HowTo>
@@ -334,7 +440,9 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
   const o = () => c().out;
   const counts = () => {
-    const ev = o().cellIds.map((_, i) => i).filter((i) => Number.isFinite(valueOf(o(), i, c().b)));
+    const ev = o()
+      .cellIds.map((_, i) => i)
+      .filter((i) => Number.isFinite(valueOf(o(), i, c().b)));
     const n = (r: string) => ev.filter((i) => labelAt(o(), i, c().b) === r).length;
     return { all: ev.length, higher: n('excited'), lower: n('inhibited') };
   };
@@ -349,33 +457,41 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
   return (
     <div class="cb-pe-pop">
       <BehaviorList ctx={c()} />
-      <section class="cb-plot cb-pe-heat" tabindex="0" onKeyDown={key} aria-label="Population heatmap: arrow keys change the selected cell">
+      <section
+        class="cb-plot cb-pe-heat"
+        tabindex="0"
+        onKeyDown={key}
+        aria-label="Population heatmap: arrow keys change the selected cell"
+      >
         <div class="cb-plot__head">
           <h3>Population PETH · {o().labels[c().b]}</h3>
           <HowTo title="Population PETH">
             <p>
-              Each row is a cell and each column a {binText(o())} time bin from {timeDomain(o())[0].toFixed(1)} to{' '}
-              {timeDomain(o())[1].toFixed(1)} s around {alignWord(o())}. Color is the mean response across bouts
-              {o().params.baselineSubtract ? ', relative to each window\'s baseline mean' : ''} (a.u.): orange is higher,
-              purple is lower. The dashed line marks the aligned point. The scale is clipped at ±{clipLimit(o(), c().b)};
-              larger values share the end colors. Gray rows have no value for this behavior.
+              Each row is a cell and each column a {binText(o())} time bin from{' '}
+              {timeDomain(o())[0].toFixed(1)} to {timeDomain(o())[1].toFixed(1)} s around{' '}
+              {alignWord(o())}. Color is the mean response across bouts
+              {o().params.baselineSubtract ? ", relative to each window's baseline mean" : ''}{' '}
+              (a.u.): orange is higher, purple is lower. The dashed line marks the aligned point.
+              The scale is clipped at ±{clipLimit(o(), c().b)}; larger values share the end colors.
+              Gray rows have no value for this behavior.
             </p>
             <p>
-              Bars above the plot mark the baseline ({intervalText(o().params.baselineS)}) and response (
-              {intervalText(o().params.responseS)}) intervals. Triangles in the marker column mark cells with a
-              significant response (▲ higher, ▼ lower).
+              Bars above the plot mark the baseline ({intervalText(o().params.baselineS)}) and
+              response ({intervalText(o().params.responseS)}) intervals. Triangles in the marker
+              column mark cells with a significant response (▲ higher, ▼ lower).
             </p>
             <LabelNote out={o()} />
             <p>
-              Sorting: response puts the largest response minus baseline first; latency puts the earliest
-              null-band latency first (without a null band, the time of the largest absolute value in the
-              response interval); peak time puts the earliest highest point of the curve first. Cells
-              without a value come last.
+              Sorting: response puts the largest response minus baseline first; latency puts the
+              earliest null-band latency first (without a null band, the time of the largest
+              absolute value in the response interval); peak time puts the earliest highest point of
+              the curve first. Cells without a value come last.
             </p>
             <p>
-              Show limits the heatmap and the cell list to cells labelled Higher or Lower for the selected behavior;
-              the mean curves below always use every evaluated cell. Higher and Lower here are defined against this
-              PETH's baseline interval and its own shuffle test, so they are not interchangeable with the auROC labels.
+              Show limits the heatmap and the cell list to cells labelled Higher or Lower for the
+              selected behavior; the mean curves below always use every evaluated cell. Higher and
+              Lower here are defined against this PETH's baseline interval and its own shuffle test,
+              so they are not interchangeable with the auROC labels.
             </p>
             <p>Click a row, or use the up and down arrow keys, to select a cell.</p>
           </HowTo>
@@ -389,8 +505,8 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
                 onChange={(e) => c().setFilter(e.currentTarget.value as CellFilter)}
               >
                 <option value="all">All cells ({counts().all})</option>
-                <option value="excited">▲ Higher (excited) ({counts().higher})</option>
-                <option value="inhibited">▼ Lower (inhibited) ({counts().lower})</option>
+                <option value="excited">▲ Higher ({counts().higher})</option>
+                <option value="inhibited">▼ Lower ({counts().lower})</option>
               </select>
             </Show>
             Sort
@@ -399,7 +515,9 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
               value={c().sort}
               onChange={(e) => c().setSort(e.currentTarget.value as CellSort)}
             >
-              <For each={Object.entries(SORT_LABEL)}>{([k, l]) => <option value={k}>{l}</option>}</For>
+              <For each={Object.entries(SORT_LABEL)}>
+                {([k, l]) => <option value={k}>{l}</option>}
+              </For>
             </select>
           </span>
         </div>
@@ -410,11 +528,14 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
           <h4>Mean curves</h4>
           <HowTo title="Mean curves">
             <p>
-              Lines show the average response across cells in each group; shading shows ± SEM across cells. The gray
-              line is every evaluated cell
-              {hasTest(o()) ? '; the Higher (orange) and Lower (purple) groups contain the cells classified as significant in those directions for the selected behavior' : ''}.
-              The time axis matches the heatmap. The curves are {o().params.baselineSubtract ? 'baseline-subtracted and ' : ''}binned ({binText(o())}); the
-              test uses the unbinned interval means.
+              Lines show the average response across cells in each group; shading shows ± SEM across
+              cells. The gray line is every evaluated cell
+              {hasTest(o())
+                ? '; the Higher (orange) and Lower (purple) groups contain the cells classified as significant in those directions for the selected behavior'
+                : ''}
+              . The time axis matches the heatmap. The curves are{' '}
+              {o().params.baselineSubtract ? 'baseline-subtracted and ' : ''}binned ({binText(o())}
+              ); the test uses the unbinned interval means.
             </p>
             <Show when={hasTest(o())}>
               <p>{DIR_NOTE}</p>
@@ -432,6 +553,29 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
         <div class="cb-pe-heat__curves">
           <Fit>{(w, h) => <MeanCurves ctx={c()} w={w} h={h} />}</Fit>
         </div>
+        <Show when={hasTest(o()) && o().band}>
+          <div class="cb-ar-plot__head">
+            <h4>Latency of significant cells (descriptive)</h4>
+            <HowTo title="Latency of significant cells">
+              <p>
+                One tick per cell with a significant response for the selected behavior, in the
+                heatmap's order, placed at its latency on the same time axis. Orange: the first bins
+                above the null band; purple: below it. Latency is the center of the first bin, at or
+                after the aligned point, that starts {o().settings.latencyBins} consecutive bins
+                outside the band on the same side. It is descriptive: not tested, not corrected for
+                bins or cells, and it uses its own shifts, so a cell can have a latency without
+                being significant. Significant cells with no such run have no tick.
+              </p>
+            </HowTo>
+            <span class="cb-muted cb-pe-small cb-pe-legend">
+              {latencyTicks(o(), c().b).ticks.length} of {latencyTicks(o(), c().b).significant}{' '}
+              significant cells have a latency
+            </span>
+          </div>
+          <div class="cb-pe-heat__lat">
+            <Fit>{(w, h) => <LatencyTicks ctx={c()} w={w} h={h} />}</Fit>
+          </div>
+        </Show>
       </section>
       <section class="cb-plot cb-pe-prev">
         <Preview ctx={c()} />
