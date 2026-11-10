@@ -738,3 +738,50 @@
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
 }
+/* Neural overview: the heatmap of every cell above the selected cell. */
+.cb-ds-neural {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.cb-ds-neural > * {
+  min-height: 0;
+}
+.cb-ds-heatwrap {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-rows: auto 18px;
+  height: 100%;
+}
+.cb-ds-heat__y {
+  align-self: center;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.cb-ds-heat {
+  position: relative;
+}
+.cb-ds-heat__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+.cb-ds-heat__sel {
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  border: 1.5px solid #fff;
+  outline: 1px solid #1f2328;
+  pointer-events: none;
+}
+.cb-ds-heat__x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}

@@ -22,6 +22,7 @@ import { FileArena } from './FileArena.tsx';
 import { FilePrep } from './FilePrep.tsx';
 import { FileQc } from './FileQc.tsx';
 import { GetStarted, Unassigned } from './GetStarted.tsx';
+import { MATRIX, NeuralFileOverview } from './NeuralOverview.tsx';
 import { accepted, LEVEL, noteOf, slotLabel } from './FileList.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
@@ -78,7 +79,13 @@ function Overview(props: { slot: SlotId }): JSX.Element {
       </Show>
       <Show
         when={viewOf(props.slot) === 'table' && hasTable(props.slot)}
-        fallback={<SlotPreview slot={props.slot} />}
+        fallback={
+          MATRIX[props.slot] ? (
+            <NeuralFileOverview slot={props.slot} />
+          ) : (
+            <SlotPreview slot={props.slot} />
+          )
+        }
       >
         <DataTable slot={props.slot} />
       </Show>
