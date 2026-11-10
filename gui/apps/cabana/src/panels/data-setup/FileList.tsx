@@ -10,6 +10,7 @@ import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { behaviorCategories } from '../BehaviorQc.tsx';
 import { fileMismatch } from '../ConfigReport.tsx';
+import { RoleInfo, RoleTag } from './AnalysisRole.tsx';
 
 export const LEVEL: Record<string, string> = {
   required: 'Required',
@@ -76,7 +77,7 @@ function Row(props: { slot: Slot }): JSX.Element {
       <span class="cb-gs-item__text">
         <span class="cb-ds-item__head">
           <span class="cb-gs-item__title">{slotLabel(props.slot)}</span>
-          <Show when={!isLoaded(id())}>
+          <Show when={!isLoaded(id())} fallback={<RoleTag slot={id()} />}>
             <span class="cb-ds-item__level">{LEVEL[levelOf(id())]}</span>
           </Show>
         </span>
@@ -141,7 +142,12 @@ export function FileList(): JSX.Element {
       <For each={GROUPS}>
         {(g) => (
           <>
-            <h4 class="cb-ds-grp">{g.title}</h4>
+            <h4 class="cb-ds-grp">
+              {g.title}
+              <Show when={g.title === 'Neural'}>
+                <RoleInfo />
+              </Show>
+            </h4>
             <For each={g.slots}>{(s) => <Row slot={s} />}</For>
           </>
         )}

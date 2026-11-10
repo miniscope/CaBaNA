@@ -589,3 +589,46 @@
   max-width: 100%;
   object-fit: contain;
 }
+/* Analysis data / Reference data tags on neural files. */
+.cb-ds-tag {
+  display: inline-block;
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+.cb-ds-tag--analysis {
+  background: var(--accent);
+  color: #fff;
+}
+.cb-ds-tag--reference {
+  border-color: var(--border-default);
+  background: none;
+  color: var(--text-secondary);
+}
+.cb-ds-tag--btn {
+  cursor: pointer;
+  align-self: center;
+}
+.cb-ds-item__head .cb-ds-tag {
+  margin-left: auto;
+}
+.cb-ds-grp .cb-tip__btn {
+  margin-left: 4px;
+  text-transform: none;
+}
+.cb-ds-rolehelp p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cb-ds-rolehelp .cb-ds-tag {
+  margin-right: 4px;
+}

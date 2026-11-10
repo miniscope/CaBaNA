@@ -15,6 +15,7 @@ import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
 import { FileButton, SlotPreview } from '../Preview.tsx';
+import { RoleTagButton } from './AnalysisRole.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
@@ -144,6 +145,7 @@ function LoadedFile(props: { slot: Slot }): JSX.Element {
     <>
       <div class="cb-ds-head">
         <h3>{slotLabel(props.slot)}</h3>
+        <RoleTagButton slot={props.slot.id} />
         <span class="cb-muted">{LEVEL[levelOf(props.slot.id)]}</span>
         <span class="cb-muted cb-ds-head__file" title={props.slot.format}>
           <code>{info().name}</code> · {info().summary}
