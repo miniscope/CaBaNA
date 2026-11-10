@@ -222,7 +222,7 @@ export const snapshot = createRoot(() => {
 
 const statusMemos = createRoot(() => {
   const per = {} as Record<ItemId, () => Status>;
-  const ids: ItemId[] = ['load', 'setup', 'viz', 'qc', 'prep', ...ANALYSIS_ITEMS, 'results'];
+  const ids: ItemId[] = ['data', 'load', 'setup', 'viz', 'qc', 'prep', ...ANALYSIS_ITEMS, 'results'];
   for (const id of ids) per[id] = createMemo(() => itemStatus(snapshot(), id));
   return per;
 });
