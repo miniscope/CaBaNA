@@ -287,3 +287,27 @@
 .cb-ds-about__grid > p {
   background: var(--bg-secondary);
 }
+.cb-ds-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.cb-ds-start h4 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+}
+.cb-ds-start p {
+  margin: 0 0 4px;
+}
+.cb-ds-start__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-lg, 24px);
+}
+.cb-ds-start__cols > div + div {
+  padding-left: var(--space-md);
+  border-left: 1px solid var(--border-subtle);
+}
+.cb-ds-start__pick {
+  max-width: 320px;
+}

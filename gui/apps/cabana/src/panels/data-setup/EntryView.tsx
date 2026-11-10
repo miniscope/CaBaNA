@@ -13,17 +13,14 @@ import {
 import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-sections.ts';
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
-import { FileButton, Preview, SlotPreview } from '../Preview.tsx';
+import { FileButton, SlotPreview } from '../Preview.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
 import { FilePrep } from './FilePrep.tsx';
 import { FileQc } from './FileQc.tsx';
-import { LEVEL, noteOf, slotLabel } from './FileList.tsx';
-
-/** File types each data type is read from. */
-export const accepted = (s: Slot) =>
-  s.file.endsWith('.yaml') ? '.yaml, .yml' : `.${s.file.split('.').pop()}`;
+import { GetStarted, Unassigned } from './GetStarted.tsx';
+import { accepted, LEVEL, noteOf, slotLabel } from './FileList.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
 
@@ -229,7 +226,10 @@ export function EntryView(): JSX.Element {
         <Match when={entry() === 'config'}>
           <ConfigView />
         </Match>
-        <Match when={file()}>{(f) => <Preview item={{ file: f() }} />}</Match>
+        <Match when={entry() === 'start'}>
+          <GetStarted />
+        </Match>
+        <Match when={file()}>{(f) => <Unassigned file={f()} />}</Match>
         <Match when={slot() && isLoaded(slot()!.id) && slot()}>
           {(s) => <LoadedFile slot={s()} />}
         </Match>

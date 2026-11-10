@@ -21,6 +21,10 @@ export const LEVEL: Record<string, string> = {
 /** The name a data type has on this page; the config file is the experiment's config. */
 export const slotLabel = (s: Slot) => (s.id === 'config' ? 'Experiment config' : s.label);
 
+/** File types each data type is read from. */
+export const accepted = (s: Slot) =>
+  s.file.endsWith('.yaml') ? '.yaml, .yml' : `.${s.file.split('.').pop()}`;
+
 const GROUPS: { title: string; slots: Slot[] }[] = [
   { title: 'Config', slots: SLOTS.filter((s) => s.group === 'Configuration') },
   { title: 'Neural', slots: SLOTS.filter((s) => s.group === 'Neural') },
@@ -124,6 +128,16 @@ function SyncRow(): JSX.Element {
 export function FileList(): JSX.Element {
   return (
     <nav class="cb-gs-list cb-ds-list" aria-label="Data files">
+      <Show when={!SLOTS.some((s) => isLoaded(s.id)) && !unrecognized().length}>
+        <button
+          type="button"
+          class="cb-gs-item cb-ds-item"
+          classList={{ 'cb-gs-item--on': entry() === 'start' }}
+          onClick={() => openEntry('start')}
+        >
+          <span class="cb-gs-item__title">Get started</span>
+        </button>
+      </Show>
       <For each={GROUPS}>
         {(g) => (
           <>

@@ -8,14 +8,15 @@ import { sectionsFor, type SectionId } from './file-sections.ts';
 import type { SlotId } from './slots.ts';
 import { loaded, sessionName } from './store.ts';
 
-/** A data type, the cross-data timing check, or an unassigned file (by name). */
-export type EntryId = SlotId | 'sync' | `file:${string}`;
+/** Get started, a data type, the cross-data timing check, or an unassigned file (by name). */
+export type EntryId = 'start' | SlotId | 'sync' | `file:${string}`;
 
-export const [entry, setEntry] = createSignal<EntryId>('config');
+export const [entry, setEntry] = createSignal<EntryId>('start');
 const [section, setSection] = createStore<Partial<Record<string, SectionId>>>({});
 const [opened, setOpened] = createStore<Record<string, boolean>>({});
 
-const isSlot = (id: EntryId): id is SlotId => id !== 'sync' && !id.startsWith('file:');
+const isSlot = (id: EntryId): id is SlotId =>
+  id !== 'start' && id !== 'sync' && !id.startsWith('file:');
 
 /** The open section of a data type; its first section until another is chosen. */
 export function sectionOf(slot: SlotId): SectionId {
@@ -28,7 +29,7 @@ export function sectionOf(slot: SlotId): SectionId {
 export function openEntry(id: EntryId, sec?: SectionId): void {
   setEntry(id);
   if (sec && isSlot(id)) setSection(id, sec);
-  if (!isSlot(id) || loaded[id]?.summary) setOpened(id, true);
+  if (id !== 'start' && (!isSlot(id) || loaded[id]?.summary)) setOpened(id, true);
 }
 
 export function openSection(slot: SlotId, sec: SectionId): void {

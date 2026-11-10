@@ -2,7 +2,7 @@
 // it alone. Files are matched to data types by name; dropping anywhere on the page adds them.
 
 import { createEffect, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { openEntry, reviewed } from '../../lib/data-setup-view.ts';
+import { entry, openEntry, reviewed } from '../../lib/data-setup-view.ts';
 import {
   activeLabel,
   clearActiveLabel,
@@ -54,6 +54,16 @@ export function DataSetupPanel(): JSX.Element {
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   createEffect(on(sessionName, () => setApplied(undefined), { defer: true }));
+  // Get started is the page until something loads, and again after Clear all.
+  createEffect(
+    on(
+      () => loadedIds().length + unrecognized().length > 0,
+      (any) => {
+        if (any && entry() === 'start') openEntry('config');
+        if (!any) openEntry('start');
+      },
+    ),
+  );
   // A link from another page: open the file a label came from.
   createEffect(() => {
     const f = takeFocus('load');
