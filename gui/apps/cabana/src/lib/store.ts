@@ -132,6 +132,9 @@ export function resetFrameRoles(): void {
 
 const matrix = (id: SlotId) => (version(), data[id] as Matrix | undefined);
 const table = (id: SlotId) => (version(), data[id] as Table | undefined);
+/** A loaded file's values as read: a cells x frames array, or a table of text. */
+export const slotMatrix = matrix;
+export const slotTable = table;
 
 async function load(slot: SlotId, file: File): Promise<void> {
   const base = { name: file.name, size: file.size };
