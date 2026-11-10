@@ -16,7 +16,8 @@ import {
   sessionDuration,
   selectCell,
 } from '../../lib/store.ts';
-import { SlotPreview } from '../Preview.tsx';
+import { CellTraces } from '../CellTraces.tsx';
+import { CellPicker } from '../parts.tsx';
 import { Help, PlotCard } from '../QcParts.tsx';
 
 export const MATRIX: Partial<Record<SlotId, () => Matrix | undefined>> = {
@@ -130,7 +131,51 @@ export function NeuralFileOverview(props: { slot: SlotId }): JSX.Element {
   return (
     <div class="cb-ds-neural">
       <LayerHeatmap slot={props.slot} />
-      <SlotPreview slot={props.slot} />
+      <SelectedCell slot={props.slot} />
     </div>
+  );
+}
+
+const MARK: Partial<Record<SlotId, string>> = {
+  neural_raw: 'Raw fluorescence',
+  neural_denoised: 'Denoised trace',
+  neural_deconvolved: 'Deconvolved events',
+};
+
+/** The selected cell in every loaded layer, this file's layer in blue and the others in gray. */
+export function SelectedCell(props: { slot: SlotId }): JSX.Element {
+  const n = () => (rawTrace() ?? denoisedTrace() ?? deconvolved())?.cells ?? 0;
+  const layers = () => [rawTrace(), denoisedTrace(), deconvolved()].filter(Boolean).length || 1;
+  return (
+    <PlotCard
+      title={`Cell ${cell() + 1}, all loaded layers`}
+      tools={<CellPicker n={n()} compact />}
+      help={
+        <>
+          <Help k="What is plotted">
+            The selected cell in each loaded neural file: raw fluorescence, the denoised trace and
+            the deconvolved events. This file is drawn in blue, the others in gray.
+          </Help>
+          <Help k="Axes">
+            Time in seconds; each panel has its own vertical scale, in the file's own units.
+          </Help>
+          <Help k="Linked">
+            The panels share zoom and cursor: drag to zoom. Pick a cell here, in the heatmap or on
+            the footprints.
+          </Help>
+          <Help k="Limits">Heights cannot be compared between panels.</Help>
+        </>
+      }
+    >
+      {(s) => (
+        <div class="cb-fill cb-fill--col">
+          <CellTraces
+            mark={MARK[props.slot]}
+            highlight
+            height={Math.max(60, Math.floor((s().h - 22 * layers()) / layers()))}
+          />
+        </div>
+      )}
+    </PlotCard>
   );
 }

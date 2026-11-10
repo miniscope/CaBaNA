@@ -11,9 +11,14 @@ import {
 
 /**
  * The selected cell's raw, denoised and deconvolved traces, one labeled panel each (`height` per
- * panel). `mark` bolds the label of one of them.
+ * panel). `mark` bolds the label of one of them; with `highlight` that one is also drawn in blue
+ * and the others in gray.
  */
-export function CellTraces(props: { height?: number; mark?: string }): JSX.Element {
+export function CellTraces(props: {
+  height?: number;
+  mark?: string;
+  highlight?: boolean;
+}): JSX.Element {
   const frames = () => (rawTrace() ?? denoisedTrace() ?? deconvolved())?.frames ?? 0;
   const t = createMemo(
     () =>
@@ -39,17 +44,19 @@ export function CellTraces(props: { height?: number; mark?: string }): JSX.Eleme
       v: row(deconvolved()),
     },
   ];
+  const stroke = (p: { label: string; stroke: string }) =>
+    !props.highlight ? p.stroke : p.label === props.mark ? '#2171b5' : '#9aa4b1';
   return (
     <For each={panels()}>
       {(p) => (
         <Show when={p.v}>
           <div class="cb-label" classList={{ 'cb-label--on': props.mark === p.label }}>
-            <i style={{ background: p.stroke }} />
+            <i style={{ background: stroke(p) }} />
             {p.label}
           </div>
           <TracePanel
             data={() => [t(), p.v!] as [number[], ...number[][]]}
-            series={[{}, { label: p.label, stroke: p.stroke, width: 1 }]}
+            series={[{}, { label: p.label, stroke: stroke(p), width: 1 }]}
             height={props.height ?? 110}
             syncKey="cabana-cell"
             xLabel="Time (s)"
