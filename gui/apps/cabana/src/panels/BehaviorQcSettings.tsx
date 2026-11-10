@@ -51,4 +51,3 @@ export function behaviorSettings(): JSX.Element {
     />
   );
 }
-

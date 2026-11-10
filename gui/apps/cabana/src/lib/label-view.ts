@@ -5,7 +5,9 @@
 import { createSignal } from 'solid-js';
 import type { Agreement } from './frame-labels.ts';
 import type { LabelEntry, LabelSource } from './labels.ts';
-import { goToStep, onClear } from './store.ts';
+import { openData } from './data-setup-view.ts';
+import type { SlotId } from './slots.ts';
+import { labelRegistry, onClear } from './store.ts';
 
 // ---- Paging ----
 
@@ -207,7 +209,14 @@ export function showLabel(to: LabelFocus['to'], name: string, file?: string): vo
   const f = { name, file, to };
   setActiveLabel(f);
   setFocusLabel(f);
-  goToStep(to);
+  // Both now live on Data setup: the label's file, or Experiment config (stimuli and label roles).
+  openData(to === 'setup' ? 'config' : (labelSlot(name, file) ?? 'start'));
+}
+
+/** The data type of the file a label came from. */
+function labelSlot(name: string, file?: string): SlotId | undefined {
+  const e = labelRegistry().find((x) => x.name === name && (!file || x.file === file));
+  return e?.slot as SlotId | undefined;
 }
 
 /** Called by the target page: the request for it, once. */

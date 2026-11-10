@@ -32,7 +32,8 @@ import { engineFor, frameworkReady, startRunTracking } from '../lib/engine.ts';
 import { placeChanges } from '../lib/place-ui.ts';
 import { placeFrames, placeNeural, positionIssue } from '../lib/prepared.ts';
 import { prep } from '../lib/preprocess.ts';
-import { deconvolved, goToStep } from '../lib/store.ts';
+import { openData } from '../lib/data-setup-view.ts';
+import { deconvolved, rawTrace } from '../lib/store.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { OccupancyPreview } from './OccupancyPreview.tsx';
 import { PlaceFieldSettings } from './PlaceFieldSettings.tsx';
@@ -165,8 +166,11 @@ function PlaceSetup(): JSX.Element {
               <Show when={rejected() > 0}>
                 {' · '}
                 {rejected()} excluded in{' '}
-                <button class="cb-link" onClick={() => goToStep('qc')}>
-                  Data QC
+                <button
+                  class="cb-link"
+                  onClick={() => openData(rawTrace() ? 'neural_raw' : 'neural_denoised', 'qc')}
+                >
+                  Data setup
                 </button>
               </Show>
             </span>

@@ -2,9 +2,9 @@
 import { Show, type JSX } from 'solid-js';
 import { positionExtremes, type Segment } from '../lib/qc-segments.ts';
 import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
-import { showRows } from '../lib/data-setup-view.ts';
+import { openData, showRows } from '../lib/data-setup-view.ts';
 import type { MetricCard } from '../components/MetricCards.tsx';
-import { goToStep, maxSpeed } from '../lib/store.ts';
+import { maxSpeed } from '../lib/store.ts';
 import { Advice, PagedList, RailBox } from './QcParts.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { fmtS, posOk, SEG, segIndex, segments, selectSegment } from './BehaviorQc.tsx';
@@ -141,8 +141,8 @@ export function PositionDetail(): JSX.Element {
         </p>
         <Advice checks={checks()} />
         <div class="cb-controls">
-          <button class="btn-secondary btn-small" onClick={() => goToStep('prep')}>
-            Open Preprocess ↗
+          <button class="btn-secondary btn-small" onClick={() => openData('position', 'prep')}>
+            Open Position → Preprocess
           </button>
         </div>
       </RailBox>

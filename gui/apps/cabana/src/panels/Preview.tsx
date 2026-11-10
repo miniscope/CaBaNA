@@ -11,7 +11,6 @@ import {
   markerFile,
   neuralSpan,
   footprints,
-  goToStep,
   levelOf,
   loaded,
   positionResult,
@@ -19,7 +18,6 @@ import {
   sessionDuration,
   timingResults,
 } from '../lib/store.ts';
-import { setQcCategory, setQcTab } from '../lib/qc-view.ts';
 import { Ethogram } from './BehaviorQc.tsx';
 import { CellTraces } from './CellTraces.tsx';
 import { ConfigReport, fileMismatch } from './ConfigReport.tsx';
@@ -30,6 +28,7 @@ import { CellPicker } from './parts.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
 import { Trajectory } from './Trajectory.tsx';
 import { HELP } from './VizHelp.tsx';
+import { openData } from '../lib/data-setup-view.ts';
 
 /** Add or Replace: picks one file for `slot`. */
 export function FileButton(props: { slot: SlotId; primary?: boolean }): JSX.Element {
@@ -150,12 +149,10 @@ function Timing(props: { slot: SlotId }): JSX.Element {
         <button
           class="cb-linkbtn"
           onClick={() => {
-            setQcTab('behavior');
-            setQcCategory('behavior', 'timing');
-            goToStep('qc');
+            openData('sync');
           }}
         >
-          View timing checks in Data QC →
+          View timing checks in Timestamp alignment →
         </button>
       </Show>
     </Box>
@@ -310,8 +307,8 @@ export function SlotPreview(props: { slot: SlotId }): JSX.Element {
           <div class="cb-controls">
             <FileButton slot={props.slot} primary />
             <Show when={props.slot === 'config'}>
-              <button class="btn-secondary btn-small" onClick={() => goToStep('setup')}>
-                Enter in Experimental setup
+              <button class="btn-secondary btn-small" onClick={() => openData('config')}>
+                Enter in Experiment config
               </button>
             </Show>
           </div>

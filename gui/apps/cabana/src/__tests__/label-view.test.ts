@@ -26,6 +26,7 @@ import {
 } from '../lib/label-view.ts';
 import type { LabelEntry } from '../lib/labels.ts';
 import { addFiles, frameLabelData, labelRegistry, loaded, slotFile, stepId } from '../lib/store.ts';
+import { entry } from '../lib/data-setup-view.ts';
 
 describe('paging', () => {
   it('counts pages and clamps', () => {
@@ -139,7 +140,9 @@ describe('starting selection without opening the analysis pages', () => {
 describe('focus link', () => {
   it('is taken once by its target page and stays highlighted', () => {
     showLabel('setup', 'grooming', 'frame_labels.csv');
-    expect(stepId()).toBe('setup');
+    // Stimuli and label roles are in Data setup → Experiment config.
+    expect(stepId()).toBe('data');
+    expect(entry()).toBe('config');
     expect(takeFocus('load')).toBeUndefined();
     expect(takeFocus('setup')).toMatchObject({ name: 'grooming', file: 'frame_labels.csv' });
     expect(focusLabel()).toBeUndefined();

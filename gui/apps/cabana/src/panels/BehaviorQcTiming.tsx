@@ -1,7 +1,8 @@
 // Behavioral QC timing and alignment: the clock plot, the recordings table and their summary and correction notes.
 import { For, Show, type JSX } from 'solid-js';
 import type { MetricCard } from '../components/MetricCards.tsx';
-import { goToStep, source, timingResults } from '../lib/store.ts';
+import { openData } from '../lib/data-setup-view.ts';
+import { source, timingResults } from '../lib/store.ts';
 import { Advice, Help, PlotCard, RailBox } from './QcParts.tsx';
 import { ClockPlot, timing } from './BehaviorQc.tsx';
 
@@ -127,12 +128,12 @@ export function TimingDetail(): JSX.Element {
   return (
     <RailBox title="Correction">
       <p class="cb-muted">
-        CaBaNA does not change timestamps. A clock offset is entered in Experimental Setup.
+        CaBaNA does not change timestamps. A clock offset is entered in Experiment config.
       </p>
       <Advice checks={timing()} />
       <div class="cb-controls">
-        <button class="btn-secondary btn-small" onClick={() => goToStep('setup')}>
-          Open Experimental Setup ↗
+        <button class="btn-secondary btn-small" onClick={() => openData('config')}>
+          Open Experiment config
         </button>
       </div>
     </RailBox>

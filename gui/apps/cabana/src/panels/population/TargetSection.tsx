@@ -15,6 +15,7 @@ import { Field, Num } from './fields.tsx';
 import { TargetSchematic } from './Schematics.tsx';
 import { binsOf } from './logic.ts';
 import { StatesChart } from './StatesChart.tsx';
+import { openData } from '../../lib/data-setup-view.ts';
 
 const TARGETS: { id: PopulationTarget; label: string; text: string }[] = [
   {
@@ -71,7 +72,7 @@ function DataSummary(): JSX.Element {
           <dd>
             deconvolved events,{' '}
             {prep.eventSigmaS ? `smoothed with σ ${prep.eventSigmaS} s` : 'not smoothed'} (
-            <button class="cb-link" onClick={() => goToStep('prep')}>
+            <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
               Preprocess
             </button>
             )
@@ -111,9 +112,9 @@ export function TargetSection(): JSX.Element {
                   below the speed threshold set in Preprocess are left out.
                 </p>
                 <p class="cb-muted">
-                  Arena outline and bin size come from Experimental setup.{' '}
-                  <button class="cb-link" onClick={() => goToStep('setup')}>
-                    Go to Experimental setup
+                  Arena outline and bin size come from the arena editor.{' '}
+                  <button class="cb-link" onClick={() => openData('position', 'arena')}>
+                    Open the arena editor
                   </button>
                 </p>
               </div>
@@ -124,8 +125,8 @@ export function TargetSection(): JSX.Element {
               fallback={
                 <div class="cb-empty">
                   No {s.target === 'zones' ? 'zone' : 'behavior'} annotations are loaded.{' '}
-                  <button class="cb-link" onClick={() => goToStep('load')}>
-                    Go to Load data
+                  <button class="cb-link" onClick={() => goToStep('data')}>
+                    Go to Data setup
                   </button>
                 </div>
               }

@@ -6,7 +6,7 @@ import { createEffect, createRoot, createSignal, on } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
 import type { SlotId } from './slots.ts';
-import { loaded, sessionName } from './store.ts';
+import { goToStep, loaded, sessionName } from './store.ts';
 
 /** Get started, a data type, the cross-data timing check, or an unassigned file (by name). */
 export type EntryId = 'start' | SlotId | 'sync' | `file:${string}`;
@@ -48,6 +48,12 @@ const [at, setAt] = createStore<Partial<Record<string, { row: number; frame: num
 export const tableAt = (slot: SlotId) => at[slot] ?? { row: 0, frame: 0 };
 export function setTableAt(slot: SlotId, p: Partial<{ row: number; frame: number }>): void {
   setAt(slot, { ...tableAt(slot), ...p });
+}
+
+/** Go to Data setup with an entry (and section) open: the link target for the former steps. */
+export function openData(id: EntryId, sec?: SectionId): void {
+  openEntry(id, sec);
+  goToStep('data');
 }
 
 /** Open a file's table at a row, from a QC finding. */

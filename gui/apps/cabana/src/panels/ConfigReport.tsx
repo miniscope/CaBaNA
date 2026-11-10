@@ -4,6 +4,7 @@ import { configReport } from '../lib/config-import.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
 import { configFiles, goToStep, loaded } from '../lib/store.ts';
 import { PopButton } from './QcParts.tsx';
+import { openData } from '../lib/data-setup-view.ts';
 
 const label = (id: SlotId) => SLOTS.find((s) => s.id === id)?.label ?? id;
 
@@ -147,10 +148,10 @@ export function ConfigSummary(): JSX.Element {
                     class="btn-primary btn-small"
                     onClick={() => {
                       close();
-                      goToStep('setup');
+                      openData('config');
                     }}
                   >
-                    Open Experimental setup →
+                    Open Experiment config →
                   </button>
                 </>
               )}

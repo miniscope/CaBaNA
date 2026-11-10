@@ -76,8 +76,8 @@ export function InputLine(): JSX.Element {
         }
       >
         <b>Input not met:</b> {problem()}{' '}
-        <button type="button" class="cb-link" onClick={() => goToStep('load')}>
-          Load data
+        <button type="button" class="cb-link" onClick={() => goToStep('data')}>
+          Data setup
         </button>
       </Show>
     </div>

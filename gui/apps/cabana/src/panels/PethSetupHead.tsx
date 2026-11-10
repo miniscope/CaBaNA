@@ -5,6 +5,7 @@ import { MetricCards } from '../components/MetricCards.tsx';
 import { pethOutcome, pethStatus, setPethShowResults } from '../lib/peth-run.ts';
 import { alignsRun, inputSignalText, pethCards } from '../lib/peth-setup.ts';
 import { prep } from '../lib/preprocess.ts';
+import { openData } from '../lib/data-setup-view.ts';
 import { goToStep } from '../lib/store.ts';
 import { InfoTip } from './InfoTip.tsx';
 import type { PethSetupState } from './PethSetupState.ts';
@@ -61,8 +62,8 @@ export function PethHead(props: { s: PethSetupState; changes: string[] }): JSX.E
         </h2>
         <p class="cb-muted">
           {inputSignalText(prep.eventSigmaS)} (
-          <button class="cb-link" onClick={() => goToStep('prep')}>
-            Preprocess
+          <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
+            Deconvolved events → Preprocess
           </button>
           )
         </p>
