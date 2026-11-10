@@ -48,6 +48,8 @@ export interface ArenaBackground {
 
 export interface ConfigValues {
   name?: string;
+  /** neural.kind: which layer is the analysis data. */
+  neuralKind?: 'deconvolved' | 'denoised' | 'raw';
   neuralFps?: number;
   clockOffsetS?: number;
   clockScale?: number;
@@ -203,8 +205,10 @@ function readValues(cfg: Obj, r: ConfigRead): void {
   if (!neural?.file) r.problems.push('neural.file is missing; the framework requires it.');
   if (neural) {
     const kind = str(neural.kind) ?? 'deconvolved';
-    if (NEURAL_SLOT[kind]) r.files[NEURAL_SLOT[kind]] = base(neural.file);
-    else
+    if (NEURAL_SLOT[kind]) {
+      r.files[NEURAL_SLOT[kind]] = base(neural.file);
+      v.neuralKind = kind as ConfigValues['neuralKind'];
+    } else
       r.problems.push(
         `neural.kind "${kind}" is not one the GUI shows (deconvolved, denoised, raw).`,
       );

@@ -2,6 +2,7 @@
 // what was typed; anything changed by hand afterwards wins.
 
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
+import { setAnalysisData } from './analysis-data.ts';
 import { arena, setArena, setPendingZones } from './arena.ts';
 import { readConfig, type ConfigRead } from './config-read.ts';
 import { setPrep } from './preprocess.ts';
@@ -47,6 +48,7 @@ onConfig((text) => {
   setConfigReport(r);
   setConfigFiles(r.files);
   if (v.name) setSessionName(v.name);
+  if (v.neuralKind) setAnalysisData(v.neuralKind);
   if (v.neuralFps !== undefined) setOverride('neuralFps', v.neuralFps);
   if (v.clockOffsetS !== undefined) setSource('clockOffsetS', v.clockOffsetS);
   if (v.clockScale !== undefined) setSource('clockScale', v.clockScale);

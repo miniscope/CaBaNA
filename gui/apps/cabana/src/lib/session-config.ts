@@ -13,6 +13,7 @@ import {
   positionTransform,
   sizeCm,
 } from './arena.ts';
+import { analysisKind, NEURAL_LAYERS } from './analysis-data.ts';
 import { arenaProblem, configReport } from './config-import.ts';
 import { regionNoticeProblem } from './region-notice.ts';
 import { backgroundMeta } from './spatial-state.ts';
@@ -87,20 +88,17 @@ function configFromSettings(omit: Section[] = []): Obj {
   const cfg: Obj = {};
   if (sessionName()) cfg.name = sessionName();
 
-  const layers = (
-    [
-      ['deconvolved', 'neural_deconvolved'],
-      ['denoised', 'neural_denoised'],
-      ['raw', 'neural_raw'],
-    ] as const
-  ).filter(([, id]) => file(id));
+  // The analysis data is neural.file; the other neural files are its alternatives.
+  const layers = NEURAL_LAYERS.filter((l) => file(l.slot)).sort(
+    (a, b) => +(b.kind === analysisKind()) - +(a.kind === analysisKind()),
+  );
   if (layers.length) {
-    const [kind, id] = layers[0];
-    const neural: Obj = { file: file(id), kind };
+    const [first, ...rest] = layers;
+    const neural: Obj = { file: file(first.slot), kind: first.kind };
     if (file('neural_timestamps')) neural.timestamps = file('neural_timestamps');
     else if (override.neuralFps) neural.fs = override.neuralFps;
-    if (layers.length > 1)
-      neural.alternatives = Object.fromEntries(layers.slice(1).map(([k, i]) => [k, file(i)]));
+    if (rest.length)
+      neural.alternatives = Object.fromEntries(rest.map((l) => [l.kind, file(l.slot)]));
     cfg.neural = neural;
   }
 
