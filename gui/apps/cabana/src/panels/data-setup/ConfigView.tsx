@@ -3,7 +3,7 @@
 // The fields are the ones from Experimental setup, bound to the same settings, so a change here
 // is a change to the config the GUI writes and the framework reads.
 
-import { Show, type JSX } from 'solid-js';
+import { createSignal, Show, type JSX } from 'solid-js';
 import { arena, calibrationIssue, positionUnitsPerCm, setArena } from '../../lib/arena.ts';
 import { openEntry } from '../../lib/data-setup-view.ts';
 import { downloadConfig } from '../../lib/session-config.ts';
@@ -27,6 +27,11 @@ import {
   ToolSelect,
 } from '../SetupPanel.tsx';
 import { Experiment, Num, Section, Select, Spatial } from './ConfigFields.tsx';
+import { AboutConfig, YamlView } from './ConfigYaml.tsx';
+
+// Kept while other entries are open.
+const [asYaml, setAsYaml] = createSignal(false);
+const [showAbout, setShowAbout] = createSignal(false);
 
 function Session(): JSX.Element {
   return (
@@ -210,26 +215,64 @@ export function ConfigView(): JSX.Element {
         </button>
       </div>
       <ImportedConfig />
-      <p class="cb-muted cb-ds-meta">
-        Changes here, and in each file's sections, update the same config.yaml.
-      </p>
-      <Spatial />
-      <Experiment />
-      <Session />
-      <Tracking />
-      <section class="cb-ds-cfg">
-        <header class="cb-ds-cfg__bar">
-          <h4>Stimuli & cues</h4>
-          <InfoTip label="Why Stimuli & cues matters" icon="?">
-            What the animal was shown or given. Each stimulus takes its times from a loaded label,
-            so PETH and auROC can group frames by it. Written to metadata.stimuli.
-          </InfoTip>
-        </header>
-        <div class="cb-ds-cfg__body">
-          <StimuliTab />
+      <div class="cb-ds-head">
+        <p class="cb-muted cb-ds-meta">
+          Changes here, and in each file's sections, update the same config.yaml.{' '}
+          <button class="cb-linkbtn" onClick={() => setShowAbout(!showAbout())}>
+            {showAbout() ? 'Hide' : 'About'} config.yaml
+          </button>
+        </p>
+        <span class="cb-spacer" />
+        <div class="cb-ds-view" role="tablist" aria-label="Show the config as">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!asYaml()}
+            classList={{ 'cb-ds-view--on': !asYaml() }}
+            onClick={() => setAsYaml(false)}
+          >
+            Fields
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={asYaml()}
+            classList={{ 'cb-ds-view--on': asYaml() }}
+            onClick={() => setAsYaml(true)}
+          >
+            View as YAML
+          </button>
         </div>
-      </section>
-      <Neural />
+      </div>
+      <Show when={showAbout()}>
+        <AboutConfig />
+      </Show>
+      <Show
+        when={asYaml()}
+        fallback={
+          <>
+            <Spatial />
+            <Experiment />
+            <Session />
+            <Tracking />
+            <section class="cb-ds-cfg">
+              <header class="cb-ds-cfg__bar">
+                <h4>Stimuli & cues</h4>
+                <InfoTip label="Why Stimuli & cues matters" icon="?">
+                  What the animal was shown or given. Each stimulus takes its times from a loaded
+                  label, so PETH and auROC can group frames by it. Written to metadata.stimuli.
+                </InfoTip>
+              </header>
+              <div class="cb-ds-cfg__body">
+                <StimuliTab />
+              </div>
+            </section>
+            <Neural />
+          </>
+        }
+      >
+        <YamlView />
+      </Show>
     </div>
   );
 }
