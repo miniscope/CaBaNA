@@ -14,6 +14,7 @@ import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-secti
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { FileButton, Preview, SlotPreview } from '../Preview.tsx';
+import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
 import { FilePrep } from './FilePrep.tsx';
@@ -224,6 +225,9 @@ export function EntryView(): JSX.Element {
       <Switch>
         <Match when={entry() === 'sync'}>
           <Sync />
+        </Match>
+        <Match when={entry() === 'config'}>
+          <ConfigView />
         </Match>
         <Match when={file()}>{(f) => <Preview item={{ file: f() }} />}</Match>
         <Match when={slot() && isLoaded(slot()!.id) && slot()}>

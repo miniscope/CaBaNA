@@ -11,7 +11,7 @@ import { loaded, sessionName } from './store.ts';
 /** A data type, the cross-data timing check, or an unassigned file (by name). */
 export type EntryId = SlotId | 'sync' | `file:${string}`;
 
-export const [entry, setEntry] = createSignal<EntryId>('neural_deconvolved');
+export const [entry, setEntry] = createSignal<EntryId>('config');
 const [section, setSection] = createStore<Partial<Record<string, SectionId>>>({});
 const [opened, setOpened] = createStore<Record<string, boolean>>({});
 
