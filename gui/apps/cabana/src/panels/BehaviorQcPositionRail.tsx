@@ -46,8 +46,27 @@ export const positionMetrics = (): MetricCard[] => {
 function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
   const rows = () => jumpRows(props.seg).length;
   const c = () => choiceOf(props.seg);
+  const choose = (to: 'interpolate' | 'keep') => (
+    <button
+      class="btn-small"
+      classList={{ 'btn-primary': c() === to, 'btn-secondary': c() !== to }}
+      aria-pressed={c() === to}
+      onClick={() => setChoice(props.seg, c() === to ? undefined : to)}
+    >
+      {to === 'interpolate' ? 'Interpolate' : 'Keep'}
+    </button>
+  );
   return (
-    <RailBox title={`Jump ${props.n}`}>
+    <RailBox
+      title={`Jump ${props.n}`}
+      extra={
+        <InfoTip label="About Interpolate and Keep">
+          Interpolate leaves out the frames inside the jump, as lost frames; the gap settings in
+          Preprocess fill them. Keep records that the jump is real. Either choice is saved to the
+          experiment config. Rows opens these frames in the data table.
+        </InfoTip>
+      }
+    >
       <Show
         when={rows()}
         fallback={
@@ -56,38 +75,21 @@ function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
           </p>
         }
       >
-        <p class="cb-muted">
-          Interpolate leaves out the {rows()} {rows() === 1 ? 'frame' : 'frames'} inside the jump,
-          as lost frames; the gap settings in Preprocess fill them. Keep records that the jump is
-          real. Saved to the experiment config.
-        </p>
-        <div class="cb-controls">
+        <div class="cb-controls cb-jump">
+          {choose('interpolate')}
+          {choose('keep')}
           <button
-            class="btn-small"
-            classList={{
-              'btn-primary': c() === 'interpolate',
-              'btn-secondary': c() !== 'interpolate',
-            }}
-            aria-pressed={c() === 'interpolate'}
-            onClick={() => setChoice(props.seg, c() === 'interpolate' ? undefined : 'interpolate')}
+            class="btn-secondary btn-small"
+            title="See these rows in the data table"
+            onClick={() => showRows('position', props.seg.first - 3)}
           >
-            Interpolate
+            Rows
           </button>
-          <button
-            class="btn-small"
-            classList={{ 'btn-primary': c() === 'keep', 'btn-secondary': c() !== 'keep' }}
-            aria-pressed={c() === 'keep'}
-            onClick={() => setChoice(props.seg, c() === 'keep' ? undefined : 'keep')}
-          >
-            Keep as is
-          </button>
-          <span class="cb-muted">
-            {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'}
-          </span>
         </div>
-        <button class="cb-linkbtn" onClick={() => showRows('position', props.seg.first - 3)}>
-          See these rows in the data table
-        </button>
+        <span class="cb-muted">
+          {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'} · {rows()}{' '}
+          {rows() === 1 ? 'frame' : 'frames'} inside the jump
+        </span>
       </Show>
     </RailBox>
   );

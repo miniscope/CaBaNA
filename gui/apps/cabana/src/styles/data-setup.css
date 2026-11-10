@@ -199,9 +199,33 @@
   overflow-y: auto;
   font-size: 12.5px;
 }
+.cb-ds-qcl > * {
+  flex-shrink: 0;
+}
 .cb-ds-qcl .cb-rail-box {
   padding: 6px 8px;
   font-size: 12.5px;
+}
+/* The flagged items take the height left in the column and page to fit it. */
+.cb-ds-qcl .cb-rail-box--grow {
+  flex: 1 1 0;
+  min-height: 130px;
+}
+.cb-ds-qcl .cb-list__item {
+  padding: 2px 4px;
+}
+.cb-ds-qcl .cb-segrow {
+  grid-template-columns: 18px 46px minmax(0, 1fr) auto;
+  gap: 3px;
+  font-size: 12px;
+}
+.cb-ds-qcl .cb-pager {
+  margin-top: 4px;
+}
+.cb-ds-qcl .cb-jump {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-bottom: 2px;
 }
 .cb-ds-qcl .cb-rail-box h3,
 .cb-ds-qcl__box h4 {
