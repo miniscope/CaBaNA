@@ -33,3 +33,21 @@ describe('data setup view', () => {
     expect(reviewed('file:notes.csv')).toBe(true);
   });
 });
+
+describe('experiment config sections', () => {
+  it('opens one section at a time, on its key fields', async () => {
+    const { configAll, configOpen, toggleAllFields, toggleConfigSection } =
+      await import('../lib/data-setup-view.ts');
+    expect(configOpen()).toBeUndefined();
+    toggleConfigSection('spatial');
+    expect([configOpen(), configAll()]).toEqual(['spatial', false]);
+    toggleAllFields('spatial');
+    expect(configAll()).toBe(true);
+    toggleConfigSection('session');
+    expect([configOpen(), configAll()]).toEqual(['session', false]);
+    toggleAllFields('tracking');
+    expect([configOpen(), configAll()]).toEqual(['tracking', true]);
+    toggleConfigSection('tracking');
+    expect(configOpen()).toBeUndefined();
+  });
+});

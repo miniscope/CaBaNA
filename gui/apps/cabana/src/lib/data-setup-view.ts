@@ -73,3 +73,21 @@ createRoot(() =>
     ),
   ),
 );
+
+/**
+ * Experiment config: the one open section, and whether it shows all its fields. The other
+ * sections fold to their header bars with a summary; with none open, every section is folded.
+ */
+export const [configOpen, setConfigOpen] = createSignal<string>();
+export const [configAll, setConfigAll] = createSignal(false);
+/** Open a section on its key fields, or fold it when it is the open one. */
+export function toggleConfigSection(id: string): void {
+  setConfigAll(false);
+  setConfigOpen(configOpen() === id ? undefined : id);
+}
+/** Show all fields of a section (opening it), or only its key fields again. */
+export function toggleAllFields(id: string): void {
+  const all = !(configOpen() === id && configAll());
+  setConfigOpen(id);
+  setConfigAll(all);
+}

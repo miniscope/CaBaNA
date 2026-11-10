@@ -2,9 +2,14 @@
 // fields, and the Spatial setup and Experiment & subjects sections. ConfigView.tsx has the rest.
 
 import { For, Show, type JSX } from 'solid-js';
-import { createStore } from 'solid-js/store';
 import { arena, setArena } from '../../lib/arena.ts';
-import { openEntry } from '../../lib/data-setup-view.ts';
+import {
+  configAll,
+  configOpen,
+  openEntry,
+  toggleAllFields,
+  toggleConfigSection,
+} from '../../lib/data-setup-view.ts';
 import { INDICATORS } from '../../lib/decon.ts';
 import { indicatorId, setIndicator } from '../../lib/decon-state.ts';
 import { PARADIGMS } from '../../lib/experiments.ts';
@@ -18,9 +23,6 @@ import {
 } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
 import { BRAIN_REGIONS, Text } from '../SetupPanel.tsx';
-
-/** Which sections show every field. */
-const [open, setOpen] = createStore<Record<string, boolean>>({});
 
 export function Num(props: {
   label: string;
@@ -64,40 +66,59 @@ export function Select<T extends string>(props: {
 
 /**
  * One section: a header bar (name, Required, Show all fields, and at the far right why it
- * matters) over its fields. `wide` fields take the whole width instead of the three columns.
+ * matters) over its fields. One section is open at a time: clicking a bar opens that section on
+ * its key fields and folds the others to their bar with a one-line `summary`; clicking the open
+ * section's name folds it. `wide` fields take the whole width instead of the three columns.
  */
 export function Section(props: {
   id: string;
   title: string;
   why: string;
+  summary: string;
   required?: boolean;
   keyFields: JSX.Element;
   more?: JSX.Element;
   wide?: boolean;
 }): JSX.Element {
+  const isOpen = () => configOpen() === props.id;
+  const all = () => isOpen() && configAll();
   return (
-    <section class="cb-ds-cfg">
+    <section class="cb-ds-cfg" classList={{ 'cb-ds-cfg--folded': !isOpen() }}>
       <header class="cb-ds-cfg__bar">
-        <h4>{props.title}</h4>
-        <Show when={props.required}>
-          <span class="cb-warn">Required</span>
-        </Show>
+        <button
+          type="button"
+          class="cb-ds-cfg__open"
+          aria-expanded={isOpen()}
+          onClick={() => toggleConfigSection(props.id)}
+        >
+          <span aria-hidden="true" class="cb-ds-cfg__caret">
+            {isOpen() ? '▾' : '▸'}
+          </span>
+          <h4>{props.title}</h4>
+          <Show when={props.required}>
+            <span class="cb-warn">Required</span>
+          </Show>
+          <Show when={!isOpen()}>
+            <span class="cb-ds-cfg__sum">{props.summary}</span>
+          </Show>
+        </button>
         <Show when={props.more}>
-          <button class="cb-linkbtn" onClick={() => setOpen(props.id, !open[props.id])}>
-            {open[props.id] ? 'Show fewer fields' : 'Show all fields'}
+          <button class="cb-linkbtn" onClick={() => toggleAllFields(props.id)}>
+            {all() ? 'Show fewer fields' : 'Show all fields'}
           </button>
         </Show>
-        <span class="cb-spacer" />
         <InfoTip label={`Why ${props.title} matters`}>{props.why}</InfoTip>
       </header>
-      <div class="cb-ds-cfg__body">
-        <Show when={!props.wide} fallback={props.keyFields}>
-          <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
-        </Show>
-        <Show when={open[props.id] && props.more}>
-          <div class="cb-setup-grid cb-ds-cfg__grid cb-ds-cfg__more">{props.more}</div>
-        </Show>
-      </div>
+      <Show when={isOpen()}>
+        <div class="cb-ds-cfg__body">
+          <Show when={!props.wide} fallback={props.keyFields}>
+            <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
+          </Show>
+          <Show when={all() && props.more}>
+            <div class="cb-setup-grid cb-ds-cfg__grid cb-ds-cfg__more">{props.more}</div>
+          </Show>
+        </div>
+      </Show>
     </section>
   );
 }
@@ -108,6 +129,12 @@ export function Spatial(): JSX.Element {
     <Section
       id="spatial"
       title="Spatial setup"
+      summary={[
+        arena.shape === 'circle'
+          ? `Circle, ${arena.width} cm`
+          : `${arena.width} × ${arena.height} cm`,
+        `${zones().length} ${zones().length === 1 ? 'zone' : 'zones'}`,
+      ].join(' · ')}
       required
       why="Turns positions into centimeters and defines the zones. Place cells, speed in cm/s, zone epochs and position decoding depend on it. Type the arena size here, or draw the outline, a known distance and the zones in the arena editor. Written to arena in config.yaml."
       keyFields={
@@ -197,6 +224,11 @@ export function Experiment(): JSX.Element {
     <Section
       id="experiment"
       title="Experiment & subjects"
+      summary={
+        [PARADIGMS.find((x) => x.id === experimentId())?.label, sessionName(), source.subjectId]
+          .filter(Boolean)
+          .join(' · ') || 'Nothing entered'
+      }
       why="Identifies the session so saved results can be traced back to it. The paradigm decides which files are marked required for this kind of experiment, and the calcium indicator sets the decay time deconvolution QC uses. Nothing else here changes a calculation."
       keyFields={
         <>

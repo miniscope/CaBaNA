@@ -26,9 +26,12 @@ import {
   Text,
   ToolSelect,
 } from '../SetupPanel.tsx';
+import { analysisKind, NEURAL_LAYERS } from '../../lib/analysis-data.ts';
 import { AnalysisDataField, AnalysisDataTable } from './AnalysisRole.tsx';
 import { Experiment, Num, Section, Select, Spatial } from './ConfigFields.tsx';
 import { AboutConfig, YamlView } from './ConfigYaml.tsx';
+
+const round = (v: number) => Math.round(v * 100) / 100;
 
 // Kept while other entries are open.
 const [asYaml, setAsYaml] = createSignal(false);
@@ -38,6 +41,13 @@ function Session(): JSX.Element {
     <Section
       id="session"
       title="Session structure"
+      summary={[
+        override.durationS ?? derivedDuration(),
+        override.neuralFps ?? derivedNeuralFps(),
+        override.cameraFps ?? derivedCameraFps(),
+      ]
+        .map((v, i) => (v === undefined ? '–' : `${round(v)} ${i ? 'Hz' : 's'}`))
+        .join(' · ')}
       why="Session length and frame rates put every frame on one time axis; the first three are worked out from the timestamp files. The behavior clock offset is how long the video ran before the miniscope started, and the scale corrects a camera clock that runs at a slightly different rate. Check the result in Timestamp alignment."
       keyFields={
         <>
@@ -97,6 +107,13 @@ function Tracking(): JSX.Element {
     <Section
       id="tracking"
       title="Tracking & coordinates"
+      summary={[
+        source.bodyPart || 'Body part not set',
+        source.positionUnit === 'cm' ? 'cm' : 'pixels',
+        source.positionUnit === 'cm' ? `y ${source.yDown ? 'down' : 'up'}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       why="How positions and annotations were recorded, so they are read in the right units and orientation. Pixel positions need the arena scale from Spatial setup. The head direction offset is added so that 0 degrees points right and angles grow counterclockwise. The tool names only change the export advice shown."
       keyFields={
         <>
@@ -172,6 +189,12 @@ function Neural(): JSX.Element {
     <Section
       id="neural"
       title="Neural acquisition"
+      summary={[
+        NEURAL_LAYERS.find((l) => l.kind === analysisKind())?.label ?? 'No neural file',
+        source.device,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
       why="Which neural file the analyses read (the analysis data, written as neural.file; the others are reference data, under neural.alternatives), and a record of the hardware and the extraction and deconvolution tools. The tool names only change the export advice shown; check it against your tool's current version."
       keyFields={
         <>
@@ -266,6 +289,7 @@ export function ConfigView(): JSX.Element {
             <Section
               id="stimuli"
               title="Stimuli & cues"
+              summary={`${source.stimuli.length} ${source.stimuli.length === 1 ? 'stimulus' : 'stimuli'}`}
               why="What the animal was shown or given. Each stimulus takes its times from a loaded label, so PETH and auROC can group frames by it. Written to metadata.stimuli."
               keyFields={<StimuliTab />}
               wide
