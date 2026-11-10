@@ -1,0 +1,100 @@
+/* Data setup page (panels/data-setup). Builds on the guided-page styles in guided.css. */
+.cb-ds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  border-radius: var(--radius-md);
+}
+.cb-ds-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.cb-ds-top h2 {
+  margin: 0;
+}
+.cb-ds-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 13px;
+}
+.cb-ds-body-grid {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+}
+.cb-ds-grp {
+  margin: 8px 6px 2px;
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.cb-ds-grp:first-child {
+  margin-top: 2px;
+}
+.cb-ds-item {
+  padding: 5px 8px;
+}
+.cb-ds-item__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cb-ds-item__level {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.cb-ds-item__file {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+.cb-ds-mark--empty {
+  border-style: dashed;
+}
+.cb-ds-entry {
+  gap: 6px;
+}
+.cb-ds-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+.cb-ds-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.cb-ds-meta {
+  margin: 0;
+  font-size: 13px;
+}
+.cb-ds-stages {
+  margin: 6px 0 4px;
+}
+.cb-ds-stages li {
+  flex: 0 0 auto;
+}
+.cb-ds-body {
+  flex: 1;
+  min-height: 0;
+}
+.cb-ds-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-lg, 24px);
+  border: 1.5px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+.cb-ds-drop p {
+  margin: 0;
+}
+.cb-ds-drop--over {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}

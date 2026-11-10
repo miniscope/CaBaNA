@@ -279,7 +279,7 @@ const VIEWS: Partial<Record<SlotId, (slot: SlotId) => JSX.Element>> = {
   ),
 };
 
-function SlotPreview(props: { slot: SlotId }): JSX.Element {
+export function SlotPreview(props: { slot: SlotId }): JSX.Element {
   const s = () => SLOTS.find((x) => x.id === props.slot)!;
   const info = () => loaded[props.slot];
   return (

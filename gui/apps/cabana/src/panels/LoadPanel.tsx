@@ -63,7 +63,7 @@ const LEVEL = {
   unused: '',
 };
 
-function fileList(e: Event): File[] {
+export function fileList(e: Event): File[] {
   const input = e.currentTarget as HTMLInputElement;
   const files = Array.from(input.files ?? []);
   input.value = '';
@@ -168,7 +168,7 @@ function UnmatchedRow(props: { file: File }): JSX.Element {
 }
 
 /** Opens the list of example datasets. */
-function ExamplePicker(): JSX.Element {
+export function ExamplePicker(): JSX.Element {
   const [choice, setChoice] = createSignal(EXAMPLES[0].id);
   return (
     <PopButton
@@ -220,7 +220,7 @@ const listed = (items: string[]) =>
   items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 
 /** Copy chosen groups of settings from another dataset whose settings this browser kept. */
-function ApplySettings(props: { onApplied: (text: string) => void }): JSX.Element {
+export function ApplySettings(props: { onApplied: (text: string) => void }): JSX.Element {
   const [name, setName] = createSignal<string>();
   const [include, setInclude] = createStore<Record<GroupId, boolean>>({
     setup: true,
