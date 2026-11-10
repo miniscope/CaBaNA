@@ -2,6 +2,7 @@
 // readiness.ts; this file only reads state. Whether a framework run still matches the current
 // settings is async (it hashes the input files), so a signal holds the last answer.
 
+import { analysisKind } from './analysis-data.ts';
 import { engineFor } from './engine.ts';
 import { arenaProblem } from './config-import.ts';
 import { regionNoticeProblem } from './region-notice.ts';
@@ -163,6 +164,7 @@ export function buildSnapshot(): Snapshot {
     neural: !!(deconvolved() ?? rawTrace() ?? denoisedTrace()),
     timing: samplingRate() !== undefined,
     deconvolved: !!deconvolved(),
+    analysisKind: analysisKind(),
     position,
     spatialComplete,
     spatialIssue: spatialReason(setup, arenaProblem() ?? regionNoticeProblem()),

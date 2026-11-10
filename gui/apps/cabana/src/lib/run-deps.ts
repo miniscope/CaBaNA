@@ -1,10 +1,12 @@
-// What a run's results depend on beyond its own settings: the input files, how the camera clock
-// is joined to the neural clock, the position calibration, the arena, rejected cells, and the
+// What a run's results depend on beyond its own settings: the input files, which neural file is
+// the analysis data, how the camera clock is joined to the neural clock, the position
+// calibration, the arena, rejected cells, and the
 // labels it reads (their role and their bouts after any correction). Saved with every run and
 // compared later, so a change to any of these marks the results as needing a rerun. Each run
 // declares what it uses, so a change it does not read leaves it alone. Display settings are
 // never part of it.
 
+import { analysisKind } from './analysis-data.ts';
 import { arena, cmPts, positionTransform, pxPerCm, sizeCm } from './arena.ts';
 import { canonicalJson } from './settings-hash.ts';
 import type { SlotId } from './slots.ts';
@@ -35,6 +37,7 @@ export const DEP_WORDS: Record<string, string> = {
   arena: 'arena or excluded regions',
   rejected: 'rejected cells',
   labels: 'labels or their corrections',
+  analysisData: 'analysis data',
 };
 
 /** A short fingerprint of a value, so long arrays (bouts) do not bloat saved run records. */
@@ -80,6 +83,9 @@ export function runDeps(u: Uses, o: { files?: boolean } = {}): Record<string, un
       },
     }),
     rejected: [...rejected()].sort((a, b) => a - b),
+    // Only when it is not the deconvolved events, so runs saved before the choice existed match.
+    ...(analysisKind() !== undefined &&
+      analysisKind() !== 'deconvolved' && { analysisData: analysisKind() }),
     ...(used.length && {
       labels: {
         ...Object.fromEntries(

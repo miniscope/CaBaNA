@@ -269,3 +269,19 @@ describe('sidebar tones', () => {
     );
   });
 });
+
+describe('analysis data', () => {
+  it('blocks every analysis while the analysis data is a trace, with a link to change it', () => {
+    for (const id of ['place', 'auroc', 'peth', 'decoding', 'population'] as AnalysisItem[]) {
+      const st = analysisStatus(base({ analysisKind: 'denoised' }), id);
+      expect(st.kind).toBe('needs_input');
+      expect(texts(st)).toContain(
+        'This analysis uses deconvolved events. Analysis data is set to denoised traces.',
+      );
+      expect(st.input.find((n) => n.link?.entry)?.link).toMatchObject({ entry: 'config' });
+    }
+    expect(analysisStatus(base({ analysisKind: 'deconvolved' }), 'auroc').kind).not.toBe(
+      'needs_input',
+    );
+  });
+});

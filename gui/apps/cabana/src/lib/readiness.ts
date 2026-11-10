@@ -37,7 +37,8 @@ export type StatusKind =
 /** Something the user can supply, with the sidebar item that fixes it. */
 export interface Need {
   text: string;
-  link?: { label: string; item: ItemId };
+  /** `entry` opens that entry of the Data setup page (for example Experiment config). */
+  link?: { label: string; item: ItemId; entry?: 'config' };
 }
 /** A framework feature that is missing. `code` is the contract id, shown only in technical details. */
 export interface FrameworkNeed {
@@ -107,6 +108,8 @@ export interface Snapshot {
   /** Timestamps or a sampling rate are present. */
   timing: boolean;
   deconvolved: boolean;
+  /** Which neural file is the analysis data; every analysis here reads deconvolved events. */
+  analysisKind?: 'deconvolved' | 'denoised' | 'raw';
   position: boolean;
   spatialComplete: boolean;
   /** Why spatial analyses are unavailable, when they are. */
@@ -245,6 +248,12 @@ export function analysisNeeds(
   const input: Need[] = [];
   const need = (text: string, link?: Need['link']) => input.push({ text, link });
   if (!s.neural) need('Load neural data.', LOAD);
+  // No analysis reads traces yet, so a trace chosen as the analysis data blocks them all.
+  if (s.analysisKind && s.analysisKind !== 'deconvolved')
+    need(
+      `This analysis uses deconvolved events. Analysis data is set to ${s.analysisKind} traces.`,
+      { label: 'Experiment config', item: 'data', entry: 'config' },
+    );
   switch (id) {
     case 'place':
       if (!s.position) need('Load a position file.', LOAD);

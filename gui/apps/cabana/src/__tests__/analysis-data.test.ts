@@ -11,6 +11,7 @@ import {
   setAnalysisData,
   setReferenceQc,
 } from '../lib/analysis-data.ts';
+import { depChanges, runDeps } from '../lib/run-deps.ts';
 import { sessionYaml } from '../lib/session-config.ts';
 import { addFiles, clearAll, setSessionName } from '../lib/store.ts';
 
@@ -102,5 +103,15 @@ describe('analysis data', () => {
     expect(qcShown('neural_raw')).toBe(true);
     setReferenceQc('neural_raw', false);
     expect(qcShown('neural_raw')).toBe(false);
+  });
+
+  it('marks earlier results out of date when the analysis data changes', async () => {
+    clearAll();
+    await addFiles(layers());
+    const uses = { position: false, grid: false, labels: [] };
+    const before = runDeps(uses);
+    expect(before).not.toHaveProperty('analysisData');
+    setAnalysisData('denoised');
+    expect(depChanges(before, runDeps(uses))).toEqual(['analysis data']);
   });
 });

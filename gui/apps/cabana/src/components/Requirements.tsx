@@ -4,10 +4,12 @@ import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import { ITEM_LABEL, type AnalysisItem } from '../lib/readiness.ts';
 import { goToStep } from '../lib/store.ts';
 import { setAnalysisId } from '../lib/analyses.ts';
+import { openData } from '../lib/data-setup-view.ts';
 
 /** Sidebar item to open: setup steps by their id, analyses on the Analyze step. */
 export function openItem(item: string): void {
-  if (item === 'results' || ['data', 'load', 'setup', 'viz', 'qc', 'prep'].includes(item)) goToStep(item);
+  if (item === 'results' || ['data', 'load', 'setup', 'viz', 'qc', 'prep'].includes(item))
+    goToStep(item);
   else {
     setAnalysisId(item as AnalysisItem);
     goToStep('analyze');
@@ -35,7 +37,11 @@ export function Requirements(props: { analysis: AnalysisItem }): JSX.Element {
                     {n.text}{' '}
                     <Show when={n.link}>
                       {(l) => (
-                        <button type="button" class="cb-link" onClick={() => openItem(l().item)}>
+                        <button
+                          type="button"
+                          class="cb-link"
+                          onClick={() => (l().entry ? openData(l().entry!) : openItem(l().item))}
+                        >
                           Open {l().label}
                         </button>
                       )}
