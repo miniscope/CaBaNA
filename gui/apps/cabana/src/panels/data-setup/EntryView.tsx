@@ -2,11 +2,19 @@
 // an empty slot to load, or an unassigned file. Sections use the stage bar of the analysis pages.
 
 import { createSignal, For, Match, Show, Switch, type JSX } from 'solid-js';
-import { entry, openEntry, openSection, sectionOf } from '../../lib/data-setup-view.ts';
+import {
+  entry,
+  openEntry,
+  openSection,
+  sectionOf,
+  setView,
+  viewOf,
+} from '../../lib/data-setup-view.ts';
 import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-sections.ts';
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { FileButton, Preview, SlotPreview } from '../Preview.tsx';
+import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
 import { FilePrep } from './FilePrep.tsx';
 import { FileQc } from './FileQc.tsx';
@@ -41,10 +49,41 @@ function Stages(props: { slot: SlotId }): JSX.Element {
   );
 }
 
+/** The whole file: its plots, or its values as loaded. */
+function Overview(props: { slot: SlotId }): JSX.Element {
+  return (
+    <>
+      <Show when={hasTable(props.slot)}>
+        <div class="cb-ds-view" role="tablist" aria-label="Show the file as">
+          <For each={['plot', 'table'] as const}>
+            {(v) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewOf(props.slot) === v}
+                classList={{ 'cb-ds-view--on': viewOf(props.slot) === v }}
+                onClick={() => setView(props.slot, v)}
+              >
+                {v === 'plot' ? 'Plot' : 'Data table'}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show
+        when={viewOf(props.slot) === 'table' && hasTable(props.slot)}
+        fallback={<SlotPreview slot={props.slot} />}
+      >
+        <DataTable slot={props.slot} />
+      </Show>
+    </>
+  );
+}
+
 /** The body of one section of a loaded file. */
 function Section(props: { slot: SlotId; section: SectionId }): JSX.Element {
   return (
-    <Switch fallback={<SlotPreview slot={props.slot} />}>
+    <Switch fallback={<Overview slot={props.slot} />}>
       <Match when={props.section === 'qc'}>
         <FileQc id={props.slot} />
       </Match>

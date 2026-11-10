@@ -37,6 +37,25 @@ export function openSection(slot: SlotId, sec: SectionId): void {
 
 export const reviewed = (id: EntryId): boolean => !!opened[id];
 
+/** Overview of a file: its plots, or its values as a table. */
+const [view, setViewOf] = createStore<Partial<Record<string, 'plot' | 'table'>>>({});
+export const viewOf = (slot: SlotId) => view[slot] ?? 'plot';
+export const setView = (slot: SlotId, v: 'plot' | 'table') => setViewOf(slot, v);
+
+/** Where the data table of each file starts: its first row (or cell) and, for arrays, frame. */
+const [at, setAt] = createStore<Partial<Record<string, { row: number; frame: number }>>>({});
+export const tableAt = (slot: SlotId) => at[slot] ?? { row: 0, frame: 0 };
+export function setTableAt(slot: SlotId, p: Partial<{ row: number; frame: number }>): void {
+  setAt(slot, { ...tableAt(slot), ...p });
+}
+
+/** Open a file's table at a row, from a QC finding. */
+export function showRows(slot: SlotId, row: number): void {
+  openEntry(slot, 'overview');
+  setView(slot, 'table');
+  setTableAt(slot, { row });
+}
+
 // A new dataset starts with nothing reviewed.
 createRoot(() =>
   createEffect(

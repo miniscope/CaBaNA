@@ -2,6 +2,7 @@
 import { Show, type JSX } from 'solid-js';
 import { positionExtremes, type Segment } from '../lib/qc-segments.ts';
 import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
+import { showRows } from '../lib/data-setup-view.ts';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { goToStep, maxSpeed } from '../lib/store.ts';
 import { Advice, PagedList, RailBox } from './QcParts.tsx';
@@ -84,6 +85,9 @@ function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
             {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'}
           </span>
         </div>
+        <button class="cb-linkbtn" onClick={() => showRows('position', props.seg.first - 3)}>
+          See these rows in the data table
+        </button>
       </Show>
     </RailBox>
   );

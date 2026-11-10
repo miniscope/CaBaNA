@@ -163,3 +163,52 @@
 .cb-ds-zt__pct {
   text-align: right;
 }
+.cb-ds-view {
+  display: inline-flex;
+  align-self: flex-end;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.cb-ds-view button {
+  border: none;
+  background: none;
+  padding: 3px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cb-ds-view--on {
+  background: var(--accent-muted) !important;
+  color: var(--accent) !important;
+}
+.cb-ds-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.cb-ds-table__scroll {
+  overflow: auto;
+}
+.cb-ds-table__t td,
+.cb-ds-table__t th {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+.cb-ds-table__flag td {
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+.cb-ds-table__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 13px;
+}
+.cb-ds-table__nav input {
+  width: 80px;
+}
