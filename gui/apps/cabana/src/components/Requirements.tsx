@@ -7,7 +7,7 @@ import { setAnalysisId } from '../lib/analyses.ts';
 
 /** Sidebar item to open: setup steps by their id, analyses on the Analyze step. */
 export function openItem(item: string): void {
-  if (item === 'results' || ['load', 'setup', 'viz', 'qc', 'prep'].includes(item)) goToStep(item);
+  if (item === 'results' || ['data', 'load', 'setup', 'viz', 'qc', 'prep'].includes(item)) goToStep(item);
   else {
     setAnalysisId(item as AnalysisItem);
     goToStep('analyze');

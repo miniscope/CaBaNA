@@ -235,6 +235,6 @@ export function currentItem(step: string, analysis: AnalysisItem): ItemId {
   if (step === 'analyze_overview') return 'prep';
   return ORDERED.includes(step as ItemId) ? (step as ItemId) : 'load';
 }
-const ORDERED: ItemId[] = ['load', 'setup', 'viz', 'qc', 'prep', 'results'];
+const ORDERED: ItemId[] = ['data', 'load', 'setup', 'viz', 'qc', 'prep', 'results'];
 
 export const nextFor = (current: ItemId) => nextStep(snapshot(), current, experiment().recommended);

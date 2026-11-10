@@ -7,6 +7,7 @@
 // "Python engine not running"): the user cannot fix it from the page, so Next never goes there.
 
 export type ItemId =
+  | 'data'
   | 'load'
   | 'setup'
   | 'viz'
@@ -135,6 +136,7 @@ export interface Snapshot {
 }
 
 export const ITEM_LABEL: Record<ItemId, string> = {
+  data: 'Data setup',
   load: 'Load data',
   setup: 'Experimental setup',
   viz: 'Data visualization',
@@ -333,6 +335,15 @@ const OPTIONAL: ItemId[] = ['viz', 'qc', 'prep'];
 
 export function itemStatus(s: Snapshot, id: ItemId): Status {
   switch (id) {
+    case 'data': {
+      // Loading and the experiment config together: complete once data is loaded and the setup
+      // it needs is done.
+      if (!s.neural) return status('not_started');
+      const setup = itemStatus(s, 'setup');
+      return setup.kind === 'complete' || setup.kind === 'optional'
+        ? status('complete')
+        : status('in_progress', { input: setup.input });
+    }
     case 'load':
       return s.neural ? status('complete') : status('not_started');
     case 'setup':
@@ -366,6 +377,7 @@ export function itemStatus(s: Snapshot, id: ItemId): Status {
 
 /** Order of the sidebar items (the order Next walks through). */
 export const ORDER: ItemId[] = [
+  'data',
   'load',
   'setup',
   'viz',

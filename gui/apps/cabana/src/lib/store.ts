@@ -421,7 +421,7 @@ try {
 export const [sessionName, setSessionName] = createSignal<string | undefined>();
 
 /** The page shown: a sidebar step, or `analyze_overview` for the Analyze section header. */
-export const [stepId, goToStep] = createSignal('load');
+export const [stepId, goToStep] = createSignal('data');
 
 /** How much a file is needed for the chosen experiment. */
 export const levelOf = (id: SlotId): Level =>

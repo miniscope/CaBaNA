@@ -55,6 +55,14 @@ describe('item status', () => {
     for (const id of ['viz', 'qc', 'prep'] as const)
       expect(itemStatus(base(), id)).toMatchObject({ kind: 'optional', text: 'Optional' });
   });
+  it('Data setup is complete once data is loaded and the setup it needs is done', () => {
+    expect(itemStatus(base({ neural: false }), 'data').kind).toBe('not_started');
+    expect(itemStatus(base(), 'data').kind).toBe('in_progress');
+    expect(itemStatus(base({ setupStarted: true, setupComplete: true }), 'data').kind).toBe(
+      'complete',
+    );
+    expect(itemStatus(base({ setupRequired: false }), 'data').kind).toBe('complete');
+  });
   it('setup status comes from its cards, never from visits', () => {
     expect(itemStatus(base(), 'setup').kind).toBe('not_started');
     expect(itemStatus(base({ setupStarted: true }), 'setup')).toMatchObject({
