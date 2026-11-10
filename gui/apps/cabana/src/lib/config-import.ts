@@ -16,6 +16,7 @@ import {
   setSource,
   setTol,
 } from './store.ts';
+import { restoreChoices } from './position-corrections.ts';
 
 /** What the last config.yaml set, kept, did not recognize, or lacked. */
 export const [configReport, setConfigReport] = createSignal<ConfigRead>();
@@ -51,6 +52,7 @@ onConfig((text) => {
   if (v.clockScale !== undefined) setSource('clockScale', v.clockScale);
   if (v.positionUnit) setSource('positionUnit', v.positionUnit);
   if (v.maxGapS !== undefined) setPrep('maxGapS', v.maxGapS);
+  restoreChoices(v.excludeFrames, v.keptFrames);
   if (v.yDown !== undefined) setSource('yDown', v.yDown);
   if (v.subjectId) setSource('subjectId', v.subjectId);
   for (const [k, val] of Object.entries(v.meta)) setSource(k as never, val as never);

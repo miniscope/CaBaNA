@@ -53,6 +53,9 @@ export interface ConfigValues {
   clockScale?: number;
   positionUnit?: 'cm' | 'px';
   maxGapS?: number;
+  /** behavior.position.exclude_frames and metadata.position_kept_frames: jump corrections. */
+  excludeFrames?: number[];
+  keptFrames?: number[];
   headOffsetDeg?: number;
   mergeGapS?: number;
   minBoutS?: number;
@@ -122,7 +125,7 @@ const SECTIONS: Record<string, { read: string[]; keep: string[] }> = {
   },
   'behavior.clock': { read: ['offset_s', 'scale'], keep: [] },
   'behavior.position': {
-    read: ['file', 'units', 'max_gap_s'],
+    read: ['file', 'units', 'max_gap_s', 'exclude_frames'],
     keep: ['frame_column', 'columns', 'missing_value'],
   },
   'behavior.head_orientation': {
@@ -223,6 +226,7 @@ function readValues(cfg: Obj, r: ConfigRead): void {
   if (isObj(beh.position)) {
     r.files.position = base(beh.position.file);
     v.maxGapS = num(beh.position.max_gap_s);
+    v.excludeFrames = frameList(beh.position.exclude_frames);
     const u = beh.position.units ?? 'cm';
     if (u === 'cm' || u === 'px') v.positionUnit = u;
     else r.problems.push(`behavior.position.units "${String(u)}": the GUI reads cm or px.`);
@@ -373,6 +377,11 @@ function readArena(a: Obj, r: ConfigRead, meta: unknown, positionUnit?: 'cm' | '
 
 const isPolygon = (z: unknown): z is Pt[] => Array.isArray(z) && z.length >= 3 && z.every(isPt);
 
+/** A list of whole frame numbers, or undefined when the value is not one. */
+function frameList(v: unknown): number[] | undefined {
+  return Array.isArray(v) && v.every((f) => Number.isInteger(f)) ? (v as number[]) : undefined;
+}
+
 function readMetadata(m: Obj, r: ConfigRead): void {
   const known = new Set<string>([
     'arena_shape',
@@ -381,6 +390,7 @@ function readMetadata(m: Obj, r: ConfigRead): void {
     'y_increases',
     'label_roles',
     'arena_background',
+    'position_kept_frames',
   ]);
   for (const [key, field] of META_FIELDS) {
     known.add(key);
@@ -388,6 +398,7 @@ function readMetadata(m: Obj, r: ConfigRead): void {
     if (typeof val === 'string' || typeof val === 'number') r.values.meta[field] = val;
   }
   r.values.bodyLengthCm = num(m.body_length_cm);
+  r.values.keptFrames = frameList(m.position_kept_frames);
   const bg = m.arena_background;
   if (isObj(bg) && typeof bg.file === 'string' && (bg.kind === 'image' || bg.kind === 'video'))
     r.values.arenaBackground = {

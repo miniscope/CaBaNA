@@ -2,6 +2,7 @@
 // frames, and (for place cells) neural data with a grid bin for every used frame.
 
 import { createMemo } from 'solid-js';
+import { excludedRows } from './position-corrections.ts';
 import { binGrid, calibrationIssue, effectiveBin, positionsCm, type BinGrid } from './arena.ts';
 import {
   interpolateGaps,
@@ -56,10 +57,12 @@ export const positionOnNeural = createMemo(() => {
   if (!c || !ct || !nt) return undefined;
   const ok = ct.map((v, i) => Number.isFinite(v) && (i === 0 || v > ct[i - 1]));
   const tb = ct.filter((_, i) => ok[i]);
+  // Jumps marked Interpolate in Position QC are lost frames, as the framework's exclude_frames.
+  const ex = excludedRows();
   const onFrames = (v: number[]) =>
     resampleLinear(
       tb,
-      v.filter((_, i) => ok[i]),
+      v.map((w, i) => (ex.has(i) ? NaN : w)).filter((_, i) => ok[i]),
       nt,
       prep.maxGapS,
     );

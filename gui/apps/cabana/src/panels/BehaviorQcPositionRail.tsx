@@ -1,6 +1,7 @@
 // Behavioral QC position tracking: summary cards and the flagged-segment list with its correction notes.
 import { Show, type JSX } from 'solid-js';
-import { positionExtremes } from '../lib/qc-segments.ts';
+import { positionExtremes, type Segment } from '../lib/qc-segments.ts';
+import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { goToStep, maxSpeed } from '../lib/store.ts';
 import { Advice, PagedList, RailBox } from './QcParts.tsx';
@@ -40,6 +41,54 @@ export const positionMetrics = (): MetricCard[] => {
   ];
 };
 
+/** Interpolate or keep the selected jump. Interpolated frames are read as lost frames. */
+function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
+  const rows = () => jumpRows(props.seg).length;
+  const c = () => choiceOf(props.seg);
+  return (
+    <RailBox title={`Jump ${props.n}`}>
+      <Show
+        when={rows()}
+        fallback={
+          <p class="cb-muted">
+            A single step: the position moved and stayed, so there is no frame to replace.
+          </p>
+        }
+      >
+        <p class="cb-muted">
+          Interpolate leaves out the {rows()} {rows() === 1 ? 'frame' : 'frames'} inside the jump,
+          as lost frames; the gap settings in Preprocess fill them. Keep records that the jump is
+          real. Saved to the experiment config.
+        </p>
+        <div class="cb-controls">
+          <button
+            class="btn-small"
+            classList={{
+              'btn-primary': c() === 'interpolate',
+              'btn-secondary': c() !== 'interpolate',
+            }}
+            aria-pressed={c() === 'interpolate'}
+            onClick={() => setChoice(props.seg, c() === 'interpolate' ? undefined : 'interpolate')}
+          >
+            Interpolate
+          </button>
+          <button
+            class="btn-small"
+            classList={{ 'btn-primary': c() === 'keep', 'btn-secondary': c() !== 'keep' }}
+            aria-pressed={c() === 'keep'}
+            onClick={() => setChoice(props.seg, c() === 'keep' ? undefined : 'keep')}
+          >
+            Keep as is
+          </button>
+          <span class="cb-muted">
+            {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'}
+          </span>
+        </div>
+      </Show>
+    </RailBox>
+  );
+}
+
 export function PositionDetail(): JSX.Element {
   const checks = () => posOk()?.checks ?? [];
   return (
@@ -77,6 +126,9 @@ export function PositionDetail(): JSX.Element {
             )}
           </PagedList>
         </RailBox>
+      </Show>
+      <Show when={segments()[segIndex()]?.kind === 'jump' && segments()[segIndex()]}>
+        {(s) => <JumpChoice seg={s()} n={segIndex() + 1} />}
       </Show>
       <RailBox title="Correction">
         <p class="cb-muted">

@@ -538,6 +538,17 @@ export const positionResult = createMemo(() => {
   }
 });
 
+/** The camera frame number of each row of the position file. */
+export const positionFrames = createMemo(() => {
+  const pos = table('position');
+  if (!pos) return undefined;
+  try {
+    return column(pos, 'frame');
+  } catch {
+    return undefined;
+  }
+});
+
 /** How regular the frame times are, for the miniscope and the behavior camera. */
 export const timingResults = createMemo(() =>
   (

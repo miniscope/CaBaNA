@@ -20,6 +20,7 @@ import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
 import { zoneShape } from './zone-occupancy.ts';
+import { excludedFrames, keptFrames } from './position-corrections.ts';
 import {
   annotationFixed,
   annotationResults,
@@ -111,7 +112,13 @@ function configFromSettings(omit: Section[] = []): Obj {
       ...(source.clockScale !== 1 && { scale: source.clockScale }),
     };
   if (file('position'))
-    beh.position = { file: file('position'), units: source.positionUnit, max_gap_s: prep.maxGapS };
+    beh.position = {
+      file: file('position'),
+      units: source.positionUnit,
+      max_gap_s: prep.maxGapS,
+      // Only written when there are some: a framework without exclude_frames rejects the key.
+      ...(excludedFrames().length && { exclude_frames: excludedFrames() }),
+    };
   if (file('head_orientation'))
     beh.head_orientation = { file: file('head_orientation'), offset_deg: arena.headOffset };
   const names = configReport()?.values.epochNames ?? {};
@@ -175,6 +182,7 @@ function configFromSettings(omit: Section[] = []): Obj {
   if (arena.shape === 'circle') meta.arena_shape = 'circle';
   if (source.yDown && source.positionUnit === 'cm') meta.y_increases = 'down';
   if (arena.bodyLength) meta.body_length_cm = round(arena.bodyLength);
+  if (keptFrames().length) meta.position_kept_frames = keptFrames();
   const background = backgroundMeta();
   if (background) meta.arena_background = background;
   const stimuli = source.stimuli.filter((s) => s.name);
