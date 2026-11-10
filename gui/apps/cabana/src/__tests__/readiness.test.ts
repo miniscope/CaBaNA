@@ -44,7 +44,7 @@ describe('item status', () => {
     });
     expect(itemStatus(empty, 'load').kind).toBe('not_started');
     expect(itemStatus(empty, 'setup')).toMatchObject({ kind: 'needs_input' });
-    expect(itemStatus(empty, 'setup').input[0].link?.item).toBe('load');
+    expect(itemStatus(empty, 'setup').input[0].link?.item).toBe('data');
     expect(texts(itemStatus(empty, 'place'))[0]).toMatch(/Load neural data/);
     expect(itemStatus(empty, 'results')).toMatchObject({
       kind: 'optional',
@@ -87,7 +87,7 @@ describe('item status', () => {
     );
     const s = analysisStatus(base({ spatialComplete: false }), 'place');
     expect(s.kind).toBe('needs_input');
-    expect(s.input[0].link?.item).toBe('setup');
+    expect(s.input[0].link?.item).toBe('data');
     expect(analysisStatus(base(), 'place').kind).toBe('ready');
   });
   it('spatial setup blocks only analyses that use position', () => {
@@ -178,23 +178,23 @@ describe('item status', () => {
 describe('Next', () => {
   const ready = base({ setupStarted: true, setupComplete: true });
   it('walks the steps in order and skips Complete ones', () => {
-    expect(nextItem(ready, 'load')).toBe('place');
-    expect(nextItem(base(), 'load')).toBe('setup');
+    expect(nextItem(ready, 'data')).toBe('place');
+    // Data setup supplies the spatial setup place cells need, so Next stays there until it is done.
+    expect(nextItem(base({ spatialComplete: false }), 'data')).toBe('data');
   });
-  it('never offers the optional pages (Data visualization, Data QC, Preprocess)', () => {
-    expect(nextItem(ready, 'load')).toBe('place');
-    expect(nextItem(ready, 'setup')).toBe('place');
+  it('never offers the optional page (Data visualization)', () => {
+    expect(nextItem(ready, 'data')).toBe('place');
   });
   it('goes to the step that provides a missing prerequisite', () => {
     const s = base({ spatialComplete: false, setupStarted: true, setupComplete: false });
-    expect(nextItem(s, 'prep', ['place', 'auroc'])).toBe('setup');
+    expect(nextItem(s, 'viz', ['place', 'auroc'])).toBe('data');
   });
   it('stays on the page that supplies what is missing, and says what', () => {
     const s = base({ neural: false, timing: false });
-    expect(nextStep(s, 'load')).toMatchObject({ item: 'load', blocked: 'Load neural data first.' });
+    expect(nextStep(s, 'data')).toMatchObject({ item: 'data', blocked: 'Load neural data.' });
   });
   it('skips analyses that need a framework update or the engine', () => {
-    expect(nextItem(base({ ...ready, bridge: 'offline' }), 'prep', ['population', 'auroc'])).toBe(
+    expect(nextItem(base({ ...ready, bridge: 'offline' }), 'viz', ['population', 'auroc'])).toBe(
       'auroc',
     );
   });
@@ -203,28 +203,32 @@ describe('Next', () => {
     expect(nextItem(base(), 'results')).toBe('results');
   });
   it('limits analyses to the recommended ones', () => {
-    expect(nextItem(ready, 'prep', ['auroc'])).toBe('auroc');
+    expect(nextItem(ready, 'viz', ['auroc'])).toBe('auroc');
   });
   it('skips a Complete analysis and goes to the next recommended one', () => {
     const s = base({
       ...ready,
       runs: { population: { running: false, issues: [], result: { matches: true } } },
     });
-    expect(nextItem(s, 'prep', ['population', 'auroc'])).toBe('auroc');
+    expect(nextItem(s, 'viz', ['population', 'auroc'])).toBe('auroc');
   });
 
   /** The path a user takes by pressing Next until Results, doing what each page asks. */
   function walk(paradigm: string, over: Partial<Snapshot> = {}): string[] {
     const recommended = PARADIGMS.find((p) => p.id === paradigm)!.recommended;
-    let s = base({ capabilities: { decoding_fold_gap: true, overlap_policy: true }, ...over });
-    const path: string[] = ['load'];
+    // The walk starts on Data setup with what it asks for done: files loaded and the setup filled in.
+    let s = base({
+      capabilities: { decoding_fold_gap: true, overlap_policy: true },
+      setupStarted: true,
+      setupComplete: true,
+      ...over,
+    });
+    const path: string[] = ['data'];
     for (let i = 0; i < 12 && path.at(-1) !== 'results'; i++) {
       const item = nextItem(s, path.at(-1) as never, recommended);
       path.push(item);
       s = {
         ...s,
-        setupStarted: s.setupStarted || item === 'setup',
-        setupComplete: s.setupComplete || item === 'setup',
         runs: ['place', 'auroc', 'peth', 'decoding', 'population'].includes(item)
           ? {
               ...s.runs,
@@ -239,13 +243,12 @@ describe('Next', () => {
     }
     return path;
   }
-  it('open field: Load, Setup, place cells, population, Results', () => {
-    expect(walk('open_field')).toEqual(['load', 'setup', 'place', 'population', 'results']);
+  it('open field: Data setup, place cells, population, Results', () => {
+    expect(walk('open_field')).toEqual(['data', 'place', 'population', 'results']);
   });
   it('social interaction: auROC, population, decoding', () => {
     expect(walk('social_interaction')).toEqual([
-      'load',
-      'setup',
+      'data',
       'auroc',
       'decoding',
       'population',

@@ -44,7 +44,7 @@ describe('the real size', () => {
     expect(
       analysisNeeds(buildSnapshot(), 'place').input.find((n) => n.text === scaleIssue())?.link
         ?.item,
-    ).toBe('setup');
+    ).toBe('data');
 
     setArena({ width: 40, height: 40 });
     setSizeEntered(true);

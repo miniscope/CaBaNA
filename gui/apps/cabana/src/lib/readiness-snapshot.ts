@@ -241,9 +241,9 @@ export const statusOfItem = (id: ItemId): Status => statusMemos[id]();
 /** The sidebar item the current page belongs to (the Analyze overview counts as just before the analyses). */
 export function currentItem(step: string, analysis: AnalysisItem): ItemId {
   if (step === 'analyze') return analysis;
-  if (step === 'analyze_overview') return 'prep';
-  return ORDERED.includes(step as ItemId) ? (step as ItemId) : 'load';
+  if (step === 'analyze_overview') return 'viz';
+  return ORDERED.includes(step as ItemId) ? (step as ItemId) : 'data';
 }
-const ORDERED: ItemId[] = ['data', 'load', 'setup', 'viz', 'qc', 'prep', 'results'];
+const ORDERED: ItemId[] = ['data', 'viz', 'results'];
 
 export const nextFor = (current: ItemId) => nextStep(snapshot(), current, experiment().recommended);

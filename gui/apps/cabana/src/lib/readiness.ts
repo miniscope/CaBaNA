@@ -150,8 +150,9 @@ export const ITEM_LABEL: Record<ItemId, string> = {
   results: 'Results',
 };
 
-const LOAD = { label: 'Load data', item: 'load' as const };
-const SETUP = { label: 'Experimental setup', item: 'setup' as const };
+// Loading and the experiment's setup are both on Data setup.
+const LOAD = { label: 'Data setup', item: 'data' as const };
+const SETUP = { label: 'Data setup', item: 'data' as const };
 const spatialNeed = (s: Snapshot) =>
   s.spatialIssue ?? 'Finish the Spatial setup (arena outline and scale).';
 
@@ -378,11 +379,7 @@ export function itemStatus(s: Snapshot, id: ItemId): Status {
 /** Order of the sidebar items (the order Next walks through). */
 export const ORDER: ItemId[] = [
   'data',
-  'load',
-  'setup',
   'viz',
-  'qc',
-  'prep',
   'place',
   'auroc',
   'peth',
@@ -390,7 +387,7 @@ export const ORDER: ItemId[] = [
   'population',
   'results',
 ];
-const NEXT_SKIPS: ItemId[] = ['viz', 'qc'];
+const NEXT_SKIPS: ItemId[] = ['viz'];
 export const isOptional = (id: ItemId) => OPTIONAL.includes(id);
 
 export interface NextStep {

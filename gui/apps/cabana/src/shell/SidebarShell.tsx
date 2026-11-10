@@ -74,7 +74,7 @@ function Footer(): JSX.Element {
   const next = () => nextFor(here());
   const stuck = () => next().item === here();
   const optionalHint = () =>
-    ['load', 'setup'].includes(stepId()) && statusOfItem('viz').kind !== 'needs_input';
+    stepId() === 'data' && statusOfItem('viz').kind !== 'needs_input';
   return (
     <Show when={stepId() !== 'results'}>
       <div class="cb-foot">
@@ -86,10 +86,6 @@ function Footer(): JSX.Element {
                 Optional:{' '}
                 <button type="button" class="cb-link" onClick={() => goToStep('viz')}>
                   Data visualization
-                </button>{' '}
-                ·{' '}
-                <button type="button" class="cb-link" onClick={() => goToStep('qc')}>
-                  Data QC
                 </button>
               </Show>
             }
