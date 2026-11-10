@@ -15,7 +15,14 @@ import {
   win,
   type PlotId,
 } from '../lib/prep-view.ts';
-import { cell, deconvolved, frameTimes, traceMatrix } from '../lib/store.ts';
+import {
+  cell,
+  deconvolved,
+  denoisedTrace,
+  frameTimes,
+  rawTrace,
+  traceMatrix,
+} from '../lib/store.ts';
 import { PALETTE, ticks } from './BehaviorQc.tsx';
 import { openHelp, PlotNote } from './PrepHelp.tsx';
 import { CellPicker } from './parts.tsx';
@@ -212,6 +219,11 @@ export function PrepPlots(props: { step: string }): JSX.Element {
     const r = events();
     return r ? smoothNeural(r, fs(), prep.eventSigmaS) : undefined;
   });
+  const trace = createMemo(() => row(denoisedTrace() ?? rawTrace()));
+  const traceSmoothed = createMemo(() => {
+    const r = trace();
+    return r ? smoothNeural(r, fs(), prep.traceSigmaS) : undefined;
+  });
   const p = positionOnNeural;
   const filled = () => {
     const m = filledMask();
@@ -244,6 +256,29 @@ export function PrepPlots(props: { step: string }): JSX.Element {
               series={[
                 { label: 'Before', stroke: GRAY, width: 1 },
                 { label: 'After', stroke: ORANGE, width: 1.5 },
+              ]}
+            />
+          )}
+        </Card>
+      </Match>
+      <Match when={props.step === 'traceSmooth'}>
+        <Card
+          id="traces"
+          legend={
+            <>
+              <Key color={GRAY}>Before</Key>
+              <Key color={BLUE}>After</Key>
+            </>
+          }
+          tools={<CellPicker compact n={traceMatrix()?.cells ?? 0} />}
+        >
+          {(s) => (
+            <Trace
+              h={s().h}
+              cols={() => [trace(), traceSmoothed()]}
+              series={[
+                { label: 'Before', stroke: GRAY, width: 1 },
+                { label: 'After', stroke: BLUE, width: 1.5 },
               ]}
             />
           )}

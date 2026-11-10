@@ -6,14 +6,30 @@ import { boutFrames, dilateMask, lowerBound } from './framework.ts';
 import { STEPS, usedBy, type PrepKey, type StepId } from './prep-deps.ts';
 import { DEFAULT_PREP, prep, setPrep } from './preprocess.ts';
 import { gapRuns, positionIssue, positionOnNeural } from './prepared.ts';
-import { annotationResults, deconvolved, frameTimes, onClear, samplingRate } from './store.ts';
+import {
+  annotationResults,
+  deconvolved,
+  frameTimes,
+  onClear,
+  samplingRate,
+  traceMatrix,
+} from './store.ts';
 import { span } from './viz.ts';
 
 export type PlotId =
-  'events' | 'fillPos' | 'traj' | 'smoothPos' | 'smoothSpeed' | 'labels' | 'onFrames' | 'speed';
+  | 'events'
+  | 'traces'
+  | 'fillPos'
+  | 'traj'
+  | 'smoothPos'
+  | 'smoothSpeed'
+  | 'labels'
+  | 'onFrames'
+  | 'speed';
 
 export const STEP_PLOTS: Partial<Record<StepId, PlotId[]>> = {
   eventSmooth: ['events'],
+  traceSmooth: ['traces'],
   fillGaps: ['fillPos', 'traj'],
   posSmooth: ['smoothPos', 'smoothSpeed'],
   boutPad: ['labels'],
@@ -24,6 +40,7 @@ export const STEP_PLOTS: Partial<Record<StepId, PlotId[]>> = {
 
 export const PLOT_TITLE: Record<PlotId, string> = {
   events: 'Events over time',
+  traces: 'Trace over time',
   fillPos: 'Position over time (x, cm)',
   traj: 'Trajectory (cm)',
   smoothPos: 'Position over time (x, cm)',
@@ -147,7 +164,12 @@ export function stepIssue(s: StepId): string | undefined {
       : !frameTimes()
         ? 'Events need neural timestamps.'
         : undefined;
-  if (s === 'traceSmooth') return 'No preview: no analysis reads the raw or denoised traces yet.';
+  if (s === 'traceSmooth')
+    return !traceMatrix()
+      ? 'Load denoised or raw traces to preview trace smoothing.'
+      : !frameTimes()
+        ? 'Traces need neural timestamps.'
+        : undefined;
   if (s === 'boutPad' || s === 'boutLabels')
     return !labels().length
       ? 'Frame labels need behavior annotations.'

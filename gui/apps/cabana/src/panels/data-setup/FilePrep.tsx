@@ -62,6 +62,13 @@ function PrepSection(props: { slot: SlotId; previewOnly?: boolean }): JSX.Elemen
       <div class="cb-pp-settings">
         <section class="cb-pp-sec" aria-label="Optional steps">
           <For each={steps().optional}>{(s) => <OptionRow id={s} />}</For>
+          <Show when={steps().optional.includes('traceSmooth')}>
+            <p class="cb-muted cb-ds-prep__when">
+              Applies only while this file is the analysis data. No analysis in CaBaNA reads traces
+              yet, so today it changes no result; the value is written to preprocess.yaml as a
+              comment for the framework.
+            </p>
+          </Show>
         </section>
         <Show when={steps().standard.length}>
           <section class="cb-pp-sec" aria-label="Standard preparation">

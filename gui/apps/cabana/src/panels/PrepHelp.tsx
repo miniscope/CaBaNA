@@ -36,6 +36,15 @@ const NOTES: Record<PlotId, Record<'shows' | 'axes' | 'lines' | 'interact' | 'li
     interact: `${ZOOM} The cell controls change the cell.`,
     limits: 'One cell at a time. With smoothing off, the two lines are the same.',
   },
+  traces: {
+    shows:
+      'The selected cell in the preview window, before and after trace smoothing: the denoised trace, or the raw trace when no denoised file is loaded.',
+    axes: `${TIME} The trace in its file's own units.`,
+    lines: 'Gray: the trace as loaded. Blue: after smoothing.',
+    interact: `${ZOOM} The cell controls change the cell.`,
+    limits:
+      'One cell at a time. With smoothing off, the two lines are the same. No analysis reads traces yet, so this changes no result.',
+  },
   fillPos: {
     shows:
       'The x position on the neural frames in the preview window, as it is before gap filling, and the frames that filling adds. Position is shown before position smoothing.',
