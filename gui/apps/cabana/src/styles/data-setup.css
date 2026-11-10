@@ -470,10 +470,7 @@
   font-size: 12px;
 }
 .cb-ds-cfg__body {
-  padding: 10px 12px;
-}
-.cb-ds-cfg__grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 8px 12px;
 }
 .cb-ds-cfg__more {
   margin-top: 10px;
@@ -869,4 +866,70 @@
   width: 10px;
   font-size: 11px;
   color: var(--text-secondary);
+}
+/* Experiment config fills the entry: folded bars are compact, and the open section keeps every
+   bar in view, scrolling inside itself only if all its fields cannot fit. */
+.cb-ds-config {
+  flex: 1;
+  min-height: 0;
+  gap: 5px;
+}
+.cb-ds-config > * {
+  flex: none;
+}
+.cb-ds-cfg--folded .cb-ds-cfg__bar {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.cb-ds-config > .cb-ds-cfg:not(.cb-ds-cfg--folded) {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-ds-cfg:not(.cb-ds-cfg--folded) > .cb-ds-cfg__body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.cb-ds-cfg__grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.cb-ds-cfg .cb-setup-field {
+  font-size: 13px;
+}
+.cb-ds-cfg .cb-setup-grid {
+  row-gap: 8px;
+}
+/* Stimuli & cues: one line per stimulus, five to a page. */
+.cb-ds-cfg .cb-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls {
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0 0 4px;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls > input[type='text'] {
+  flex: 1 1 140px;
+  min-width: 80px;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls select {
+  max-width: 170px;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls input[type='number'] {
+  width: 64px;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls > * {
+  white-space: nowrap;
+}
+.cb-ds-cfg .cb-group > div > .cb-controls input,
+.cb-ds-cfg .cb-group > div > .cb-controls select {
+  height: 30px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.cb-ds-cfg .cb-lbl-viewbar {
+  margin-bottom: 4px;
 }
