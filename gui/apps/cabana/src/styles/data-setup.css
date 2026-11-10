@@ -718,3 +718,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.cb-ds-prep--preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cb-ds-prep--preview > .cb-pp-settings {
+  display: none;
+}

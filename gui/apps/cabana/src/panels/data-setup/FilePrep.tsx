@@ -6,6 +6,7 @@ import { createEffect, For, Show, type JSX } from 'solid-js';
 import { STEPS, type StepId } from '../../lib/prep-deps.ts';
 import { STEP_HELP } from '../../lib/prep-help.ts';
 import { helpTab, prepStep, setPrepStep, stepIssue } from '../../lib/prep-view.ts';
+import { isReference } from '../../lib/analysis-data.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import { HelpDrawer, openHelp } from '../PrepHelp.tsx';
 import { PrepPlots } from '../PrepPlots.tsx';
@@ -20,6 +21,7 @@ import {
   StandardRow,
   Summary,
 } from '../PreprocessPanel.tsx';
+import { PrepOffPanel, previewAnyway, stopPreview } from './RefPanels.tsx';
 
 /** The steps that act on each file: optional ones (with a switch), then automatic ones. */
 const STEPS_OF: Partial<Record<SlotId, { optional: StepId[]; standard: StepId[] }>> = {
@@ -30,7 +32,24 @@ const STEPS_OF: Partial<Record<SlotId, { optional: StepId[]; standard: StepId[] 
   behavior_annotations: { optional: ['boutPad'], standard: ['boutLabels'] },
 };
 
+/** Reference data gets a note instead, or only the preview when the user asks for it. */
 export function FilePrep(props: { slot: SlotId }): JSX.Element {
+  return (
+    <Show when={isReference(props.slot)} fallback={<PrepSection slot={props.slot} />}>
+      <Show when={previewAnyway(props.slot)} fallback={<PrepOffPanel slot={props.slot} />}>
+        <p class="cb-ds-meta cb-muted">
+          Preview only: preprocessing isn't used for reference data.{' '}
+          <button class="cb-linkbtn" onClick={() => stopPreview(props.slot)}>
+            Back
+          </button>
+        </p>
+        <PrepSection slot={props.slot} previewOnly />
+      </Show>
+    </Show>
+  );
+}
+
+function PrepSection(props: { slot: SlotId; previewOnly?: boolean }): JSX.Element {
   const steps = () => STEPS_OF[props.slot] ?? { optional: [], standard: [] };
   const all = () => [...steps().optional, ...steps().standard];
   // Preview a step of this file; keep the one chosen last when it belongs here.
@@ -39,7 +58,7 @@ export function FilePrep(props: { slot: SlotId }): JSX.Element {
   });
   const step = prepStep;
   return (
-    <div class="cb-pp-body cb-ds-prep">
+    <div class="cb-pp-body cb-ds-prep" classList={{ 'cb-ds-prep--preview': props.previewOnly }}>
       <div class="cb-pp-settings">
         <section class="cb-pp-sec" aria-label="Optional steps">
           <For each={steps().optional}>{(s) => <OptionRow id={s} />}</For>
