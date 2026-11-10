@@ -17,7 +17,7 @@ import {
   setSource,
   source,
 } from '../../lib/store.ts';
-import { InfoTip } from '../InfoTip.tsx';
+import { PopButton } from '../QcParts.tsx';
 import {
   DerivedField,
   DEVICES,
@@ -32,7 +32,6 @@ import { AboutConfig, YamlView } from './ConfigYaml.tsx';
 
 // Kept while other entries are open.
 const [asYaml, setAsYaml] = createSignal(false);
-const [showAbout, setShowAbout] = createSignal(false);
 
 function Session(): JSX.Element {
   return (
@@ -201,32 +200,7 @@ export function ConfigView(): JSX.Element {
     <div class="cb-ds-config">
       <div class="cb-ds-head">
         <h3>Experiment config</h3>
-        <span class="cb-spacer" />
-        <label class="btn-secondary btn-small cb-file">
-          Load previous config
-          <input
-            type="file"
-            hidden
-            accept=".yaml,.yml"
-            onChange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              e.currentTarget.value = '';
-              if (f) void addFiles([f], 'config');
-            }}
-          />
-        </label>
-        <button class="btn-secondary btn-small" onClick={downloadConfig}>
-          Save config as…
-        </button>
-      </div>
-      <ImportedConfig />
-      <div class="cb-ds-head">
-        <p class="cb-muted cb-ds-meta">
-          Changes here, and in each file's sections, update the same config.yaml.{' '}
-          <button class="cb-linkbtn" onClick={() => setShowAbout(!showAbout())}>
-            {showAbout() ? 'Hide' : 'About'} config.yaml
-          </button>
-        </p>
+        <ImportedConfig compact />
         <span class="cb-spacer" />
         <div class="cb-ds-view" role="tablist" aria-label="Show the config as">
           <button
@@ -245,13 +219,42 @@ export function ConfigView(): JSX.Element {
             classList={{ 'cb-ds-view--on': asYaml() }}
             onClick={() => setAsYaml(true)}
           >
-            View as YAML
+            YAML
           </button>
         </div>
+        <label class="btn-secondary btn-small cb-file">
+          Load previous config
+          <input
+            type="file"
+            hidden
+            accept=".yaml,.yml"
+            onChange={(e) => {
+              const f = e.currentTarget.files?.[0];
+              e.currentTarget.value = '';
+              if (f) void addFiles([f], 'config');
+            }}
+          />
+        </label>
+        <button class="btn-secondary btn-small" onClick={downloadConfig}>
+          Save config as…
+        </button>
+        <PopButton
+          label="About config.yaml"
+          title="About config.yaml"
+          width={620}
+          class="cb-tip__btn"
+          button={<span aria-hidden="true">ⓘ</span>}
+        >
+          {(close) => (
+            <AboutConfig
+              onYaml={() => {
+                setAsYaml(true);
+                close();
+              }}
+            />
+          )}
+        </PopButton>
       </div>
-      <Show when={showAbout()}>
-        <AboutConfig />
-      </Show>
       <Show
         when={asYaml()}
         fallback={
@@ -260,18 +263,13 @@ export function ConfigView(): JSX.Element {
             <Experiment />
             <Session />
             <Tracking />
-            <section class="cb-ds-cfg">
-              <header class="cb-ds-cfg__bar">
-                <h4>Stimuli & cues</h4>
-                <InfoTip label="Why Stimuli & cues matters" icon="?">
-                  What the animal was shown or given. Each stimulus takes its times from a loaded
-                  label, so PETH and auROC can group frames by it. Written to metadata.stimuli.
-                </InfoTip>
-              </header>
-              <div class="cb-ds-cfg__body">
-                <StimuliTab />
-              </div>
-            </section>
+            <Section
+              id="stimuli"
+              title="Stimuli & cues"
+              why="What the animal was shown or given. Each stimulus takes its times from a loaded label, so PETH and auROC can group frames by it. Written to metadata.stimuli."
+              keyFields={<StimuliTab />}
+              wide
+            />
             <Neural />
           </>
         }

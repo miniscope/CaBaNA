@@ -62,7 +62,10 @@ export function Select<T extends string>(props: {
   );
 }
 
-/** One section: a header bar (name, why it matters, Required, Show all fields) over its fields. */
+/**
+ * One section: a header bar (name, Required, Show all fields, and at the far right why it
+ * matters) over its fields. `wide` fields take the whole width instead of the three columns.
+ */
 export function Section(props: {
   id: string;
   title: string;
@@ -70,15 +73,12 @@ export function Section(props: {
   required?: boolean;
   keyFields: JSX.Element;
   more?: JSX.Element;
+  wide?: boolean;
 }): JSX.Element {
   return (
     <section class="cb-ds-cfg">
       <header class="cb-ds-cfg__bar">
         <h4>{props.title}</h4>
-        <InfoTip label={`Why ${props.title} matters`} icon="?">
-          {props.why}
-        </InfoTip>
-        <span class="cb-spacer" />
         <Show when={props.required}>
           <span class="cb-warn">Required</span>
         </Show>
@@ -87,9 +87,13 @@ export function Section(props: {
             {open[props.id] ? 'Show fewer fields' : 'Show all fields'}
           </button>
         </Show>
+        <span class="cb-spacer" />
+        <InfoTip label={`Why ${props.title} matters`}>{props.why}</InfoTip>
       </header>
       <div class="cb-ds-cfg__body">
-        <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
+        <Show when={!props.wide} fallback={props.keyFields}>
+          <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
+        </Show>
         <Show when={open[props.id] && props.more}>
           <div class="cb-setup-grid cb-ds-cfg__grid cb-ds-cfg__more">{props.more}</div>
         </Show>

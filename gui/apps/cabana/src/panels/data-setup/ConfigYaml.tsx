@@ -19,7 +19,7 @@ const PARTS: [string, string][] = [
   ['name', 'Experiment & subjects: the session name.'],
   [
     'neural:\n  file, kind, timestamps\n  alternatives',
-    'The loaded neural files: the one analyses use, and the others kept as alternatives.',
+    'The analysis data (file, kind) and the reference data (alternatives): Neural acquisition.',
   ],
   [
     'behavior:\n  timestamps, clock\n  position, head_orientation\n  epochs, markers, frame_labels',
@@ -36,13 +36,14 @@ const PARTS: [string, string][] = [
   ],
 ];
 
-export function AboutConfig(): JSX.Element {
+export function AboutConfig(props: { onYaml: () => void }): JSX.Element {
   return (
     <div class="cb-ds-about">
       <p class="cb-muted">
         One file describes the session: which files to load, how to line them up, the arena, and
         notes about the experiment. The framework reads it with load_session_dir, so the same file
-        runs the analyses in Python.
+        runs the analyses in Python. Changes here, and in each file's sections, update the same
+        config.yaml.
       </p>
       <div class="cb-ds-about__grid">
         <For each={PARTS}>
@@ -54,6 +55,9 @@ export function AboutConfig(): JSX.Element {
           )}
         </For>
       </div>
+      <button class="cb-linkbtn" onClick={() => props.onYaml()}>
+        View full config.yaml
+      </button>
     </div>
   );
 }

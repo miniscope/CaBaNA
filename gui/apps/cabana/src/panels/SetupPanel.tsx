@@ -395,12 +395,11 @@ function TrackingTab(): JSX.Element {
         </Show>
         <Help field="positionTool" />
         <Note>
-          The head direction
-          offset is added to the head orientation so that 0 degrees points to the right of the
-          picture and angles grow counterclockwise. It only matters for head direction. Maps and
-          zones put y up, with 0 at the arena's bottom edge. Camera tracking often has y growing
-          downward instead; choose Down for position files like that, and y is flipped using the
-          arena height. Zones in a loaded config are flipped the same way. Pixel positions are
+          The head direction offset is added to the head orientation so that 0 degrees points to the
+          right of the picture and angles grow counterclockwise. It only matters for head direction.
+          Maps and zones put y up, with 0 at the arena's bottom edge. Camera tracking often has y
+          growing downward instead; choose Down for position files like that, and y is flipped using
+          the arena height. Zones in a loaded config are flipped the same way. Pixel positions are
           already read with y down, so this applies to centimeters only.
         </Note>
       </section>
@@ -466,110 +465,112 @@ export function StimuliTab(): JSX.Element {
         </span>
       </div>
       <div style={{ display: stimuliView() === 'stimuli' ? 'block' : 'none' }}>
-      <For each={source.stimuli.slice(stimPage() * STIM_PER_PAGE, (stimPage() + 1) * STIM_PER_PAGE)}>
-        {(s, j) => {
-          const i = () => stimPage() * STIM_PER_PAGE + j();
-          return (
-          <div class="cb-controls">
-            <input
-              type="text"
-              placeholder="Name"
-              value={s.name}
-              onInput={(e) => setSource('stimuli', i(), 'name', e.currentTarget.value)}
-            />
-            <select
-              value={s.kind}
-              onChange={(e) => setSource('stimuli', i(), 'kind', e.currentTarget.value)}
-            >
-              <For each={STIMULUS_KINDS}>{(k) => <option>{k}</option>}</For>
-            </select>
-            <label>
-              Label
-              <select
-                value={s.label ?? ''}
-                onChange={(e) => setSource('stimuli', i(), 'label', e.currentTarget.value)}
-              >
-                <option value="" disabled>
-                  Choose a label
-                </option>
-                <Show when={s.label && !loadedLabels().includes(s.label)}>
-                  <option value={s.label}>{s.label}</option>
-                </Show>
-                <For each={loadedLabels()}>{(l) => <option value={l}>{l}</option>}</For>
-              </select>
-            </label>
-            <Show when={s.label && !loadedLabels().includes(s.label)}>
-              <span class="cb-error">
-                Missing label '{s.label}'.{' '}
-                <button class="cb-link" onClick={() => showLabel('load', s.label!)}>
-                  Open Load data
-                </button>
-              </span>
-            </Show>
-            <label>
-              Length
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={s.durationS ?? ''}
-                onInput={(e) =>
-                  setSource(
-                    'stimuli',
-                    i(),
-                    'durationS',
-                    e.currentTarget.value ? +e.currentTarget.value : undefined,
-                  )
-                }
-              />
-              s
-            </label>
-            <input
-              type="text"
-              placeholder="Note"
-              value={s.note}
-              onInput={(e) => setSource('stimuli', i(), 'note', e.currentTarget.value)}
-            />
-            <button
-              class="cb-link"
-              onClick={() => setSource('stimuli', (l) => l.filter((_, k) => k !== i()))}
-            >
-              Remove
-            </button>
-          </div>
-          );
-        }}
-      </For>
-      <div class="cb-controls">
-        <button
-          class="btn-secondary btn-small"
-          onClick={() => {
-            setSource('stimuli', (l) => [...l, { name: '', kind: STIMULUS_KINDS[0], note: '' }]);
-            setStimPage(Math.floor((source.stimuli.length - 1) / STIM_PER_PAGE));
-          }}
+        <For
+          each={source.stimuli.slice(stimPage() * STIM_PER_PAGE, (stimPage() + 1) * STIM_PER_PAGE)}
         >
-          Add a stimulus
-        </button>
-        <Show when={source.stimuli.length > STIM_PER_PAGE}>
+          {(s, j) => {
+            const i = () => stimPage() * STIM_PER_PAGE + j();
+            return (
+              <div class="cb-controls">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={s.name}
+                  onInput={(e) => setSource('stimuli', i(), 'name', e.currentTarget.value)}
+                />
+                <select
+                  value={s.kind}
+                  onChange={(e) => setSource('stimuli', i(), 'kind', e.currentTarget.value)}
+                >
+                  <For each={STIMULUS_KINDS}>{(k) => <option>{k}</option>}</For>
+                </select>
+                <label>
+                  Label
+                  <select
+                    value={s.label ?? ''}
+                    onChange={(e) => setSource('stimuli', i(), 'label', e.currentTarget.value)}
+                  >
+                    <option value="" disabled>
+                      Choose a label
+                    </option>
+                    <Show when={s.label && !loadedLabels().includes(s.label)}>
+                      <option value={s.label}>{s.label}</option>
+                    </Show>
+                    <For each={loadedLabels()}>{(l) => <option value={l}>{l}</option>}</For>
+                  </select>
+                </label>
+                <Show when={s.label && !loadedLabels().includes(s.label)}>
+                  <span class="cb-error">
+                    Missing label '{s.label}'.{' '}
+                    <button class="cb-link" onClick={() => showLabel('load', s.label!)}>
+                      Open Load data
+                    </button>
+                  </span>
+                </Show>
+                <label>
+                  Length
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={s.durationS ?? ''}
+                    onInput={(e) =>
+                      setSource(
+                        'stimuli',
+                        i(),
+                        'durationS',
+                        e.currentTarget.value ? +e.currentTarget.value : undefined,
+                      )
+                    }
+                  />
+                  s
+                </label>
+                <input
+                  type="text"
+                  placeholder="Note"
+                  value={s.note}
+                  onInput={(e) => setSource('stimuli', i(), 'note', e.currentTarget.value)}
+                />
+                <button
+                  class="cb-link"
+                  onClick={() => setSource('stimuli', (l) => l.filter((_, k) => k !== i()))}
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          }}
+        </For>
+        <div class="cb-controls">
           <button
             class="btn-secondary btn-small"
-            disabled={stimPage() === 0}
-            onClick={() => setStimPage(stimPage() - 1)}
+            onClick={() => {
+              setSource('stimuli', (l) => [...l, { name: '', kind: STIMULUS_KINDS[0], note: '' }]);
+              setStimPage(Math.floor((source.stimuli.length - 1) / STIM_PER_PAGE));
+            }}
           >
-            Previous
+            Add a stimulus
           </button>
-          <span class="cb-muted">
-            {rangeText(stimPage(), source.stimuli.length, STIM_PER_PAGE)}
-          </span>
-          <button
-            class="btn-secondary btn-small"
-            disabled={(stimPage() + 1) * STIM_PER_PAGE >= source.stimuli.length}
-            onClick={() => setStimPage(stimPage() + 1)}
-          >
-            Next
-          </button>
-        </Show>
-      </div>
+          <Show when={source.stimuli.length > STIM_PER_PAGE}>
+            <button
+              class="btn-secondary btn-small"
+              disabled={stimPage() === 0}
+              onClick={() => setStimPage(stimPage() - 1)}
+            >
+              Previous
+            </button>
+            <span class="cb-muted">
+              {rangeText(stimPage(), source.stimuli.length, STIM_PER_PAGE)}
+            </span>
+            <button
+              class="btn-secondary btn-small"
+              disabled={(stimPage() + 1) * STIM_PER_PAGE >= source.stimuli.length}
+              onClick={() => setStimPage(stimPage() + 1)}
+            >
+              Next
+            </button>
+          </Show>
+        </div>
       </div>
       <div style={{ display: stimuliView() === 'roles' ? 'block' : 'none' }}>
         <LabelRoles />
@@ -623,23 +624,32 @@ function UpdateConfig(): JSX.Element {
 }
 
 /** What the config file filled in, as one line with the warnings and an expandable review. */
-export function ImportedConfig(): JSX.Element {
+/** What a loaded config filled in, with its report. `compact`: one line for a page header. */
+export function ImportedConfig(props: { compact?: boolean }): JSX.Element {
   return (
     <Show when={configReport()}>
       {(r) => (
-        <div class="cb-setup-import">
-          <strong>Configuration loaded</strong>
-          <span class="cb-muted">
-            {r().read.length} settings filled in from {loaded.config?.name ?? 'config.yaml'}; changes
-            made here replace them.
-          </span>
+        <div class="cb-setup-import" classList={{ 'cb-setup-import--compact': props.compact }}>
+          <Show
+            when={props.compact}
+            fallback={
+              <>
+                <strong>Configuration loaded</strong>
+                <span class="cb-muted">
+                  {r().read.length} settings filled in from {loaded.config?.name ?? 'config.yaml'};
+                  changes made here replace them.
+                </span>
+              </>
+            }
+          >
+            <span class="cb-muted">
+              {loaded.config?.name ?? 'config.yaml'} · {r().read.length} settings filled in ·
+            </span>
+          </Show>
           <details class="cb-setup-pop">
             <summary>
               Review details
-              <Show when={setupItems().length}>
-                {' '}
-                ({setupItems().length} to check)
-              </Show>
+              <Show when={setupItems().length}> ({setupItems().length} to check)</Show>
             </summary>
             <div class="cb-setup-pop__body">
               <ConfigReport />
