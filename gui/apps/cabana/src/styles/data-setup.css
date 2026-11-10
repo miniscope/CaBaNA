@@ -2,7 +2,7 @@
 .cb-ds {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
   border-radius: var(--radius-md);
 }
@@ -13,12 +13,39 @@
 }
 .cb-ds-top h2 {
   margin: 0;
+  white-space: nowrap;
+}
+.cb-ds-top > * {
+  flex-shrink: 0;
+}
+.cb-ds-top__hint {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
 }
 .cb-ds-status {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: right;
+}
+.cb-ds-top > .cb-ds-status {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.cb-ds-qcl__review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.cb-ds-qcl__review h4 {
+  margin: 0;
 }
 .cb-ds-body-grid {
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
@@ -65,13 +92,26 @@
 .cb-ds-head h3 {
   margin: 0;
   font-size: 16px;
+  white-space: nowrap;
+}
+.cb-ds-head__file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.cb-ds-stagerow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 .cb-ds-meta {
   margin: 0;
   font-size: 13px;
 }
 .cb-ds-stages {
-  margin: 6px 0 4px;
+  margin: 0;
 }
 .cb-ds-stages li {
   flex: 0 0 auto;
@@ -117,6 +157,10 @@
   border-radius: var(--radius-md);
   font-size: 13px;
 }
+.cb-ds-qcs .cb-qcset__btn {
+  padding: 1px 10px;
+  font-size: 12.5px;
+}
 .cb-ds-qcs--pass {
   background: #e8f5e9;
 }
@@ -130,7 +174,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 10px;
 }
 .cb-ds-qplot {
@@ -194,7 +238,7 @@
 .cb-ds-qcl {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   min-height: 0;
   overflow-y: auto;
   font-size: 12.5px;
@@ -203,13 +247,13 @@
   flex-shrink: 0;
 }
 .cb-ds-qcl .cb-rail-box {
-  padding: 6px 8px;
+  padding: 4px 8px;
   font-size: 12.5px;
 }
 /* The flagged items take the height left in the column and page to fit it. */
 .cb-ds-qcl .cb-rail-box--grow {
   flex: 1 1 0;
-  min-height: 130px;
+  min-height: 104px;
 }
 .cb-ds-qcl .cb-list__item {
   padding: 2px 4px;
@@ -222,6 +266,12 @@
 .cb-ds-qcl .cb-pager {
   margin-top: 4px;
 }
+.cb-jump__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
 .cb-ds-qcl .cb-jump {
   flex-wrap: nowrap;
   gap: 4px;
@@ -229,7 +279,7 @@
 }
 .cb-ds-qcl .cb-rail-box h3,
 .cb-ds-qcl__box h4 {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
 }
@@ -237,7 +287,8 @@
   margin: 0;
 }
 .cb-ds-qcl__why {
-  padding: 6px 8px;
+  padding: 2px 8px;
+  line-height: 1.3;
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
 }
@@ -251,11 +302,11 @@
   grid-template-columns: 16px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0 4px;
-  padding: 3px 0;
+  padding: 1px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .cb-ds-qck__name {
-  line-height: 1.25;
+  line-height: 1.2;
 }
 .cb-ds-qck__nums {
   grid-column: 2 / -1;
@@ -265,13 +316,18 @@
 .cb-ds-qcl .cb-review {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
+  margin: 0;
+}
+.cb-ds-qcl .cb-review .btn-small {
+  padding: 1px 8px;
+  font-size: 12px;
 }
 .cb-ds-qcfix {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 2px 6px;
+  align-items: center;
+  gap: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--border-subtle);
 }
@@ -477,4 +533,39 @@
 }
 .cb-ds-start__pick {
   max-width: 320px;
+}
+.cb-ds-qcfix__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-ds-qcl .cb-rail-box__head {
+  margin-bottom: 2px;
+}
+.cb-ds-qcl .cb-rail-box__head > * {
+  white-space: nowrap;
+}
+.cb-ds-qcl__review .cb-review {
+  display: contents;
+}
+.cb-ds-qck .cb-qi {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+}
+.cb-ds-qck .cb-qres {
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+.cb-ds-qck__nums {
+  line-height: 1.2;
+}
+.cb-ds-qck .cb-tip__btn {
+  height: 16px;
+  line-height: 16px;
+}
+.cb-ds-qcl__why h4 {
+  margin: 0;
 }

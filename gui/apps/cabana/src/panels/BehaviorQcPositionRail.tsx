@@ -60,11 +60,19 @@ function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
     <RailBox
       title={`Jump ${props.n}`}
       extra={
-        <InfoTip label="About Interpolate and Keep">
-          Interpolate leaves out the frames inside the jump, as lost frames; the gap settings in
-          Preprocess fill them. Keep records that the jump is real. Either choice is saved to the
-          experiment config. Rows opens these frames in the data table.
-        </InfoTip>
+        <span class="cb-jump__state">
+          <Show when={rows()}>
+            <span class="cb-muted">
+              {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'} ·{' '}
+              {rows()} {rows() === 1 ? 'frame' : 'frames'}
+            </span>
+          </Show>
+          <InfoTip label="About Interpolate and Keep">
+            Interpolate leaves out the frames inside the jump, as lost frames; the gap settings in
+            Preprocess fill them. Keep records that the jump is real. Either choice is saved to the
+            experiment config. Rows opens these frames in the data table.
+          </InfoTip>
+        </span>
       }
     >
       <Show
@@ -86,10 +94,6 @@ function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
             Rows
           </button>
         </div>
-        <span class="cb-muted">
-          {c() === 'interpolate' ? 'Left out' : c() === 'keep' ? 'Kept' : 'Not decided'} · {rows()}{' '}
-          {rows() === 1 ? 'frame' : 'frames'} inside the jump
-        </span>
       </Show>
     </RailBox>
   );

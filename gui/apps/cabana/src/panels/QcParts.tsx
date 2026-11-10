@@ -401,7 +401,7 @@ export function PagedList<T>(props: {
   // Rows are measured once drawn; `rowH` is the guess before that.
   const [rowH, setRowH] = createSignal(props.rowH ?? 30);
   let list: HTMLUListElement | undefined;
-  const per = () => Math.max(3, Math.floor((size().h - 36) / rowH()));
+  const per = () => Math.max(2, Math.floor((size().h - 36) / rowH()));
   const pages = () => Math.max(1, Math.ceil(props.items.length / per()));
   const page = () => Math.min(listPage[props.id] ?? 0, pages() - 1);
   const shown = () => props.items.slice(page() * per(), (page() + 1) * per());
@@ -523,6 +523,19 @@ export function ReviewActions(props: {
   const failed = () => props.checks.some((c) => c.status === 'fail');
   return (
     <div class="cb-review">
+      <button
+        class="btn-secondary btn-small"
+        classList={{ 'cb-review--on': !!reviewed[props.id] }}
+        aria-pressed={!!reviewed[props.id]}
+        onClick={() => setReviewed(props.id, !reviewed[props.id])}
+      >
+        {reviewed[props.id] ? '✓ Reviewed' : 'Mark reviewed'}
+      </button>
+      <InfoTip label="What Mark reviewed does">
+        Marks this category as looked at, so the list on the left shows which flags have been
+        checked. It changes only the label: the checks, pass or fail, and later steps are not
+        affected.
+      </InfoTip>
       <Show when={failed() && props.section}>
         <Show
           when={proceed[props.section!]}
@@ -541,19 +554,6 @@ export function ReviewActions(props: {
           </button>
         </Show>
       </Show>
-      <button
-        class="btn-secondary btn-small"
-        classList={{ 'cb-review--on': !!reviewed[props.id] }}
-        aria-pressed={!!reviewed[props.id]}
-        onClick={() => setReviewed(props.id, !reviewed[props.id])}
-      >
-        {reviewed[props.id] ? '✓ Reviewed' : 'Mark reviewed'}
-      </button>
-      <InfoTip label="What Mark reviewed does">
-        Marks this category as looked at, so the list on the left shows which flags have been
-        checked. It changes only the label: the checks, pass or fail, and later steps are not
-        affected.
-      </InfoTip>
     </div>
   );
 }

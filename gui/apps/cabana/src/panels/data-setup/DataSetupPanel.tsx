@@ -31,19 +31,40 @@ import { FileList } from './FileList.tsx';
 const loadedIds = () =>
   SLOTS.filter((s) => loaded[s.id]?.summary && loaded[s.id]!.size).map((s) => s.id);
 
+/** Files loaded and reviewed, required files missing, and files with no data type. */
 function Status(): JSX.Element {
   const n = () => loadedIds().length;
   const done = () => loadedIds().filter((id) => reviewed(id)).length;
   return (
-    <div class="cb-ds-status">
-      <Show when={n()} fallback={<span class="cb-muted">No files loaded</span>}>
-        <span>
-          {n()} {n() === 1 ? 'file' : 'files'} loaded
-        </span>
-        <span class="cb-muted">
-          {done()} of {n()} reviewed
-        </span>
-      </Show>
+    <div class="cb-ds-status" role="status">
+      <span>
+        <Show when={n()} fallback={<span class="cb-muted">No files loaded</span>}>
+          {n()} {n() === 1 ? 'file' : 'files'} loaded{' '}
+          <span class="cb-muted">
+            · {done()} of {n()} reviewed
+          </span>
+        </Show>
+      </span>
+      <span>
+        <Show
+          when={missingRequired().length}
+          fallback={<span class="cb-muted">No required files missing</span>}
+        >
+          <span class="cb-warn">
+            Required, not loaded:{' '}
+            {missingRequired()
+              .map((s) => s.label)
+              .join(', ')}
+          </span>
+        </Show>
+        <Show when={unrecognized().length}>
+          {' · '}
+          <button class="cb-linkbtn" onClick={() => openEntry(`file:${unrecognized()[0].name}`)}>
+            {unrecognized().length} {unrecognized().length === 1 ? 'file has' : 'files have'} no
+            data type
+          </button>
+        </Show>
+      </span>
     </div>
   );
 }
@@ -92,18 +113,16 @@ export function DataSetupPanel(): JSX.Element {
         void addFiles(Array.from(e.dataTransfer?.files ?? []));
       }}
     >
-      <div class="cb-ds-top">
+      {/* Title, load toolbar and status share one row. */}
+      <div class="cb-ds-top cb-load__bar">
         <h2>Data setup</h2>
         <InfoTip label="About Data setup">
           Load your files, then open each one on the left: an overview of the whole file, its
           quality checks, and anything that applies to that file alone. Settings that describe the
           experiment are in Experiment config and are saved to config.yaml. Only missing required
-          files stop you from continuing.
+          files stop you from continuing. Files can also be dropped anywhere on the page; each is
+          matched to a data type by its name.
         </InfoTip>
-        <span class="cb-spacer" />
-        <Status />
-      </div>
-      <div class="cb-load__bar">
         <label class="btn-primary btn-small cb-file">
           Select files
           <input type="file" hidden multiple onChange={(e) => void addFiles(fileList(e))} />
@@ -121,13 +140,14 @@ export function DataSetupPanel(): JSX.Element {
         </label>
         <ExamplePicker />
         <ApplySettings onApplied={setApplied} />
-        <span class="cb-muted">or drop files anywhere · matched to a data type by name</span>
-        <span class="cb-spacer" />
+        <span class="cb-muted cb-ds-top__hint">or drop files anywhere</span>
         <Show when={loadedIds().length || unrecognized().length}>
           <button class="btn-secondary btn-small" onClick={clearAll}>
             Clear all
           </button>
         </Show>
+        <span class="cb-spacer" />
+        <Status />
       </div>
       <Show when={applied()}>
         <p class="cb-load__applied" role="status">
@@ -157,30 +177,6 @@ export function DataSetupPanel(): JSX.Element {
       >
         <FileList />
         <EntryView />
-      </div>
-      <div class="cb-gs-foot">
-        <span class="cb-gs-foot__text">
-          <span>
-            {loadedIds().length} {loadedIds().length === 1 ? 'file' : 'files'} loaded
-          </span>
-          <Show
-            when={missingRequired().length}
-            fallback={<span class="cb-muted">No required files missing</span>}
-          >
-            <span class="cb-warn">
-              Required, not loaded:{' '}
-              {missingRequired()
-                .map((s) => s.label)
-                .join(', ')}
-            </span>
-          </Show>
-          <Show when={unrecognized().length}>
-            <button class="cb-linkbtn" onClick={() => openEntry(`file:${unrecognized()[0].name}`)}>
-              {unrecognized().length} {unrecognized().length === 1 ? 'file has' : 'files have'} no
-              data type
-            </button>
-          </Show>
-        </span>
       </div>
     </div>
   );

@@ -76,10 +76,8 @@ function Checks(props: { cat: Category }): JSX.Element {
 
 function Review(props: { cat: Category }): JSX.Element {
   return (
-    <section class="cb-ds-qcl__box">
-      <h4>
-        Your review <span class="cb-muted">{reviewed[props.cat.id] ? 'Reviewed' : 'Not yet'}</span>
-      </h4>
+    <section class="cb-ds-qcl__box cb-ds-qcl__review">
+      <h4>Your review</h4>
       <ReviewActions id={props.cat.id} section={props.cat.section} checks={props.cat.checks} />
     </section>
   );
@@ -90,7 +88,7 @@ function Correction(props: { cat: Category }): JSX.Element {
   return (
     <div class="cb-ds-qcfix">
       <b>Correction</b>
-      <span class="cb-muted">{props.cat.correctionHint}</span>
+      <span class="cb-muted cb-ds-qcfix__hint">{props.cat.correctionHint}</span>
       <PopButton
         label={`Correction: ${props.cat.name}`}
         title="Correction"
@@ -175,9 +173,12 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
     (neural() ? neuralCategories() : behaviorCategories()).find((c) => c.id === testId()),
   );
   // Cell checks are computed from one trace file: the raw traces when loaded, else the denoised.
-  const why = () =>
+  const why = (): { text: string; more: string } | undefined =>
     testId() === 'cells' && props.id === 'neural_denoised' && rawTrace()
-      ? 'Cell checks use the raw traces, so they are the same here and under Raw traces.'
+      ? {
+          text: 'Computed from the raw traces.',
+          more: 'Cell checks use the raw traces when they are loaded, else the denoised traces, so they are the same here and under Raw traces.',
+        }
       : undefined;
   return (
     <Show
@@ -190,10 +191,15 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
           <div class="cb-ds-qc__body">
             <aside class="cb-ds-qcl" aria-label="Checks and review">
               <Show when={why()}>
-                <section class="cb-ds-qcl__box cb-ds-qcl__why">
-                  <h4>Why these checks are here</h4>
-                  <p class="cb-muted">{why()}</p>
-                </section>
+                {(w) => (
+                  <section class="cb-ds-qcl__box cb-ds-qcl__why">
+                    <h4>
+                      Why these checks are here{' '}
+                      <InfoTip label="Why these checks are here">{w().more}</InfoTip>
+                    </h4>
+                    <p class="cb-muted">{w().text}</p>
+                  </section>
+                )}
               </Show>
               <Checks cat={c()} />
               {c().flaggedList?.()}

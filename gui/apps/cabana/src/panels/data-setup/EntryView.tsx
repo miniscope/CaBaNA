@@ -13,6 +13,7 @@ import {
 import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-sections.ts';
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
+import { InfoTip } from '../InfoTip.tsx';
 import { FileButton, SlotPreview } from '../Preview.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
@@ -102,11 +103,11 @@ function Sync(): JSX.Element {
       <div class="cb-ds-head">
         <h3>Timestamp alignment</h3>
         <span class="cb-muted">Cross-data check</span>
+        <InfoTip label="About Timestamp alignment">
+          Dropped frames, frame-time jitter, and whether the miniscope and behavior camera clocks
+          line up after the clock offset and scale in Experiment config.
+        </InfoTip>
       </div>
-      <p class="cb-muted cb-ds-meta">
-        Dropped frames, frame-time jitter, and whether the miniscope and behavior camera clocks line
-        up after the clock offset and scale in Experiment config.
-      </p>
       <div class="cb-ds-body">
         <FileQc id="sync" />
       </div>
@@ -129,12 +130,9 @@ function NextButton(props: { slot: SlotId }): JSX.Element {
   return (
     <Show when={next()}>
       {(n) => (
-        <div class="cb-gs-section__nav">
-          <span class="cb-spacer" />
-          <button type="button" class="btn-secondary" onClick={() => n().go()}>
-            {n().label} →
-          </button>
-        </div>
+        <button type="button" class="btn-secondary btn-small" onClick={() => n().go()}>
+          Next: {n().label} →
+        </button>
       )}
     </Show>
   );
@@ -147,24 +145,28 @@ function LoadedFile(props: { slot: Slot }): JSX.Element {
       <div class="cb-ds-head">
         <h3>{slotLabel(props.slot)}</h3>
         <span class="cb-muted">{LEVEL[levelOf(props.slot.id)]}</span>
+        <span class="cb-muted cb-ds-head__file" title={props.slot.format}>
+          <code>{info().name}</code> · {info().summary}
+        </span>
+        <InfoTip label="Expected format">{props.slot.format}</InfoTip>
         <span class="cb-spacer" />
         <FileButton slot={props.slot.id} />
       </div>
-      <p class="cb-muted cb-ds-meta">
-        <code>{info().name}</code> · {info().summary} · {props.slot.format}
-      </p>
       <Show when={noteOf(props.slot.id)}>
-        <p classList={{ 'cb-error': !!info().error, 'cb-warn': !info().error }}>
+        <p class="cb-ds-meta" classList={{ 'cb-error': !!info().error, 'cb-warn': !info().error }}>
           {noteOf(props.slot.id)}
         </p>
       </Show>
-      <Show when={sectionsFor(props.slot.id).length > 1}>
-        <Stages slot={props.slot.id} />
-      </Show>
+      <div class="cb-ds-stagerow">
+        <Show when={sectionsFor(props.slot.id).length > 1}>
+          <Stages slot={props.slot.id} />
+        </Show>
+        <span class="cb-spacer" />
+        <NextButton slot={props.slot.id} />
+      </div>
       <div class="cb-ds-body">
         <Section slot={props.slot.id} section={sectionOf(props.slot.id)} />
       </div>
-      <NextButton slot={props.slot.id} />
     </>
   );
 }
