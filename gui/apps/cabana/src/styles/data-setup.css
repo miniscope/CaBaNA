@@ -255,6 +255,11 @@
   flex: 1 1 0;
   min-height: 104px;
 }
+/* With nothing flagged the box is only as tall as its message. */
+.cb-ds-qcl .cb-rail-box--grow:not(:has(.cb-list)) {
+  flex: none;
+  min-height: 0;
+}
 .cb-ds-qcl .cb-list__item {
   padding: 2px 4px;
 }
@@ -631,4 +636,40 @@
 }
 .cb-ds-rolehelp .cb-ds-tag {
   margin-right: 4px;
+}
+.cb-ds-stage__note {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--text-secondary);
+}
+.cb-ds-stage--off:not(.cb-gs-stage--on) .cb-gs-stage__n {
+  border-style: dashed;
+  color: var(--text-tertiary);
+}
+.cb-ds-stage--off:not(.cb-gs-stage--on) {
+  color: var(--text-tertiary);
+}
+/* Role strip of a neural trace file, under its stepper. */
+.cb-ds-role {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+}
+.cb-ds-role--analysis {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent-muted);
+}
+.cb-ds-role__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-ds-role .cb-linkbtn {
+  flex: none;
+  font-size: 12.5px;
 }

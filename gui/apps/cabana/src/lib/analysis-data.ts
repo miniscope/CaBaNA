@@ -4,7 +4,7 @@
 
 import { createSignal } from 'solid-js';
 import type { SlotId } from './slots.ts';
-import { loaded, onClear } from './store.ts';
+import { loaded, onClear, sessionName } from './store.ts';
 
 export type NeuralKind = 'deconvolved' | 'denoised' | 'raw';
 
@@ -43,3 +43,32 @@ export const isReference = (slot: SlotId): boolean =>
 
 export const isNeuralKind = (k: unknown): k is NeuralKind =>
   NEURAL_LAYERS.some((l) => l.kind === k);
+
+// QC of reference data is off at first. Turning it on only shows checks that already run; it is
+// remembered per file and dataset (by the session name) in this browser.
+const REF_QC_KEY = 'cabana.referenceQc';
+
+function readRefQc(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(REF_QC_KEY) ?? '{}') as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+const [refQc, setRefQc] = createSignal(readRefQc());
+const refKey = (slot: SlotId) => `${sessionName() ?? ''}|${slot}`;
+
+/** Whether a file's QC section shows its checks: always for the analysis data. */
+export const qcShown = (slot: SlotId): boolean => !isReference(slot) || !!refQc()[refKey(slot)];
+
+export function setReferenceQc(slot: SlotId, on: boolean): void {
+  const next = { ...refQc() };
+  if (on) next[refKey(slot)] = true;
+  else delete next[refKey(slot)];
+  setRefQc(next);
+  try {
+    localStorage.setItem(REF_QC_KEY, JSON.stringify(next));
+  } catch {
+    // not remembered
+  }
+}

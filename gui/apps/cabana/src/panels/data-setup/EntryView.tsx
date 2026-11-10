@@ -15,7 +15,7 @@ import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
 import { FileButton, SlotPreview } from '../Preview.tsx';
-import { RoleTagButton } from './AnalysisRole.tsx';
+import { RoleStrip, RoleTagButton, stageNote } from './AnalysisRole.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
@@ -35,12 +35,18 @@ function Stages(props: { slot: SlotId }): JSX.Element {
             <button
               type="button"
               class="cb-gs-stage"
-              classList={{ 'cb-gs-stage--on': sectionOf(props.slot) === s }}
+              classList={{
+                'cb-gs-stage--on': sectionOf(props.slot) === s,
+                'cb-ds-stage--off': !!stageNote(props.slot, s)?.off,
+              }}
               aria-current={sectionOf(props.slot) === s ? 'step' : undefined}
               onClick={() => openSection(props.slot, s)}
             >
               <span class="cb-gs-stage__n">{i() + 1}</span>
               {SECTION_TITLE[s]}
+              <Show when={stageNote(props.slot, s)}>
+                {(n) => <span class="cb-ds-stage__note">· {n().text}</span>}
+              </Show>
             </button>
           </li>
         )}
@@ -166,6 +172,7 @@ function LoadedFile(props: { slot: Slot }): JSX.Element {
         <span class="cb-spacer" />
         <NextButton slot={props.slot.id} />
       </div>
+      <RoleStrip slot={props.slot.id} />
       <div class="cb-ds-body">
         <Section slot={props.slot.id} section={sectionOf(props.slot.id)} />
       </div>
