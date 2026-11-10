@@ -332,14 +332,15 @@
   border-top: 1px solid var(--border-subtle);
 }
 .cb-ds-prep {
-  min-height: 520px;
+  flex: 1;
+  min-height: 0;
 }
 .cb-ds-arena {
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: var(--space-md);
-  min-height: 520px;
+  min-height: 0;
 }
 .cb-ds-arena__main {
   display: flex;
@@ -568,4 +569,23 @@
 }
 .cb-ds-qcl__why h4 {
   margin: 0;
+}
+/* Position overview: the trajectory keeps its aspect and fits the height of the section. */
+.cb-ds-body .cb-fill > .cb-group {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.cb-ds-body .cb-fill > .cb-group > div:has(> .cb-traj) {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+}
+.cb-ds-body .cb-fill .cb-traj {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
 }
