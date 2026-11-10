@@ -159,88 +159,93 @@ export function CellsPlot(): JSX.Element {
   );
 }
 
-export function CellsDetail(): JSX.Element {
+export const ticked = () => [...pending()].filter((c) => flaggedCells().some((x) => x.c === c));
+
+export function CellsFlagged(): JSX.Element {
   const flagged = flaggedCells;
-  const ticked = () => [...pending()].filter((c) => flagged().some((x) => x.c === c));
+  return (
+    <Show when={traceMatrix()}>
+      <RailBox title="Flagged cells" grow>
+        <PagedList
+          id="cells"
+          rowH={46}
+          items={flagged()}
+          selected={flagged().findIndex((x) => x.c === cell())}
+          onSelect={(i) => selectCell(flagged()[i].c)}
+          empty="No flagged cells left."
+          before={(x) => (
+            <input
+              type="checkbox"
+              checked={pending().has(x.c)}
+              onChange={() => togglePending(x.c)}
+              aria-label={`Select cell ${x.c + 1} to reject`}
+            />
+          )}
+        >
+          {(x) => (
+            <span class="cb-cellrow-item">
+              <span>
+                Cell {x.c + 1} <span class={`cb-word--${x.s.overall}`}>{WORD[x.s.overall]}</span>
+              </span>
+              <span class="cb-muted">{x.s.notes.join(', ')}</span>
+            </span>
+          )}
+        </PagedList>
+      </RailBox>
+    </Show>
+  );
+}
+
+export function CellsCorrection(): JSX.Element {
+  const flagged = flaggedCells;
   return (
     <>
+      <Advice checks={cellChecks()} />
       <Show when={traceMatrix()}>
-        <RailBox title="Flagged cells" grow>
-          <PagedList
-            id="cells"
-            rowH={46}
-            items={flagged()}
-            selected={flagged().findIndex((x) => x.c === cell())}
-            onSelect={(i) => selectCell(flagged()[i].c)}
-            empty="No flagged cells left."
-            before={(x) => (
-              <input
-                type="checkbox"
-                checked={pending().has(x.c)}
-                onChange={() => togglePending(x.c)}
-                aria-label={`Select cell ${x.c + 1} to reject`}
-              />
-            )}
+        <div class="cb-fix">
+          <div class="cb-fix__title">Fix in CaBaNA: reject cells</div>
+          <Show
+            when={flagged().length}
+            fallback={<div class="cb-muted">No flagged cells left.</div>}
           >
-            {(x) => (
-              <span class="cb-cellrow-item">
-                <span>
-                  Cell {x.c + 1} <span class={`cb-word--${x.s.overall}`}>{WORD[x.s.overall]}</span>
-                </span>
-                <span class="cb-muted">{x.s.notes.join(', ')}</span>
-              </span>
-            )}
-          </PagedList>
-        </RailBox>
+            <div class="cb-controls">
+              <button
+                class="btn-secondary btn-small"
+                onClick={() => rejectCells(flagged().map((x) => x.c))}
+              >
+                Reject all flagged ({flagged().length})
+              </button>
+              <button
+                class="btn-secondary btn-small"
+                onClick={() => ticked().length && rejectCells(ticked())}
+              >
+                Reject selected ({ticked().length})
+              </button>
+              <button class="cb-link" onClick={() => setPendingTo(flagged().map((x) => x.c))}>
+                Select all
+              </button>
+              <button class="cb-link" onClick={() => setPendingTo([])}>
+                Clear
+              </button>
+            </div>
+            <div class="cb-muted">
+              Tick cells in the Flagged cells list to reject them, or reject them all.
+            </div>
+          </Show>
+          <Show when={rejected().size}>
+            <div class="cb-flagged">
+              <span class="cb-muted">Rejected ({rejected().size}), click to restore:</span>
+              <For each={[...rejected()].sort((a, b) => a - b)}>
+                {(c) => (
+                  <button class="cb-chip cb-chip--rejected" onClick={() => restoreCell(c)}>
+                    {c + 1}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
       </Show>
-      <RailBox title="Correction">
-        <Advice checks={cellChecks()} />
-        <Show when={traceMatrix()}>
-          <div class="cb-fix">
-            <div class="cb-fix__title">Fix in CaBaNA: reject cells</div>
-            <Show
-              when={flagged().length}
-              fallback={<div class="cb-muted">No flagged cells left.</div>}
-            >
-              <div class="cb-controls">
-                <button
-                  class="btn-secondary btn-small"
-                  onClick={() => rejectCells(flagged().map((x) => x.c))}
-                >
-                  Reject all flagged ({flagged().length})
-                </button>
-                <button
-                  class="btn-secondary btn-small"
-                  onClick={() => ticked().length && rejectCells(ticked())}
-                >
-                  Reject selected ({ticked().length})
-                </button>
-                <button class="cb-link" onClick={() => setPendingTo(flagged().map((x) => x.c))}>
-                  Select all
-                </button>
-                <button class="cb-link" onClick={() => setPendingTo([])}>
-                  Clear
-                </button>
-              </div>
-              <div class="cb-muted">
-                Tick cells in the Flagged cells list to reject them, or reject them all.
-              </div>
-            </Show>
-            <Show when={rejected().size}>
-              <div class="cb-flagged">
-                <span class="cb-muted">Rejected ({rejected().size}), click to restore:</span>
-                <For each={[...rejected()].sort((a, b) => a - b)}>
-                  {(c) => (
-                    <button class="cb-chip cb-chip--rejected" onClick={() => restoreCell(c)}>
-                      {c + 1}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-        </Show>
-      </RailBox>
     </>
   );
 }

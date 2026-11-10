@@ -8,6 +8,7 @@ import { rawTrace } from '../../lib/store.ts';
 import { behaviorCategories, behaviorSettings } from '../BehaviorQc.tsx';
 import { neuralCategories, neuralNote, neuralSettings } from '../NeuralQc.tsx';
 import type { Category } from '../QcPanel.tsx';
+import { RailBox } from '../QcParts.tsx';
 import { CheckList, PlotTabs, plotTabOf, QcSummary } from '../QcShell.tsx';
 
 /** The QC test of each file, by the test's id; annotation tests use the file's slot id. */
@@ -53,7 +54,9 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
             <PlotTabs cat={c()}>{c().plot(plotTabOf(c()))}</PlotTabs>
             <aside class="cb-qc-rail cb-qrail">
               <CheckList cat={c()} />
-              {c().detail?.()}
+              {c().flaggedList?.()}
+              {c().actions?.()}
+              <RailBox title="Correction">{c().correction()}</RailBox>
             </aside>
           </div>
         </div>

@@ -93,59 +93,64 @@ function JumpChoice(props: { seg: Segment; n: number }): JSX.Element {
   );
 }
 
-export function PositionDetail(): JSX.Element {
-  const checks = () => posOk()?.checks ?? [];
+export function PositionFlagged(): JSX.Element {
+  return (
+    <Show when={posOk()}>
+      <RailBox
+        title="Flagged segments"
+        grow
+        extra={
+          <InfoTip label="What is listed">
+            Steps faster than the jump threshold, grouped when they are a frame or two apart, and
+            lost stretches longer than 1 s. A test can pass with flagged segments when they are
+            under the limit.
+          </InfoTip>
+        }
+      >
+        <PagedList
+          id={SEG}
+          items={segments()}
+          selected={segIndex()}
+          onSelect={selectSegment}
+          empty="No jumps over the threshold and no lost stretches over 1 s."
+        >
+          {(s, i) => (
+            <span class="cb-segrow">
+              <span class="cb-muted">{String(i + 1).padStart(2, '0')}</span>
+              <span>{fmtS(s.start)}</span>
+              <span>{s.kind === 'jump' ? 'Jump' : 'Lost'}</span>
+              <span>
+                {s.kind === 'jump'
+                  ? `${s.peak!.toFixed(0)} cm/s`
+                  : `${(s.stop - s.start).toFixed(1)} s`}
+              </span>
+            </span>
+          )}
+        </PagedList>
+      </RailBox>
+    </Show>
+  );
+}
+
+export const PositionActions = () => (
+  <Show when={segments()[segIndex()]?.kind === 'jump' && segments()[segIndex()]}>
+    {(s) => <JumpChoice seg={s()} n={segIndex() + 1} />}
+  </Show>
+);
+
+export function PositionCorrection(): JSX.Element {
   return (
     <>
-      <Show when={posOk()}>
-        <RailBox
-          title="Flagged segments"
-          grow
-          extra={
-            <InfoTip label="What is listed">
-              Steps faster than the jump threshold, grouped when they are a frame or two apart, and
-              lost stretches longer than 1 s. A test can pass with flagged segments when they are
-              under the limit.
-            </InfoTip>
-          }
-        >
-          <PagedList
-            id={SEG}
-            items={segments()}
-            selected={segIndex()}
-            onSelect={selectSegment}
-            empty="No jumps over the threshold and no lost stretches over 1 s."
-          >
-            {(s, i) => (
-              <span class="cb-segrow">
-                <span class="cb-muted">{String(i + 1).padStart(2, '0')}</span>
-                <span>{fmtS(s.start)}</span>
-                <span>{s.kind === 'jump' ? 'Jump' : 'Lost'}</span>
-                <span>
-                  {s.kind === 'jump'
-                    ? `${s.peak!.toFixed(0)} cm/s`
-                    : `${(s.stop - s.start).toFixed(1)} s`}
-                </span>
-              </span>
-            )}
-          </PagedList>
-        </RailBox>
-      </Show>
-      <Show when={segments()[segIndex()]?.kind === 'jump' && segments()[segIndex()]}>
-        {(s) => <JumpChoice seg={s()} n={segIndex() + 1} />}
-      </Show>
-      <RailBox title="Correction">
-        <p class="cb-muted">
-          Short gaps are filled and position is smoothed with a median filter in Preprocess. The
-          tracking file is not changed.
-        </p>
-        <Advice checks={checks()} />
-        <div class="cb-controls">
-          <button class="btn-secondary btn-small" onClick={() => openData('position', 'prep')}>
-            Open Position → Preprocess
-          </button>
-        </div>
-      </RailBox>
+      <p class="cb-muted">
+        Short gaps are filled and position is smoothed with a median filter in Preprocess. The
+        tracking file is not changed.
+      </p>
+      <Advice checks={posOk()?.checks ?? []} />
+      <div class="cb-controls">
+        <button class="btn-secondary btn-small" onClick={() => openData('position', 'prep')}>
+          Open Position → Preprocess
+        </button>
+      </div>
     </>
   );
 }

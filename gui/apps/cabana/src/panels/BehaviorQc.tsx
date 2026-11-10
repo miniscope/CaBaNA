@@ -24,13 +24,19 @@ import { picked, posRange, setPicked, setPosRange, showFlagged, showPath } from 
 import type { Category } from './QcPanel.tsx';
 import {
   annotationMetrics,
-  AnnotationDetail,
+  AnnotationCorrection,
+  AnnotationFlagged,
   AnnotationPlot,
   flaggedOf,
 } from './BehaviorQcAnnotations.tsx';
-import { PositionDetail, positionMetrics } from './BehaviorQcPositionRail.tsx';
+import {
+  PositionActions,
+  PositionCorrection,
+  PositionFlagged,
+  positionMetrics,
+} from './BehaviorQcPositionRail.tsx';
 import { PositionPlot } from './BehaviorQcPosition.tsx';
-import { TimingDetail, TimingPlot, timingMetrics } from './BehaviorQcTiming.tsx';
+import { TimingCorrection, TimingPlot, timingMetrics } from './BehaviorQcTiming.tsx';
 
 export { behaviorSettings } from './BehaviorQcSettings.tsx';
 
@@ -469,7 +475,8 @@ export function behaviorCategories(): Category[] {
       ],
       plot: (tab) => <TimingPlot tab={tab} />,
       metrics: timingMetrics,
-      detail: TimingDetail,
+      correction: TimingCorrection,
+      correctionHint: 'Enter a clock offset in Experiment config',
     },
     {
       id: 'position',
@@ -486,7 +493,10 @@ export function behaviorCategories(): Category[] {
       ],
       plot: (tab) => <PositionPlot tab={tab} />,
       metrics: positionMetrics,
-      detail: PositionDetail,
+      flaggedList: PositionFlagged,
+      actions: PositionActions,
+      correction: PositionCorrection,
+      correctionHint: 'Fill gaps and smooth in Preprocess',
     },
     ...files.map((a): Category => ({
       id: a.id,
@@ -513,7 +523,9 @@ export function behaviorCategories(): Category[] {
       ],
       plot: (tab) => <AnnotationPlot id={a.id} tab={tab} />,
       metrics: () => annotationMetrics(a.id),
-      detail: () => <AnnotationDetail id={a.id} />,
+      flaggedList: () => <AnnotationFlagged id={a.id} />,
+      correction: () => <AnnotationCorrection id={a.id} />,
+      correctionHint: 'Merge close bouts or remove short ones',
     })),
   ];
 }

@@ -26,8 +26,14 @@ export interface Category {
   plot: (tab: string) => JSX.Element;
   /** Summary cards for this test. */
   metrics: () => MetricCard[];
-  /** Flagged items and corrections, under the checks in the right-hand column. */
-  detail: () => JSX.Element;
+  /** The flagged items, as a list that pages to fit. */
+  flaggedList?: () => JSX.Element;
+  /** What can be done with the selected flagged item. */
+  actions?: () => JSX.Element;
+  /** How to correct the problems: advice and the fix tools. */
+  correction: () => JSX.Element;
+  /** The correction in a few words, shown on one line with the full correction behind an ⓘ. */
+  correctionHint: string;
 }
 
 const TABS: {

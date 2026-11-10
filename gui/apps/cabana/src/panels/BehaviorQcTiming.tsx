@@ -3,7 +3,7 @@ import { For, Show, type JSX } from 'solid-js';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { openData } from '../lib/data-setup-view.ts';
 import { source, timingResults } from '../lib/store.ts';
-import { Advice, Help, PlotCard, RailBox } from './QcParts.tsx';
+import { Advice, Help, PlotCard } from './QcParts.tsx';
 import { ClockPlot, timing } from './BehaviorQc.tsx';
 
 function RecordingsTable(): JSX.Element {
@@ -124,9 +124,9 @@ export const timingMetrics = (): MetricCard[] => {
   ];
 };
 
-export function TimingDetail(): JSX.Element {
+export function TimingCorrection(): JSX.Element {
   return (
-    <RailBox title="Correction">
+    <>
       <p class="cb-muted">
         CaBaNA does not change timestamps. A clock offset is entered in Experiment config.
       </p>
@@ -136,6 +136,6 @@ export function TimingDetail(): JSX.Element {
           Open Experiment config
         </button>
       </div>
-    </RailBox>
+    </>
   );
 }

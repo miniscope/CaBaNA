@@ -1,13 +1,13 @@
 import type { JSX } from 'solid-js';
 import { kernelChecks } from '../lib/decon-state.ts';
 import { deconvolved, footprints, rejected, traceMatrix } from '../lib/store.ts';
-import { DeconDetail, DeconPlots, DeconSettings } from './DeconQc.tsx';
-import { CellsDetail, CellsPlot } from './NeuralQcCells.tsx';
-import { FootprintsDetail, FootprintsPlot } from './NeuralQcFootprints.tsx';
+import { DeconCorrection, DeconPlots, DeconSettings } from './DeconQc.tsx';
+import { CellsCorrection, CellsFlagged, CellsPlot } from './NeuralQcCells.tsx';
+import { FootprintsFlagged, FootprintsPlot } from './NeuralQcFootprints.tsx';
 import { cellsMetrics, deconMetrics, footprintMetrics } from './NeuralQcMetrics.tsx';
 import { cellChecks, flaggedCells, footprintCheckList, overlapPairs } from './NeuralQcShared.tsx';
 import type { Category } from './QcPanel.tsx';
-import { QcSettings } from './QcParts.tsx';
+import { Advice, QcSettings } from './QcParts.tsx';
 
 /** The count shown in the summary: cells flagged for review, and cells the user rejected. */
 export const neuralNote = () =>
@@ -51,7 +51,9 @@ export function neuralCategories(): Category[] {
       tabs: [{ id: 'cells', label: 'Cells' }],
       plot: () => <CellsPlot />,
       metrics: cellsMetrics,
-      detail: CellsDetail,
+      flaggedList: CellsFlagged,
+      correction: CellsCorrection,
+      correctionHint: 'Reject cells you will not analyze',
     },
     ...(footprints()
       ? [
@@ -66,7 +68,9 @@ export function neuralCategories(): Category[] {
             tabs: [{ id: 'map', label: 'Footprints' }],
             plot: () => <FootprintsPlot />,
             metrics: footprintMetrics,
-            detail: FootprintsDetail,
+            flaggedList: FootprintsFlagged,
+            correction: () => <Advice checks={footprintCheckList()} />,
+            correctionHint: 'Reject one cell of an overlapping pair',
           },
         ]
       : []),
@@ -83,7 +87,8 @@ export function neuralCategories(): Category[] {
             tabs: [{ id: 'plots', label: 'Deconvolution' }],
             plot: () => <DeconPlots />,
             metrics: deconMetrics,
-            detail: DeconDetail,
+            correction: DeconCorrection,
+            correctionHint: 'Match the kernel or rerun deconvolution',
           },
         ]
       : []),

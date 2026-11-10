@@ -6,18 +6,11 @@ import { MetricCards, type MetricCard } from '../components/MetricCards.tsx';
 import { qcCounts } from '../lib/metrics.ts';
 import type { Status } from '../lib/qc.ts';
 import { proceed } from '../lib/store.ts';
-import {
-  qcCategory,
-  qcPlotTab,
-  qcTab,
-  reviewed,
-  setQcCategory,
-  setQcPlotTab,
-} from '../lib/qc-view.ts';
+import { qcPlotTab, qcTab, reviewed, setQcCategory, setQcPlotTab } from '../lib/qc-view.ts';
 import type { Category } from './QcPanel.tsx';
-import { PopButton, ReviewActions, StatusIcon, worst } from './QcParts.tsx';
+import { PopButton, RailBox, ReviewActions, StatusIcon, worst } from './QcParts.tsx';
 
-const RESULT: Record<Status | 'none', string> = {
+export const RESULT: Record<Status | 'none', string> = {
   pass: 'Pass',
   warn: 'Note',
   fail: 'Fail',
@@ -241,7 +234,9 @@ export function QcRail(props: { list: Category[]; cat: Category }): JSX.Element 
     <aside class="cb-qc-rail cb-qrail">
       <TestList list={props.list} id={props.cat.id} />
       <CheckList cat={props.cat} />
-      {props.cat.detail?.()}
+      {props.cat.flaggedList?.()}
+      {props.cat.actions?.()}
+      <RailBox title="Correction">{props.cat.correction()}</RailBox>
     </aside>
   );
 }

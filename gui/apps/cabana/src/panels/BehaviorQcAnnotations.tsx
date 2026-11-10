@@ -85,38 +85,38 @@ export function AnnotationPlot(props: { id: string; tab: string }): JSX.Element 
   );
 }
 
-export function AnnotationDetail(props: { id: string }): JSX.Element {
-  const a = () => fileOf(props.id);
+export function AnnotationFlagged(props: { id: string }): JSX.Element {
   return (
-    <>
-      <RailBox title="Flagged epochs" grow>
-        <PagedList
-          id={listIdOf(props.id)}
-          rowH={46}
-          items={flaggedOf(props.id)}
-          selected={selOf(props.id)}
-          onSelect={(i) => setPicked(listIdOf(props.id), i)}
-          empty="No flagged epochs in this file."
-        >
-          {(e) => (
-            <span class="cb-epochrow">
-              <span>
-                {e.label} {e.start.toFixed(2)} to {e.stop.toFixed(2)} s
-              </span>
-              <span class={e.flags.length ? 'cb-error' : 'cb-warn'}>
-                {[...e.flags, ...e.notes].join(', ')}
-              </span>
+    <RailBox title="Flagged epochs" grow>
+      <PagedList
+        id={listIdOf(props.id)}
+        rowH={46}
+        items={flaggedOf(props.id)}
+        selected={selOf(props.id)}
+        onSelect={(i) => setPicked(listIdOf(props.id), i)}
+        empty="No flagged epochs in this file."
+      >
+        {(e) => (
+          <span class="cb-epochrow">
+            <span>
+              {e.label} {e.start.toFixed(2)} to {e.stop.toFixed(2)} s
             </span>
-          )}
-        </PagedList>
-      </RailBox>
-      <RailBox title="Correction">
-        <Advice checks={a()?.checks ?? []} />
-        <AnnotationFixes />
-      </RailBox>
-    </>
+            <span class={e.flags.length ? 'cb-error' : 'cb-warn'}>
+              {[...e.flags, ...e.notes].join(', ')}
+            </span>
+          </span>
+        )}
+      </PagedList>
+    </RailBox>
   );
 }
+
+export const AnnotationCorrection = (props: { id: string }) => (
+  <>
+    <Advice checks={fileOf(props.id)?.checks ?? []} />
+    <AnnotationFixes />
+  </>
+);
 
 export const annotationMetrics = (id: string): MetricCard[] => {
   const e = fileOf(id)?.epochs;

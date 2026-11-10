@@ -28,7 +28,7 @@ import {
   samplingRate,
 } from '../lib/store.ts';
 import { CellPicker } from './parts.tsx';
-import { Advice, Help, PlotCard, PopButton, RailBox } from './QcParts.tsx';
+import { Advice, Help, PlotCard, PopButton } from './QcParts.tsx';
 import { InfoTip } from './InfoTip.tsx';
 
 type Data = [number[], ...number[][]];
@@ -451,14 +451,14 @@ export function DeconSettings(): JSX.Element {
 }
 
 /** Corrections for deconvolution, under the checks. */
-export function DeconDetail(): JSX.Element {
+export function DeconCorrection(): JSX.Element {
   return (
-    <RailBox title="Correction">
+    <>
       <p class="cb-muted">
         No deconvolution fix runs in CaBaNA. Match the kernel to the one your pipeline used, or
         rerun deconvolution with a decay time closer to the data.
       </p>
       <Advice checks={kernelChecks()} />
-    </RailBox>
+    </>
   );
 }
