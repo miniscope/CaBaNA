@@ -19,6 +19,7 @@ import { backgroundMeta } from './spatial-state.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
+import { zoneShape } from './zone-occupancy.ts';
 import {
   annotationFixed,
   annotationResults,
@@ -56,24 +57,6 @@ const cmZones = (): CmZone[] => {
     back ? { ...z, pts: z.pts.map(([x, y]): [number, number] => [x, flipY(y, h)]) } : z,
   );
 };
-
-/** The framework has rectangles and polygons; a circle becomes a 32-sided polygon. */
-function zoneShape(z: CmZone): number[] | number[][] {
-  const p = rounded(z);
-  if (z.shape === 'rect') {
-    const [a, b] = p;
-    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
-  }
-  if (z.shape === 'circle') {
-    const [c, e] = p;
-    const r = Math.hypot(e[0] - c[0], e[1] - c[1]);
-    return Array.from({ length: 32 }, (_, i) => [
-      round(c[0] + r * Math.cos((2 * Math.PI * i) / 32)),
-      round(c[1] + r * Math.sin((2 * Math.PI * i) / 32)),
-    ]);
-  }
-  return p;
-}
 
 /** A rectangle's four corners; a polygon's own. */
 function corners(z: CmZone): number[][] {

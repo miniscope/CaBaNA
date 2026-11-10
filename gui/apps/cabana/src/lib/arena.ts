@@ -7,6 +7,13 @@ import { createStore } from 'solid-js/store';
 import type { FrameSource } from './frame.ts';
 import type { CmZone } from './config-read.ts';
 import { UNCALIBRATED } from './spec/pipeline.ts';
+import {
+  zoneOccupancy,
+  zoneOrder,
+  zoneShape,
+  zoneShares,
+  type ZoneShape,
+} from './zone-occupancy.ts';
 import { cameraFps, onClear, positionResult, setPositionScale, source } from './store.ts';
 
 export type Pt = [number, number];
@@ -275,26 +282,35 @@ export function arenaSummary(): string {
   return `${arena.shape}, ${arena.shape === 'circle' ? `${r(w)} cm across` : `${r(w)} x ${r(h)} cm`}, ${arena.zones.length} zones, ${effectiveBin()} cm bins`;
 }
 
-/** For each zone (not excluded regions): percent of the tracked frames the animal spent inside, and the seconds. */
+/**
+ * For each zone (not excluded regions): percent of the tracked frames the animal spent inside, and
+ * the seconds. A frame in overlapping zones counts for the first zone, as the framework's
+ * `zone_occupancy` decides (zone-occupancy.ts); zones are compared in cm as config.yaml writes them.
+ */
 export const zoneShare = createMemo<
   { name: string; pct: number; seconds: number; index: number }[]
 >(() => {
   const pos = positionsCm();
   if (!pos.x.length || !pxPerCm() || !arena.box) return [];
-  const valid = pos.x.filter((v, i) => Number.isFinite(v + pos.y[i])).length || 1;
+  const listed = arena.zones.map((z, index) => ({ z, index })).filter(({ z }) => z.kind === 'zone');
+  const shapes = listed.map(({ z }): [string, ZoneShape] => [
+    z.name,
+    zoneShape({ shape: z.shape, pts: cmPts(z) }),
+  ]);
+  const occ = zoneOccupancy(pos.x, pos.y, shapes);
+  const names = zoneOrder(shapes).map(([n]) => n);
+  const share = zoneShares(occ, shapes.length);
   const dt = 1 / cameraFps();
-  return arena.zones
-    .map((z, index) => ({ z, index }))
-    .filter(({ z }) => z.kind === 'zone')
-    .map(({ z, index }) => {
-      let inside = 0;
-      for (let i = 0; i < pos.x.length; i++) {
-        if (!Number.isFinite(pos.x[i] + pos.y[i])) continue;
-        const p = toPx([pos.x[i], pos.y[i]]);
-        if (p && inZone(p, z)) inside++;
-      }
-      return { name: z.name, pct: (100 * inside) / valid, seconds: inside * dt, index };
-    });
+  const tracked = occ.filter((k) => k !== -2).length;
+  return listed.map(({ z, index }) => {
+    const k = names.indexOf(z.name);
+    return {
+      name: z.name,
+      pct: 100 * share.zones[k],
+      seconds: share.zones[k] * tracked * dt,
+      index,
+    };
+  });
 });
 
 /** How many bins the arena has at the chosen size, and how long the animal spent in them. */

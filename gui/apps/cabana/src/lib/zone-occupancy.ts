@@ -9,6 +9,29 @@ export type ZoneShape = number[] | number[][];
 
 const isRect = (z: ZoneShape): z is number[] => typeof z[0] === 'number';
 
+const round = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * A drawn zone (points in cm) as config.yaml writes it: rectangles as [x0, y0, x1, y1], polygons
+ * as their vertices, and a circle (centre, edge point) as a 32-sided polygon. Rounded to 0.01 cm.
+ */
+export function zoneShape(z: { shape: string; pts: number[][] }): ZoneShape {
+  const p = z.pts.map((q) => q.map(round));
+  if (z.shape === 'rect') {
+    const [a, b] = p;
+    return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
+  }
+  if (z.shape === 'circle') {
+    const [c, e] = p;
+    const r = Math.hypot(e[0] - c[0], e[1] - c[1]);
+    return Array.from({ length: 32 }, (_, i) => [
+      round(c[0] + r * Math.cos((2 * Math.PI * i) / 32)),
+      round(c[1] + r * Math.sin((2 * Math.PI * i) / 32)),
+    ]);
+  }
+  return p;
+}
+
 function inPolygon(x: number, y: number, poly: number[][]): boolean {
   let inside = false;
   for (let i = 0; i < poly.length; i++) {
