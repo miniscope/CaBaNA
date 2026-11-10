@@ -19,7 +19,7 @@ const SECTIONS: Partial<Record<SlotId, SectionId[]>> = {
   neural_denoised: ['overview', 'qc', 'prep'],
   neural_raw: ['overview', 'qc'],
   footprints: ['overview', 'qc'],
-  position: ['overview', 'qc', 'prep'],
+  position: ['overview', 'arena', 'qc', 'prep'],
   zone_annotations: ['overview', 'qc', 'prep'],
   behavior_annotations: ['overview', 'qc', 'prep'],
 };

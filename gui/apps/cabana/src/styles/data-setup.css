@@ -79,6 +79,8 @@
 .cb-ds-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .cb-ds-drop {
   display: flex;
@@ -108,4 +110,56 @@
 }
 .cb-ds-prep {
   min-height: 520px;
+}
+.cb-ds-arena {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: var(--space-md);
+  min-height: 520px;
+}
+.cb-ds-arena__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: hidden;
+}
+.cb-ds-zt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.cb-ds-zt__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cb-ds-zt__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 6px;
+}
+.cb-ds-zt__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-ds-zt__track {
+  height: 10px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.cb-ds-zt__track span {
+  display: block;
+  height: 100%;
+}
+.cb-ds-zt__out {
+  background: var(--border-default);
+}
+.cb-ds-zt__pct {
+  text-align: right;
 }

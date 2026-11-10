@@ -7,6 +7,7 @@ import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-secti
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { FileButton, Preview, SlotPreview } from '../Preview.tsx';
+import { FileArena } from './FileArena.tsx';
 import { FilePrep } from './FilePrep.tsx';
 import { FileQc } from './FileQc.tsx';
 import { LEVEL, noteOf, slotLabel } from './FileList.tsx';
@@ -46,6 +47,9 @@ function Section(props: { slot: SlotId; section: SectionId }): JSX.Element {
     <Switch fallback={<SlotPreview slot={props.slot} />}>
       <Match when={props.section === 'qc'}>
         <FileQc id={props.slot} />
+      </Match>
+      <Match when={props.section === 'arena'}>
+        <FileArena />
       </Match>
       <Match when={props.section === 'prep'}>
         <FilePrep slot={props.slot} />
