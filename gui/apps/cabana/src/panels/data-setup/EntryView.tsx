@@ -56,40 +56,44 @@ function Stages(props: { slot: SlotId }): JSX.Element {
   );
 }
 
+/** Overview of a file as its plots or as a table; sits in the stepper row. */
+function ViewSwitch(props: { slot: SlotId }): JSX.Element {
+  return (
+    <Show when={hasTable(props.slot) && sectionOf(props.slot) === 'overview'}>
+      <div class="cb-ds-view" role="tablist" aria-label="Show the file as">
+        <For each={['plot', 'table'] as const}>
+          {(v) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewOf(props.slot) === v}
+              classList={{ 'cb-ds-view--on': viewOf(props.slot) === v }}
+              onClick={() => setView(props.slot, v)}
+            >
+              {v === 'plot' ? 'Plot' : 'Data table'}
+            </button>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+}
+
 /** The whole file: its plots, or its values as loaded. */
 function Overview(props: { slot: SlotId }): JSX.Element {
   return (
-    <>
-      <Show when={hasTable(props.slot)}>
-        <div class="cb-ds-view" role="tablist" aria-label="Show the file as">
-          <For each={['plot', 'table'] as const}>
-            {(v) => (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewOf(props.slot) === v}
-                classList={{ 'cb-ds-view--on': viewOf(props.slot) === v }}
-                onClick={() => setView(props.slot, v)}
-              >
-                {v === 'plot' ? 'Plot' : 'Data table'}
-              </button>
-            )}
-          </For>
-        </div>
-      </Show>
-      <Show
-        when={viewOf(props.slot) === 'table' && hasTable(props.slot)}
-        fallback={
-          MATRIX[props.slot] ? (
-            <NeuralFileOverview slot={props.slot} />
-          ) : (
-            <SlotPreview slot={props.slot} />
-          )
-        }
-      >
-        <DataTable slot={props.slot} />
-      </Show>
-    </>
+    <Show
+      when={viewOf(props.slot) === 'table' && hasTable(props.slot)}
+      fallback={
+        MATRIX[props.slot] ? (
+          <NeuralFileOverview slot={props.slot} />
+        ) : (
+          <SlotPreview slot={props.slot} />
+        )
+      }
+    >
+      <DataTable slot={props.slot} />
+    </Show>
   );
 }
 
@@ -177,6 +181,7 @@ function LoadedFile(props: { slot: Slot }): JSX.Element {
           <Stages slot={props.slot.id} />
         </Show>
         <span class="cb-spacer" />
+        <ViewSwitch slot={props.slot.id} />
         <NextButton slot={props.slot.id} />
       </div>
       <RoleStrip slot={props.slot.id} />
