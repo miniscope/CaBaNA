@@ -1,14 +1,18 @@
 // Analysis data and Reference data: the tag each neural trace file carries, and the one
 // explanation of what the two roles mean, opened from a tag, the Neural heading or a file's strip.
 
-import { Show, type JSX } from 'solid-js';
+import { For, Show, type JSX } from 'solid-js';
 import {
+  analysisKind,
   analysisSlot,
   isReference,
+  loadedLayers,
   NEURAL_LAYERS,
   qcShown,
   setAnalysisData,
+  type NeuralKind,
 } from '../../lib/analysis-data.ts';
+import { sectionsFor } from '../../lib/file-sections.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import { PopButton } from '../QcParts.tsx';
 
@@ -160,4 +164,70 @@ export function stageNote(
   return qcShown(slot)
     ? { text: 'on · optional', off: false }
     : { text: 'off · optional', off: true };
+}
+
+/** Experiment config → Neural acquisition: which file the analyses read, and what each file gets. */
+const qcText = (slot: SlotId) =>
+  roleOf(slot) === 'analysis' ? 'Recommended' : qcShown(slot) ? 'On (optional)' : 'Off (optional)';
+const prepText = (slot: SlotId) =>
+  roleOf(slot) !== 'analysis'
+    ? 'Not used'
+    : sectionsFor(slot).includes('prep')
+      ? 'Applies to every result'
+      : 'No steps for this file';
+
+export function AnalysisDataField(): JSX.Element {
+  return (
+    <Show
+      when={loadedLayers().length}
+      fallback={
+        <div class="cb-setup-field">
+          Analysis data
+          <span class="cb-muted">Load a deconvolved, denoised or raw neural file.</span>
+        </div>
+      }
+    >
+      <label class="cb-setup-field">
+        Analysis data
+        <select
+          value={analysisKind()}
+          onChange={(e) => setAnalysisData(e.currentTarget.value as NeuralKind)}
+        >
+          <For each={loadedLayers()}>{(l) => <option value={l.kind}>{l.label}</option>}</For>
+        </select>
+      </label>
+    </Show>
+  );
+}
+
+/** What QC and Preprocess each loaded neural file gets. */
+export function AnalysisDataTable(): JSX.Element {
+  return (
+    <Show when={loadedLayers().length}>
+      <table class="cb-ds-cfg__wide cb-ds-roles">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Role</th>
+            <th>QC</th>
+            <th>Preprocess</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={loadedLayers()}>
+            {(l) => (
+              <tr>
+                <td>{l.label}</td>
+                <td>
+                  <RoleTag slot={l.slot} />
+                </td>
+                <td>{qcText(l.slot)}</td>
+                <td>{prepText(l.slot)}</td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </Show>
+  );
 }

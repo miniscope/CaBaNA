@@ -26,6 +26,7 @@ import {
   Text,
   ToolSelect,
 } from '../SetupPanel.tsx';
+import { AnalysisDataField, AnalysisDataTable } from './AnalysisRole.tsx';
 import { Experiment, Num, Section, Select, Spatial } from './ConfigFields.tsx';
 import { AboutConfig, YamlView } from './ConfigYaml.tsx';
 
@@ -172,14 +173,18 @@ function Neural(): JSX.Element {
     <Section
       id="neural"
       title="Neural acquisition"
-      why="A record of the hardware and the extraction and deconvolution tools. The tool names only change the export advice shown; check it against your tool's current version."
+      why="Which neural file the analyses read (the analysis data, written as neural.file; the others are reference data, under neural.alternatives), and a record of the hardware and the extraction and deconvolution tools. The tool names only change the export advice shown; check it against your tool's current version."
       keyFields={
-        <Text
-          label="Miniscope"
-          value={source.device}
-          onInput={(v) => setSource('device', v)}
-          list={DEVICES}
-        />
+        <>
+          <AnalysisDataField />
+          <Text
+            label="Miniscope"
+            value={source.device}
+            onInput={(v) => setSource('device', v)}
+            list={DEVICES}
+          />
+          <AnalysisDataTable />
+        </>
       }
       more={
         <>

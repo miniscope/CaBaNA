@@ -724,3 +724,17 @@
 .cb-ds-prep--preview > .cb-pp-settings {
   display: none;
 }
+.cb-ds-roles {
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.cb-ds-roles th,
+.cb-ds-roles td {
+  padding: 3px 10px 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+.cb-ds-roles th {
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
