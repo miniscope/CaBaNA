@@ -1,15 +1,18 @@
-// A file's QC section on the Data setup page: the QC test that belongs to that file, drawn with
-// the same parts as the old Data QC page (summary and cards, plot tabs, checks with the review,
-// and the test's own tools). The calculations are unchanged; only where they are shown moved.
+// A file's QC section on the Data setup page: the QC test that belongs to that file. One status
+// line on top; on the left the checks, the flagged items, the review and the correction; the
+// test's plots on the right. The calculations are those of the old Data QC page, unchanged.
 
-import { createMemo, Show, type JSX } from 'solid-js';
+import { createMemo, For, Show, type JSX } from 'solid-js';
+import { qcStatusText } from '../../lib/qc-status.ts';
+import { reviewed } from '../../lib/qc-view.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import { rawTrace } from '../../lib/store.ts';
 import { behaviorCategories, behaviorSettings } from '../BehaviorQc.tsx';
-import { neuralCategories, neuralNote, neuralSettings } from '../NeuralQc.tsx';
+import { InfoTip } from '../InfoTip.tsx';
+import { neuralCategories, neuralSettings } from '../NeuralQc.tsx';
 import type { Category } from '../QcPanel.tsx';
-import { RailBox } from '../QcParts.tsx';
-import { CheckList, PlotTabs, plotTabOf, QcSummary } from '../QcShell.tsx';
+import { PopButton, ReviewActions, StatusIcon, worst } from '../QcParts.tsx';
+import { PlotTabs, plotTabOf, RESULT } from '../QcShell.tsx';
 
 /** The QC test of each file, by the test's id; annotation tests use the file's slot id. */
 const TEST: Partial<Record<SlotId | 'sync', string>> = {
@@ -24,6 +27,83 @@ const TEST: Partial<Record<SlotId | 'sync', string>> = {
 };
 const NEURAL = new Set(['cells', 'decon', 'footprints']);
 
+function StatusLine(props: { cat: Category; settings: JSX.Element }): JSX.Element {
+  const s = () => worst(props.cat.checks);
+  return (
+    <div class={`cb-ds-qcs cb-ds-qcs--${s()}`} role="status">
+      <StatusIcon status={s()} />
+      <span>{qcStatusText(props.cat.checks, !!reviewed[props.cat.id])}</span>
+      <span class="cb-spacer" />
+      {props.settings}
+    </div>
+  );
+}
+
+/** Each check as one compact row: what it is, measured against its limit, and the result. */
+function Checks(props: { cat: Category }): JSX.Element {
+  return (
+    <section class="cb-ds-qcl__box">
+      <h4>Checks</h4>
+      <Show when={props.cat.checks.length} fallback={<p class="cb-muted">No checks ran.</p>}>
+        <ul class="cb-ds-qck">
+          <For each={props.cat.checks}>
+            {(c) => (
+              <li>
+                <StatusIcon status={c.status} />
+                <span class="cb-ds-qck__name">{c.title}</span>
+                <span class={`cb-qres cb-qres--${c.status}`}>{RESULT[c.status]}</span>
+                <InfoTip label={`About: ${c.title}`}>
+                  <p>{c.detail}</p>
+                  <Show when={c.fix && c.status !== 'pass'}>
+                    <p>
+                      <b>What to do.</b> {c.fix}
+                    </p>
+                  </Show>
+                </InfoTip>
+                <Show when={c.value || c.limit}>
+                  <span class="cb-ds-qck__nums">
+                    {[c.value, c.limit].filter(Boolean).join(' · ')}
+                  </span>
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </section>
+  );
+}
+
+function Review(props: { cat: Category }): JSX.Element {
+  return (
+    <section class="cb-ds-qcl__box">
+      <h4>
+        Your review <span class="cb-muted">{reviewed[props.cat.id] ? 'Reviewed' : 'Not yet'}</span>
+      </h4>
+      <ReviewActions id={props.cat.id} section={props.cat.section} checks={props.cat.checks} />
+    </section>
+  );
+}
+
+/** The correction in a few words; the advice and fix tools open from the ⓘ. */
+function Correction(props: { cat: Category }): JSX.Element {
+  return (
+    <div class="cb-ds-qcfix">
+      <b>Correction</b>
+      <span class="cb-muted">{props.cat.correctionHint}</span>
+      <PopButton
+        label={`Correction: ${props.cat.name}`}
+        title="Correction"
+        width={360}
+        class="cb-tip__btn"
+        button={<span aria-hidden="true">ⓘ</span>}
+      >
+        {props.cat.correction()}
+      </PopButton>
+    </div>
+  );
+}
+
 export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
   const testId = () => TEST[props.id];
   const neural = () => NEURAL.has(testId() ?? '');
@@ -31,7 +111,10 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
     (neural() ? neuralCategories() : behaviorCategories()).find((c) => c.id === testId()),
   );
   // Cell checks are computed from one trace file: the raw traces when loaded, else the denoised.
-  const otherSource = () => testId() === 'cells' && props.id === 'neural_denoised' && !!rawTrace();
+  const why = () =>
+    testId() === 'cells' && props.id === 'neural_denoised' && rawTrace()
+      ? 'Cell checks use the raw traces, so they are the same here and under Raw traces.'
+      : undefined;
   return (
     <Show
       when={cat()}
@@ -39,25 +122,22 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
     >
       {(c) => (
         <div class="cb-ds-qc">
-          <Show when={otherSource()}>
-            <p class="cb-muted">
-              Cell checks use the raw traces, so they are the same here and under Raw traces.
-            </p>
-          </Show>
-          <QcSummary
-            list={[c()]}
-            cards={c().metrics()}
-            settings={neural() ? neuralSettings() : behaviorSettings()}
-            note={neural() ? neuralNote() : undefined}
-          />
-          <div class="cb-qc__body cb-qc__body--tabbed cb-ds-qc__body">
-            <PlotTabs cat={c()}>{c().plot(plotTabOf(c()))}</PlotTabs>
-            <aside class="cb-qc-rail cb-qrail">
-              <CheckList cat={c()} />
+          <StatusLine cat={c()} settings={neural() ? neuralSettings() : behaviorSettings()} />
+          <div class="cb-ds-qc__body">
+            <aside class="cb-ds-qcl" aria-label="Checks and review">
+              <Show when={why()}>
+                <section class="cb-ds-qcl__box cb-ds-qcl__why">
+                  <h4>Why these checks are here</h4>
+                  <p class="cb-muted">{why()}</p>
+                </section>
+              </Show>
+              <Checks cat={c()} />
               {c().flaggedList?.()}
               {c().actions?.()}
-              <RailBox title="Correction">{c().correction()}</RailBox>
+              <Review cat={c()} />
+              <Correction cat={c()} />
             </aside>
+            <PlotTabs cat={c()}>{c().plot(plotTabOf(c()))}</PlotTabs>
           </div>
         </div>
       )}
