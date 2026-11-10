@@ -98,3 +98,11 @@
   border-color: var(--accent);
   background: var(--accent-muted);
 }
+.cb-ds-qc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.cb-ds-qc__body {
+  min-height: 460px;
+}

@@ -8,6 +8,7 @@ import { configReport } from '../../lib/config-import.ts';
 import { entry, openEntry, reviewed, type EntryId } from '../../lib/data-setup-view.ts';
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { levelOf, loaded, unrecognized } from '../../lib/store.ts';
+import { behaviorCategories } from '../BehaviorQc.tsx';
 import { fileMismatch } from '../ConfigReport.tsx';
 
 export const LEVEL: Record<string, string> = {
@@ -93,6 +94,33 @@ function Row(props: { slot: Slot }): JSX.Element {
   );
 }
 
+/** Timestamp alignment: runs once a timestamp file is loaded; ! when a timing check failed. */
+function SyncRow(): JSX.Element {
+  const timing = () => behaviorCategories().find((c) => c.id === 'timing');
+  const failed = () => timing()?.checks.some((c) => c.status === 'fail') ?? false;
+  return (
+    <button
+      type="button"
+      class="cb-gs-item cb-ds-item"
+      classList={{ 'cb-gs-item--on': entry() === 'sync' }}
+      aria-current={entry() === 'sync' ? 'page' : undefined}
+      onClick={() => openEntry('sync')}
+    >
+      <Mark id="sync" loaded={!!timing()} attention={failed()} />
+      <span class="cb-gs-item__text">
+        <span class="cb-gs-item__title">Timestamp alignment</span>
+        <span class="cb-gs-item__sum">
+          {timing()
+            ? failed()
+              ? 'A timing check failed'
+              : 'Checked'
+            : 'Runs once timestamp files load'}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function FileList(): JSX.Element {
   return (
     <nav class="cb-gs-list cb-ds-list" aria-label="Data files">
@@ -104,6 +132,8 @@ export function FileList(): JSX.Element {
           </>
         )}
       </For>
+      <h4 class="cb-ds-grp">Cross-data checks</h4>
+      <SyncRow />
       <Show when={unrecognized().length}>
         <h4 class="cb-ds-grp">Unassigned files</h4>
         <For each={unrecognized()}>

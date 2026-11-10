@@ -7,6 +7,7 @@ import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-secti
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { FileButton, Preview, SlotPreview } from '../Preview.tsx';
+import { FileQc } from './FileQc.tsx';
 import { LEVEL, noteOf, slotLabel } from './FileList.tsx';
 
 /** File types each data type is read from. */
@@ -40,7 +41,32 @@ function Stages(props: { slot: SlotId }): JSX.Element {
 
 /** The body of one section of a loaded file. */
 function Section(props: { slot: SlotId; section: SectionId }): JSX.Element {
-  return <SlotPreview slot={props.slot} />;
+  return (
+    <Switch fallback={<SlotPreview slot={props.slot} />}>
+      <Match when={props.section === 'qc'}>
+        <FileQc id={props.slot} />
+      </Match>
+    </Switch>
+  );
+}
+
+/** The one check across files: the miniscope and camera clocks against each other. */
+function Sync(): JSX.Element {
+  return (
+    <>
+      <div class="cb-ds-head">
+        <h3>Timestamp alignment</h3>
+        <span class="cb-muted">Cross-data check</span>
+      </div>
+      <p class="cb-muted cb-ds-meta">
+        Dropped frames, frame-time jitter, and whether the miniscope and behavior camera clocks line
+        up after the clock offset and scale in Experiment config.
+      </p>
+      <div class="cb-ds-body">
+        <FileQc id="sync" />
+      </div>
+    </>
+  );
 }
 
 /** The next section of this file, or else the next loaded file. */
@@ -149,6 +175,9 @@ export function EntryView(): JSX.Element {
   return (
     <div class="cb-gs-section cb-ds-entry">
       <Switch>
+        <Match when={entry() === 'sync'}>
+          <Sync />
+        </Match>
         <Match when={file()}>{(f) => <Preview item={{ file: f() }} />}</Match>
         <Match when={slot() && isLoaded(slot()!.id) && slot()}>
           {(s) => <LoadedFile slot={s()} />}

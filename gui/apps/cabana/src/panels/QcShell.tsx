@@ -180,7 +180,7 @@ function TestList(props: { list: Category[]; id: string }): JSX.Element {
 }
 
 /** Each check of the selected test: what was measured, its limit and the result, then the review. */
-function CheckList(props: { cat: Category }): JSX.Element {
+export function CheckList(props: { cat: Category }): JSX.Element {
   const checks = () => props.cat.checks;
   const s = () => worst(checks());
   return (
