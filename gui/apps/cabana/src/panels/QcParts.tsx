@@ -2,6 +2,7 @@
 // lists with pages, and the review and limit controls.
 
 import {
+  createContext,
   createEffect,
   createSignal,
   For,
@@ -10,6 +11,7 @@ import {
   onMount,
   Show,
   untrack,
+  useContext,
   type Accessor,
   type JSX,
 } from 'solid-js';
@@ -148,6 +150,20 @@ export const Help = (props: { k: string; children: JSX.Element }): JSX.Element =
  * the plot area, so the same plot fills the card or the larger overlay, and a function that opens
  * the overlay (for a plot too small to read in the card).
  */
+/**
+ * Controls that a page puts in the head of the first plot card under it (the Data setup page's
+ * plot tabs). `held` says whether a card has taken them; if none has, the page shows them itself.
+ */
+export const PlotHeadSlot = createContext<{
+  /** Whether there are controls to place. */
+  on: Accessor<boolean>;
+  head: () => JSX.Element;
+  /** The title the controls already show; a card with this title does not repeat it. */
+  title: () => string;
+  held: Accessor<boolean>;
+  hold: (on: boolean) => void;
+}>();
+
 export function PlotCard(props: {
   title: string;
   help: JSX.Element;
@@ -163,10 +179,17 @@ export function PlotCard(props: {
   const [size, measure] = createSize();
   const [big, setBig] = createSignal(false);
   let expand!: HTMLButtonElement;
+  const slot = useContext(PlotHeadSlot);
+  const mine = !!slot && untrack(slot.on) && !untrack(slot.held);
+  if (mine) {
+    slot.hold(true);
+    onCleanup(() => slot.hold(false));
+  }
   return (
     <section class={`cb-plot ${props.class ?? ''}`}>
       <div class="cb-plot__head">
-        <h3>{props.title}</h3>
+        {mine && slot.head()}
+        <h3 classList={{ 'cb-sr-only': mine && slot.title() === props.title }}>{props.title}</h3>
         <Show when={props.onHelp} fallback={<HowTo title={props.title}>{props.help}</HowTo>}>
           <button
             type="button"

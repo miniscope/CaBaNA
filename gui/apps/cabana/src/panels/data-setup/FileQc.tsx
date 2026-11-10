@@ -2,17 +2,17 @@
 // line on top; on the left the checks, the flagged items, the review and the correction; the
 // test's plots on the right. The calculations are those of the old Data QC page, unchanged.
 
-import { createMemo, For, Show, type JSX } from 'solid-js';
+import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { qcStatusText } from '../../lib/qc-status.ts';
-import { reviewed } from '../../lib/qc-view.ts';
+import { reviewed, setQcPlotTab } from '../../lib/qc-view.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import { rawTrace } from '../../lib/store.ts';
 import { behaviorCategories, behaviorSettings } from '../BehaviorQc.tsx';
 import { InfoTip } from '../InfoTip.tsx';
 import { neuralCategories, neuralSettings } from '../NeuralQc.tsx';
 import type { Category } from '../QcPanel.tsx';
-import { PopButton, ReviewActions, StatusIcon, worst } from '../QcParts.tsx';
-import { PlotTabs, plotTabOf, RESULT } from '../QcShell.tsx';
+import { PlotHeadSlot, PopButton, ReviewActions, StatusIcon, worst } from '../QcParts.tsx';
+import { plotTabOf, RESULT } from '../QcShell.tsx';
 
 /** The QC test of each file, by the test's id; annotation tests use the file's slot id. */
 const TEST: Partial<Record<SlotId | 'sync', string>> = {
@@ -104,6 +104,70 @@ function Correction(props: { cat: Category }): JSX.Element {
   );
 }
 
+/** The plot tabs as a small segmented control. */
+function Tabs(props: { cat: Category }): JSX.Element {
+  const on = () => plotTabOf(props.cat);
+  return (
+    <div class="cb-ds-seg" role="tablist" aria-label={`${props.cat.name} plots`}>
+      <For each={props.cat.tabs}>
+        {(t) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={on() === t.id}
+            classList={{ 'cb-ds-seg--on': on() === t.id }}
+            onClick={() => setQcPlotTab(props.cat.id, t.id)}
+          >
+            {t.label}
+          </button>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/** What the summary cards used to show, as one line under the plot. */
+function Caption(props: { cat: Category }): JSX.Element {
+  return (
+    <Show when={props.cat.metrics().length}>
+      <p class="cb-ds-qcap">
+        <For each={props.cat.metrics()}>
+          {(m) => (
+            <span title={m.denom}>
+              {m.label} <b>{m.value}</b>
+            </span>
+          )}
+        </For>
+      </p>
+    </Show>
+  );
+}
+
+/**
+ * The selected tab's plot. With more than one tab the tabs sit in the plot card's own head; a tab
+ * drawn without a plot card (a table) gets them on a line of their own.
+ */
+function PlotArea(props: { cat: Category }): JSX.Element {
+  const [held, hold] = createSignal(false);
+  const many = () => props.cat.tabs.length > 1;
+  const title = () => props.cat.tabs.find((t) => t.id === plotTabOf(props.cat))?.label ?? '';
+  return (
+    <div class="cb-ds-qplot">
+      <Show when={many() && !held()}>
+        <div class="cb-plot__head">
+          <Tabs cat={props.cat} />
+        </div>
+      </Show>
+      <PlotHeadSlot.Provider
+        value={{ on: many, head: () => <Tabs cat={props.cat} />, title, held, hold }}
+      >
+        <div class="cb-ds-qplot__body">{props.cat.plot(plotTabOf(props.cat))}</div>
+      </PlotHeadSlot.Provider>
+      <Caption cat={props.cat} />
+    </div>
+  );
+}
+
 export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
   const testId = () => TEST[props.id];
   const neural = () => NEURAL.has(testId() ?? '');
@@ -137,7 +201,10 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
               <Review cat={c()} />
               <Correction cat={c()} />
             </aside>
-            <PlotTabs cat={c()}>{c().plot(plotTabOf(c()))}</PlotTabs>
+            {/* Keyed: the plot cards take the tabs when they are created. */}
+            <Show when={c().id} keyed>
+              {(_id: string) => <PlotArea cat={c()} />}
+            </Show>
           </div>
         </div>
       )}

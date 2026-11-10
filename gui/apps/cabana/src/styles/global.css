@@ -2652,6 +2652,14 @@ textarea {
   flex-wrap: wrap;
   min-height: 28px;
 }
+.cb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .cb-plot__head h3 {
   font-size: 14px;
   font-weight: var(--font-weight-semibold);
