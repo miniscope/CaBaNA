@@ -97,7 +97,7 @@ export function AnnotationFlagged(props: { id: string }): JSX.Element {
         empty="No flagged epochs in this file."
       >
         {(e) => (
-          <span class="cb-epochrow">
+          <span class="cb-epochrow" title={[...e.flags, ...e.notes].join(', ')}>
             <span>
               {e.label} {e.start.toFixed(2)} to {e.stop.toFixed(2)} s
             </span>

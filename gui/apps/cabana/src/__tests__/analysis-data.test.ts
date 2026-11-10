@@ -3,9 +3,16 @@
 
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { analysisKind, analysisSlot, isReference, setAnalysisData } from '../lib/analysis-data.ts';
+import {
+  analysisKind,
+  analysisSlot,
+  isReference,
+  qcShown,
+  setAnalysisData,
+  setReferenceQc,
+} from '../lib/analysis-data.ts';
 import { sessionYaml } from '../lib/session-config.ts';
-import { addFiles, clearAll } from '../lib/store.ts';
+import { addFiles, clearAll, setSessionName } from '../lib/store.ts';
 
 /** A small float32 .npy file of 20 frames x 2 cells. */
 function npy(name: string): File {
@@ -78,5 +85,22 @@ describe('analysis data', () => {
     setAnalysisData('raw');
     await addFiles([npy('neural_denoised.npy')]);
     expect(analysisKind()).toBe('denoised');
+  });
+
+  it('shows reference QC only when turned on, per file and dataset', async () => {
+    clearAll();
+    await addFiles(layers());
+    setSessionName('day 1');
+    expect(qcShown('neural_deconvolved')).toBe(true);
+    expect(qcShown('neural_raw')).toBe(false);
+    setReferenceQc('neural_raw', true);
+    expect(qcShown('neural_raw')).toBe(true);
+    expect(qcShown('neural_denoised')).toBe(false);
+    setSessionName('day 2');
+    expect(qcShown('neural_raw')).toBe(false);
+    setSessionName('day 1');
+    expect(qcShown('neural_raw')).toBe(true);
+    setReferenceQc('neural_raw', false);
+    expect(qcShown('neural_raw')).toBe(false);
   });
 });

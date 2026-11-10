@@ -673,3 +673,48 @@
   flex: none;
   font-size: 12.5px;
 }
+/* A section that is off or not used for reference data. */
+.cb-ds-off {
+  max-width: 720px;
+  padding: 12px 16px;
+  border: 1.5px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cb-ds-off h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.cb-ds-off p {
+  margin: 0 0 6px;
+}
+.cb-ds-off .cb-controls {
+  margin-top: 10px;
+}
+.cb-ds-qcl > .cb-ds-seg {
+  align-self: flex-start;
+  margin: 0;
+}
+.cb-ds-qcs .cb-prep-switch {
+  margin-top: 2px;
+  font-size: 12px;
+}
+.cb-ds-qcs > .cb-ds-seg {
+  margin: 0;
+  background: var(--bg-primary);
+}
+/* Flagged cells and epochs on one line in the narrow column; the full note is in the row title. */
+.cb-ds-qcl .cb-cellrow-item,
+.cb-ds-qcl .cb-epochrow {
+  flex-direction: row;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.cb-ds-qcl .cb-cellrow-item > :last-child,
+.cb-ds-qcl .cb-epochrow > :last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

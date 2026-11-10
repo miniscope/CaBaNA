@@ -183,7 +183,7 @@ export function CellsFlagged(): JSX.Element {
           )}
         >
           {(x) => (
-            <span class="cb-cellrow-item">
+            <span class="cb-cellrow-item" title={x.s.notes.join(', ')}>
               <span>
                 Cell {x.c + 1} <span class={`cb-word--${x.s.overall}`}>{WORD[x.s.overall]}</span>
               </span>
