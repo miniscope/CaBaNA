@@ -15,13 +15,13 @@ export const SECTION_TITLE: Record<SectionId, string> = {
 
 /** Sections per data type, in stepper order. A data type left out has only an Overview. */
 const SECTIONS: Partial<Record<SlotId, SectionId[]>> = {
-  neural_deconvolved: ['overview', 'qc'],
-  neural_denoised: ['overview', 'qc'],
+  neural_deconvolved: ['overview', 'qc', 'prep'],
+  neural_denoised: ['overview', 'qc', 'prep'],
   neural_raw: ['overview', 'qc'],
   footprints: ['overview', 'qc'],
-  position: ['overview', 'qc'],
-  zone_annotations: ['overview', 'qc'],
-  behavior_annotations: ['overview', 'qc'],
+  position: ['overview', 'qc', 'prep'],
+  zone_annotations: ['overview', 'qc', 'prep'],
+  behavior_annotations: ['overview', 'qc', 'prep'],
 };
 
 export const sectionsFor = (slot: SlotId): SectionId[] => SECTIONS[slot] ?? ['overview'];

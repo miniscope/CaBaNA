@@ -87,7 +87,7 @@ type FieldDef = {
   unit: string;
   step: number;
 };
-const FIELDS: Partial<Record<StepId, FieldDef[]>> = {
+export const FIELDS: Partial<Record<StepId, FieldDef[]>> = {
   eventSmooth: [{ k: 'eventSigmaS', label: 'Width', unit: 's', step: 0.05 }],
   traceSmooth: [{ k: 'traceSigmaS', label: 'Width', unit: 's', step: 0.05 }],
   fillGaps: [{ k: 'fillGapS', label: 'Fill runs up to', unit: 's', step: 0.1 }],
@@ -98,7 +98,7 @@ const FIELDS: Partial<Record<StepId, FieldDef[]>> = {
 };
 
 /** A number box. Optional steps take only values above 0 here; the switch turns them off. */
-function Field(props: { f: FieldDef; zeroOk: boolean }): JSX.Element {
+export function Field(props: { f: FieldDef; zeroOk: boolean }): JSX.Element {
   const { k } = props.f;
   const dflt = DEFAULT_PREP[k];
   return (
@@ -146,7 +146,7 @@ const usedText = (id: StepId) =>
   usedBy(id).length ? usedLine(id) : 'Not used by any analysis yet';
 
 /** One optional step: switch, title, its values inline, and what uses it. */
-function OptionRow(props: { id: StepId }): JSX.Element {
+export function OptionRow(props: { id: StepId }): JSX.Element {
   const on = () => isOn(props.id);
   const changed = () => STEPS[props.id].keys.some((k) => prep[k] !== DEFAULT_PREP[k]);
   const reset = () => STEPS[props.id].keys.forEach((k) => setPrep(k, DEFAULT_PREP[k]));
@@ -205,7 +205,7 @@ function OptionRow(props: { id: StepId }): JSX.Element {
 }
 
 /** A standard step: information only, no switch. */
-function StandardRow(props: { id: StepId }): JSX.Element {
+export function StandardRow(props: { id: StepId }): JSX.Element {
   return (
     <div class="cb-pp-std" classList={{ 'cb-pp-row--shown': prepStep() === props.id }}>
       <span class="cb-pp-std__dot" aria-hidden="true" />
@@ -282,7 +282,7 @@ function Settings(): JSX.Element {
 
 // ---- Preview controls, impact and out-of-date lines
 
-function PreviewBar(props: { step: StepId }): JSX.Element {
+export function PreviewBar(props: { step: StepId }): JSX.Element {
   const gap = () => props.step === 'fillGaps';
   const centers = () => {
     const t = frameTimes();
@@ -335,7 +335,7 @@ function PreviewBar(props: { step: StepId }): JSX.Element {
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
-function Impact(props: { step: StepId }): JSX.Element {
+export function Impact(props: { step: StepId }): JSX.Element {
   const share = (n: number) => ((100 * n) / (frameTimes()?.length || 1)).toFixed(1);
   const g = gapSummary;
   const padded = () => props.step === 'boutPad';
@@ -430,7 +430,7 @@ const CHANGES: Partial<Record<keyof typeof DEPS, () => string[]>> = {
   peth: pethChanges,
 };
 
-function OutOfDate(props: { step: StepId }): JSX.Element {
+export function OutOfDate(props: { step: StepId }): JSX.Element {
   const stale = () => usedBy(props.step).filter((u) => CHANGES[u.id]?.().length);
   return (
     <For each={stale()}>
@@ -452,10 +452,10 @@ function OutOfDate(props: { step: StepId }): JSX.Element {
 
 // ---- Page
 
-const POSITION_VIEWS: StepId[] = ['posSmooth', 'fillGaps', 'positionOnFrames', 'speed'];
+export const POSITION_VIEWS: StepId[] = ['posSmooth', 'fillGaps', 'positionOnFrames', 'speed'];
 
 /** Counts for the position views: before is the position as put on the neural frames. */
-function Summary(): JSX.Element {
+export function Summary(): JSX.Element {
   const s = createMemo(() => {
     const p = positionOnNeural();
     return p ? prepSummary(p) : undefined;
