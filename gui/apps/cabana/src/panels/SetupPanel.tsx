@@ -41,7 +41,7 @@ import { SetupCards, WorkspaceHead } from './SetupCards.tsx';
 import { blocked } from '../lib/spatial-checks.ts';
 import { spatialCheckList } from '../lib/spatial-state.ts';
 
-const BRAIN_REGIONS = [
+export const BRAIN_REGIONS = [
   'CA1',
   'CA3',
   'Dentate gyrus',
@@ -51,7 +51,7 @@ const BRAIN_REGIONS = [
   'Amygdala',
   'Striatum',
 ];
-const DEVICES = [
+export const DEVICES = [
   'UCLA Miniscope V4',
   'UCLA Miniscope V4 wire-free',
   'UCLA Miniscope V3',
@@ -68,7 +68,7 @@ const STIMULUS_KINDS = [
   'Other',
 ];
 
-function Text(props: {
+export function Text(props: {
   label: string;
   value: string;
   onInput: (v: string) => void;
@@ -95,7 +95,7 @@ function Text(props: {
   );
 }
 
-function ToolSelect(props: { field: Field }): JSX.Element {
+export function ToolSelect(props: { field: Field }): JSX.Element {
   return (
     <label class="cb-setup-field">
       {OPTIONS[props.field].label}
@@ -120,7 +120,7 @@ const Help = (props: { field: Field }): JSX.Element => (
  * A number worked out from the data files. It shows as text with an Edit button; editing asks first,
  * since the file is usually right. With no file loaded it is a plain box.
  */
-function DerivedField(props: {
+export function DerivedField(props: {
   label: string;
   unit: string;
   derived: () => number | undefined;
@@ -432,7 +432,7 @@ function TrackingTab(): JSX.Element {
 const STIM_PER_PAGE = 5;
 const [stimPage, setStimPage] = createSignal(0);
 
-function StimuliTab(): JSX.Element {
+export function StimuliTab(): JSX.Element {
   const loadedLabels = () => [...new Set(labelRegistry().map((e) => e.name))];
   return (
     <section class="cb-group">
@@ -623,7 +623,7 @@ function UpdateConfig(): JSX.Element {
 }
 
 /** What the config file filled in, as one line with the warnings and an expandable review. */
-function ImportedConfig(): JSX.Element {
+export function ImportedConfig(): JSX.Element {
   return (
     <Show when={configReport()}>
       {(r) => (
