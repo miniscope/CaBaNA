@@ -28,7 +28,6 @@ import {
   type CellSort,
 } from '../lib/peth-view.ts';
 import { downloadText } from '../lib/place-export.ts';
-import { goToStep } from '../lib/store.ts';
 import { Modal } from './AurocResults.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { PethInspector } from './PethInspector.tsx';

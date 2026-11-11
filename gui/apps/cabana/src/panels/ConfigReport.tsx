@@ -2,7 +2,7 @@ import { For, Show, type JSX } from 'solid-js';
 import { pendingZones } from '../lib/arena.ts';
 import { configReport } from '../lib/config-import.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
-import { configFiles, goToStep, loaded } from '../lib/store.ts';
+import { configFiles, loaded } from '../lib/store.ts';
 import { PopButton } from './QcParts.tsx';
 import { openData } from '../lib/data-setup-view.ts';
 

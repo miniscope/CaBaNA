@@ -45,7 +45,7 @@ import {
   summarize,
 } from '../lib/auroc-view.ts';
 import { downloadText } from '../lib/place-export.ts';
-import { deconvolved, footprints, goToStep } from '../lib/store.ts';
+import { deconvolved, footprints } from '../lib/store.ts';
 import { Footprint } from './FootprintStrip.tsx';
 import { createSize } from './QcParts.tsx';
 import { InfoTip } from './InfoTip.tsx';
