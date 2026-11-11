@@ -861,18 +861,14 @@
 .cb-ds-cfg__open:hover h4 {
   color: var(--accent);
 }
-.cb-ds-cfg__caret {
-  flex: none;
-  width: 10px;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-/* Experiment config fills the entry: folded bars are compact, and the open section keeps every
-   bar in view, scrolling inside itself only if all its fields cannot fit. */
+/* Experiment config fills the entry. With every section's key fields shown the list scrolls
+   inside itself if it must; with one section's fields all shown the others are bars, and that
+   section scrolls inside itself only if all its fields cannot fit. */
 .cb-ds-config {
   flex: 1;
   min-height: 0;
   gap: 5px;
+  overflow-y: auto;
 }
 .cb-ds-config > * {
   flex: none;
@@ -881,13 +877,13 @@
   padding-top: 3px;
   padding-bottom: 3px;
 }
-.cb-ds-config > .cb-ds-cfg:not(.cb-ds-cfg--folded) {
+.cb-ds-config:has(.cb-ds-cfg--folded) > .cb-ds-cfg:not(.cb-ds-cfg--folded) {
   flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.cb-ds-cfg:not(.cb-ds-cfg--folded) > .cb-ds-cfg__body {
+.cb-ds-config:has(.cb-ds-cfg--folded) > .cb-ds-cfg:not(.cb-ds-cfg--folded) > .cb-ds-cfg__body {
   min-height: 0;
   overflow-y: auto;
 }
@@ -932,4 +928,10 @@
 }
 .cb-ds-cfg .cb-lbl-viewbar {
   margin-bottom: 4px;
+}
+.cb-ds-config > .cb-ds-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-primary);
 }

@@ -3,13 +3,7 @@
 
 import { For, Show, type JSX } from 'solid-js';
 import { arena, setArena } from '../../lib/arena.ts';
-import {
-  configAll,
-  configOpen,
-  openEntry,
-  toggleAllFields,
-  toggleConfigSection,
-} from '../../lib/data-setup-view.ts';
+import { configOpen, openEntry, toggleAllFields } from '../../lib/data-setup-view.ts';
 import { INDICATORS } from '../../lib/decon.ts';
 import { indicatorId, setIndicator } from '../../lib/decon-state.ts';
 import { PARADIGMS } from '../../lib/experiments.ts';
@@ -66,9 +60,9 @@ export function Select<T extends string>(props: {
 
 /**
  * One section: a header bar (name, Required, Show all fields, and at the far right why it
- * matters) over its fields. One section is open at a time: clicking a bar opens that section on
- * its key fields and folds the others to their bar with a one-line `summary`; clicking the open
- * section's name folds it. `wide` fields take the whole width instead of the three columns.
+ * matters) over its key fields. Show all fields adds the rest and folds every other section to
+ * its bar with a one-line `summary`; clicking a folded bar shows all of that section instead.
+ * `wide` fields take the whole width instead of the three columns.
  */
 export function Section(props: {
   id: string;
@@ -80,36 +74,44 @@ export function Section(props: {
   more?: JSX.Element;
   wide?: boolean;
 }): JSX.Element {
-  const isOpen = () => configOpen() === props.id;
-  const all = () => isOpen() && configAll();
+  const all = () => configOpen() === props.id;
+  const folded = () => configOpen() !== undefined && !all();
   return (
-    <section class="cb-ds-cfg" classList={{ 'cb-ds-cfg--folded': !isOpen() }}>
+    <section class="cb-ds-cfg" classList={{ 'cb-ds-cfg--folded': folded() }}>
       <header class="cb-ds-cfg__bar">
-        <button
-          type="button"
-          class="cb-ds-cfg__open"
-          aria-expanded={isOpen()}
-          onClick={() => toggleConfigSection(props.id)}
+        <Show
+          when={folded()}
+          fallback={
+            <>
+              <h4>{props.title}</h4>
+              <Show when={props.required}>
+                <span class="cb-warn">Required</span>
+              </Show>
+            </>
+          }
         >
-          <span aria-hidden="true" class="cb-ds-cfg__caret">
-            {isOpen() ? '▾' : '▸'}
-          </span>
-          <h4>{props.title}</h4>
-          <Show when={props.required}>
-            <span class="cb-warn">Required</span>
-          </Show>
-          <Show when={!isOpen()}>
+          <button
+            type="button"
+            class="cb-ds-cfg__open"
+            aria-expanded="false"
+            onClick={() => toggleAllFields(props.id)}
+          >
+            <h4>{props.title}</h4>
+            <Show when={props.required}>
+              <span class="cb-warn">Required</span>
+            </Show>
             <span class="cb-ds-cfg__sum">{props.summary}</span>
-          </Show>
-        </button>
-        <Show when={props.more}>
-          <button class="cb-linkbtn" onClick={() => toggleAllFields(props.id)}>
-            {all() ? 'Show fewer fields' : 'Show all fields'}
           </button>
         </Show>
+        <Show when={!folded() && (props.more || all())}>
+          <button class="cb-linkbtn" onClick={() => toggleAllFields(props.id)}>
+            {!all() ? 'Show all fields' : props.more ? 'Show fewer fields' : 'Show every section'}
+          </button>
+        </Show>
+        <span class="cb-spacer" />
         <InfoTip label={`Why ${props.title} matters`}>{props.why}</InfoTip>
       </header>
-      <Show when={isOpen()}>
+      <Show when={!folded()}>
         <div class="cb-ds-cfg__body">
           <Show when={!props.wide} fallback={props.keyFields}>
             <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
