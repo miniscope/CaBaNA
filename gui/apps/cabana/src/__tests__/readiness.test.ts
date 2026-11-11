@@ -178,12 +178,14 @@ describe('item status', () => {
 describe('Next', () => {
   const ready = base({ setupStarted: true, setupComplete: true });
   it('walks the steps in order and skips Complete ones', () => {
-    expect(nextItem(ready, 'data')).toBe('place');
+    expect(nextItem(ready, 'viz')).toBe('place');
     // Data setup supplies the spatial setup place cells need, so Next stays there until it is done.
     expect(nextItem(base({ spatialComplete: false }), 'data')).toBe('data');
   });
-  it('never offers the optional page (Data visualization)', () => {
-    expect(nextItem(ready, 'data')).toBe('place');
+  it('goes from Data setup to Data visualization, and from there to the analyses', () => {
+    expect(nextItem(ready, 'data')).toBe('viz');
+    expect(nextItem(ready, 'viz')).toBe('place');
+    expect(nextItem(ready, 'place')).not.toBe('viz');
   });
   it('goes to the step that provides a missing prerequisite', () => {
     const s = base({ spatialComplete: false, setupStarted: true, setupComplete: false });
@@ -244,11 +246,12 @@ describe('Next', () => {
     return path;
   }
   it('open field: Data setup, place cells, population, Results', () => {
-    expect(walk('open_field')).toEqual(['data', 'place', 'population', 'results']);
+    expect(walk('open_field')).toEqual(['data', 'viz', 'place', 'population', 'results']);
   });
   it('social interaction: auROC, population, decoding', () => {
     expect(walk('social_interaction')).toEqual([
       'data',
+      'viz',
       'auroc',
       'decoding',
       'population',

@@ -406,8 +406,9 @@ export interface NextStep {
 }
 
 /**
- * Next goes to the first later item that is not Complete and whose prerequisites are met. Data
- * visualization and Data QC are reachable but never offered. Analyses are limited to those
+ * Next goes to the first later item that is not Complete and whose prerequisites are met. From
+ * Data setup that is Data visualization, once Data setup itself needs nothing; otherwise Data
+ * visualization is skipped. Analyses are limited to those
  * recommended for the paradigm. When an item needs something an earlier step provides, Next goes
  * to that step; when the current page provides it, Next stays and says what is missing; framework
  * problems are skipped because the user cannot fix them.
@@ -417,6 +418,12 @@ export function nextStep(
   current: ItemId,
   recommended: AnalysisItem[] = ANALYSIS_ITEMS,
 ): NextStep {
+  const after = laterStep(s, current, recommended);
+  // Once Data setup has what it supplies, Next looks at the data before any analysis.
+  return current === 'data' && after.item !== 'data' && s.neural ? { item: 'viz' } : after;
+}
+
+function laterStep(s: Snapshot, current: ItemId, recommended: AnalysisItem[]): NextStep {
   const here = ORDER.indexOf(current);
   for (const id of ORDER.slice(here + 1)) {
     if (NEXT_SKIPS.includes(id)) continue;

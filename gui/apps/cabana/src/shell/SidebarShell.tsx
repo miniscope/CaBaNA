@@ -74,7 +74,7 @@ function Footer(): JSX.Element {
   const next = () => nextFor(here());
   const stuck = () => next().item === here();
   const optionalHint = () =>
-    stepId() === 'data' && statusOfItem('viz').kind !== 'needs_input';
+    stepId() === 'data' && next().item !== 'viz' && statusOfItem('viz').kind !== 'needs_input';
   return (
     <Show when={stepId() !== 'results'}>
       <div class="cb-foot">
