@@ -49,10 +49,11 @@ describe('step states', () => {
     expect(isOptional({ section: 'overview' })).toBe(false);
   });
 
-  it('keeps skipped until the step is shown again', () => {
+  it('keeps skipped until the step is opened on purpose', () => {
     markSkipped('position', 'prep');
-    expect(skipped('position', 'prep')).toBe(true);
     markVisited('position', 'prep');
+    expect(skipped('position', 'prep')).toBe(true);
+    markVisited('position', 'prep', true);
     expect(skipped('position', 'prep')).toBe(false);
     expect(visited('position', 'prep')).toBe(true);
   });

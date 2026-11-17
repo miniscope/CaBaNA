@@ -2,7 +2,7 @@
 // one-line explanation of the open step with more in a fold, and Continue (and Skip) at the bottom.
 // States come from lib/file-steps.ts; the step contents are unchanged.
 
-import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, Show, untrack, type JSX } from 'solid-js';
 import { qcShown } from '../../lib/analysis-data.ts';
 import {
   markSkipped,
@@ -40,7 +40,11 @@ function facts(slot: SlotId, section: SectionId) {
 /** The numbered steps of a file; each one opens on click. */
 export function StepWizard(props: { slot: SlotId }): JSX.Element {
   // The open step counts as visited.
-  createEffect(() => markVisited(props.slot, sectionOf(props.slot)));
+  createEffect(() => {
+    const slot = props.slot;
+    const sec = sectionOf(slot);
+    untrack(() => markVisited(slot, sec));
+  });
   return (
     <ol class="cb-ds-wz" aria-label="Steps for this file">
       <For each={sectionsFor(props.slot)}>
@@ -55,7 +59,10 @@ export function StepWizard(props: { slot: SlotId }): JSX.Element {
               <button
                 type="button"
                 aria-current={on() ? 'step' : undefined}
-                onClick={() => openSection(props.slot, s)}
+                onClick={() => {
+                  openSection(props.slot, s);
+                  markVisited(props.slot, s, true);
+                }}
               >
                 <span class="cb-ds-wz__n" aria-hidden="true">
                   {(!on() && ICON[f().state]) || i() + 1}
@@ -150,15 +157,22 @@ export function StepFooter(props: { slot: SlotId }): JSX.Element {
                 type="button"
                 class="btn-secondary btn-small"
                 onClick={() => {
-                  const here = s();
+                  // Mark before going: the same component then shows the next file.
+                  markSkipped(props.slot, s());
                   n().go();
-                  markSkipped(props.slot, here);
                 }}
               >
                 Skip
               </button>
             </Show>
-            <button type="button" class="btn-primary btn-small" onClick={() => n().go()}>
+            <button
+              type="button"
+              class="btn-primary btn-small"
+              onClick={() => {
+                markVisited(props.slot, s(), true);
+                n().go();
+              }}
+            >
               Continue to {n().label} →
             </button>
           </>

@@ -43,8 +43,10 @@ const [visits, setVisits] = createStore<Record<string, 'visited' | 'skipped'>>({
 const key = (slot: SlotId, sec: SectionId) => `${slot}|${sec}`;
 export const visited = (slot: SlotId, sec: SectionId) => !!visits[key(slot, sec)];
 export const skipped = (slot: SlotId, sec: SectionId) => visits[key(slot, sec)] === 'skipped';
-/** A step shown again counts as visited, even if it was skipped before. */
-export const markVisited = (slot: SlotId, sec: SectionId) => setVisits(key(slot, sec), 'visited');
+/** Mark a step visited. A skipped step stays skipped unless the user opens it on purpose. */
+export function markVisited(slot: SlotId, sec: SectionId, onPurpose = false): void {
+  if (onPurpose || !visits[key(slot, sec)]) setVisits(key(slot, sec), 'visited');
+}
 export const markSkipped = (slot: SlotId, sec: SectionId) => setVisits(key(slot, sec), 'skipped');
 
 /** Overview of a file: its plots, or its values as a table. */
