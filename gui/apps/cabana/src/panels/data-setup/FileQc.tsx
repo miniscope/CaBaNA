@@ -184,6 +184,21 @@ function testsOf(id: SlotId | 'sync'): string[] {
   return id === analysisSlot() && own !== 'cells' && traceMatrix() ? [own, 'cells'] : [own];
 }
 
+/** Failed, noted and total checks of a file's QC tests, for the step wizard. */
+export function qcCounts(id: SlotId): { fails: number; notes: number; total: number } {
+  const ids = testsOf(id);
+  const cats = [
+    ...(ids.some((t) => NEURAL.has(t)) ? neuralCategories() : []),
+    ...(ids.some((t) => !NEURAL.has(t)) ? behaviorCategories() : []),
+  ];
+  const checks = cats.filter((c) => ids.includes(c.id)).flatMap((c) => c.checks);
+  return {
+    fails: checks.filter((c) => c.status === 'fail').length,
+    notes: checks.filter((c) => c.status === 'warn').length,
+    total: checks.length,
+  };
+}
+
 const TEST_NAME: Record<string, string> = { cells: 'Cells', decon: 'Deconvolution' };
 const [picked, setPicked] = createStore<Record<string, string>>({});
 

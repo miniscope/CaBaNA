@@ -101,20 +101,9 @@
   white-space: nowrap;
   font-size: 13px;
 }
-.cb-ds-stagerow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
 .cb-ds-meta {
   margin: 0;
   font-size: 13px;
-}
-.cb-ds-stages {
-  margin: 0;
-}
-.cb-ds-stages li {
-  flex: 0 0 auto;
 }
 .cb-ds-body {
   flex: 1;
@@ -633,42 +622,162 @@
 .cb-ds-rolehelp .cb-ds-tag {
   margin-right: 4px;
 }
-.cb-ds-stage__note {
-  font-size: 12px;
+/* Step wizard of a loaded file: numbered circles joined by lines, name, purpose and state. */
+.cb-ds-wz {
+  display: flex;
+  margin: 0;
+  padding: 8px 0 6px;
+  list-style: none;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cb-ds-wz__step {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+/* The line to the next step, from this circle's edge to the next one's. */
+.cb-ds-wz__step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
+  background: var(--border-default);
+}
+.cb-ds-wz--done:not(:last-child)::after {
+  background: var(--success);
+}
+.cb-ds-wz__step > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 0 6px;
+  font: inherit;
+  text-align: center;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.cb-ds-wz__n {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--border-default);
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cb-ds-wz__step > button:hover .cb-ds-wz__n {
+  border-color: var(--accent);
+}
+.cb-ds-wz__name {
+  margin-top: 3px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cb-ds-wz__opt {
   font-weight: normal;
+  color: var(--text-tertiary);
+}
+.cb-ds-wz__short {
+  font-size: 12px;
   color: var(--text-secondary);
 }
-.cb-ds-stage--off:not(.cb-gs-stage--on) .cb-gs-stage__n {
+.cb-ds-wz__state {
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cb-ds-wz--done .cb-ds-wz__n {
+  border-color: var(--success);
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+.cb-ds-wz--done .cb-ds-wz__state {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+.cb-ds-wz--attention .cb-ds-wz__n {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+  color: #7a4a00;
+}
+.cb-ds-wz--attention .cb-ds-wz__state {
+  background: var(--warning-bg);
+  color: #7a4a00;
+}
+.cb-ds-wz--viewed .cb-ds-wz__state {
+  color: var(--text-secondary);
+}
+.cb-ds-wz--off .cb-ds-wz__n,
+.cb-ds-wz--unused .cb-ds-wz__n,
+.cb-ds-wz--skipped .cb-ds-wz__n {
   border-style: dashed;
   color: var(--text-tertiary);
 }
-.cb-ds-stage--off:not(.cb-gs-stage--on) {
+.cb-ds-wz--off .cb-ds-wz__name,
+.cb-ds-wz--unused .cb-ds-wz__name {
   color: var(--text-tertiary);
 }
-/* Role strip of a neural trace file, under its stepper. */
-.cb-ds-role {
+/* The open step: filled blue circle, blue name, whatever its state. */
+.cb-ds-wz--on .cb-ds-wz__n {
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.cb-ds-wz--on .cb-ds-wz__name {
+  color: var(--accent);
+}
+/* The open step's explanation and its fold. */
+.cb-ds-intro {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-size: 12.5px;
+  gap: var(--space-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
 }
-.cb-ds-role--analysis {
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  background: var(--accent-muted);
-}
-.cb-ds-role__text {
+.cb-ds-intro__text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.cb-ds-role .cb-linkbtn {
+.cb-ds-intro .cb-linkbtn {
   flex: none;
   font-size: 12.5px;
 }
+.cb-ds-intro__more {
+  margin: 0;
+  padding: 6px 10px;
+  max-width: 900px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  background: var(--bg-secondary, #f7f7f8);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+/* Continue (and Skip) at the bottom right of a file. */
+.cb-ds-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+}
+
 /* A section that is off or not used for reference data. */
 .cb-ds-off {
   max-width: 720px;

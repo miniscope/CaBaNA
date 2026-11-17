@@ -1,21 +1,14 @@
 // The open entry of the Data setup page: a loaded file with its sections (Overview, QC, ...),
-// an empty slot to load, or an unassigned file. Sections use the stage bar of the analysis pages.
+// an empty slot to load, or an unassigned file. A file's sections are the steps of StepWizard.
 
 import { createSignal, For, Match, Show, Switch, type JSX } from 'solid-js';
-import {
-  entry,
-  openEntry,
-  openSection,
-  sectionOf,
-  setView,
-  viewOf,
-} from '../../lib/data-setup-view.ts';
-import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-sections.ts';
+import { entry, sectionOf, setView, viewOf } from '../../lib/data-setup-view.ts';
+import { sectionsFor, type SectionId } from '../../lib/file-sections.ts';
 import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
 import { addFiles, levelOf, loaded, unrecognized } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
 import { FileButton, SlotPreview } from '../Preview.tsx';
-import { RoleStrip, RoleTagButton, stageNote } from './AnalysisRole.tsx';
+import { RoleTagButton } from './AnalysisRole.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
@@ -24,39 +17,11 @@ import { FileQc } from './FileQc.tsx';
 import { GetStarted, Unassigned } from './GetStarted.tsx';
 import { MATRIX, NeuralFileOverview } from './NeuralOverview.tsx';
 import { accepted, LEVEL, noteOf, slotLabel } from './FileList.tsx';
+import { StepFooter, StepIntro, StepWizard } from './StepWizard.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
 
-function Stages(props: { slot: SlotId }): JSX.Element {
-  return (
-    <ol class="cb-gs-stages cb-ds-stages" aria-label="Sections of this file">
-      <For each={sectionsFor(props.slot)}>
-        {(s, i) => (
-          <li>
-            <button
-              type="button"
-              class="cb-gs-stage"
-              classList={{
-                'cb-gs-stage--on': sectionOf(props.slot) === s,
-                'cb-ds-stage--off': !!stageNote(props.slot, s)?.off,
-              }}
-              aria-current={sectionOf(props.slot) === s ? 'step' : undefined}
-              onClick={() => openSection(props.slot, s)}
-            >
-              <span class="cb-gs-stage__n">{i() + 1}</span>
-              {SECTION_TITLE[s]}
-              <Show when={stageNote(props.slot, s)}>
-                {(n) => <span class="cb-ds-stage__note">· {n().text}</span>}
-              </Show>
-            </button>
-          </li>
-        )}
-      </For>
-    </ol>
-  );
-}
-
-/** Overview of a file as its plots or as a table; sits in the stepper row. */
+/** Overview of a file as its plots or as a table; sits at the end of the step's explanation. */
 function ViewSwitch(props: { slot: SlotId }): JSX.Element {
   return (
     <Show when={hasTable(props.slot) && sectionOf(props.slot) === 'overview'}>
@@ -133,29 +98,6 @@ function Sync(): JSX.Element {
   );
 }
 
-/** The next section of this file, or else the next loaded file. */
-function NextButton(props: { slot: SlotId }): JSX.Element {
-  const next = (): { label: string; go: () => void } | undefined => {
-    const list = sectionsFor(props.slot);
-    const k = list.indexOf(sectionOf(props.slot));
-    if (k < list.length - 1)
-      return { label: SECTION_TITLE[list[k + 1]], go: () => openSection(props.slot, list[k + 1]) };
-    const after = SLOTS.slice(SLOTS.findIndex((s) => s.id === props.slot) + 1).find((s) =>
-      isLoaded(s.id),
-    );
-    return after && { label: slotLabel(after), go: () => openEntry(after.id) };
-  };
-  return (
-    <Show when={next()}>
-      {(n) => (
-        <button type="button" class="btn-secondary btn-small" onClick={() => n().go()}>
-          Next: {n().label} →
-        </button>
-      )}
-    </Show>
-  );
-}
-
 function LoadedFile(props: { slot: Slot }): JSX.Element {
   const info = () => loaded[props.slot.id]!;
   return (
@@ -176,18 +118,14 @@ function LoadedFile(props: { slot: Slot }): JSX.Element {
           {noteOf(props.slot.id)}
         </p>
       </Show>
-      <div class="cb-ds-stagerow">
-        <Show when={sectionsFor(props.slot.id).length > 1}>
-          <Stages slot={props.slot.id} />
-        </Show>
-        <span class="cb-spacer" />
-        <ViewSwitch slot={props.slot.id} />
-        <NextButton slot={props.slot.id} />
-      </div>
-      <RoleStrip slot={props.slot.id} />
+      <Show when={sectionsFor(props.slot.id).length > 1}>
+        <StepWizard slot={props.slot.id} />
+      </Show>
+      <StepIntro slot={props.slot.id} right={<ViewSwitch slot={props.slot.id} />} />
       <div class="cb-ds-body">
         <Section slot={props.slot.id} section={sectionOf(props.slot.id)} />
       </div>
+      <StepFooter slot={props.slot.id} />
     </>
   );
 }
