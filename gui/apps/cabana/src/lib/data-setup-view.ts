@@ -3,7 +3,7 @@
 // another step is visited. Reviewing is never required; it only marks what has been looked at.
 
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
 import type { SlotId } from './slots.ts';
 import { goToStep, loaded, sessionName } from './store.ts';
@@ -38,6 +38,15 @@ export function openSection(slot: SlotId, sec: SectionId): void {
 
 export const reviewed = (id: EntryId): boolean => !!opened[id];
 
+/** Steps of a file that have been shown, and optional steps skipped, by `slot|section`. */
+const [visits, setVisits] = createStore<Record<string, 'visited' | 'skipped'>>({});
+const key = (slot: SlotId, sec: SectionId) => `${slot}|${sec}`;
+export const visited = (slot: SlotId, sec: SectionId) => !!visits[key(slot, sec)];
+export const skipped = (slot: SlotId, sec: SectionId) => visits[key(slot, sec)] === 'skipped';
+/** A step shown again counts as visited, even if it was skipped before. */
+export const markVisited = (slot: SlotId, sec: SectionId) => setVisits(key(slot, sec), 'visited');
+export const markSkipped = (slot: SlotId, sec: SectionId) => setVisits(key(slot, sec), 'skipped');
+
 /** Overview of a file: its plots, or its values as a table. */
 const [view, setViewOf] = createStore<Partial<Record<string, 'plot' | 'table'>>>({});
 export const viewOf = (slot: SlotId) => view[slot] ?? 'plot';
@@ -68,7 +77,10 @@ createRoot(() =>
   createEffect(
     on(
       sessionName,
-      () => setOpened((o) => Object.fromEntries(Object.keys(o).map((k) => [k, false]))),
+      () => {
+        setOpened((o) => Object.fromEntries(Object.keys(o).map((k) => [k, false])));
+        setVisits(reconcile({}));
+      },
       { defer: true },
     ),
   ),
