@@ -14,6 +14,7 @@ import {
   source,
   traceMatrix,
 } from '../lib/store.ts';
+import { errorText, showMessage } from '../lib/confirm.ts';
 import { headerLine, type SessionFacts } from '../lib/header-line.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { renameSaved } from '../lib/settings-template.ts';
@@ -57,7 +58,7 @@ export function Header(): JSX.Element {
   const projectName = () => sessionName() || 'this session';
   // Actions on the project folder need the engine and an open project.
   const needs = () => (openProject() ? undefined : projectsOn() ? NEEDS_PROJECT : NEEDS_ENGINE);
-  const fail = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+  const fail = (e: unknown) => showMessage('Project action failed', errorText(e));
   const items = (): MenuItem[] => [
     ...(openProject()?.save_mode === 'manual'
       ? ([
@@ -121,7 +122,7 @@ export function Header(): JSX.Element {
           setSessionName(p.name);
           setDialog(undefined);
         })
-        .catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
+        .catch((e) => showMessage('Could not rename the project', errorText(e)));
       return;
     }
     const old = sessionName();

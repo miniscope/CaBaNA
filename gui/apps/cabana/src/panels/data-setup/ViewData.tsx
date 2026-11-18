@@ -5,6 +5,7 @@
 import { For, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Modal } from '../../components/Modal.tsx';
+import { confirmAction } from '../../lib/confirm.ts';
 import { qcShown } from '../../lib/analysis-data.ts';
 import { closeEntry, setView, viewOf } from '../../lib/data-setup-view.ts';
 import { pickFile } from '../../lib/pick-file.ts';
@@ -247,12 +248,16 @@ export function ViewDataPopup(props: { id: SlotId }): JSX.Element {
       ? splitChecks(qcChecks(props.id), placeFlags(props.id))
       : { flags: [], passed: [] };
   const remove = () => {
-    const ok = window.confirm(
-      `Remove ${loaded[props.id]?.name} from this session? The original file is not changed.`,
-    );
-    if (!ok) return;
-    closeEntry();
-    removeFile(props.id);
+    confirmAction({
+      title: 'Remove file?',
+      message: `Remove ${loaded[props.id]?.name} from this project? The original file is not changed.`,
+      confirmLabel: 'Remove file',
+      danger: true,
+      onConfirm: () => {
+        closeEntry();
+        removeFile(props.id);
+      },
+    });
   };
   const replace = () => {
     const id = props.id;

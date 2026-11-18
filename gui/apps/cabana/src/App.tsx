@@ -6,6 +6,7 @@ import { VizPanel } from './panels/VizPanel.tsx';
 import { AnalyzePanel } from './panels/AnalyzePanel.tsx';
 import { ResultsPage } from './panels/ResultsPage.tsx';
 import { PlotEditor } from './panels/results/PlotEditor.tsx';
+import { ConfirmHost } from './components/ConfirmHost.tsx';
 // Preprocessing changes are logged for the Changes history from the start of the session.
 import './lib/prep-log.ts';
 
@@ -20,6 +21,7 @@ const App: Component = () => (
   <>
     <SidebarShell steps={STEPS} />
     <PlotEditor />
+    <ConfirmHost />
   </>
 );
 
