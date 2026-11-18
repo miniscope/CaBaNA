@@ -23,7 +23,7 @@ export function StageBar(props: {
   return (
     <ol class="cb-gs-stages" aria-label="Setup stages">
       <For each={STAGES}>
-        {(s, i) => (
+        {(s) => (
           <li>
             <button
               type="button"
@@ -35,8 +35,10 @@ export function StageBar(props: {
               aria-current={props.g.stage() === s.id ? 'step' : undefined}
               onClick={() => props.g.setStage(s.id)}
             >
-              <span class="cb-gs-stage__n">{props.done?.[s.id] ? '✓' : i() + 1}</span>
               {s.title}
+              <Show when={props.done?.[s.id]}>
+                <span class="cb-gs-stage__done">done</span>
+              </Show>
             </button>
           </li>
         )}

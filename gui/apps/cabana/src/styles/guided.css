@@ -1,59 +1,39 @@
 /* Guided analysis setup (components/GuidedSetup.tsx). */
+/* Stages as underlined small-caps tabs. */
 .cb-gs-stages {
   display: flex;
-  gap: var(--space-sm);
+  gap: var(--space-lg);
   margin: 0;
   padding: 0;
   list-style: none;
-}
-.cb-gs-stages li {
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-.cb-gs-stages li + li::before {
-  content: '';
-  flex: 0 0 24px;
-  height: 1px;
-  margin-right: var(--space-sm);
-  background: var(--border-default);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .cb-gs-stage {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font: inherit;
-  font-size: 14px;
-  color: var(--text-secondary);
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
   background: none;
-  border: none;
-  padding: 4px 6px;
-  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 .cb-gs-stage:hover {
-  background: var(--bg-secondary);
-}
-.cb-gs-stage__n {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-default);
-  font-size: 13px;
+  color: var(--text-primary);
 }
 .cb-gs-stage--on {
-  color: var(--accent);
+  border-bottom-color: var(--ink);
+  color: var(--text-primary);
   font-weight: var(--font-weight-semibold);
 }
-.cb-gs-stage--on .cb-gs-stage__n {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.cb-gs-stage--done:not(.cb-gs-stage--on) .cb-gs-stage__n {
-  border-color: var(--success);
+.cb-gs-stage__done {
+  font-size: 10px;
   color: var(--success);
 }
 
@@ -163,10 +143,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--accent-muted);
+  padding: var(--space-sm) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-default);
+  background: none;
 }
 .cb-gs-foot__text {
   flex: 1;
