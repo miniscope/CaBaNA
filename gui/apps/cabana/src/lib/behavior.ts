@@ -29,6 +29,73 @@ export function readEpochs(t: Table): Epoch[] {
   }));
 }
 
+/** A row whose onset (start) and offset (stop) do not make a pair. */
+export interface PairIssue {
+  /** Row of the file, counting the header as row 1. */
+  row: number;
+  label: string;
+  kind: 'no-start' | 'no-stop' | 'reversed' | 'zero';
+}
+
+const PAIR_WORDS: Record<PairIssue['kind'], [string, string]> = {
+  'no-stop': ['has a start but no stop', 'have a start but no stop'],
+  'no-start': ['has a stop but no start', 'have a stop but no start'],
+  reversed: ['stops before it starts', 'stop before they start'],
+  zero: ['stops at the time it starts', 'stop at the time they start'],
+};
+
+const isNumber = (v: string | undefined) =>
+  v !== undefined && v.trim() !== '' && Number.isFinite(Number(v));
+
+/**
+ * Rows where the stop is not after the start, or one of the two is missing, read from the file as
+ * written (an empty cell otherwise reads as 0). Detection only: `readEpochs` is unchanged.
+ */
+export function pairIssues(t: Table): PairIssue[] {
+  const col = (name: string) => t.columns.findIndex((c) => c.toLowerCase().includes(name));
+  const [li, si, ei] = [col('label'), col('start'), col('stop')];
+  if (li < 0 || si < 0 || ei < 0) return [];
+  const out: PairIssue[] = [];
+  t.rows.forEach((r, k) => {
+    const [hasStart, hasStop] = [isNumber(r[si]), isNumber(r[ei])];
+    const kind: PairIssue['kind'] | undefined =
+      hasStart && !hasStop
+        ? 'no-stop'
+        : !hasStart && hasStop
+          ? 'no-start'
+          : !hasStart
+            ? undefined
+            : Number(r[ei]) < Number(r[si])
+              ? 'reversed'
+              : Number(r[ei]) === Number(r[si])
+                ? 'zero'
+                : undefined;
+    if (kind) out.push({ row: k + 2, label: r[li], kind });
+  });
+  return out;
+}
+
+/** The onset/offset pair check: counts by kind in words, and the rows to correct. */
+export function pairCheck(issues: PairIssue[], rows: number): Check {
+  const k = issues.length;
+  const kinds = (Object.keys(PAIR_WORDS) as PairIssue['kind'][])
+    .map((kind) => [kind, issues.filter((i) => i.kind === kind).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => `${n} ${n === 1 ? 'row' : 'rows'} ${PAIR_WORDS[kind][n === 1 ? 0 : 1]}`);
+  const listed = issues.slice(0, 12).map((i) => `${i.row} (${i.label})`);
+  return {
+    id: 'ann-pairs',
+    group: 'Behavior',
+    title: 'Onset and offset pairs',
+    status: k ? 'warn' : 'pass',
+    value: k ? `${k} of ${rows} rows` : 'None found',
+    detail: k
+      ? `${kinds.join('; ')}. File rows ${listed.join(', ')}${k > listed.length ? ` and ${k - listed.length} more` : ''}. Such rows are read as written; an empty time reads as 0.`
+      : 'Every row has a start and a later stop.',
+    fix: 'Correct these rows in the annotation file, then reload it.',
+  };
+}
+
 export interface LabelStats {
   label: string;
   n: number;

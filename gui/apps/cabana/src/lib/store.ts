@@ -23,7 +23,16 @@ import {
   positionQc,
 } from './qc.ts';
 import { NEIGHBOR_PX, cellChecks, eventFractions, scoreCells } from './cells.ts';
-import { annotationQc, dropShortBouts, mergeBouts, readEpochs, type Epoch } from './behavior.ts';
+import {
+  annotationQc,
+  dropShortBouts,
+  mergeBouts,
+  pairCheck,
+  pairIssues,
+  readEpochs,
+  type Epoch,
+  type PairIssue,
+} from './behavior.ts';
 import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 import { parseCsvText } from './csv-text.ts';
@@ -737,6 +746,8 @@ export const annotationResults = createMemo(() => {
     name: string;
     epochs: Epoch[];
     checks: ReturnType<typeof annotationQc>;
+    /** Rows of the file whose start and stop do not make a pair (detection only). */
+    pairs: PairIssue[];
     error?: string;
   }[] = [];
   for (const id of ['zone_annotations', 'behavior_annotations'] as const) {
@@ -754,11 +765,13 @@ export const annotationResults = createMemo(() => {
       if (!edited)
         for (const e of epochs) [e.start, e.stop] = [e.start / perSecond, e.stop / perSecond];
       const duration = sessionDuration() ?? Math.max(...epochs.map((e) => e.stop));
+      const pairs = pairIssues(t);
       out.push({
         id,
         name: loaded[id]?.name ?? id,
         epochs,
-        checks: annotationQc(epochs, duration, tol),
+        checks: [...annotationQc(epochs, duration, tol), pairCheck(pairs, t.rows.length)],
+        pairs,
       });
     } catch (e) {
       out.push({
@@ -766,6 +779,7 @@ export const annotationResults = createMemo(() => {
         name: loaded[id]?.name ?? id,
         epochs: [],
         checks: [],
+        pairs: [],
         error: e instanceof Error ? e.message : String(e),
       });
     }
