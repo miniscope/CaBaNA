@@ -159,11 +159,12 @@
 .cb-ds-qcs--fail {
   background: var(--error-bg);
 }
+/* List and checks on the left, the evidence (plots) in the middle, the decision on the right. */
 .cb-ds-qc__body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr) 230px;
   gap: 10px;
 }
 .cb-ds-qplot {

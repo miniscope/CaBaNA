@@ -1,7 +1,8 @@
 // A file's QC section on the Data setup page: the QC tests that belong to that file (for the
 // analysis data, also the cell checks), or for reference data a note that QC is off. One status
-// line on top; on the left the checks, the flagged items, the review and the correction; the
-// test's plots on the right. The calculations are those of the old Data QC page, unchanged.
+// line on top; on the left the checks and the flagged items, the test's plots in the middle, and
+// on the right what can be done: the selected item's actions, the review and the correction.
+// The calculations are those of the old Data QC page, unchanged.
 
 import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
@@ -290,18 +291,20 @@ export function FileQc(props: { id: SlotId | 'sync' }): JSX.Element {
               }
             />
             <div class="cb-ds-qc__body">
-              <aside class="cb-ds-qcl" aria-label="Checks and review">
+              <aside class="cb-ds-qcl" aria-label="Checks and flagged items">
                 <Why id={props.id} test={c().id} />
                 <Checks cat={c()} />
                 {c().flaggedList?.()}
-                {c().actions?.()}
-                <Review cat={c()} />
-                <Correction cat={c()} />
               </aside>
               {/* Keyed: the plot cards take the tabs when they are created. */}
               <Show when={c().id} keyed>
                 {(_id: string) => <PlotArea cat={c()} />}
               </Show>
+              <aside class="cb-ds-qcl cb-ds-qcr" aria-label="Review and correction">
+                {c().actions?.()}
+                <Review cat={c()} />
+                <Correction cat={c()} />
+              </aside>
             </div>
           </div>
         )}
