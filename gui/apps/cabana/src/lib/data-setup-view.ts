@@ -5,13 +5,20 @@
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
-import type { SlotId } from './slots.ts';
-import { goToStep, loaded, sessionName } from './store.ts';
+import { SLOTS, type SlotId } from './slots.ts';
+import { goToStep, loaded, sessionName, unrecognized } from './store.ts';
 
 /** Get started, a data type, the cross-data timing check, or an unassigned file (by name). */
 export type EntryId = 'start' | SlotId | 'sync' | `file:${string}`;
 
 export const [entry, setEntry] = createSignal<EntryId>('start');
+
+/** Nothing loaded, not even a file that failed to read or matched no data type: the start screen. */
+export const nothingLoaded = (): boolean =>
+  !SLOTS.some((s) => loaded[s.id]) && !unrecognized().length;
+
+/** The line shown after settings from another session were applied; cleared with the session. */
+export const [appliedNote, setAppliedNote] = createSignal<string>();
 const [section, setSection] = createStore<Partial<Record<string, SectionId>>>({});
 const [opened, setOpened] = createStore<Record<string, boolean>>({});
 
@@ -81,6 +88,7 @@ createRoot(() =>
       sessionName,
       () => {
         setOpened((o) => Object.fromEntries(Object.keys(o).map((k) => [k, false])));
+        setAppliedNote(undefined);
         setVisits(reconcile({}));
       },
       { defer: true },

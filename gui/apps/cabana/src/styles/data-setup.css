@@ -1044,3 +1044,165 @@
   z-index: 1;
   background: var(--bg-primary);
 }
+
+/* Project library: the start screen while no session is open */
+.cb-ds--library {
+  overflow-y: auto;
+}
+.cb-lib {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-top: 6px;
+}
+.cb-lib__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cb-lib__title h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.cb-lib__ver {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.cb-lib__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-lib__steps button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cb-lib__n {
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.cb-lib__step--on button {
+  color: var(--text-primary);
+}
+.cb-lib__step--on .cb-lib__n {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.cb-lib__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+.cb-lib__drop p {
+  margin: 0;
+}
+.cb-lib__drop--over {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+.cb-lib__droptitle {
+  font-size: 15px;
+}
+.cb-lib__drop .cb-controls {
+  margin-top: 6px;
+}
+.cb-lib__config {
+  margin-top: 4px !important;
+  font-size: 12.5px;
+}
+.cb-lib__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+}
+.cb-lib__box {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 360px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+.cb-lib__boxhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.cb-lib__boxhead h3 {
+  margin: 0;
+}
+.cb-lib__note,
+.cb-lib__empty {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+.cb-lib__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.cb-lib__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1px 10px;
+  padding: 7px 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-lib__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.cb-lib__when {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+.cb-lib__sub {
+  font-size: 12px;
+}
+.cb-lib__go {
+  justify-self: end;
+}
+.cb-lib__foot {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5px;
+}

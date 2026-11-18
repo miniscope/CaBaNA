@@ -305,56 +305,67 @@ export function clearAll(): void {
 export const EXAMPLES = [
   {
     id: 'simulated_3chamber',
+    brief: 'position, two enclosures, blank arena',
     label: 'Three-chamber social (clean)',
     note: 'Arena 60 x 30 cm: three chambers, two dividers, and two half-disc enclosures of 9 cm radius that the animal cannot enter. No picture is included, so use the blank arena in Experimental Setup.',
   },
   {
     id: 'simulated_open_field',
+    brief: 'poor tracking, picture and video',
     label: 'Open field (poor tracking)',
     note: 'Arena 40 x 40 cm. The animal is 8 cm from nose to tail base. A picture and a video are included.',
   },
   {
     id: 'simulated_social_interaction',
+    brief: 'annotation errors, picture and video',
     label: 'Social interaction (annotation errors)',
     note: 'Arena 50 x 50 cm. The animal is 8 cm from nose to tail base. A picture and a video are included.',
   },
   {
     id: 'simulated_fear_conditioning',
+    brief: 'position and picture missing',
     label: 'Fear conditioning (files missing)',
     note: 'Chamber 25 x 25 cm. There is no position file or picture.',
   },
   {
     id: 'simulated_tone_ttl',
+    brief: 'tone and shock time markers',
     label: 'Tones and shocks (time markers)',
     note: 'Chamber 25 x 25 cm. Tone and shock times are in a time-marker file, one tone is after the recording ends, and freezing is annotated as epochs.',
   },
   {
     id: 'simulated_frame_labels',
+    brief: 'binary and category labels that disagree',
     label: 'Frame labels (binary and category conflicts)',
     note: 'Arena 30 x 30 cm. One file holds position, grooming and rearing (0/1) and a behavior category; 5 frames disagree between the grooming column and the category.',
   },
   {
     id: 'f1647_opp2_t1',
+    brief: 'real recording, 148 cells, cups empty',
     label: 'F1647 OPP2 T1 empty (real recording)',
     note: 'Three chambers, long axis 61 cm, both cups empty. One trial of about 600 s on its own clock. 148 cells with footprints.',
   },
   {
     id: 'f1647_opp2_t2',
+    brief: 'real recording, 148 cells, partner and stranger',
     label: 'F1647 OPP2 T2 social (real recording)',
     note: 'Three chambers, long axis 61 cm, partner left, stranger right. One trial of about 600 s on its own clock. 148 cells with footprints.',
   },
   {
     id: 'f1647_opp2_t3',
+    brief: 'real recording, 148 cells, sides swapped',
     label: 'F1647 OPP2 T3 sides swapped (real recording)',
     note: 'Three chambers, long axis 61 cm, stranger left, partner right. One trial of about 600 s on its own clock. 148 cells with footprints.',
   },
   {
     id: 'f1647_opp2_t4',
+    brief: 'real recording, 148 cells, cups empty',
     label: 'F1647 OPP2 T4 empty (real recording)',
     note: 'Three chambers, long axis 61 cm, both cups empty. One trial of about 600 s on its own clock. 148 cells with footprints.',
   },
   {
     id: 'simulated_clock_drift',
+    brief: 'camera clock offset and scale',
     label: 'Clock drift (camera offset and scale)',
     note: 'Arena 30 x 30 cm. The camera clock is 0.35 s off and runs 0.04% fast; the config gives the offset and scale.',
   },
