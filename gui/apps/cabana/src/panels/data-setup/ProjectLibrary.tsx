@@ -13,7 +13,7 @@ import { fileList } from '../LoadPanel.tsx';
 const STEPS: [string, string][] = [
   ['data', 'Data setup'],
   ['viz', 'Data visualization'],
-  ['analyze_overview', 'Analysis'],
+  ['analyze', 'Analysis'],
   ['results', 'Results'],
 ];
 

@@ -10,7 +10,7 @@ import { PlotEditor } from './panels/results/PlotEditor.tsx';
 const STEPS: Step[] = [
   { id: 'data', label: 'Data setup', panel: DataSetupPanel },
   { id: 'viz', label: 'Data visualization', panel: VizPanel },
-  { id: 'analyze', label: 'Analyze', panel: AnalyzePanel },
+  { id: 'analyze', label: 'Analysis', panel: AnalyzePanel },
   { id: 'results', label: 'Results', panel: ResultsPage },
 ];
 

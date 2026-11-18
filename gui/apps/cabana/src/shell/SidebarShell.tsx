@@ -2,7 +2,8 @@ import { createSignal, For, Show, type Component, type JSX } from 'solid-js';
 import { DashboardShell } from '@calab/ui';
 import { Header } from '../components/Header.tsx';
 import { openItem } from '../components/Requirements.tsx';
-import { ANALYSES, analysisId, setAnalysisId } from '../lib/analyses.ts';
+import { ANALYSES, analysisId } from '../lib/analyses.ts';
+import { analysisSummary } from '../lib/analysis-list.ts';
 import { ITEM_LABEL, statusDetail, type ItemId } from '../lib/readiness.ts';
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
@@ -36,19 +37,27 @@ const short = (label: string) => (folded() ? label.charAt(0) : label);
 function SideItem(props: {
   label: string;
   item?: ItemId;
+  /** Status words for a row that is not one item (the Analysis page). */
+  statusText?: string;
   on: boolean;
-  sub?: boolean;
   onClick: () => void;
 }): JSX.Element {
-  const st = () => (props.item ? statusOfItem(props.item) : undefined);
+  const st = () =>
+    props.item
+      ? statusOfItem(props.item)
+      : props.statusText
+        ? { text: props.statusText, detail: props.statusText }
+        : undefined;
   return (
-    <div class="cb-side" classList={{ 'cb-side--on': props.on, 'cb-side--sub': props.sub }}>
+    <div class="cb-side" classList={{ 'cb-side--on': props.on }}>
       <button
         type="button"
         class="cb-side__go"
         aria-label={st() ? `${props.label}: ${st()!.text}` : props.label}
         aria-current={props.on ? 'page' : undefined}
-        title={folded() ? props.label : st() ? statusDetail(st()!) : undefined}
+        title={
+          folded() ? props.label : props.item ? statusDetail(statusOfItem(props.item)) : st()?.text
+        }
         onClick={() => props.onClick()}
       >
         <span class="cb-side__name">{short(props.label)}</span>
@@ -125,30 +134,17 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
           </div>
           <For each={props.steps}>
             {(s) => (
-              <>
-                <SideItem
-                  label={s.label}
-                  item={s.id === 'analyze' ? undefined : (s.id as ItemId)}
-                  on={s.id === stepId() || (s.id === 'analyze' && stepId() === 'analyze_overview')}
-                  onClick={() => goToStep(s.id === 'analyze' ? 'analyze_overview' : s.id)}
-                />
-                <Show when={s.id === 'analyze'}>
-                  <For each={ANALYSES}>
-                    {(a) => (
-                      <SideItem
-                        sub
-                        label={a.label}
-                        item={a.id}
-                        on={stepId() === 'analyze' && analysisId() === a.id}
-                        onClick={() => {
-                          setAnalysisId(a.id);
-                          goToStep('analyze');
-                        }}
-                      />
-                    )}
-                  </For>
-                </Show>
-              </>
+              <SideItem
+                label={s.label}
+                item={s.id === 'analyze' ? undefined : (s.id as ItemId)}
+                statusText={
+                  s.id === 'analyze'
+                    ? analysisSummary(ANALYSES.map((a) => statusOfItem(a.id)))
+                    : undefined
+                }
+                on={s.id === stepId() || (s.id === 'analyze' && stepId() === 'analyze_overview')}
+                onClick={() => goToStep(s.id)}
+              />
             )}
           </For>
         </nav>
