@@ -2,69 +2,40 @@
 // test, significance), Review and preview (summary, engines, checks, Quick preview or full run) and
 // Run. Same structure as Place cells.
 
-import { createResource, Show, onCleanup, onMount, type JSX } from 'solid-js';
+import { Show, onCleanup, onMount, type JSX } from 'solid-js';
 import { ConfigureBody, type ConfigureControl } from '../../components/ConfigureBody.tsx';
-import {
-  SectionList,
-  StageBar,
-  StageFooter,
-  type GuidedSection,
-} from '../../components/GuidedSetup.tsx';
-import {
-  HowItWorks,
-  RunChoice,
-  SettingsSummary,
-  type SummaryGroup,
-} from '../../components/GuidedReview.tsx';
-import { MetricCards } from '../../components/MetricCards.tsx';
+import { type GuidedSection } from '../../components/GuidedSetup.tsx';
+import { RunChoice, SettingsSummary, type SummaryGroup } from '../../components/GuidedReview.tsx';
 import { hasCapability } from '../../lib/bridge-status.ts';
 import { decodeEvents } from '../../lib/decode-data.ts';
 import {
   BROWSER_DECODING_RUN_LABEL,
   browserBlock,
-  browserOutdated,
-  browserRun,
   browserStatus,
-  cancelBrowserDecoding,
   foldedTimes,
   runBrowserDecoding,
   setShownEngine,
-  shownEngine,
 } from '../../lib/decoding-browser.ts';
-import { decodeTarget, behaviorDecoding, positionDecoding } from '../../lib/decoding-settings.ts';
 import { guided } from '../../lib/guided.ts';
 import { prep } from '../../lib/preprocess.ts';
-import { executedShuffles, preliminaryText, shufflesFor } from '../../lib/preview.ts';
-import {
-  active,
-  cancelRun,
-  compareToLatest,
-  lastError,
-  latest,
-  runAnalysis,
-} from '../../lib/runs.ts';
-import { InfoTip } from '../InfoTip.tsx';
+import { shufflesFor } from '../../lib/preview.ts';
+import { active, runAnalysis } from '../../lib/runs.ts';
 import { ShuffleReach } from '../parts.tsx';
 import { fitToWindow } from '../QcPanel.tsx';
-import { RunProgress } from '../results/EngineNotice.tsx';
-import { Unavailable } from '../results/FrameworkNotice.tsx';
 import { EngineSection } from './Engines.tsx';
 import { gapBlock, type Request } from './engines.ts';
-import { reviewGroups, runCards, sectionSummary, type LastRun } from './review.ts';
+import { reviewGroups, sectionSummary } from './review.ts';
 import {
   ChecksView,
   DecoderView,
   FoldsView,
   FramesView,
   InputLine,
-  isStartingSettings,
-  resetStartingSettings,
   SignificanceView,
 } from './Setup.tsx';
 import { TargetCards } from './Target.tsx';
-import { checks, decodeView, isPosition, runBlock, shared } from './state.ts';
+import { checks, decodeView, runBlock, shared } from './state.ts';
 
-const SECTIONS = ['target', 'decoder', 'folds', 'significance'];
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('decoding', 'target');
 
@@ -82,7 +53,7 @@ const request = (): Request => {
 const previewCount = () => shufflesFor('preview', shared().shuffles);
 
 /** The method in a few paragraphs, and where it comes from. */
-function Method(): JSX.Element {
+export function Method(): JSX.Element {
   return (
     <div class="cb-muted">
       <p>
@@ -112,99 +83,14 @@ function Method(): JSX.Element {
   );
 }
 
-/** Settings to a Run stage summary: progress while running, the last run's cards, a link to results. */
-function RunStage(props: {
-  last?: LastRun;
-  preliminaryLabel?: string;
-  onResults: () => void;
-  failure?: string;
-}): JSX.Element {
-  const run = () => (active()?.id === 'decoding' ? active() : undefined);
-  const b = () => {
-    const s = browserStatus();
-    return s.kind === 'running' ? s : undefined;
-  };
-  const browserFailure = () => {
-    const s = browserStatus();
-    return s.kind === 'error' ? s.message : undefined;
-  };
-  return (
-    <div class="cb-gs-run">
-      <Show when={run()}>
-        {(r) => (
-          <div>
-            <p>{r().message}</p>
-            <Show when={r().shuffles}>
-              <progress class="cb-progress" value={r().shuffles![0]} max={r().shuffles![1]} />
-            </Show>
-          </div>
-        )}
-      </Show>
-      <Show when={b()}>
-        {(r) => (
-          <div>
-            <p>{r().step}</p>
-            <RunProgress done={r().done} total={r().total} />
-          </div>
-        )}
-      </Show>
-      <Show when={props.failure ?? browserFailure()}>
-        {(m) => (
-          <div class="cb-note" role="alert">
-            The run could not start or failed: {m()}
-          </div>
-        )}
-      </Show>
-      <Show
-        when={!run() && !b() && props.last}
-        fallback={
-          <Show when={!run() && !b() && !props.failure && !browserFailure()}>
-            <p class="cb-muted">
-              No run yet. Choose Quick preview or the full analysis in Review and preview.
-            </p>
-          </Show>
-        }
-      >
-        {(l) => (
-          <>
-            <h3>
-              Last run
-              <Show when={l().preliminary}>
-                <span class="cb-badge cb-badge--warn">{props.preliminaryLabel}</span>
-              </Show>
-              <Show when={l().outdated}>
-                <span class="cb-badge cb-badge--warn">Results are outdated</span>
-              </Show>
-            </h3>
-            <MetricCards label="Last run" cards={runCards(l())} />
-            <div class="cb-controls">
-              <button type="button" class="btn-primary" onClick={() => props.onResults()}>
-                {l().outdated ? 'Open previous results' : 'Open results'}
-              </button>
-            </div>
-          </>
-        )}
-      </Show>
-    </div>
-  );
-}
-
-/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+/** The Configure settings groups, or with `review` the Preview window's content. */
 export function DecodingSetup(props: {
-  onResults: () => void;
   configure?: ConfigureControl;
+  /** The Preview window's content instead of the setting groups. */
+  review?: boolean;
 }): JSX.Element {
   const run = () => (active()?.id === 'decoding' ? active() : undefined);
   const c = () => checks();
-  const [match] = createResource(
-    () =>
-      [
-        latest.decoding?.run_id,
-        JSON.stringify([decodeTarget.type, positionDecoding, behaviorDecoding, prep]),
-      ] as const,
-    async () => compareToLatest('decoding'),
-  );
-  const failure = () => (lastError()?.id === 'decoding' ? lastError()!.message : undefined);
   const frameworkRunning = () => !c().engineOff;
   // The browser engine is offered, as its own labeled action, when the Python engine cannot run.
   const browserOffered = () => c().engineOff || c().framework.length > 0;
@@ -216,43 +102,14 @@ export function DecodingSetup(props: {
 
   const startFramework = (scope: 'full' | 'preview') => {
     setShownEngine('framework');
-    g.setStage('run');
-    void runAnalysis('decoding', scope).then(() => props.onResults());
+    g.setStage('run'); // the Preview window closes when a run starts
+    void runAnalysis('decoding', scope);
   };
   const startBrowser = () => {
     g.setStage('run');
-    void runBrowserDecoding().then((ok) => ok && props.onResults());
+    void runBrowserDecoding();
   };
 
-  const last = (): LastRun | undefined => {
-    const r = browserRun();
-    if (shownEngine() === 'browser' && r)
-      return {
-        engine: 'browser',
-        preliminary: false,
-        shuffles: r.shuffles,
-        // A browser run is refused with a separation set, so it ran with none.
-        foldGapS: 0,
-        outdated: browserOutdated(),
-      };
-    const f = latest.decoding;
-    if (!f || f.status === 'failed') return undefined;
-    const saved = (f.gui.settings as { analysis?: { foldGapS?: number } }).analysis;
-    return {
-      engine: 'framework',
-      preliminary: f.scope === 'preview',
-      shuffles: executedShuffles(f),
-      foldGapS: saved?.foldGapS,
-      outdated: match()?.matches === false,
-    };
-  };
-  const status = () => {
-    const r = run();
-    if (r) return r.message;
-    if (browserRunning()) return (browserStatus() as { step: string }).step;
-    if (blocked()) return 'Needs attention';
-    return 'Ready to run';
-  };
   const dataFacts = () => {
     const e = decodeEvents();
     return {
@@ -311,124 +168,41 @@ export function DecodingSetup(props: {
     </div>
   );
 
-  const page = () => (
-    <div class="cb-place cb-gs cb-dec-page" ref={root}>
-      <div class="cb-place-head">
-        <div>
-          <h2>
-            Decoding analysis
-            <InfoTip label="About decoding">
-              Predicts {isPosition() ? 'position' : 'behavior'} from the events of all cells
-              together, on held-out blocks of time.
-            </InfoTip>
-            <HowItWorks title="How decoding works">
-              <Method />
-            </HowItWorks>
-          </h2>
-        </div>
-        <div class="cb-controls">
-          <Show when={!isStartingSettings()}>
-            <button
-              type="button"
-              class="btn-secondary"
-              onClick={resetStartingSettings}
-              title="Reset the settings of this target to their starting values"
-            >
-              Starting settings
-            </button>
-          </Show>
-          <Show when={last()}>
-            <button type="button" class="btn-secondary" onClick={() => props.onResults()}>
-              {last()!.outdated ? 'View previous results' : 'View results'}
-            </button>
-          </Show>
-        </div>
-      </div>
-
-      <StageBar
-        g={g}
-        done={{
-          configure: SECTIONS.every((id) => g.reviewed(id)),
-          review: last()?.preliminary === true,
-          run: last() !== undefined && !last()!.preliminary,
-        }}
+  const reviewView = () => (
+    <div class="cb-gs-review">
+      <SettingsSummary g={g} groups={summary()} />
+      <EngineSection
+        request={request()}
+        frameworkRunning={frameworkRunning()}
+        browserOffered={browserOffered()}
+        browserBlock={browserBlock()}
+        busy={!!run() || browserRunning()}
+        onBrowserRun={startBrowser}
+        runLabel={BROWSER_DECODING_RUN_LABEL}
       />
-
-      <Show when={g.stage() === 'configure'}>
-        <SectionList g={g} label="Decoding settings" sections={sections()}>
-          {sectionBody}
-        </SectionList>
-      </Show>
-
-      <Show when={g.stage() === 'review'}>
-        <div class="cb-gs-review">
-          <SettingsSummary g={g} groups={summary()} />
-          <EngineSection
-            request={request()}
-            frameworkRunning={frameworkRunning()}
-            browserOffered={browserOffered()}
-            browserBlock={browserBlock()}
-            busy={!!run() || browserRunning()}
-            onBrowserRun={startBrowser}
-            runLabel={BROWSER_DECODING_RUN_LABEL}
-          />
-          <Show when={problems()}>
-            <div class="cb-dg-checks">
-              <ChecksView />
-            </div>
-          </Show>
-          <RunChoice
-            full={shared().shuffles}
-            preview={previewCount()}
-            previewBlocked={previewBlocked()}
-            blocked={blocked()}
-            onPreview={() => startFramework('preview')}
-            onFull={() => startFramework('full')}
-          />
-          <ShuffleReach shuffles={shared().shuffles} alpha={shared().alpha} />
+      <Show when={problems()}>
+        <div class="cb-dg-checks">
+          <ChecksView />
         </div>
       </Show>
-
-      <Show when={g.stage() === 'run'}>
-        <RunStage
-          last={last()}
-          preliminaryLabel={latest.decoding ? preliminaryText(latest.decoding) : 'Preliminary'}
-          failure={failure()}
-          onResults={props.onResults}
-        />
-      </Show>
-
-      <StageFooter
-        g={g}
-        status={
-          <span>
-            <i classList={{ 'cb-dot--ok': !blocked() && !run() }} /> {status()}
-            <Show when={problems() > 0 && g.stage() !== 'review'}>
-              {' · '}
-              <button type="button" class="cb-link" onClick={() => g.setStage('review')}>
-                {problems()} to check in Review
-              </button>
-            </Show>
-          </span>
-        }
-        actions={
-          <Show when={run() || browserRunning()}>
-            <button
-              type="button"
-              class="btn-secondary"
-              onClick={() => (run() ? void cancelRun() : cancelBrowserDecoding())}
-            >
-              Cancel
-            </button>
-          </Show>
-        }
+      <RunChoice
+        full={shared().shuffles}
+        preview={previewCount()}
+        previewBlocked={previewBlocked()}
+        blocked={blocked()}
+        onPreview={() => startFramework('preview')}
+        onFull={() => startFramework('full')}
       />
+      <ShuffleReach shuffles={shared().shuffles} alpha={shared().alpha} />
     </div>
   );
 
   return (
-    <Show when={props.configure} fallback={page()}>
-      {(c) => configureView(c)}
+    <Show
+      when={props.review}
+      fallback={<Show when={props.configure}>{(c) => configureView(c)}</Show>}
+    >
+      {reviewView()}
     </Show>
   );
 }

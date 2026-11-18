@@ -2,14 +2,13 @@ import { createSignal, For, Show, type Component, type JSX } from 'solid-js';
 import { DashboardShell } from '@calab/ui';
 import { Header } from '../components/Header.tsx';
 import { openItem } from '../components/Requirements.tsx';
-import { ANALYSES, analysisId } from '../lib/analyses.ts';
+import { ANALYSES, analysisId, analysisPageOpen } from '../lib/analyses.ts';
 import { analysisSummary } from '../lib/analysis-list.ts';
-import { ITEM_LABEL, statusDetail, type ItemId } from '../lib/readiness.ts';
+import { ITEM_LABEL, statusDetail, type ItemId, type NextStep } from '../lib/readiness.ts';
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
-import { AnalyzeOverview } from '../panels/AnalyzeOverview.tsx';
 import { About } from '../panels/projects/About.tsx';
 import { NewSession } from '../panels/projects/NewSession.tsx';
 import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
@@ -151,8 +150,10 @@ const PROJECT_PANELS: Record<string, Component> = {
 /** The Next button and the optional pages, in the bottom action area of every page but Results. */
 function Footer(): JSX.Element {
   const here = () => currentItem(stepId(), analysisId());
-  const next = () => nextFor(here());
-  const stuck = () => next().item === here();
+  // The Analysis cards page leads to Results; an analysis's own results page keeps its usual next.
+  const onCards = () => stepId() === 'analyze' && !analysisPageOpen();
+  const next = (): NextStep => (onCards() ? { item: 'results' } : nextFor(here()));
+  const stuck = () => !onCards() && next().item === here();
   const optionalHint = () =>
     stepId() === 'data' && next().item !== 'viz' && statusOfItem('viz').kind !== 'needs_input';
   return (
@@ -191,9 +192,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   startResultIndex();
   const panel = (): Component | undefined =>
     PROJECT_PANELS[stepId()] ??
-    (stepId() === 'analyze_overview'
-      ? AnalyzeOverview
-      : (props.steps.find((s) => s.id === stepId()) ?? props.steps[0]).panel);
+    (props.steps.find((s) => s.id === stepId()) ?? props.steps[0]).panel;
   // Steps are greyed while a project page is open with nothing loaded; with a session open they
   // stay reachable, and so does the page the user is on if its files were all removed.
   const locked = () => nothingLoaded() && isProjectPage(stepId());
@@ -225,7 +224,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
                     : undefined
                 }
                 disabled={locked() ? 'Open a project first' : undefined}
-                on={s.id === stepId() || (s.id === 'analyze' && stepId() === 'analyze_overview')}
+                on={s.id === stepId()}
                 onClick={() => goToStep(s.id)}
               />
             )}
