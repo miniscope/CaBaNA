@@ -1,8 +1,13 @@
 import { For, Show, type JSX } from 'solid-js';
-import { analysisId, setAnalysisId } from '../lib/analyses.ts';
+import {
+  analysisId,
+  analysisPageOpen,
+  setAnalysisId,
+  setAnalysisPageOpen,
+} from '../lib/analyses.ts';
 import { analysisListRows } from '../lib/analysis-list.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
-import { goToStep } from '../lib/store.ts';
+import { AnalysisCards } from './AnalysisCards.tsx';
 import { AurocPanel } from './AurocPanel.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { PethPanel } from './PethPanel.tsx';
@@ -17,7 +22,7 @@ function AnalysisList(): JSX.Element {
     <nav class="cb-anf__list" aria-label="Analyses">
       <div class="cb-anf__listhead">
         <span class="sc">Analyses</span>
-        <button type="button" class="cb-link" onClick={() => goToStep('analyze_overview')}>
+        <button type="button" class="cb-link" onClick={() => setAnalysisPageOpen(false)}>
           All analyses
         </button>
       </div>
@@ -46,8 +51,17 @@ function AnalysisList(): JSX.Element {
   );
 }
 
-/** Analysis: the list of analyses, and the page of the one chosen. Each page brings its own title and views. */
+/** Analysis: the cards of the five analyses, or the page of the one opened from a link. */
 export function AnalyzePanel(): JSX.Element {
+  return (
+    <Show when={analysisPageOpen()} fallback={<AnalysisCards />}>
+      <AnalysisPage />
+    </Show>
+  );
+}
+
+/** An analysis's own page (its views and results), with the list of analyses beside it. */
+function AnalysisPage(): JSX.Element {
   return (
     <div class="cb-panel cb-panel--wide cb-anf">
       <div class="cb-anf__title">

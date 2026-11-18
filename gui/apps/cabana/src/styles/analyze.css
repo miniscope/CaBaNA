@@ -240,6 +240,176 @@
   overflow: hidden;
 }
 
+/* Analysis page: a grid of analysis cards. */
+.cb-ac {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cb-ac__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+.cb-ac__head h2,
+.cb-ac__head p {
+  margin: 0;
+}
+.cb-ac__run {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.cb-ac__engine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  background: var(--flag-bg);
+  font-size: 12.5px;
+}
+.cb-ac__engine b {
+  color: var(--flag);
+  font-weight: 600;
+}
+.cb-ac__engine code {
+  font-size: 11.5px;
+}
+.cb-ac__grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+.cb-ac__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+.cb-ac__card h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+.cb-ac__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cb-ac__does {
+  margin: 0;
+  font-size: 12.5px;
+}
+.cb-ac__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cb-ac__state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.cb-ac__ready[data-tone='ok'] {
+  color: var(--success);
+}
+.cb-ac__ready[data-tone='flag'] {
+  color: var(--flag);
+}
+.cb-ac__ready[data-tone='bad'] {
+  color: var(--error-text);
+}
+.cb-ac__last {
+  font-size: 11.5px;
+}
+.cb-ac__bar {
+  width: 100%;
+  height: 6px;
+}
+.cb-ac__foot {
+  display: flex;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-ac__go {
+  min-width: 72px;
+}
+.cb-ac__card--new {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-style: dashed;
+}
+.cb-ac__card--new p {
+  max-width: 260px;
+  margin: 0;
+  font-size: 12.5px;
+}
+/* A switch for "include in Run selected". The input is the real control; the track draws it. */
+.cb-ac__toggle {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  cursor: pointer;
+}
+.cb-ac__toggle input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.cb-ac__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: #c9c9c9;
+  transition: background 0.12s;
+  pointer-events: none;
+}
+.cb-ac__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.12s;
+}
+.cb-ac__toggle input:checked + .cb-ac__track {
+  background: var(--accent);
+}
+.cb-ac__toggle input:checked + .cb-ac__track::after {
+  left: 16px;
+}
+.cb-ac__toggle input:focus-visible + .cb-ac__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cb-ac__toggle input:disabled + .cb-ac__track {
+  opacity: 0.5;
+}
+
 /* Configure settings window: setting groups on the left, the open group's fields on the right. */
 .cb-cfg {
   flex: 1;
