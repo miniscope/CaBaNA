@@ -189,15 +189,6 @@
   padding: var(--space-md) 10px;
 }
 
-/* The Project library has no sidebar. */
-.cb-app.cb-app--library,
-.cb-app.cb-app--folded.cb-app--library {
-  grid-template-columns: minmax(0, 1fr);
-}
-.cb-app--library .cb-sidebar {
-  display: none;
-}
-
 /* Pop-up window (components/Modal.tsx): fills the window less a margin; the body scrolls only
    when its content cannot fit. Above the page's popovers' anchors, below plot overlays. */
 .cb-modal-bg {

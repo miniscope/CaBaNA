@@ -1,6 +1,78 @@
 /* Projects: sidebar row and menu, logo button, Welcome, About, New Project, Project Library and
    their small pop-ups. */
 
+/* ---- Sidebar ---- */
+.cb-side--proj .cb-side__name {
+  font-size: 17px;
+}
+.cb-side__caret {
+  float: right;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.cb-side__menu {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 6px 6px;
+  padding: 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.cb-side__menu button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 13.6px;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.cb-side__menu button:hover {
+  background: var(--chrome);
+}
+.cb-side__menu .cb-side__menu--on {
+  background: #ece9f6;
+}
+.cb-side__rule {
+  margin: 8px 0;
+  border-top: 1px solid var(--border-default);
+}
+.cb-side--off {
+  opacity: 0.4;
+}
+.cb-side--off .cb-side__go {
+  cursor: default;
+}
+.cb-side--off .cb-side__go:hover {
+  background: none;
+}
+.cb-app--folded .cb-side__menu {
+  margin-left: 0;
+}
+.cb-app--folded .cb-side__menu button {
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* ---- Header logo as a button ---- */
+.compact-header__brand--button {
+  margin-left: -4px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.compact-header__brand--button:hover {
+  background: #e4e4e4;
+}
+.compact-header__brand--button:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
 /* ---- Pop-up text and field ---- */
 .cb-dlg__text {
   margin: 0;
@@ -274,3 +346,42 @@
   font-weight: 500;
 }
 
+/* ---- Project Library ---- */
+.cb-pl__table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cb-pl__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.6px;
+}
+.cb-pl__table th {
+  padding: 4px 10px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-secondary);
+}
+.cb-pl__table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-pl__row {
+  cursor: pointer;
+}
+.cb-pl__row:hover {
+  background: var(--bg-secondary);
+}
+.cb-pl__name {
+  font-weight: 500;
+}
+.cb-pl__kinds {
+  font-size: 12px;
+}
+.cb-pl__act {
+  text-align: right;
+}
+.cb-pl__empty {
+  margin: 20px 4px;
+}
