@@ -10,34 +10,8 @@ import {
   selectCell,
 } from '../lib/store.ts';
 import { setWinLen, setWinStartClamped, WINDOW_CHOICES, win, winLen } from '../lib/viz.ts';
-import {
-  colorOf,
-  heat,
-  isOn,
-  pos,
-  rows,
-  setChoice,
-  setHeatSrc,
-  setTracksAnchor,
-  openTracks,
-  SOURCE_LABEL,
-  sources,
-  tracksAnchor,
-  type Source,
-} from '../lib/viz-tracks.ts';
-import {
-  behaviorCount,
-  groups,
-  intensity,
-  isolateBehavior,
-  setIntensity,
-  setShown,
-  shown,
-  showAll,
-} from '../lib/overlay-state.ts';
-import { coverageText, type Intensity } from '../lib/overlays.ts';
+import { heat, pos, rows, openTracks, SOURCE_LABEL, tracksAnchor } from '../lib/viz-tracks.ts';
 import { FootprintViewer } from './FootprintViewer.tsx';
-import { Popover } from './Popover.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PlotCard } from './QcParts.tsx';
 import { ChecksRow, InputsPop, PARTS, Parts, REVIEW } from './VizChecks.tsx';
@@ -48,6 +22,7 @@ import { BehaviorRows, NeuralRows } from './SessionView.tsx';
 import { SessionNavigator } from './SessionNavigator.tsx';
 import { placed, Trajectory } from './Trajectory.tsx';
 import { HELP } from './VizHelp.tsx';
+import { DisplayMenu, TracksMenu } from './VizMenus.tsx';
 
 const nCells = () =>
   (rawTrace() ?? denoisedTrace() ?? deconvolved())?.cells ?? footprints()?.cells ?? 0;
@@ -82,156 +57,8 @@ function CellBar(): JSX.Element {
   );
 }
 
-const Check = (props: { k: string; rank?: number; name: string; color?: string }): JSX.Element => (
-  <label class="cb-trackopt">
-    <input
-      type="checkbox"
-      checked={isOn(props.k, props.rank)}
-      onChange={(e) => setChoice(props.k, e.currentTarget.checked)}
-    />
-    <Show when={props.color}>
-      <i style={{ background: props.color }} />
-    </Show>
-    {props.name}
-  </label>
-);
-
-/** The tracks of the session timeline, each with a checkbox. */
-function TracksMenu(props: { anchor: HTMLElement }): JSX.Element {
-  const kinds = () => [...new Set(rows().map((r) => r.kind))];
-  return (
-    <Popover anchor={props.anchor} onClose={() => setTracksAnchor()} width={260} label="Tracks">
-      <div class="cb-pop__head">
-        <strong>Tracks shown in the session timeline</strong>
-      </div>
-      <For each={kinds()}>
-        {(k) => (
-          <div class="cb-trackgroup">
-            <div class="cb-muted">{k === 'Zone' ? 'Zones' : 'Behavior'}</div>
-            <For each={rows()}>
-              {(r, i) => (
-                <Show when={r.kind === k}>
-                  <Check k={r.key} rank={i()} name={r.name} color={r.color} />
-                </Show>
-              )}
-            </For>
-          </div>
-        )}
-      </For>
-      <Show when={pos()}>
-        <div class="cb-trackgroup">
-          <div class="cb-muted">Position</div>
-          <Check k="position" name="Position (x, y)" />
-          <Check k="speed" name="Speed" />
-        </div>
-      </Show>
-    </Popover>
-  );
-}
-
 const [overlaysAnchor, setOverlaysAnchor] = createSignal<HTMLElement>();
 const [inputsAnchor, setInputsAnchor] = createSignal<HTMLElement>();
-
-const INTENSITIES: { value: Intensity; label: string }[] = [
-  { value: 'subtle', label: 'Subtle' },
-  { value: 'strong', label: 'Strong' },
-];
-
-/**
- * How the neural data is shown: the heat map's signal, and which behaviors are shaded over the
- * plots, grouped by annotation file. View only: hiding a behavior changes the shading only.
- */
-function DisplayMenu(props: { anchor: HTMLElement }): JSX.Element {
-  return (
-    <Popover
-      anchor={props.anchor}
-      onClose={() => setOverlaysAnchor()}
-      width={340}
-      label="Neural display"
-    >
-      <Show when={sources().length}>
-        <label class="cb-plot__tool cb-disp__row">
-          Heat map
-          <select value={heat()} onChange={(e) => setHeatSrc(e.currentTarget.value as Source)}>
-            <For each={sources()}>{(s) => <option value={s}>{SOURCE_LABEL[s]}</option>}</For>
-          </select>
-        </label>
-      </Show>
-      <div class="cb-pop__head">
-        <strong>Behavior overlays</strong>
-        <span class="cb-ovl__all">
-          <button type="button" class="cb-link" onClick={() => showAll(true)}>
-            Show all
-          </button>
-          <button type="button" class="cb-link" onClick={() => showAll(false)}>
-            Hide all
-          </button>
-        </span>
-      </div>
-      <div class="cb-ovl__intensity" role="radiogroup" aria-label="Overlay intensity">
-        Intensity
-        <For each={INTENSITIES}>
-          {(o) => (
-            <label>
-              <input
-                type="radio"
-                name="overlay-intensity"
-                checked={intensity() === o.value}
-                onChange={() => setIntensity(o.value)}
-              />
-              {o.label}
-            </label>
-          )}
-        </For>
-      </div>
-      <Show when={behaviorCount() === 0}>
-        <p class="cb-muted">Load behavior annotations to shade bouts over the plots.</p>
-      </Show>
-      <For each={groups()}>
-        {(g) => (
-          <div class="cb-trackgroup">
-            <div class="cb-muted" title={g.name}>
-              {g.name} · {coverageText(g.coverage)}
-              <Show when={g.startsOff}> · starts hidden, covers most of the session</Show>
-            </div>
-            <For each={g.behaviors}>
-              {(b) => (
-                <div class="cb-ovl__row">
-                  <label class="cb-trackopt">
-                    <input
-                      type="checkbox"
-                      checked={shown().has(b.name)}
-                      onChange={(e) => setShown(b.name, e.currentTarget.checked)}
-                    />
-                    <i style={{ background: colorOf(b.name) }} />
-                    <span class="cb-ovl__name" title={b.name}>
-                      {b.name}
-                    </span>
-                    <span class="cb-muted">
-                      {b.bouts} {b.bouts === 1 ? 'bout' : 'bouts'} · {Math.round(b.seconds)} s
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    class="cb-link"
-                    aria-label={`Show only ${b.name}`}
-                    onClick={() => isolateBehavior(b.name)}
-                  >
-                    Only
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
-        )}
-      </For>
-      <p class="cb-muted cb-ovl__note">
-        Shaded regions mark behavioral bouts aligned to the neural data. Hiding a behavior removes
-        its shading only; the data, analyses and timeline rows are unchanged.
-      </p>
-    </Popover>
-  );
-}
 
 const WindowControls = (): JSX.Element => {
   const half = () => (win()[1] - win()[0]) / 2;
@@ -514,7 +341,9 @@ export function VizPanel(): JSX.Element {
           </PlotCard>
         </div>
       </Show>
-      <Show when={overlaysAnchor()}>{(a) => <DisplayMenu anchor={a()} />}</Show>
+      <Show when={overlaysAnchor()}>
+        {(a) => <DisplayMenu anchor={a()} onClose={() => setOverlaysAnchor()} />}
+      </Show>
       <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>
       <Show when={inputsAnchor()}>
         {(a) => <InputsPop anchor={a()} onClose={() => setInputsAnchor()} />}

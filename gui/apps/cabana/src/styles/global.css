@@ -3186,6 +3186,48 @@ button[aria-expanded='true'] > .cb-help {
 .cb-vtone--muted {
   color: var(--text-secondary);
 }
+/* Display and Tracks pop-ups: underlined tabs, settings as name + control rows. */
+.cb-dpop__head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.cb-dpop__head .cb-muted {
+  font-size: 12px;
+}
+.cb-utabs {
+  display: flex;
+  gap: 14px;
+  margin: 2px 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cb-utabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  padding: 3px 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cb-utabs button.cb-utabs--on {
+  border-bottom-color: var(--ink);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+.cb-dctl {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+.cb-dctl .cb-ds-seg {
+  flex-wrap: wrap;
+  margin: 0;
+}
 .cb-inchk__head {
   justify-content: flex-start;
 }
@@ -3296,9 +3338,6 @@ button[aria-expanded='true'] > .cb-help {
 }
 .cb-trajfill .cb-controls[hidden] {
   display: none;
-}
-.cb-disp__row {
-  margin-bottom: 6px;
 }
 .cb-fill {
   position: absolute;
