@@ -285,18 +285,88 @@ const CELL_ROWS: { src: Source; label: string }[] = [
   { src: 'events', label: 'Deconvolved events' },
 ];
 
-/** The selected cell's raw, denoised and deconvolved traces over the shared window. */
-export function SelectedCellRows(): JSX.Element {
+/** Time ticks under the rows; the same columns as the rows, so it lines up with them. */
+function Axis(): JSX.Element {
+  const ticks = () => {
+    const [a, b] = win();
+    return Array.from({ length: 6 }, (_, k) => a + ((b - a) * k) / 5);
+  };
+  return (
+    <div class="cb-trk cb-trk--axis">
+      <div class="cb-trk__lab cb-muted">Time (s)</div>
+      <div class="cb-axis">
+        <For each={ticks()}>
+          {(v) => <span>{v.toFixed(v - Math.floor(v) < 0.05 ? 0 : 1)}</span>}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+/** Every cell over the window, one row per cell; clicking a row selects that cell. */
+function HeatTrack(): JSX.Element {
+  return (
+    <Track
+      label={
+        <>
+          All cells
+          <span class="cb-muted"> {SOURCE_LABEL[heat()!]}</span>
+        </>
+      }
+      help={HELP.heat}
+      grow={3}
+      min={40}
+      height={150}
+      onClick={(f) =>
+        selectCell(Math.min(matrixOf(heat()!)!.cells - 1, Math.floor(f * matrixOf(heat()!)!.cells)))
+      }
+      draw={(ctx, H) => {
+        const m = matrixOf(heat()!)!;
+        const sc = heatScale()!;
+        const t = neuralT()!;
+        const [t0, t1] = win();
+        const img = ctx.createImageData(W, m.cells);
+        for (let x = 0; x < W; x++) {
+          const a = lowerBound(t, t0 + ((t1 - t0) * x) / W);
+          const b = Math.max(a + 1, lowerBound(t, t0 + ((t1 - t0) * (x + 1)) / W));
+          for (let c = 0; c < m.cells; c++) {
+            let sum = 0;
+            for (let i = a; i < Math.min(b, m.frames); i++) sum += m.data[c * m.frames + i];
+            const v =
+              (sum / Math.max(1, Math.min(b, m.frames) - a) - sc.lo[c]) /
+              (sc.hi[c] - sc.lo[c] || 1);
+            const [r, g, bl] = viridisRGB(v);
+            img.data.set([r, g, bl, 255], (c * W + x) * 4);
+          }
+        }
+        const tmp = document.createElement('canvas');
+        tmp.width = W;
+        tmp.height = m.cells;
+        tmp.getContext('2d')!.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(tmp, 0, 0, W, H);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, (cell() / m.cells) * H - 1, 10, Math.max(3, H / m.cells + 2));
+      }}
+    />
+  );
+}
+
+/** Neural data on the shared window: the all-cell heat map, then the selected cell's traces. */
+export function NeuralRows(): JSX.Element {
   return (
     <div class="cb-trks">
       <Show
         when={neuralT() && sources().length}
         fallback={
           <div class="cb-note">
-            Load raw or denoised traces, or deconvolved events, to see the selected cell.
+            Load raw or denoised traces, or deconvolved events, to see the neural data.
           </div>
         }
       >
+        <Show when={heatScale()}>
+          <HeatTrack />
+        </Show>
         <For each={CELL_ROWS.filter((r) => matrixOf(r.src))}>
           {(r) => (
             <Track
@@ -307,6 +377,7 @@ export function SelectedCellRows(): JSX.Element {
                 </>
               }
               help={HELP[r.src]}
+              min={22}
               height={110}
               draw={(ctx, H) => {
                 const m = matrixOf(r.src)!;
@@ -322,71 +393,19 @@ export function SelectedCellRows(): JSX.Element {
             />
           )}
         </For>
+        <Axis />
       </Show>
     </div>
   );
 }
 
-/** Heat map, behavior and zone rows, position and speed on one time axis, then the readout. */
-export function Timeline(): JSX.Element {
-  const ticks = () => {
-    const [a, b] = win();
-    return Array.from({ length: 6 }, (_, k) => a + ((b - a) * k) / 5);
-  };
+/** Behavior and zone rows, time markers, frame labels, position and speed on the shared window. */
+export function BehaviorRows(): JSX.Element {
   const firstOfKind = (i: number) => shownRows()[i - 1]?.kind !== shownRows()[i].kind;
   return (
     <div class="cb-trks">
-      <Show when={!heatScale() && !shownRows().length && !pos()}>
-        <div class="cb-note">
-          Load neural data, behavior annotations or position to fill the session timeline.
-        </div>
-      </Show>
-      <Show when={heatScale() && neuralT()}>
-        <Track
-          label={
-            <>
-              All cells
-              <span class="cb-muted"> {SOURCE_LABEL[heat()!]}</span>
-            </>
-          }
-          help={HELP.heat}
-          grow={3}
-          min={40}
-          height={150}
-          onClick={(f) =>
-            selectCell(
-              Math.min(matrixOf(heat()!)!.cells - 1, Math.floor(f * matrixOf(heat()!)!.cells)),
-            )
-          }
-          draw={(ctx, H) => {
-            const m = matrixOf(heat()!)!;
-            const sc = heatScale()!;
-            const t = neuralT()!;
-            const [t0, t1] = win();
-            const img = ctx.createImageData(W, m.cells);
-            for (let x = 0; x < W; x++) {
-              const a = lowerBound(t, t0 + ((t1 - t0) * x) / W);
-              const b = Math.max(a + 1, lowerBound(t, t0 + ((t1 - t0) * (x + 1)) / W));
-              for (let c = 0; c < m.cells; c++) {
-                let sum = 0;
-                for (let i = a; i < Math.min(b, m.frames); i++) sum += m.data[c * m.frames + i];
-                const v =
-                  (sum / Math.max(1, Math.min(b, m.frames) - a) - sc.lo[c]) /
-                  (sc.hi[c] - sc.lo[c] || 1);
-                const [r, g, bl] = viridisRGB(v);
-                img.data.set([r, g, bl, 255], (c * W + x) * 4);
-              }
-            }
-            const tmp = document.createElement('canvas');
-            tmp.width = W;
-            tmp.height = m.cells;
-            tmp.getContext('2d')!.putImageData(img, 0, 0);
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(tmp, 0, 0, W, H);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, (cell() / m.cells) * H - 1, 10, Math.max(3, H / m.cells + 2));
-          }}
-        />
+      <Show when={!shownRows().length && !pos() && !markersInView().length && !frameBands().length}>
+        <div class="cb-note">Load behavior annotations, zones or position to see them here.</div>
       </Show>
       <For each={shownRows()}>
         {(r, i) => (
@@ -485,14 +504,7 @@ export function Timeline(): JSX.Element {
           draw={(ctx, H) => drawSeries(ctx, H, pos()!.t, pos()!.speed, win(), '#2e7d32')}
         />
       </Show>
-      <div class="cb-trk cb-trk--axis">
-        <div class="cb-trk__lab cb-muted">Time (s)</div>
-        <div class="cb-axis">
-          <For each={ticks()}>
-            {(v) => <span>{v.toFixed(v - Math.floor(v) < 0.05 ? 0 : 1)}</span>}
-          </For>
-        </div>
-      </div>
+      <Axis />
       <div class="cb-muted cb-trks__readout">
         {readout() ??
           'Move the mouse over a plot to read the time, position and behavior at that moment.'}

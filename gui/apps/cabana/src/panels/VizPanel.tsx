@@ -39,8 +39,8 @@ import { coverageText, type Intensity } from '../lib/overlays.ts';
 import { FootprintViewer } from './FootprintViewer.tsx';
 import { Popover } from './Popover.tsx';
 import { fitToWindow } from './QcPanel.tsx';
-import { HowTo, PlotCard } from './QcParts.tsx';
-import { SelectedCellRows, Timeline } from './SessionView.tsx';
+import { PlotCard } from './QcParts.tsx';
+import { BehaviorRows, NeuralRows } from './SessionView.tsx';
 import { SessionNavigator } from './SessionNavigator.tsx';
 import { placed, Trajectory } from './Trajectory.tsx';
 import { HELP } from './VizHelp.tsx';
@@ -388,7 +388,7 @@ export function VizPanel(): JSX.Element {
           </div>
           <div class="cb-viz__col">
             <PlotCard
-              title={`Selected cell · Cell ${cell() + 1}`}
+              title="Neural data"
               help={
                 <p>
                   The raw, denoised and deconvolved signals of the selected cell over the shared
@@ -400,12 +400,12 @@ export function VizPanel(): JSX.Element {
             >
               {() => (
                 <div class="cb-fill">
-                  <SelectedCellRows />
+                  <NeuralRows />
                 </div>
               )}
             </PlotCard>
             <PlotCard
-              title="Session timeline"
+              title="Behavior and position"
               help={
                 <p>
                   Neural data and behavior on one time axis, aligned with the selected cell above.
@@ -418,15 +418,13 @@ export function VizPanel(): JSX.Element {
             >
               {() => (
                 <div class="cb-fill">
-                  <Timeline />
+                  <BehaviorRows />
                 </div>
               )}
             </PlotCard>
           </div>
         </div>
         <div class="cb-viz__foot">
-          <strong>Session navigator</strong>
-          <HowTo title={HELP.navigator.title}>{HELP.navigator.text}</HowTo>
           <SessionNavigator />
         </div>
       </Show>

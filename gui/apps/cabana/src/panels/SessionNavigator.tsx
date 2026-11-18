@@ -2,11 +2,16 @@ import { createEffect, type JSX } from 'solid-js';
 import { cell } from '../lib/store.ts';
 import { mss, setWinLen, setWinStartClamped, span, win } from '../lib/viz.ts';
 import { matrixOf, neuralT, sources } from '../lib/viz-tracks.ts';
+import { HowTo } from './QcParts.tsx';
 import { drawSeries } from './SessionView.tsx';
+import { HELP } from './VizHelp.tsx';
 
 const MIN_LEN = 1;
 
-/** The whole session as a strip with a box for the window. Drag the box to move it, its edges to resize it. */
+/**
+ * The whole session as a strip with a box for the window. Drag the box to move it, its edges to
+ * resize it. Laid out as a timeline row, so the strip lines up with the time plots below it.
+ */
 export function SessionNavigator(): JSX.Element {
   let strip!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
@@ -65,37 +70,47 @@ export function SessionNavigator(): JSX.Element {
   };
 
   return (
-    <div class="cb-nav2">
-      <span class="cb-muted">{mss(span()[0])}</span>
-      <div
-        class="cb-nav2__strip"
-        ref={strip}
-        onPointerDown={(e) => {
-          const r = strip.getBoundingClientRect();
-          const len = win()[1] - win()[0];
-          const c = span()[0] + ((e.clientX - r.left) / r.width) * T();
-          setWinStartClamped(Math.min(Math.max(c - len / 2, span()[0]), span()[1] - len));
-        }}
-      >
-        <canvas ref={canvas} width={1200} height={40} />
+    <div class="cb-trks cb-trks--nav">
+      <div class="cb-trk cb-nav2">
+        <div class="cb-trk__lab cb-nav2__lab">
+          <span class="cb-nav2__name">
+            <strong>Session</strong>
+            <HowTo title={HELP.navigator.title}>{HELP.navigator.text}</HowTo>
+          </span>
+          <span class="cb-nav2__win">
+            {mss(win()[0])}–{mss(win()[1])}
+          </span>
+          <span class="cb-muted">of {mss(span()[1])}</span>
+        </div>
         <div
-          class="cb-nav2__box"
-          tabindex="0"
-          role="slider"
-          aria-label="Window start, in seconds"
-          aria-valuemin={span()[0]}
-          aria-valuemax={span()[1] - (win()[1] - win()[0])}
-          aria-valuenow={win()[0]}
-          aria-valuetext={`${mss(win()[0])} to ${mss(win()[1])}`}
-          style={{ left: pct(win()[0]), width: `${((win()[1] - win()[0]) / T()) * 100}%` }}
-          onPointerDown={drag('move')}
-          onKeyDown={step}
+          class="cb-nav2__strip"
+          ref={strip}
+          onPointerDown={(e) => {
+            const r = strip.getBoundingClientRect();
+            const len = win()[1] - win()[0];
+            const c = span()[0] + ((e.clientX - r.left) / r.width) * T();
+            setWinStartClamped(Math.min(Math.max(c - len / 2, span()[0]), span()[1] - len));
+          }}
         >
-          <span class="cb-nav2__edge cb-nav2__edge--l" onPointerDown={drag('left')} />
-          <span class="cb-nav2__edge cb-nav2__edge--r" onPointerDown={drag('right')} />
+          <canvas ref={canvas} width={1200} height={40} />
+          <div
+            class="cb-nav2__box"
+            tabindex="0"
+            role="slider"
+            aria-label="Window start, in seconds"
+            aria-valuemin={span()[0]}
+            aria-valuemax={span()[1] - (win()[1] - win()[0])}
+            aria-valuenow={win()[0]}
+            aria-valuetext={`${mss(win()[0])} to ${mss(win()[1])}`}
+            style={{ left: pct(win()[0]), width: `${((win()[1] - win()[0]) / T()) * 100}%` }}
+            onPointerDown={drag('move')}
+            onKeyDown={step}
+          >
+            <span class="cb-nav2__edge cb-nav2__edge--l" onPointerDown={drag('left')} />
+            <span class="cb-nav2__edge cb-nav2__edge--r" onPointerDown={drag('right')} />
+          </div>
         </div>
       </div>
-      <span class="cb-muted">{mss(span()[1])}</span>
     </div>
   );
 }
