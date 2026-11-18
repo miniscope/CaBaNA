@@ -202,6 +202,8 @@ export function qcCounts(id: SlotId): { fails: number; notes: number; total: num
 
 const TEST_NAME: Record<string, string> = { cells: 'Cells', decon: 'Deconvolution' };
 const [picked, setPicked] = createStore<Record<string, string>>({});
+/** Show one of a file's QC tests when its QC opens (the review buttons of Data visualization). */
+export const pickTest = (id: SlotId | 'sync', test: string) => setPicked(id, test);
 
 /** Why a test is shown on this file, when it is computed from another file or is optional. */
 function Why(props: { id: SlotId | 'sync'; test: string }): JSX.Element {

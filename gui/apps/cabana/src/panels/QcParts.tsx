@@ -172,6 +172,10 @@ export function PlotCard(props: {
   tools?: JSX.Element;
   /** Extra controls shown only in the expanded view. */
   bigTools?: JSX.Element;
+  /** Box layout: a one-line summary after the help marker, `actions`, then Expand last. */
+  box?: boolean;
+  summary?: JSX.Element;
+  actions?: JSX.Element;
   class?: string;
   /** Opens help elsewhere (a side panel) instead of the popover; the expanded view keeps the popover. */
   onHelp?: () => void;
@@ -186,9 +190,22 @@ export function PlotCard(props: {
     slot.hold(true);
     onCleanup(() => slot.hold(false));
   }
+  const box = untrack(() => !!props.box);
+  const expandButton = () => (
+    <button
+      ref={expand}
+      type="button"
+      class="cb-ib"
+      aria-label={`Expand ${props.title}`}
+      title="Expand plot"
+      onClick={() => setBig(true)}
+    >
+      Expand
+    </button>
+  );
   return (
     <section class={`cb-plot ${props.class ?? ''}`}>
-      <div class="cb-plot__head">
+      <div class="cb-plot__head" classList={{ 'cb-plot__head--box': box }}>
         {mine && slot.head()}
         <h3 classList={{ 'cb-sr-only': mine && slot.title() === props.title }}>{props.title}</h3>
         <Show when={props.onHelp} fallback={<HowTo title={props.title}>{props.help}</HowTo>}>
@@ -202,19 +219,19 @@ export function PlotCard(props: {
             <HelpMark />
           </button>
         </Show>
-        <button
-          ref={expand}
-          type="button"
-          class="cb-ib"
-          aria-label={`Expand ${props.title}`}
-          title="Expand plot"
-          onClick={() => setBig(true)}
-        >
-          Expand
-        </button>
+        <Show when={!box}>{expandButton()}</Show>
+        <Show when={box && props.summary}>
+          <span class="cb-plot__sum">{props.summary}</span>
+        </Show>
         {props.tools}
         <Show when={props.legend}>
           <div class="cb-plot__legend">{props.legend}</div>
+        </Show>
+        <Show when={box}>
+          <span class="cb-plot__acts">
+            {props.actions}
+            {expandButton()}
+          </span>
         </Show>
       </div>
       <div class="cb-plot__body" ref={measure}>
@@ -347,7 +364,12 @@ export function Findings(props: { checks: Check[] }): JSX.Element {
                     <span class="cb-muted"> {c.limit}</span>
                   </Show>
                 </span>
-                <PopButton label={`Details: ${c.title}`} title={c.title} width={340} button="Details">
+                <PopButton
+                  label={`Details: ${c.title}`}
+                  title={c.title}
+                  width={340}
+                  button="Details"
+                >
                   <p>{c.detail}</p>
                   <Show when={c.fix && c.status !== 'pass'}>
                     <p>

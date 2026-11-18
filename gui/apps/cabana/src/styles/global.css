@@ -3142,6 +3142,53 @@ button[aria-expanded='true'] > .cb-help {
 .cb-viz__bar select {
   max-width: 130px;
 }
+/* Checks row: one chip per kind of check, counts in words. */
+.cb-vchips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.cb-vchips__label {
+  margin-right: 2px;
+}
+.cb-vchip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cb-vchip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+.cb-vchip[aria-expanded='true'] {
+  border-color: var(--ink);
+}
+.cb-vchip:disabled {
+  cursor: default;
+  color: var(--text-secondary);
+}
+.cb-vchip__k {
+  color: var(--text-secondary);
+}
+.cb-vtone--flag {
+  color: var(--flag);
+}
+.cb-vtone--fail {
+  color: var(--error-text);
+}
+.cb-vtone--muted {
+  color: var(--text-secondary);
+}
 .cb-viz__body {
   flex: 1;
   min-height: 0;
