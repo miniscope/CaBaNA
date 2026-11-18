@@ -35,6 +35,8 @@ export interface ExplorerData {
   resultNames: string[];
   /** The decoding target saved with the settings, when there is one. */
   target?: string;
+  /** The `metadata.json` a browser-engine run saved, when it has one. */
+  metadata?: unknown;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -148,6 +150,7 @@ async function browserData(r: RunRecord, analysis: AnalysisId): Promise<Explorer
           : undefined,
     },
     resultNames,
+    metadata,
   };
 }
 
