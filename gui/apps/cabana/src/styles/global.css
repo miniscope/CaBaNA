@@ -610,47 +610,12 @@
   .cb-app {
     grid-template-columns: 168px minmax(0, 1fr);
   }
-  .cb-side {
-    padding: 7px var(--space-sm);
-  }
-  .cb-side--sub {
-    padding-left: var(--space-lg);
-  }
 }
 .cb-sidebar {
   border-right: 1px solid var(--border-subtle);
   padding: var(--space-md) var(--space-sm);
   overflow-y: auto;
   background: var(--bg-inset);
-}
-.cb-side {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  border-radius: var(--radius-md);
-  padding: 8px var(--space-md);
-  font: inherit;
-  font-size: 14px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.cb-side:hover {
-  background: var(--bg-secondary);
-}
-.cb-side--on {
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-weight: var(--font-weight-medium);
-}
-.cb-side--soon {
-  opacity: 0.5;
-  cursor: default;
-}
-.cb-side--sub {
-  padding-left: var(--space-xl);
-  font-size: 13px;
 }
 .cb-side-main {
   overflow-y: auto;
@@ -3412,11 +3377,6 @@ textarea {
   display: block;
   margin: 0 0 var(--space-xs) auto;
   min-width: 28px;
-}
-.cb-app--folded .cb-side {
-  text-align: center;
-  padding-left: 0;
-  padding-right: 0;
 }
 .cb-app--folded .cb-side__fold {
   margin: 0 auto var(--space-xs);

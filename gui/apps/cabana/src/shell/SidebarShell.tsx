@@ -1,15 +1,13 @@
 import { createSignal, For, Show, type Component, type JSX } from 'solid-js';
 import { DashboardShell } from '@calab/ui';
 import { Header } from '../components/Header.tsx';
-import { StatusLegend, ToneIcon } from '../components/StatusBadge.tsx';
 import { openItem } from '../components/Requirements.tsx';
 import { ANALYSES, analysisId, setAnalysisId } from '../lib/analyses.ts';
-import { ITEM_LABEL, statusDetail, TONE, type ItemId } from '../lib/readiness.ts';
+import { ITEM_LABEL, statusDetail, type ItemId } from '../lib/readiness.ts';
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
 import { goToStep, stepId } from '../lib/store.ts';
 import { AnalyzeOverview } from '../panels/AnalyzeOverview.tsx';
-import { InfoTip } from '../panels/InfoTip.tsx';
 import type { Step } from './types.ts';
 
 const FOLD_KEY = 'cabana-sidebar-folded';
@@ -33,7 +31,7 @@ const toggleFold = () => {
 /** What a step button shows: its label, or its first letter when the sidebar is folded. */
 const short = (label: string) => (folded() ? label.charAt(0) : label);
 
-/** One sidebar row: the status icon (its own button, explaining the status) and the page button. */
+/** One sidebar row: the page name with its current status in words underneath. */
 function SideItem(props: {
   label: string;
   item?: ItemId;
@@ -44,25 +42,18 @@ function SideItem(props: {
   const st = () => (props.item ? statusOfItem(props.item) : undefined);
   return (
     <div class="cb-side" classList={{ 'cb-side--on': props.on, 'cb-side--sub': props.sub }}>
-      <Show when={props.item} fallback={<span class="cb-side__mark" />}>
-        <InfoTip
-          class="cb-side__mark"
-          label={`${props.label} status: ${st()!.text}`}
-          icon={<ToneIcon tone={TONE[st()!.kind]} />}
-        >
-          <strong>{st()!.text}</strong>
-          <div>{statusDetail(st()!)}</div>
-        </InfoTip>
-      </Show>
       <button
         type="button"
         class="cb-side__go"
         aria-label={st() ? `${props.label}: ${st()!.text}` : props.label}
         aria-current={props.on ? 'page' : undefined}
-        title={folded() ? props.label : undefined}
+        title={folded() ? props.label : st() ? statusDetail(st()!) : undefined}
         onClick={() => props.onClick()}
       >
-        {short(props.label)}
+        <span class="cb-side__name">{short(props.label)}</span>
+        <Show when={st() && !folded()}>
+          <span class="cb-side__status">{st()!.text}</span>
+        </Show>
       </button>
     </div>
   );
@@ -106,7 +97,7 @@ function Footer(): JSX.Element {
   );
 }
 
-/** One sidebar with every page always reachable; each item has a status icon on its left. */
+/** One sidebar with every page always reachable; each item shows its status in words. */
 export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   startResultIndex();
   const panel = (): Component | undefined =>
@@ -118,10 +109,6 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
       <div class="cb-app" classList={{ 'cb-app--folded': folded() }}>
         <nav class="cb-sidebar" aria-label="Steps">
           <div class="cb-side__top">
-            <Show when={!folded()}>
-              <span class="cb-side__title">Workflow</span>
-              <StatusLegend />
-            </Show>
             <button
               type="button"
               class="cb-ib cb-side__fold"
