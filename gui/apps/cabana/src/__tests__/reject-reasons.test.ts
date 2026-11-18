@@ -20,7 +20,7 @@ describe('reject reasons', () => {
     expect(reasonText('Duplicate of another cell', 'overlaps cell 12')).toBe(
       'Duplicate of another cell: overlaps cell 12',
     );
-    expect(reasonText('Other', ' lens edge ')).toBe('lens edge');
+    expect(reasonText('Other', ' lens edge ')).toBe('Other: lens edge');
   });
 
   it('keeps the reason with the rejection and drops it on restore', () => {

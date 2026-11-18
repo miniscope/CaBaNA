@@ -19,9 +19,8 @@ export const NO_REASON = 'No reason given';
 export const reasonReady = (reason: Reason | undefined, note: string): boolean =>
   !!reason && (reason !== 'Other' || note.trim().length > 0);
 
-/** The reason as stored: "Flat trace", "Duplicate of another cell: overlaps cell 12", "Other: …". */
+/** The reason as stored: "Flat trace", "Duplicate of another cell: overlaps cell 12", "Other: lens edge". */
 export function reasonText(reason: Reason, note = ''): string {
   const n = note.trim();
-  if (reason === 'Other') return n || 'Other';
   return n ? `${reason}: ${n}` : reason;
 }

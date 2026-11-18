@@ -8,8 +8,8 @@ import {
   deconvolved,
   footprints,
   pending,
+  reasonOf,
   rejected,
-  rejectCells,
   restoreCell,
   setPendingTo,
   togglePending,
@@ -17,6 +17,7 @@ import {
   traceMatrix,
 } from '../lib/store.ts';
 import { CellPicker } from './parts.tsx';
+import { RejectButton } from './RejectReason.tsx';
 import { CellTraces } from './CellTraces.tsx';
 import {
   cellChecks,
@@ -61,13 +62,12 @@ function CellBar(): JSX.Element {
             fallback={
               <>
                 <b>Kept</b>
-                <button class="cb-link" onClick={() => rejectCells([cell()])}>
-                  Reject
-                </button>
+                <RejectButton class="cb-link" cells={() => [cell()]} label="Reject" />
               </>
             }
           >
-            <b>Rejected</b>
+            <b title={reasonOf(cell())}>Rejected</b>
+            <span class="cb-muted">{reasonOf(cell())}</span>
             <button class="cb-link" onClick={() => restoreCell(cell())}>
               Restore
             </button>
@@ -209,18 +209,16 @@ export function CellsCorrection(): JSX.Element {
             fallback={<div class="cb-muted">No flagged cells left.</div>}
           >
             <div class="cb-controls">
-              <button
+              <RejectButton
                 class="btn-secondary btn-small"
-                onClick={() => rejectCells(flagged().map((x) => x.c))}
-              >
-                Reject all flagged ({flagged().length})
-              </button>
-              <button
+                cells={() => flagged().map((x) => x.c)}
+                label={`Reject all flagged (${flagged().length})`}
+              />
+              <RejectButton
                 class="btn-secondary btn-small"
-                onClick={() => ticked().length && rejectCells(ticked())}
-              >
-                Reject selected ({ticked().length})
-              </button>
+                cells={ticked}
+                label={`Reject selected (${ticked().length})`}
+              />
               <button class="cb-link" onClick={() => setPendingTo(flagged().map((x) => x.c))}>
                 Select all
               </button>
@@ -237,8 +235,12 @@ export function CellsCorrection(): JSX.Element {
               <span class="cb-muted">Rejected ({rejected().size}), click to restore:</span>
               <For each={[...rejected()].sort((a, b) => a - b)}>
                 {(c) => (
-                  <button class="cb-chip cb-chip--rejected" onClick={() => restoreCell(c)}>
-                    {c + 1}
+                  <button
+                    class="cb-chip cb-chip--rejected"
+                    title={`Restore cell ${c + 1}`}
+                    onClick={() => restoreCell(c)}
+                  >
+                    {c + 1} · {reasonOf(c)}
                   </button>
                 )}
               </For>

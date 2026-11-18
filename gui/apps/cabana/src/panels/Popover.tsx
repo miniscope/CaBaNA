@@ -32,12 +32,19 @@ export function Popover(props: {
       top: down ? a.bottom + 6 : Math.max(8, a.top - 6 - Math.min(h, maxH)),
     });
   };
+  // A popover opened from inside this one (e.g. a reason asked for by a button in it) is later in
+  // the page: clicks in it count as inside, and it answers Escape first.
+  const later = (el: Element | null) =>
+    !!el && el !== box && !!(box.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
   const outside = (e: PointerEvent) => {
     const t = e.target as Node;
+    const el = t instanceof Element ? t : t.parentElement;
+    if (later(el?.closest('.cb-pop') ?? null)) return;
     if (!box.contains(t) && !props.anchor.contains(t)) props.onClose();
   };
   const key = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
+    if (later([...document.querySelectorAll('.cb-pop')].at(-1) ?? null)) return;
     e.stopPropagation();
     props.onClose();
     props.anchor.focus();

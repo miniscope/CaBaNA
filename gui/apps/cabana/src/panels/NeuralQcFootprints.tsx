@@ -1,6 +1,7 @@
 // The Footprints test of Neural QC: the map and the overlapping pairs.
 import type { JSX } from 'solid-js';
-import { cell, overlapPartner, rejectCells, selectCell } from '../lib/store.ts';
+import { cell, overlapPartner, selectCell } from '../lib/store.ts';
+import { RejectButton } from './RejectReason.tsx';
 import { ColorBy, FOOTPRINT_HELP, overlapPairs, SquareMap } from './NeuralQcShared.tsx';
 import { PagedList, PlotCard, RailBox } from './QcParts.tsx';
 
@@ -29,12 +30,20 @@ export function FootprintsFlagged(): JSX.Element {
         empty="No cell pairs share over half of the smaller footprint."
         after={(p) => (
           <span class="cb-list__after">
-            <button type="button" class="cb-link" onClick={() => rejectCells([p.a])}>
-              Reject {p.a + 1}
-            </button>
-            <button type="button" class="cb-link" onClick={() => rejectCells([p.b])}>
-              Reject {p.b + 1}
-            </button>
+            <RejectButton
+              class="cb-link"
+              cells={() => [p.a]}
+              label={`Reject ${p.a + 1}`}
+              suggest="Duplicate of another cell"
+              note={`overlaps cell ${p.b + 1}`}
+            />
+            <RejectButton
+              class="cb-link"
+              cells={() => [p.b]}
+              label={`Reject ${p.b + 1}`}
+              suggest="Duplicate of another cell"
+              note={`overlaps cell ${p.a + 1}`}
+            />
           </span>
         )}
       >
