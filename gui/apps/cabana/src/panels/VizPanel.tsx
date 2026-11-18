@@ -40,7 +40,7 @@ import { FootprintViewer } from './FootprintViewer.tsx';
 import { Popover } from './Popover.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PlotCard } from './QcParts.tsx';
-import { ChecksRow, PARTS, Parts, REVIEW } from './VizChecks.tsx';
+import { ChecksRow, InputsPop, PARTS, Parts, REVIEW } from './VizChecks.tsx';
 import { EntryPopup } from './data-setup/EntryView.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { arena, pxPerCm } from '../lib/arena.ts';
@@ -130,6 +130,7 @@ function TracksMenu(props: { anchor: HTMLElement }): JSX.Element {
 }
 
 const [overlaysAnchor, setOverlaysAnchor] = createSignal<HTMLElement>();
+const [inputsAnchor, setInputsAnchor] = createSignal<HTMLElement>();
 
 const INTENSITIES: { value: Intensity; label: string }[] = [
   { value: 'subtle', label: 'Subtle' },
@@ -361,7 +362,10 @@ export function VizPanel(): JSX.Element {
         when={anything()}
         fallback={<div class="cb-empty">Load neural or behavior data to see it here.</div>}
       >
-        <ChecksRow />
+        <ChecksRow
+          inputsOpen={!!inputsAnchor()}
+          onInputs={(el) => setInputsAnchor((a) => (a === el ? undefined : el))}
+        />
         <div class="cb-viz__grid">
           <PlotCard
             title="Footprints"
@@ -512,6 +516,9 @@ export function VizPanel(): JSX.Element {
       </Show>
       <Show when={overlaysAnchor()}>{(a) => <DisplayMenu anchor={a()} />}</Show>
       <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>
+      <Show when={inputsAnchor()}>
+        {(a) => <InputsPop anchor={a()} onClose={() => setInputsAnchor()} />}
+      </Show>
       <EntryPopup />
     </div>
   );

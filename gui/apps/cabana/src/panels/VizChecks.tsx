@@ -27,6 +27,7 @@ import {
 import { flaggedOf } from './BehaviorQcAnnotations.tsx';
 import { posOk, segments, timing } from './BehaviorQc.tsx';
 import { pickTest } from './data-setup/FileQc.tsx';
+import { Popover } from './Popover.tsx';
 import { cellChecks, flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
@@ -128,7 +129,10 @@ const CHIPS: { id: ChipId; name: string; what: string }[] = [
  * One chip per kind of check, with its counts. A chip opens its review; `onInputs` replaces the
  * Inputs chip's action (an anchored list of the input checks).
  */
-export function ChecksRow(props: { onInputs?: (anchor: HTMLElement) => void }): JSX.Element {
+export function ChecksRow(props: {
+  onInputs?: (anchor: HTMLElement) => void;
+  inputsOpen?: boolean;
+}): JSX.Element {
   return (
     <div class="cb-vchips" role="group" aria-label="Checks">
       <span class="sc cb-vchips__label">Checks</span>
@@ -140,6 +144,8 @@ export function ChecksRow(props: { onInputs?: (anchor: HTMLElement) => void }): 
               type="button"
               class="cb-vchip"
               disabled={!open()}
+              aria-haspopup={c.id === 'inputs' && props.onInputs ? 'dialog' : undefined}
+              aria-expanded={c.id === 'inputs' && props.onInputs ? !!props.inputsOpen : undefined}
               title={open() ? `Review the ${c.what}` : `No file to review for the ${c.what}`}
               aria-label={`${c.name}: ${partsText(PARTS[c.id]())}`}
               onClick={(e) =>
@@ -153,5 +159,69 @@ export function ChecksRow(props: { onInputs?: (anchor: HTMLElement) => void }): 
         }}
       </For>
     </div>
+  );
+}
+
+const WORD = { pass: 'Passed', warn: 'Warning', fail: 'Failed' } as const;
+
+/**
+ * The timing and alignment checks as rows, anchored under the Inputs chip: status in words, the
+ * check, and its numbers against the limit. Rows with a problem open the timestamp alignment
+ * pop-up, where the plots and the fix are.
+ */
+export function InputsPop(props: { anchor: HTMLElement; onClose: () => void }): JSX.Element {
+  const review = () => {
+    props.onClose();
+    openEntry('sync');
+  };
+  return (
+    <Popover anchor={props.anchor} onClose={props.onClose} width={540} label="Input checks">
+      <div class="cb-pop__head cb-inchk__head">
+        <strong>Input checks</strong>
+        <span class="cb-muted">Run when files load. Nothing here changes data.</span>
+        <span class="cb-spacer" />
+        <button type="button" class="btn-secondary btn-small" onClick={() => props.onClose()}>
+          Close
+        </button>
+      </div>
+      <Show
+        when={timing().length}
+        fallback={
+          <p class="cb-muted">
+            The timing and alignment checks run once the miniscope or behavior camera timestamps
+            load.
+          </p>
+        }
+      >
+        <ul class="cb-inchk">
+          <For each={timing()}>
+            {(c) => (
+              <li>
+                <span class={`cb-qres cb-qres--${c.status}`}>{WORD[c.status]}</span>
+                <div class="cb-inchk__text">
+                  <b>{c.title}</b>
+                  <span class="cb-muted">
+                    {[c.value, c.limit].filter(Boolean).join(' · ') || c.detail}
+                  </span>
+                </div>
+                <Show when={c.status !== 'pass'}>
+                  <button type="button" class="btn-secondary btn-small" onClick={review}>
+                    Review
+                  </button>
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+      <div class="cb-inchk__foot">
+        <span class="cb-muted">
+          Dropped frames, frame-time jitter and clock alignment, from the timestamp files.
+        </span>
+        <button type="button" class="cb-link" onClick={review}>
+          Timestamp alignment
+        </button>
+      </div>
+    </Popover>
   );
 }

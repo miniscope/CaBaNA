@@ -3186,6 +3186,40 @@ button[aria-expanded='true'] > .cb-help {
 .cb-vtone--muted {
   color: var(--text-secondary);
 }
+.cb-inchk__head {
+  justify-content: flex-start;
+}
+.cb-inchk {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cb-inchk li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.cb-inchk .cb-qres {
+  min-width: 64px;
+  text-align: center;
+}
+.cb-inchk__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-inchk__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+}
 /* Four boxes: footprints over arena on the left; navigator and neural data over behavior on the right. */
 .cb-viz__grid {
   flex: 1;
