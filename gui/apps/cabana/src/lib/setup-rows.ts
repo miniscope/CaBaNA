@@ -66,3 +66,25 @@ export const LEVEL_WORD: Record<Level, string> = {
   optional: 'Optional',
   unused: 'Not needed',
 };
+
+/** The status on a card row, in the page's words: no "Loaded ·" prefix; a flag says how many. */
+export function cardStatus(f: RowFacts): RowStatus {
+  if (f.error) return { text: 'Could not be read', tone: 'fail', detail: f.error };
+  if (!f.loaded) return { text: 'Not loaded', tone: 'muted' };
+  if (f.qc?.fails)
+    return { text: count(f.qc.fails, 'check failed', 'checks failed'), tone: 'fail' };
+  if (f.note) return { text: 'See note', tone: 'warn', detail: f.note };
+  if (f.qc?.notes)
+    return { text: count(f.qc.notes, 'check flagged', 'checks flagged'), tone: 'warn' };
+  return { text: 'Loaded', tone: 'ok' };
+}
+
+/** The row's second line: data type, level, and what the file holds. Empty slots say what to load. */
+export function rowDescription(label: string, level: Level, facts?: string, hint?: string): string {
+  return [label, LEVEL_WORD[level].toLowerCase(), facts || hint].filter(Boolean).join(' · ');
+}
+
+/** The Actions of a loaded row: View data only when the file was read. */
+export const cardActions = (f: Pick<RowFacts, 'loaded' | 'error'>) => ({
+  view: f.loaded && !f.error,
+});

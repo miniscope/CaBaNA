@@ -1,43 +1,58 @@
-// The body of the Data setup page: the experimental setup line, the Neural data and Behavioral
-// data columns with one row per data type, and the cross-data checks line. Each row shows its
-// file, level and status in words; View opens the file in the pop-up (EntryView.tsx).
-// Explanations are in the i markers, not on the page.
+// The body of the Data setup page: the experimental summary, then the Neural data and Behavior
+// data cards with one row per data type. A loaded row shows its file, a description line, its
+// status in words and one Actions menu; an empty row has Load file. Files no data type matched
+// are in OtherFiles.tsx.
 
 import { For, Show, type JSX } from 'solid-js';
-import { configReport } from '../../lib/config-import.ts';
+import { ActionsMenu } from '../../components/ActionsMenu.tsx';
+import { Pill } from '../../components/Pill.tsx';
 import { qcShown } from '../../lib/analysis-data.ts';
 import { arena } from '../../lib/arena.ts';
-import { openEntry, setConfigOpen } from '../../lib/data-setup-view.ts';
+import { openEntry } from '../../lib/data-setup-view.ts';
 import { sectionsFor } from '../../lib/file-sections.ts';
+import type { MenuItem } from '../../lib/actions-menu.ts';
+import { pickFile } from '../../lib/pick-file.ts';
 import {
   ACTIVITY_SLOTS,
-  LEVEL_WORD,
-  rowActions,
-  rowMuted,
-  rowStatus,
+  cardActions,
+  cardStatus,
+  rowDescription,
   type RowFacts,
 } from '../../lib/setup-rows.ts';
-import { SLOTS, type Slot, type SlotId } from '../../lib/slots.ts';
+import { alignmentText, arenaText, durationText, rateText } from '../../lib/setup-summary.ts';
+import { SLOTS, type SlotId } from '../../lib/slots.ts';
 import {
   addFiles,
-  configFiles,
   deconvolved,
+  derivedCameraFps,
   experiment,
   experimentId,
   levelOf,
   loaded,
+  override,
+  removeFile,
+  samplingRate,
+  sessionDuration,
   traceMatrix,
-  unrecognized,
 } from '../../lib/store.ts';
 import { behaviorCategories } from '../BehaviorQc.tsx';
 import { InfoTip } from '../InfoTip.tsx';
-import { REFERENCE_USE, RoleInfo, roleOf, RoleTag } from './AnalysisRole.tsx';
-import { setAsYaml } from './ConfigView.tsx';
+import { RoleInfo, RoleTag } from './AnalysisRole.tsx';
+import { noteOf } from './FileList.tsx';
 import { qcCounts } from './FileQc.tsx';
-import { accepted, noteOf } from './FileList.tsx';
 
 const slot = (id: SlotId) => SLOTS.find((s) => s.id === id)!;
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
+const NEURAL: SlotId[] = ['neural_timestamps', ...ACTIVITY_SLOTS, 'footprints'];
+const BEHAVIOR: SlotId[] = [
+  'behavior_timestamps',
+  'behavior_annotations',
+  'zone_annotations',
+  'position',
+  'head_orientation',
+  'time_markers',
+  'frame_labels',
+];
 
 function facts(id: SlotId): RowFacts {
   const ok = isLoaded(id);
@@ -50,87 +65,63 @@ function facts(id: SlotId): RowFacts {
   };
 }
 
-/** The row's help: what the file holds, its level, its file type, and its role if it has one. */
-function SlotHelp(props: { slot: Slot }): JSX.Element {
-  const role = () => roleOf(props.slot.id);
-  return (
-    <InfoTip label={`About ${props.slot.label}`}>
-      <strong>
-        {props.slot.label} · {LEVEL_WORD[levelOf(props.slot.id)].toLowerCase()}
-      </strong>
-      <p>{props.slot.format}</p>
-      <Show when={role()}>
-        <p>
-          {role() === 'analysis'
-            ? 'Analysis data: the file every analysis reads.'
-            : REFERENCE_USE[props.slot.id]}
-        </p>
-      </Show>
-      <p class="cb-muted">
-        File type {accepted(props.slot)}; found by a name like {props.slot.file}.
-      </p>
-    </InfoTip>
-  );
+/** Replace the file of one data type with a chosen file. */
+const replace = (id: SlotId) => pickFile((f) => void addFiles([f], id));
+
+function remove(id: SlotId): void {
+  const name = loaded[id]?.name ?? 'this file';
+  if (window.confirm(`Remove ${name} from this session? The original file is not changed.`))
+    removeFile(id);
 }
 
-/** Replace the file, or load one: a file picker for this data type. */
-function Pick(props: { id: SlotId; label: string }): JSX.Element {
-  return (
-    <label class="btn-secondary btn-small cb-file cb-ds-row__pick">
-      {props.label}
-      <input
-        type="file"
-        hidden
-        onChange={(e) => {
-          const f = e.currentTarget.files?.[0];
-          e.currentTarget.value = '';
-          if (f) void addFiles([f], props.id);
-        }}
-      />
-    </label>
-  );
-}
+const rowMenu = (id: SlotId, canView: boolean): MenuItem[] => [
+  ...(canView
+    ? [{ kind: 'action', label: 'View data', onSelect: () => openEntry(id) } as MenuItem]
+    : []),
+  { kind: 'action', label: 'Replace file', onSelect: () => replace(id) },
+  { kind: 'separator' },
+  { kind: 'action', label: 'Remove file', danger: true, onSelect: () => remove(id) },
+];
 
 /** One data type. `sub` is a row inside the Neural activity group. */
 function SlotRow(props: { id: SlotId; sub?: boolean }): JSX.Element {
   const s = () => slot(props.id);
   const f = () => facts(props.id);
-  const st = () => rowStatus(f());
-  const acts = () => rowActions(f());
-  const file = () => loaded[props.id]?.name ?? configFiles()[props.id] ?? s().file;
+  const st = () => cardStatus(f());
+  const present = () => f().loaded || !!f().error;
+  const description = () =>
+    present()
+      ? rowDescription(s().label, f().level, f().loaded ? loaded[props.id]!.summary : undefined)
+      : rowDescription(s().label, f().level, undefined, s().format);
   return (
-    <div
-      class="cb-ds-row"
-      classList={{
-        'cb-ds-row--sub': props.sub,
-        'cb-ds-row--req': props.sub && f().level === 'required',
-        'cb-ds-row--off': rowMuted(f()),
-      }}
-    >
-      <div class="cb-ds-row__name">
-        <span class="cb-ds-row__title">{s().label}</span>
-        <SlotHelp slot={s()} />
-        <RoleTag slot={props.id} />
+    <div class="cb-sp-row" classList={{ 'cb-sp-row--sub': props.sub }}>
+      <div class="cb-sp-row__main">
+        <div class="cb-sp-row__file" title={loaded[props.id]?.name}>
+          <span class="cb-sp-mono" classList={{ 'cb-sp-mono--empty': !present() }}>
+            {present() ? loaded[props.id]!.name : s().label}
+          </span>
+          <Show when={props.sub && f().loaded}>
+            <RoleTag slot={props.id} />
+          </Show>
+        </div>
+        <div class="cb-sp-row__desc" title={description()}>
+          {description()}
+        </div>
       </div>
-      <span
-        class="cb-ds-row__level"
-        classList={{ 'cb-ds-row__level--req': f().level === 'required' }}
-      >
-        {LEVEL_WORD[f().level]}
-      </span>
-      <span class={`cb-ds-row__status cb-ds-tone--${st().tone}`} title={st().detail}>
+      <span class={`cb-sp-row__status cb-ds-tone--${st().tone}`} title={st().detail}>
         {st().text}
       </span>
-      <span class="cb-ds-row__acts">
-        <Show when={acts().view}>
-          <button type="button" class="btn-secondary btn-small" onClick={() => openEntry(props.id)}>
-            View
-          </button>
+      <span class="cb-sp-row__act">
+        <Show
+          when={present()}
+          fallback={
+            <button type="button" class="btn-secondary btn-small" onClick={() => replace(props.id)}>
+              Load file
+            </button>
+          }
+        >
+          <ActionsMenu items={rowMenu(props.id, cardActions(f()).view)} />
         </Show>
-        <Pick id={props.id} label={acts().pick} />
-      </span>
-      <span class="cb-ds-row__file" classList={{ 'cb-muted': !f().loaded }} title={file()}>
-        {file()}
       </span>
     </div>
   );
@@ -141,177 +132,104 @@ function ActivityGroup(): JSX.Element {
   const m = () => traceMatrix() ?? deconvolved();
   const n = () => ACTIVITY_SLOTS.filter(isLoaded).length;
   return (
-    <section class="cb-ds-act" aria-label="Neural activity">
-      <div class="cb-ds-act__head">
+    <section aria-label="Neural activity">
+      <div class="cb-sp-group">
         <strong>Neural activity</strong>
         <RoleInfo />
-        <Show when={m()}>
-          <span class="cb-ds-mono cb-muted">
-            {m()!.cells} cells × {m()!.frames.toLocaleString()} frames
-          </span>
-        </Show>
-        <span class="cb-spacer" />
-        <span class="cb-muted">{n()} of 3 types loaded</span>
+        <span class="cb-muted">
+          {n()} of 3 types
+          <Show when={m()}>
+            {' '}
+            · {m()!.cells} cells × {m()!.frames.toLocaleString('en-US')} frames
+          </Show>
+        </span>
       </div>
       <For each={ACTIVITY_SLOTS}>{(id) => <SlotRow id={id} sub />}</For>
     </section>
   );
 }
 
-function Column(props: { title: string; children: JSX.Element }): JSX.Element {
+function Card(props: { title: string; ids: SlotId[]; children: JSX.Element }): JSX.Element {
   return (
-    <section class="cb-ds-col" aria-label={props.title}>
-      <h3 class="sc">{props.title}</h3>
-      <div class="cb-ds-col__rows">{props.children}</div>
+    <section class="cb-sp-card" aria-label={props.title}>
+      <header class="cb-sp-card__head">
+        <h3>{props.title}</h3>
+        <span class="cb-muted">
+          {props.ids.filter(isLoaded).length} of {props.ids.length} loaded
+        </span>
+      </header>
+      <div class="cb-sp-card__rows">{props.children}</div>
     </section>
   );
 }
 
-/** Open the arena editor: on the position file when it is loaded, else the typed arena size. */
-function editArena(): void {
-  if (isLoaded('position')) return openEntry('position', 'arena');
-  setAsYaml(false);
-  setConfigOpen('spatial');
-  openEntry('config');
-}
-
-function SetupLine(): JSX.Element {
-  const info = () => loaded.config;
-  const entered = () => !!info()?.summary && !info()!.size;
-  const st = () =>
-    entered()
-      ? { text: 'Entered here', tone: 'ok' as const, detail: undefined }
-      : rowStatus({
-          level: levelOf('config'),
-          loaded: !!info()?.summary,
-          error: info()?.error,
-          note: info()?.summary ? noteOf('config') : undefined,
-        });
+/** Experiment, arena, rates, duration, cells and the timestamp alignment, from what is loaded. */
+export function SummaryCard(): JSX.Element {
+  const timing = () => behaviorCategories().find((c) => c.id === 'timing')?.checks ?? [];
+  const alignment = () => alignmentText(timing().map((c) => c.status));
+  const cells = () => (traceMatrix() ?? deconvolved())?.cells;
   const zones = () => arena.zones.filter((z) => z.kind === 'zone').length;
-  const summary = () =>
+  const items = (): [string, JSX.Element][] => [
+    ['Experiment', experimentId() === 'custom' ? 'Not set' : experiment().label],
+    ['Arena', arenaText(arena.shape, arena.width, arena.height, zones())],
+    ['Miniscope', rateText(samplingRate())],
+    ['Camera', rateText(override.cameraFps ?? derivedCameraFps())],
+    ['Duration', durationText(sessionDuration())],
+    ['Cells', cells() === undefined ? 'Not known' : cells()!.toLocaleString('en-US')],
     [
-      arena.shape === 'circle'
-        ? `arena ${arena.width} cm across`
-        : `arena ${arena.width} × ${arena.height} cm`,
-      `${zones()} ${zones() === 1 ? 'zone' : 'zones'}`,
-      experimentId() === 'custom' ? '' : experiment().label,
-      configReport() ? `${configReport()!.read.length} settings from the file` : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
+      'Timestamp alignment',
+      <Show when={timing().length} fallback={<span class="cb-muted">{alignment().text}</span>}>
+        <button
+          type="button"
+          class="cb-sp-sum__link"
+          title="Open the alignment checks"
+          onClick={() => openEntry('sync')}
+        >
+          <Pill tone={alignment().tone === 'ok' ? 'ok' : 'flag'}>{alignment().text}</Pill>
+        </button>
+      </Show>,
+    ],
+  ];
   return (
-    <div class="cb-ds-setup">
-      <span class="sc">Experimental setup</span>
-      <InfoTip label="About the experimental setup">
-        Arena size and zones, frame rates, units and the experiment type, kept in config.yaml. View
-        shows the config as YAML; Edit setup shows its fields; Edit arena opens the arena editor (on
-        the position file when one is loaded).
-      </InfoTip>
-      <span class="cb-ds-mono">{info()?.size ? info()!.name : 'config.yaml'}</span>
-      <span class="cb-muted cb-ds-setup__sum" title={summary()}>
-        {summary()}
-      </span>
-      <span class="cb-spacer" />
-      <span class={`cb-ds-tone--${st().tone}`} title={st().detail}>
-        {st().text}
-      </span>
-      <button
-        type="button"
-        class="btn-secondary btn-small"
-        onClick={() => {
-          setAsYaml(true);
-          openEntry('config');
-        }}
-      >
-        View
-      </button>
-      <button type="button" class="btn-secondary btn-small" onClick={editArena}>
-        Edit arena
-      </button>
-      <button
-        type="button"
-        class="btn-secondary btn-small"
-        onClick={() => {
-          setAsYaml(false);
-          openEntry('config');
-        }}
-      >
-        Edit setup
-      </button>
-    </div>
+    <section class="cb-sp-sum" aria-label="Experimental summary">
+      <header class="cb-sp-card__head">
+        <h3>Experimental summary</h3>
+        <InfoTip label="About the experimental summary">
+          What CaBaNA knows about this session from the files and the experimental setup. Values
+          that are not known yet come from loading the timestamp and neural files, or from the
+          experimental setup.
+        </InfoTip>
+        <span class="cb-spacer" />
+        <button type="button" class="btn-secondary btn-small" onClick={() => openEntry('config')}>
+          Edit experiment details
+        </button>
+      </header>
+      <dl class="cb-sp-sum__items">
+        <For each={items()}>
+          {([k, v]) => (
+            <div>
+              <dt class="sc">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          )}
+        </For>
+      </dl>
+    </section>
   );
 }
 
-/** Timestamp alignment, the one check across files, and files no data type matched. */
-function ChecksLine(): JSX.Element {
-  const timing = () => behaviorCategories().find((c) => c.id === 'timing')?.checks;
-  const n = (s: string) => timing()?.filter((c) => c.status === s).length ?? 0;
-  const parts = () =>
-    (
-      [
-        ['ok', n('pass'), 'passed'],
-        ['warn', n('warn'), 'flagged'],
-        ['fail', n('fail'), 'failed'],
-      ] as const
-    ).filter(([, k]) => k);
+/** The Neural data and Behavior data cards, side by side. */
+export function DataCards(): JSX.Element {
   return (
-    <div class="cb-ds-checks">
-      <span class="sc">Cross-data checks</span>
-      <span>Timestamp alignment</span>
-      <Show
-        when={timing()?.length}
-        fallback={<span class="cb-muted">Runs once timestamp files load</span>}
-      >
-        <For each={parts()}>
-          {([tone, k, word]) => (
-            <span class="cb-ds-check">
-              <i class={`cb-ds-dot cb-ds-dot--${tone}`} aria-hidden="true" />
-              {k} {word}
-            </span>
-          )}
-        </For>
-      </Show>
-      <button type="button" class="btn-secondary btn-small" onClick={() => openEntry('sync')}>
-        Details
-      </button>
-      <Show when={unrecognized().length}>
-        <span class="cb-ds-checks__sep" />
-        <span class="cb-warn">
-          {unrecognized().length} {unrecognized().length === 1 ? 'file has' : 'files have'} no data
-          type:
-        </span>
-        <For each={unrecognized()}>
-          {(f) => (
-            <button
-              type="button"
-              class="cb-linkbtn cb-ds-mono"
-              onClick={() => openEntry(`file:${f.name}`)}
-            >
-              {f.name}
-            </button>
-          )}
-        </For>
-      </Show>
-    </div>
-  );
-}
-
-export function SetupRows(): JSX.Element {
-  const behavioral = SLOTS.filter((s) => s.group === 'Behavioral').map((s) => s.id);
-  return (
-    <div class="cb-ds-rows">
-      <SetupLine />
-      <div class="cb-ds-cols">
-        <Column title="Neural data">
-          <SlotRow id="neural_timestamps" />
-          <ActivityGroup />
-          <SlotRow id="footprints" />
-        </Column>
-        <Column title="Behavioral data">
-          <For each={behavioral}>{(id) => <SlotRow id={id} />}</For>
-        </Column>
-      </div>
-      <ChecksLine />
+    <div class="cb-sp-cards">
+      <Card title="Neural data" ids={NEURAL}>
+        <SlotRow id="neural_timestamps" />
+        <ActivityGroup />
+        <SlotRow id="footprints" />
+      </Card>
+      <Card title="Behavior data" ids={BEHAVIOR}>
+        <For each={BEHAVIOR}>{(id) => <SlotRow id={id} />}</For>
+      </Card>
     </div>
   );
 }
