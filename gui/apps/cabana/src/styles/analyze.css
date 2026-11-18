@@ -148,3 +148,94 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Analysis page: grey list of analyses on the left, the chosen analysis's page beside it. */
+.cb-anf__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.cb-anf__title h2 {
+  margin: 0;
+}
+.cb-anf__grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+}
+.cb-anf__main {
+  min-width: 0;
+}
+.cb-anf__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-inset);
+}
+.cb-anf__listhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 6px 4px;
+}
+.cb-anf__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.cb-anf__item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.cb-anf__item--on,
+.cb-anf__item--on:hover {
+  background: #fff;
+  border-color: var(--border-strong);
+}
+.cb-anf__name {
+  font-weight: var(--font-weight-medium);
+}
+.cb-anf__brief {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cb-anf__status {
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+}
+.cb-anf__status[data-kind='ready'],
+.cb-anf__status[data-kind='complete'] {
+  color: var(--success);
+}
+.cb-anf__status[data-kind='outdated'],
+.cb-anf__status[data-kind='in_progress'] {
+  color: var(--flag);
+}
+.cb-anf__status[data-kind='needs_input'],
+.cb-anf__status[data-kind='failed'],
+.cb-anf__status[data-kind='framework_update'] {
+  color: var(--error-text);
+}
+.cb-anf__status[data-kind='running'] {
+  color: var(--accent);
+}
+.cb-anf__reason {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
