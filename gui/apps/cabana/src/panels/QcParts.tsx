@@ -172,10 +172,13 @@ export function PlotCard(props: {
   tools?: JSX.Element;
   /** Extra controls shown only in the expanded view. */
   bigTools?: JSX.Element;
-  /** Box layout: a one-line summary after the help marker, `actions`, then Expand last. */
+  /** Box layout: pills after the help marker, `actions` at the right, a summary line under the title row. */
   box?: boolean;
   summary?: JSX.Element;
-  actions?: JSX.Element;
+  pills?: JSX.Element;
+  /** Given the expand function, so an Actions menu can hold "Expand view" and no Expand button is shown. */
+  actions?: JSX.Element | ((expand: () => void) => JSX.Element);
+  expandInMenu?: boolean;
   class?: string;
   /** Opens help elsewhere (a side panel) instead of the popover; the expanded view keeps the popover. */
   onHelp?: () => void;
@@ -183,7 +186,7 @@ export function PlotCard(props: {
 }): JSX.Element {
   const [size, measure] = createSize();
   const [big, setBig] = createSignal(false);
-  let expand!: HTMLButtonElement;
+  let expand: HTMLButtonElement | undefined;
   const slot = useContext(PlotHeadSlot);
   const mine = !!slot && untrack(slot.on) && !untrack(slot.held);
   if (mine) {
@@ -220,20 +223,23 @@ export function PlotCard(props: {
           </button>
         </Show>
         <Show when={!box}>{expandButton()}</Show>
-        <Show when={box && props.summary}>
-          <span class="cb-plot__sum">{props.summary}</span>
-        </Show>
+        <Show when={box}>{props.pills}</Show>
         {props.tools}
         <Show when={props.legend}>
           <div class="cb-plot__legend">{props.legend}</div>
         </Show>
         <Show when={box}>
           <span class="cb-plot__acts">
-            {props.actions}
-            {expandButton()}
+            {typeof props.actions === 'function'
+              ? props.actions(() => setBig(true))
+              : props.actions}
+            <Show when={!props.expandInMenu}>{expandButton()}</Show>
           </span>
         </Show>
       </div>
+      <Show when={box && props.summary}>
+        <div class="cb-plot__sum">{props.summary}</div>
+      </Show>
       <div class="cb-plot__body" ref={measure}>
         <Show when={size().h > 20}>{untrack(() => props.children(size, () => setBig(true)))}</Show>
       </div>
@@ -242,7 +248,7 @@ export function PlotCard(props: {
           title={props.title}
           onClose={() => {
             setBig(false);
-            expand.focus();
+            expand?.focus();
           }}
           head={
             <>

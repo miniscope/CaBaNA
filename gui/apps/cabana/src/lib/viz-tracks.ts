@@ -205,6 +205,10 @@ function frameLabelsAt(t: number): string[] {
   ];
 }
 
+/** Shown in the page footer until the mouse is over a plot. */
+export const READOUT_HINT =
+  'Move the mouse over a plot to read the time, position and behavior at that moment.';
+
 export const readout = () => {
   const ht = hoverT();
   if (ht === undefined) return undefined;

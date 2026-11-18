@@ -27,6 +27,7 @@ import './styles/projects.css';
 import './styles/setup-page.css';
 import './styles/setup-view.css';
 import './styles/setup-edit.css';
+import './styles/viz.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.
