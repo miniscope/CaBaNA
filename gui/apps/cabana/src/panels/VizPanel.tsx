@@ -60,7 +60,7 @@ function CellBar(): JSX.Element {
         aria-label="Previous cell"
         onClick={() => go(cell() - 1)}
       >
-        ‹
+        Prev
       </button>
       <input
         type="number"
@@ -72,7 +72,7 @@ function CellBar(): JSX.Element {
       />
       / {nCells()}
       <button class="btn-secondary btn-small" aria-label="Next cell" onClick={() => go(cell() + 1)}>
-        ›
+        Next
       </button>
     </div>
   );
@@ -291,7 +291,7 @@ export function VizPanel(): JSX.Element {
               setOverlaysAnchor((a) => (a === e.currentTarget ? undefined : e.currentTarget))
             }
           >
-            Behavior overlays ({shown().size}/{behaviorCount()}) ▾
+            Behavior overlays ({shown().size}/{behaviorCount()})
           </button>
           <button
             type="button"
@@ -300,7 +300,7 @@ export function VizPanel(): JSX.Element {
             aria-expanded={!!tracksAnchor()}
             onClick={(e) => openTracks(e.currentTarget)}
           >
-            Tracks ▾
+            Tracks
           </button>
         </Show>
       </div>

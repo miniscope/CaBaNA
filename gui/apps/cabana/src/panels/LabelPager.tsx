@@ -25,7 +25,7 @@ export function LabelPager(props: {
           disabled={props.page <= 0}
           onClick={() => props.onPage(props.page - 1)}
         >
-          ‹
+          Prev
         </button>
         <button
           class="btn-secondary btn-small"
@@ -33,7 +33,7 @@ export function LabelPager(props: {
           disabled={props.page >= last()}
           onClick={() => props.onPage(props.page + 1)}
         >
-          ›
+          Next
         </button>
       </Show>
     </div>

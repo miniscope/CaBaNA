@@ -44,7 +44,7 @@ function MethodCard(props: {
         <Show when={s.methods[props.id]}>
           <span class="cb-pn-method__state">
             <Show when={ready().ready} fallback={<span class="cb-pill cb-pill--bad">Blocked</span>}>
-              <span class="cb-pill cb-pill--good">✓ Ready</span>
+              <span class="cb-pill cb-pill--good">Ready</span>
             </Show>
           </span>
         </Show>

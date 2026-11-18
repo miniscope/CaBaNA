@@ -206,7 +206,7 @@ function EventSummary(props: { s: PethSetupState }): JSX.Element {
           when={s().readyBehaviors().length}
           fallback={<span class="cb-warn">No behavior is ready to run.</span>}
         >
-          <span class="cb-pill cb-pill--good">✓ Ready</span> {s().readyBehaviors().length} behavior
+          <span class="cb-pill cb-pill--good">Ready</span> {s().readyBehaviors().length} behavior
           {s().readyBehaviors().length === 1 ? '' : 's'} will be tested
         </Show>
         <Show when={s().notEvaluated().length}>
@@ -333,7 +333,7 @@ export function EventsSection(props: { s: PethSetupState }): JSX.Element {
                               when={s().chosen(i())}
                               fallback={<span>Left out of the run</span>}
                             >
-                              <span class="cb-pill cb-pill--good">✓ Ready</span>
+                              <span class="cb-pill cb-pill--good">Ready</span>
                             </Show>
                           </Show>
                         </Show>

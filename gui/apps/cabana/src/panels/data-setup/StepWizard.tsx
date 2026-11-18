@@ -173,7 +173,7 @@ export function StepFooter(props: { slot: SlotId }): JSX.Element {
                 n().go();
               }}
             >
-              Continue to {n().label} →
+              Continue to {n().label}
             </button>
           </>
         )}

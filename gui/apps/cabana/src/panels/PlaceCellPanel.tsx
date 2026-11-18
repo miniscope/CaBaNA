@@ -42,21 +42,21 @@ export function PlaceCellPanel(props: {
               aria-label="Previous cell"
               onClick={() => c().step(-1)}
             >
-              ‹
+              Prev
             </button>
             <button
               class="btn-secondary btn-small"
               aria-label="Next cell"
               onClick={() => c().step(1)}
             >
-              ›
+              Next
             </button>
             <button
               class="btn-secondary btn-small"
               aria-label="Close cell panel"
               onClick={() => props.onClose()}
             >
-              ✕
+              Close
             </button>
           </span>
         </div>
@@ -86,7 +86,7 @@ export function PlaceCellPanel(props: {
             </button>
           </div>
           <button class="cb-link" onClick={() => props.onInspector()}>
-            Full inspector (shuffles, fields, trace) ›
+            Full inspector (shuffles, fields, trace)
           </button>
         </div>
 

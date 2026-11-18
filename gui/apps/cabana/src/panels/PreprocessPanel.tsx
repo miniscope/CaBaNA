@@ -74,7 +74,7 @@ function Fold(props: { title: string; children: JSX.Element }): JSX.Element {
   return (
     <div class="cb-prep-fold">
       <button type="button" aria-expanded={open()} onClick={() => setOpen(!open())}>
-        <span aria-hidden="true">{open() ? '▾' : '▸'}</span> {props.title}
+        {props.title} <span class="cb-muted">({open() ? 'hide' : 'show'})</span>
       </button>
       <Show when={open()}>{props.children}</Show>
     </div>
@@ -382,7 +382,7 @@ export function Impact(props: { step: StepId }): JSX.Element {
       <Show when={(padded() || props.step === 'boutLabels') && labelRows().length}>
         <span>
           {plural(labelRows().length, 'behavior')}: {labelTotals().scored} frames as scored
-          {padded() ? ` → ${labelTotals().after} as frame labels` : ''}
+          {padded() ? `, ${labelTotals().after} as frame labels` : ''}
         </span>
         <PopButton
           label="Details"

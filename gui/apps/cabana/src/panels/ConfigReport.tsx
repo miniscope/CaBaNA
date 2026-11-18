@@ -130,7 +130,7 @@ export function ConfigSummary(): JSX.Element {
           }
         >
           <strong class="cb-warn" title={items()[0].text}>
-            ⚠ {items()[0].short}
+            {items()[0].short}
           </strong>
           <span class="cb-muted">
             {items().length} {items().length === 1 ? 'warning' : 'warnings'} ·{' '}
@@ -151,7 +151,7 @@ export function ConfigSummary(): JSX.Element {
                       openData('config');
                     }}
                   >
-                    Open Experiment config →
+                    Open Experiment config
                   </button>
                 </>
               )}

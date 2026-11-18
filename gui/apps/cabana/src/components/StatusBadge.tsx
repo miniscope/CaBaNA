@@ -152,7 +152,7 @@ export function StatusLegend(): JSX.Element {
           <div class="cb-legend__head">
             <strong>Status indicators</strong>
             <button type="button" class="cb-ib" aria-label="Close" onClick={() => setOpen(false)}>
-              ×
+              Close
             </button>
           </div>
           <For each={Object.keys(TONE_TEXT) as Tone[]}>

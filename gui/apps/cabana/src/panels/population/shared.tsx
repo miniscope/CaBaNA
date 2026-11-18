@@ -90,7 +90,7 @@ export function PlotSettings(p: { children: JSX.Element }): JSX.Element {
       title="Plot settings"
       width={320}
       class="btn-secondary"
-      button="Plot settings ▾"
+      button="Plot settings"
     >
       <div class="cb-pn-ps">
         <p class="cb-muted">Display only. These never rerun the analysis.</p>

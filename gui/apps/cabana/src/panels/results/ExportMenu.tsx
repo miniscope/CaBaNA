@@ -38,7 +38,7 @@ export function ExportMenu(props: { groups: ExportGroup[]; label?: string }): JS
         aria-expanded={open()}
         onClick={() => setOpen(!open())}
       >
-        {props.label ?? 'Export'} ▾
+        {props.label ?? 'Export'}
       </button>
       <Show when={open()}>
         <Popover anchor={btn} onClose={() => setOpen(false)} width={300} label="Export">

@@ -135,9 +135,6 @@ function TestRow(props: { c: Category; on: boolean }): JSX.Element {
         </span>
       </span>
       <span class={`cb-qres cb-qres--${s()}`}>{RESULT[s()]}</span>
-      <span aria-hidden="true" class="cb-qtest__go">
-        ›
-      </span>
     </button>
   );
 }
@@ -190,7 +187,7 @@ export function CheckList(props: { cat: Category }): JSX.Element {
                 <StatusIcon status={c.status} />
                 <span class="cb-qchecks__title">{c.title}</span>
                 <span class={`cb-qres cb-qres--${c.status}`}>{RESULT[c.status]}</span>
-                <PopButton label={`Details: ${c.title}`} title={c.title} width={340} button="›">
+                <PopButton label={`Details: ${c.title}`} title={c.title} width={340} button="Details">
                   <p>{c.detail}</p>
                   <Show when={c.fix && c.status !== 'pass'}>
                     <p>

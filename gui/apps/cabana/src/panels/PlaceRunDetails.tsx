@@ -120,7 +120,7 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
           aria-label="Close run details"
           onClick={() => props.onClose()}
         >
-          ✕
+          Close
         </button>
       </div>
       <p class="cb-muted">

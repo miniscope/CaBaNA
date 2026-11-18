@@ -68,9 +68,9 @@ function BehaviorStrip(props: { ctx: Ctx }): JSX.Element {
                   {bad()
                     ? 'Not evaluated'
                     : r() === 'excited'
-                      ? '▲ Higher'
+                      ? 'Higher'
                       : r() === 'inhibited'
-                        ? '▼ Lower'
+                        ? 'Lower'
                         : hasTest(o())
                           ? 'Not significant'
                           : ''}
@@ -135,7 +135,7 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
     <div class="cb-pe-insp">
       <div class="cb-pe-insp__bar">
         <button class="btn-secondary btn-small" onClick={c().backToPopulation}>
-          ← Back to population
+          Back to population
         </button>
         <strong>Cell {o().cellIds[cell()] + 1}</strong>
         <button
@@ -144,7 +144,7 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
           disabled={pos() <= 0}
           onClick={() => step(-1)}
         >
-          ‹
+          Prev
         </button>
         <button
           class="btn-secondary btn-small"
@@ -152,7 +152,7 @@ export function PethInspector(props: { ctx: Ctx }): JSX.Element {
           disabled={pos() >= c().order.length - 1}
           onClick={() => step(1)}
         >
-          ›
+          Next
         </button>
         <label class="cb-sortpick">
           Behavior

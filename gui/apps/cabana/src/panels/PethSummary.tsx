@@ -126,8 +126,8 @@ export function SummaryView(props: { out: PethOutcome; cols: number[] }): JSX.El
                 <th>Behavior</th>
                 <th class="cb-as-num">Onsets</th>
                 <Show when={labelled()} fallback={<th class="cb-as-num">Evaluated cells</th>}>
-                  <th class="cb-as-num">▲ Higher</th>
-                  <th class="cb-as-num">▼ Lower</th>
+                  <th class="cb-as-num">Higher</th>
+                  <th class="cb-as-num">Lower</th>
                   <th class="cb-as-num">Not significant</th>
                   <th class="cb-as-num">Not evaluated</th>
                 </Show>
@@ -232,7 +232,7 @@ export function SummaryView(props: { out: PethOutcome; cols: number[] }): JSX.El
                         />
                       </div>
                       <span class="cb-muted">
-                        {pct(p.counts.excited, total())} ▲ · {pct(p.counts.inhibited, total())} ▼
+                        {pct(p.counts.excited, total())} higher · {pct(p.counts.inhibited, total())} lower
                       </span>
                     </div>
                   );

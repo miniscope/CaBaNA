@@ -44,7 +44,7 @@ export function RoleHelp(): JSX.Element {
       </p>
       <p class="cb-muted">
         To change it, use "Use as analysis data" on a neural file, or the Analysis data field in
-        Experiment config → Neural acquisition. It is saved to config.yaml as{' '}
+        Experiment config, Neural acquisition. It is saved to config.yaml as{' '}
         <code>neural.file</code>.
       </p>
     </div>
@@ -121,7 +121,7 @@ export function UseAsAnalysis(props: { slot: SlotId; link?: boolean }): JSX.Elem
   );
 }
 
-/** Experiment config → Neural acquisition: which file the analyses read, and what each file gets. */
+/** Experiment config, Neural acquisition: which file the analyses read, and what each file gets. */
 const qcText = (slot: SlotId) =>
   roleOf(slot) === 'analysis' ? 'Recommended' : qcShown(slot) ? 'On (optional)' : 'Off (optional)';
 const prepText = (slot: SlotId) =>

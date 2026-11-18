@@ -111,7 +111,7 @@ export function PopButton(props: {
                 btn.focus();
               }}
             >
-              ✕
+              Close
             </button>
           </div>
           {untrack(() => {
@@ -210,7 +210,7 @@ export function PlotCard(props: {
           title="Expand plot"
           onClick={() => setBig(true)}
         >
-          ⤢
+          Expand
         </button>
         {props.tools}
         <Show when={props.legend}>
@@ -274,7 +274,7 @@ function Overlay(props: {
               aria-label="Close"
               onClick={props.onClose}
             >
-              ✕
+              Close
             </button>
           </div>
           <div class="cb-plot__body" ref={measure}>
@@ -315,7 +315,7 @@ export function RailBox(props: {
           onClick={() => setOpenFold(open() ? undefined : props.fold)}
         >
           <h3>{props.title}</h3>
-          <span aria-hidden="true">{open() ? '▴' : '▾'}</span>
+          <span class="cb-muted">{open() ? 'Hide' : 'Show'}</span>
         </button>
       </Show>
       <Show when={open()}>{props.children}</Show>
@@ -347,7 +347,7 @@ export function Findings(props: { checks: Check[] }): JSX.Element {
                     <span class="cb-muted"> {c.limit}</span>
                   </Show>
                 </span>
-                <PopButton label={`Details: ${c.title}`} title={c.title} width={340} button="›">
+                <PopButton label={`Details: ${c.title}`} title={c.title} width={340} button="Details">
                   <p>{c.detail}</p>
                   <Show when={c.fix && c.status !== 'pass'}>
                     <p>
@@ -456,7 +456,7 @@ export function PagedList<T>(props: {
               aria-label="Previous page"
               onClick={() => go(page() - 1)}
             >
-              ‹
+              Prev
             </button>
             <button
               type="button"
@@ -464,7 +464,7 @@ export function PagedList<T>(props: {
               aria-label="Next page"
               onClick={() => go(page() + 1)}
             >
-              ›
+              Next
             </button>
           </div>
         </Show>
@@ -488,7 +488,7 @@ export function StepButtons(props: {
         disabled={props.i <= 0}
         onClick={() => props.go(props.i - 1)}
       >
-        ‹ Previous {props.what}
+        Previous {props.what}
       </button>
       <button
         type="button"
@@ -496,7 +496,7 @@ export function StepButtons(props: {
         disabled={props.i >= props.n - 1}
         onClick={() => props.go(props.i + 1)}
       >
-        Next {props.what} ›
+        Next {props.what}
       </button>
     </span>
   );
@@ -530,7 +530,7 @@ export function ReviewActions(props: {
         aria-pressed={!!reviewed[props.id]}
         onClick={() => setReviewed(props.id, !reviewed[props.id])}
       >
-        {reviewed[props.id] ? '✓ Reviewed' : 'Mark reviewed'}
+        {reviewed[props.id] ? 'Reviewed' : 'Mark reviewed'}
       </button>
       <InfoTip label="What Mark reviewed does">
         Marks this category as looked at, so the list on the left shows which flags have been

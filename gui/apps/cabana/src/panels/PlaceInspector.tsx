@@ -178,7 +178,7 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
             disabled={page() === 0}
             onClick={() => setPage(Math.max(0, page() - 1))}
           >
-            ‹
+            Prev
           </button>
           <span class="cb-muted">
             {Math.min(page(), pages() - 1) + 1} / {pages()}
@@ -189,7 +189,7 @@ function CellList(props: { ctx: ResultsCtx }): JSX.Element {
             disabled={page() >= pages() - 1}
             onClick={() => setPage(Math.min(pages() - 1, page() + 1))}
           >
-            ›
+            Next
           </button>
         </span>
       </div>
@@ -428,14 +428,14 @@ export function PlaceInspector(props: {
                 onClick={() => c().step(-1)}
                 aria-label="Previous cell"
               >
-                ‹ Previous
+                Previous
               </button>
               <button
                 class="btn-secondary btn-small"
                 onClick={() => c().step(1)}
                 aria-label="Next cell"
               >
-                Next ›
+                Next
               </button>
             </span>
           </div>

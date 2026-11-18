@@ -80,7 +80,7 @@ export function DataTable(props: { slot: SlotId }): JSX.Element {
               class="btn-secondary btn-small"
               onClick={() => go(tableAt(props.slot).row - ROWS)}
             >
-              ← Previous
+              Previous
             </button>
             <label>
               Go to {m() ? 'cell' : 'row'}{' '}
@@ -95,7 +95,7 @@ export function DataTable(props: { slot: SlotId }): JSX.Element {
               class="btn-secondary btn-small"
               onClick={() => go(tableAt(props.slot).row + ROWS)}
             >
-              Next →
+              Next
             </button>
             <Show when={m()}>
               <label>

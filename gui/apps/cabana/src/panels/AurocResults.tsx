@@ -186,7 +186,7 @@ export function Modal(props: {
               aria-label="Close"
               onClick={props.onClose}
             >
-              ✕
+              Close
             </button>
           </div>
           <div class="cb-ar-modal__body">{props.children}</div>
@@ -217,7 +217,7 @@ export function Pager(props: {
         disabled={props.page <= 0}
         onClick={() => props.onPage(props.page - 1)}
       >
-        ‹
+        Prev
       </button>
       <span class="cb-muted">
         {props.page + 1} / {props.pages}
@@ -228,7 +228,7 @@ export function Pager(props: {
         disabled={props.page >= props.pages - 1}
         onClick={() => props.onPage(props.page + 1)}
       >
-        ›
+        Next
       </button>
     </div>
   );
@@ -891,7 +891,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
               aria-label="Previous cell"
               onClick={() => c().step(-1)}
             >
-              ‹ Prev
+              Prev
             </button>
             <span class="cb-muted">
               {c().pos >= 0 ? c().pos + 1 : '–'} of {c().list.length}
@@ -901,7 +901,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
               aria-label="Next cell"
               onClick={() => c().step(1)}
             >
-              Next ›
+              Next
             </button>
           </div>
         </div>
@@ -990,7 +990,7 @@ function Inspector(props: { ctx: Ctx }): JSX.Element {
                 disabled={!Number.isFinite(a())}
                 onClick={() => setBig(true)}
               >
-                ⤢
+                Expand
               </button>
             </div>
             <Show
@@ -1178,7 +1178,7 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
             v={o().excluded.minSpeed !== undefined ? o().excluded.slow.toLocaleString() : '—'}
           />
           <button class="cb-link" onClick={() => openData('position', 'prep')}>
-            Edit frame selection in Position → Preprocess
+            Edit frame selection in Position, Preprocess
           </button>
         </section>
         <section>

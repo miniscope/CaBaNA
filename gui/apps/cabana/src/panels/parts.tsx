@@ -19,7 +19,7 @@ export function CellPicker(props: {
         aria-label="Previous cell"
         onClick={() => selectCell(Math.max(0, cell() - 1))}
       >
-        {props.compact ? '‹' : 'Previous'}
+        {props.compact ? 'Prev' : 'Previous'}
       </button>
       <span>
         Cell{' '}
@@ -39,7 +39,7 @@ export function CellPicker(props: {
         aria-label="Next cell"
         onClick={() => selectCell(Math.min(props.n - 1, cell() + 1))}
       >
-        {props.compact ? '›' : 'Next'}
+        Next
       </button>
       {props.children}
     </div>
@@ -125,7 +125,7 @@ export function SpeedFilterField(): JSX.Element {
 export function ShuffleReach(props: { shuffles: number; alpha: number; preview?: boolean }) {
   return (
     <For each={shuffleReachIssues(props.shuffles, props.alpha, props.preview ?? true)}>
-      {(text) => <span class="cb-pe-warn">⚠ {text}</span>}
+      {(text) => <span class="cb-pe-warn">{text}</span>}
     </For>
   );
 }

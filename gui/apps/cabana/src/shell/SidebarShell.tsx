@@ -90,7 +90,7 @@ function Footer(): JSX.Element {
           disabled={stuck()}
           onClick={() => openItem(next().item)}
         >
-          {stuck() ? 'Next' : `Next: ${ITEM_LABEL[next().item]}`} →
+          {stuck() ? 'Next' : `Next: ${ITEM_LABEL[next().item]}`}
         </button>
       </div>
     </Show>
@@ -117,7 +117,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
               aria-expanded={!folded()}
               onClick={toggleFold}
             >
-              {folded() ? '»' : '«'}
+              {folded() ? 'Expand' : 'Collapse'}
             </button>
           </div>
           <For each={props.steps}>

@@ -63,7 +63,7 @@ export function PethHead(props: { s: PethSetupState; changes: string[] }): JSX.E
         <p class="cb-muted">
           {inputSignalText(prep.eventSigmaS)} (
           <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
-            Deconvolved events → Preprocess
+            Deconvolved events, Preprocess
           </button>
           )
         </p>

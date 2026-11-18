@@ -57,7 +57,7 @@ export function MapAppearance(props: { limits?: boolean }): JSX.Element {
         aria-expanded={open()}
         onClick={() => setOpen(!open())}
       >
-        Map appearance{placeDisplayChanged() ? ' •' : ''} <span aria-hidden="true">▾</span>
+        Map appearance{placeDisplayChanged() ? ' (changed)' : ''}
       </button>
       <Show when={open()}>
         <div class="cb-pop" ref={pop} role="dialog" aria-label="Map appearance">

@@ -161,7 +161,7 @@ export function HelpDrawer(props: { step: StepId }): JSX.Element {
       <div class="cb-prep-help__head">
         <strong>{STEPS[props.step].label}</strong>
         <button ref={close} type="button" class="cb-ib" aria-label="Close help" onClick={closeHelp}>
-          ✕
+          Close
         </button>
       </div>
       <div class="cb-prep-help__tabs" role="tablist" aria-label="Help topics">

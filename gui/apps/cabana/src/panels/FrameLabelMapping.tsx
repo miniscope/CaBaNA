@@ -152,7 +152,7 @@ export function FrameLabelMapping(): JSX.Element {
                 )
               }
             >
-              Set role in Experimental setup →
+              Set role in Experimental setup
             </button>
           }
           onPage={setPage}

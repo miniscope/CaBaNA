@@ -74,7 +74,7 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
                     </For>
                   </span>
                   <span class="cb-muted cb-ar-pop__counts">
-                    ▲ {b.counts.excited} ({pct(b.counts.excited, total())}) · ▼ {b.counts.inhibited}{' '}
+                    {b.counts.excited} higher ({pct(b.counts.excited, total())}) · {b.counts.inhibited} lower{' '}
                     ({pct(b.counts.inhibited, total())}) · {b.counts['not significant']} n.s.
                     {b.counts['not evaluated']
                       ? ` · ${b.counts['not evaluated']} not evaluated`
@@ -172,7 +172,7 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
                 </table>
               </div>
             </Show>
-            <div class="cb-muted">▲ higher activity · ▼ lower activity</div>
+            <div class="cb-muted">Higher activity, lower activity</div>
           </div>
         </Show>
       </div>

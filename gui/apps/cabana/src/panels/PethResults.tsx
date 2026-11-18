@@ -126,7 +126,7 @@ function Actions(props: {
         title="Export"
         width={260}
         class="btn-secondary"
-        button="Export ▾"
+        button="Export"
       >
         {(close) => (
           <div class="cb-pe-menu">
@@ -191,7 +191,7 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
           <KV k="Sampling rate" v={`${fmt(o().input.fs)} Hz`} />
           <KV k="Frames used" v="All (no frame selection)" />
           <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
-            Edit smoothing in Deconvolved events → Preprocess
+            Edit smoothing in Deconvolved events, Preprocess
           </button>
         </section>
         <section>

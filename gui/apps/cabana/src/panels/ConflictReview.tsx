@@ -54,7 +54,7 @@ export function ConflictReview(): JSX.Element {
     <section class="cb-lbl-review" aria-label="Review conflicts">
       <div class="cb-lbl-review__head">
         <button class="btn-secondary btn-small" onClick={() => setReviewingConflicts(false)}>
-          ‹ Back to Load data
+          Back to Load data
         </button>
         <h3>Review conflicts</h3>
         <span class="cb-muted">

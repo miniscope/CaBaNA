@@ -224,14 +224,14 @@ export function PlaceGallery(props: { ctx: ResultsCtx }): JSX.Element {
             disabled={here() === 0}
             onClick={() => setStart((here() - 1) * perPage())}
           >
-            ‹ Previous
+            Previous
           </button>
           <button
             class="btn-secondary btn-small"
             disabled={here() >= pages() - 1}
             onClick={() => setStart((here() + 1) * perPage())}
           >
-            Next ›
+            Next
           </button>
         </span>
       </div>

@@ -79,14 +79,14 @@ function CellBar(): JSX.Element {
             disabled={stepFlagged(ids(), cell(), -1) === undefined}
             onClick={() => goFlagged(-1)}
           >
-            ‹ Previous flagged
+            Previous flagged
           </button>
           <button
             class="btn-secondary btn-small"
             disabled={stepFlagged(ids(), cell(), 1) === undefined}
             onClick={() => goFlagged(1)}
           >
-            Next flagged ›
+            Next flagged
           </button>
         </span>
         <Show when={sel()!.notes.length || sel()!.corr >= 0}>

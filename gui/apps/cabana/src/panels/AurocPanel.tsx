@@ -138,7 +138,7 @@ function Modal(props: {
               aria-label="Close"
               onClick={props.onClose}
             >
-              ✕
+              Close
             </button>
           </div>
           {props.children}

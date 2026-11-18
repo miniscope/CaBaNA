@@ -505,8 +505,8 @@ export function PopulationView(props: { ctx: Ctx }): JSX.Element {
                 onChange={(e) => c().setFilter(e.currentTarget.value as CellFilter)}
               >
                 <option value="all">All cells ({counts().all})</option>
-                <option value="excited">▲ Higher ({counts().higher})</option>
-                <option value="inhibited">▼ Lower ({counts().lower})</option>
+                <option value="excited">Higher ({counts().higher})</option>
+                <option value="inhibited">Lower ({counts().lower})</option>
               </select>
             </Show>
             Sort

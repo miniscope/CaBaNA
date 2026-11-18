@@ -152,7 +152,7 @@ function Timing(props: { slot: SlotId }): JSX.Element {
             openData('sync');
           }}
         >
-          View timing checks in Timestamp alignment →
+          View timing checks in Timestamp alignment
         </button>
       </Show>
     </Box>

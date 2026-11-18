@@ -143,7 +143,7 @@ function CellStack(props: { h: number; expand?: () => void }): JSX.Element {
               of cell {cell() + 1}'s {view()!.against} trace.
             </p>
             <button class="btn-secondary btn-small" onClick={props.expand}>
-              Open the three panels ⤢
+              Open the three panels
             </button>
           </div>
         </Show>

@@ -241,7 +241,7 @@ export function PlaceResults(props: {
           aria-expanded={drawer()}
           onClick={() => setDrawer(true)}
         >
-          Run details ›
+          Run details
         </button>
         <button class="btn-secondary btn-small" onClick={() => props.onEdit()}>
           Edit settings
@@ -317,7 +317,7 @@ export function PlaceResults(props: {
           <div class="cb-muted">
             Significant spatial information and stability, p &lt; {alpha()}{' '}
             <button class="cb-link" aria-expanded={method()} onClick={() => setMethod(!method())}>
-              Method note {method() ? '▴' : '▾'}
+              {method() ? 'Hide method note' : 'Method note'}
             </button>
           </div>
         </div>
@@ -373,7 +373,7 @@ export function PlaceResults(props: {
           fallback={
             <div class="cb-resview__bar">
               <button class="btn-secondary btn-small" onClick={() => setView('gallery')}>
-                ‹ Back to gallery
+                Back to gallery
               </button>
               <span class="cb-muted">Full cell inspector</span>
             </div>

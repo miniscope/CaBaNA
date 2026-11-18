@@ -154,7 +154,7 @@ export function PositionCorrection(): JSX.Element {
       <Advice checks={posOk()?.checks ?? []} />
       <div class="cb-controls">
         <button class="btn-secondary btn-small" onClick={() => openData('position', 'prep')}>
-          Open Position → Preprocess
+          Open Position, Preprocess
         </button>
       </div>
     </>

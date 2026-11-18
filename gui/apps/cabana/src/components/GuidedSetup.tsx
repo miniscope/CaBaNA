@@ -128,7 +128,7 @@ export function SectionList(props: {
           <Show when={props.g.step(order(), -1)}>
             {(id) => (
               <button type="button" class="btn-secondary" onClick={() => props.g.open(id())}>
-                ← {props.sections.find((s) => s.id === id())!.title}
+                {props.sections.find((s) => s.id === id())!.title}
               </button>
             )}
           </Show>
@@ -136,7 +136,7 @@ export function SectionList(props: {
           <Show when={props.g.step(order(), 1)}>
             {(id) => (
               <button type="button" class="btn-secondary" onClick={() => props.g.open(id())}>
-                {props.sections.find((s) => s.id === id())!.title} →
+                {props.sections.find((s) => s.id === id())!.title}
               </button>
             )}
           </Show>
@@ -175,13 +175,13 @@ export function StageFooter(props: {
           class="btn-secondary"
           onClick={() => props.g.setStage(STAGES[i() - 1].id)}
         >
-          ← Back
+          Back
         </button>
       </Show>
       {props.actions}
       <Show when={props.g.stage() === 'configure'}>
         <button type="button" class="btn-primary" onClick={() => props.g.setStage('review')}>
-          Continue →
+          Continue
         </button>
       </Show>
     </div>

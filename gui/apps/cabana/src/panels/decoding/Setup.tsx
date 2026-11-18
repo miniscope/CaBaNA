@@ -380,7 +380,7 @@ function BehaviorList(): JSX.Element {
             disabled={page() === 0}
             onClick={() => setPage(Math.max(0, page() - 1))}
           >
-            ‹
+            Prev
           </button>
           <span class="cb-muted">
             {Math.min(page(), pages() - 1) + 1} / {pages()}
@@ -391,7 +391,7 @@ function BehaviorList(): JSX.Element {
             disabled={page() >= pages() - 1}
             onClick={() => setPage(Math.min(pages() - 1, page() + 1))}
           >
-            ›
+            Next
           </button>
         </span>
       </div>
