@@ -53,6 +53,9 @@ export function openSection(slot: SlotId, sec: SectionId): void {
 
 export const reviewed = (id: EntryId): boolean => !!opened[id];
 
+/** Mark an entry reviewed without opening it (a QC or Preprocess pop-up was applied or continued). */
+export const markReviewed = (id: EntryId): void => setOpened(id, true);
+
 /** Steps of a file that have been shown, and optional steps skipped, by `slot|section`. */
 const [visits, setVisits] = createStore<Record<string, 'visited' | 'skipped'>>({});
 const key = (slot: SlotId, sec: SectionId) => `${slot}|${sec}`;
