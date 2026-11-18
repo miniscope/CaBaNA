@@ -3220,40 +3220,6 @@ button[aria-expanded='true'] > .cb-help {
   margin: 6px 0 0;
   font-size: 12.5px;
 }
-/* Reason asked for when rejecting cells. */
-.cb-rjr fieldset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-}
-.cb-rjr legend {
-  padding: 0;
-  margin-bottom: 4px;
-  font-size: 13px;
-}
-.cb-rjr__opt {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  font-size: 13px;
-}
-.cb-rjr__note {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 6px;
-  font-size: 12px;
-}
-.cb-rjr__hint {
-  margin: 6px 0;
-  font-size: 12px;
-}
-.cb-rjr__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
 /* Behavior annotations QC: rows whose start and stop do not make a pair. */
 .cb-unpaired {
   display: flex;
