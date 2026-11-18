@@ -45,6 +45,18 @@ def parse_text(text: str) -> tuple[dict | None, dict | None]:
     return data, None
 
 
+def merge_exclude_frames(config: dict, processing: dict) -> dict:
+    """The session config the framework reads: processing.yaml `position.exclude_frames` goes to
+    `behavior.position.exclude_frames`. A value the GUI already sent is left as sent."""
+    exclude = (processing.get("position") or {}).get("exclude_frames")
+    position = (config.get("behavior") or {}).get("position")
+    if exclude is None or not isinstance(position, dict) or "exclude_frames" in position:
+        return config
+    merged = json.loads(json.dumps(config))
+    merged["behavior"]["position"]["exclude_frames"] = exclude
+    return merged
+
+
 class ProjectFiles:
     def __init__(self, folder: Path) -> None:
         self.folder = Path(folder).resolve()
@@ -169,6 +181,16 @@ class ProjectFiles:
         self._log("*", f"Restored settings from snapshot {snapshot_id}")
         projects.touch(self.folder)
         return {"restored": snapshot_id, "saved_at": now_iso()}
+
+    def freeze(self, destination: Path) -> None:
+        """Copies the three yaml files as the engine uses them (the last valid copy when a file is
+        broken) into a run's `config/` folder."""
+        for name in CONFIG_NAMES:
+            text = (self.folder / name).read_text() if (self.folder / name).exists() else "{}\n"
+            if parse_text(text)[1]:
+                backup = self.history / "last-valid" / name
+                text = backup.read_text() if backup.exists() else "{}\n"
+            atomic_write(destination / name, text)
 
     # -- comparing with a run ----------------------------------------------------------
     def compare(self, name: str, run_id: str, runs_dir: Path) -> dict[str, Any]:

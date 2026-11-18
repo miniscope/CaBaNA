@@ -20,7 +20,9 @@ from . import __version__
 from . import capabilities as caps_mod
 from . import pipeline_prep as prep
 from . import serialize
-from .project_files import ProjectFiles
+from . import dialogs, project_archive, storage
+from .project_data import ProjectData
+from .project_files import ProjectFiles, merge_exclude_frames
 from .projects import PROJECT_ID, Conflict, NotSupported, Projects
 from .runner import Refused, Runner
 from .store import BadRequest, Project, check_id
@@ -52,7 +54,9 @@ class App:
         self.sessions.clear()
 
     def open_project(self, folder: Path) -> None:
-        self._use(Project(folder, in_project=True), folder.resolve())
+        store = Project(folder, in_project=True)
+        store.reference_lookup = ProjectData(folder).find  # registered data is read in place
+        self._use(store, folder.resolve())
 
     def close_project(self) -> None:
         self._use(self.workspace, None)
@@ -87,6 +91,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _send_file(self, path: Path, ctype: str, headers: dict | None = None) -> None:
+        """Streams a file in chunks (exports can be large)."""
+        self.send_response(200)
+        self._cors()
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(path.stat().st_size))
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        with open(path, "rb") as f:
+            while chunk := f.read(1 << 20):
+                self.wfile.write(chunk)
 
     def _json(self, obj: Any, status: int = 200) -> None:
         self._send(status, json.dumps(obj, default=str, allow_nan=False).encode())
@@ -148,8 +165,14 @@ class Handler(BaseHTTPRequestHandler):
     def project(self) -> Project:
         return self.app.project
 
+    def store_of(self, folder: Path) -> Project:
+        """The open project's store, or a throwaway one for a project that is not open."""
+        return self.project if self.app.is_current(folder) else Project(folder, in_project=True)
+
     def results_zip(self, run_id: str) -> tuple[dict, Path]:
         rec = self.project.read_run(check_id(run_id))
+        if rec.get("outputs_deleted"):
+            raise FileNotFoundError(f"outputs of run {run_id} were deleted; the record and summary remain")
         if not rec.get("results_file"):
             raise FileNotFoundError(f"run {run_id} has no results")
         return rec, self.project.run_dir(run_id) / rec["results_file"]
@@ -186,7 +209,10 @@ def input_put(h: Handler, q: dict, sha: str) -> None:
 
 def sessions_post(h: Handler, q: dict) -> None:
     body = h._body_json()
-    session_id, info = h.project.register_session(body.get("config"), body.get("files") or {}, h.app.capabilities.flags)
+    config = body.get("config")
+    if h.app.current and isinstance(config, dict):  # QC position corrections live in processing.yaml
+        config = merge_exclude_frames(config, ProjectFiles(h.app.current).load("processing.yaml"))
+    session_id, info = h.project.register_session(config, body.get("files") or {}, h.app.capabilities.flags)
     problems: list[str] = []
     try:
         h.app.sessions.get(session_id)
@@ -272,6 +298,10 @@ def table(h: Handler, q: dict, run_id: str, result: str) -> None:
 
 
 def summary(h: Handler, q: dict, run_id: str) -> None:
+    kept = h.project.run_dir(run_id) / "summary.json"  # left behind when outputs were deleted
+    if h.project.read_run(run_id).get("outputs_deleted") and kept.exists():
+        h._json(json.loads(kept.read_text()))
+        return
     _, zip_path = h.results_zip(run_id)
     h._json(serialize.summary_rows(zip_path))
 
@@ -428,6 +458,72 @@ def history_restore(h: Handler, q: dict, pid: str, snapshot: str) -> None:
     h._json(project_files(h, pid).restore(snapshot))
 
 
+# -- storage, export (D) -----------------------------------------------------------------------
+def storage_get(h: Handler, q: dict, pid: str) -> None:
+    folder = h.app.projects.folder_of(pid)
+    h._json(storage.report(h.store_of(folder), folder))
+
+
+def storage_delete(h: Handler, q: dict, pid: str) -> None:
+    folder = h.app.projects.folder_of(pid)
+    freed = storage.delete_category(h.store_of(folder), folder, h._body_json().get("category", ""))
+    if h.app.is_current(folder):
+        h.app.sessions.clear()
+    h._json({"freed_bytes": freed})
+
+
+def run_delete_outputs(h: Handler, q: dict, run_id: str) -> None:
+    h._json({"freed_bytes": storage.delete_outputs(h.project, check_id(run_id))})
+
+
+def project_export(h: Handler, q: dict, pid: str) -> None:
+    folder = h.app.projects.folder_of(pid)
+    path = project_archive.export_zip(folder, h._body_json().get("include") or {})
+    try:
+        h._send_file(path, "application/zip",
+                     {"Content-Disposition": f'attachment; filename="{folder.name}.cabana.zip"'})
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def project_import(h: Handler, q: dict) -> None:
+    ids = {p["id"] for p in h.app.projects.list()}
+    folder = project_archive.import_zip(h._body_json().get("path", ""), h.app.projects.root, ids)
+    h._json(h.app.projects.describe(folder), 201)
+
+
+# -- data references (C) ---------------------------------------------------------------------
+def dialog(h: Handler, q: dict) -> None:
+    body = h._body_json()
+    h._json(dialogs.choose(body.get("kind", ""), body.get("title"), body.get("default_name")))
+
+
+def scan(h: Handler, q: dict) -> None:
+    h._json(dialogs.scan(h._body_json().get("paths") or []))
+
+
+def data_post(h: Handler, q: dict, pid: str) -> None:
+    body = h._body_json()
+    h._json(ProjectData(h.app.projects.folder_of(pid)).add(body.get("slot", ""), body.get("path", "")), 201)
+
+
+def data_delete(h: Handler, q: dict, pid: str, slot: str) -> None:
+    ProjectData(h.app.projects.folder_of(pid)).remove(slot)
+    h._send(204)
+
+
+def data_get(h: Handler, q: dict, pid: str) -> None:
+    h._json({"files": ProjectData(h.app.projects.folder_of(pid)).status()})
+
+
+def registered_file(h: Handler, q: dict, sha: str) -> None:
+    """Bytes of a file registered in the open project; anything else is refused."""
+    path = ProjectData(h.app.current).find(sha) if h.app.current else None
+    if path is None:
+        raise FileNotFoundError(sha)
+    h._send_file(path, "application/octet-stream", {"X-Input-Name": path.name})
+
+
 Route = tuple[str, str, Callable[..., None]]
 ID = r"([0-9a-zA-Z_-]{8,64})"
 ROUTES: list[Route] = [
@@ -468,6 +564,17 @@ ROUTES: list[Route] = [
     ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_get),
     ("PUT", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_put),
     ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)/compare", file_compare),
+    ("GET", rf"/projects/{PROJECT_ID}/storage", storage_get),
+    ("POST", rf"/projects/{PROJECT_ID}/storage/delete", storage_delete),
+    ("POST", rf"/runs/{ID}/delete-outputs", run_delete_outputs),
+    ("POST", rf"/projects/{PROJECT_ID}/export", project_export),
+    ("POST", r"/projects/import", project_import),
+    ("POST", r"/dialog", dialog),
+    ("POST", r"/scan", scan),
+    ("POST", rf"/projects/{PROJECT_ID}/data", data_post),
+    ("GET", rf"/projects/{PROJECT_ID}/data", data_get),
+    ("DELETE", rf"/projects/{PROJECT_ID}/data/([a-z_]+)", data_delete),
+    ("GET", r"/files/([0-9a-f]{64})", registered_file),
     ("GET", rf"/projects/{PROJECT_ID}/history", history_get),
     ("POST", rf"/projects/{PROJECT_ID}/history/([0-9]{{8}}-[0-9]{{6}}(?:-[0-9]+)?)/restore", history_restore),
 ]

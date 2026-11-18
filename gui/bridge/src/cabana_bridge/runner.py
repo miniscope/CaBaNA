@@ -16,6 +16,8 @@ from typing import Any
 
 from . import capabilities as caps_mod
 from . import pipeline_prep as prep
+from . import storage
+from .project_files import ProjectFiles
 from .store import BadRequest, Project
 
 EXIT_STATUS = {0: "ok", 3: "cancelled", 4: "partial"}
@@ -85,6 +87,10 @@ class Runner:
         run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
         folder = self.project.run_dir(run_id)
         folder.mkdir(parents=True)
+        if self.project.in_project:  # settings as they were for this run, and a way back to them
+            files = ProjectFiles(self.project.root)
+            files.snapshot("before run")
+            files.freeze(folder / "config")
         prep.write_yaml(pipeline, folder / "pipeline.yaml")
         reproduce = folder / "reproduce.sh"
         reproduce.write_text(
@@ -203,6 +209,8 @@ class Runner:
             tail = (folder / "stderr.txt").read_text(errors="replace")[-2000:]
             rec["errors"].append({"message": tail or f"cabana exited with code {code}"})
         self.project.write_run(run_id, rec)
+        if self.project.in_project and rec["status"] in storage.DONE:
+            storage.apply_retention(self.project, self.project.root, rec.get("analysis"))
 
     # -- control -----------------------------------------------------------------------
     def cancel(self, run_id: str) -> None:
