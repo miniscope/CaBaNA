@@ -94,9 +94,6 @@ export function Unassigned(props: { file: File }): JSX.Element {
   };
   return (
     <div class="cb-ds-start">
-      <div class="cb-ds-head">
-        <h3>Unassigned file</h3>
-      </div>
       <p class="cb-muted cb-ds-meta">
         <code>{props.file.name}</code>
       </p>

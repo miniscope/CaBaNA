@@ -1209,3 +1209,43 @@
   text-align: center;
   font-size: 12.5px;
 }
+
+/* Entry pop-up: the open file fills the window body */
+.cb-modal .cb-ds-entry {
+  flex: 1;
+  padding: 0;
+  gap: 6px;
+}
+.cb-modal .cb-ds-view--on {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
+.cb-modal .cb-ds-view button + button {
+  border-left: 1px solid var(--border-default);
+}
+.cb-ds-bar__file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.cb-ds-bar__shape {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.cb-ds-bar__hint {
+  font-size: 12px;
+  white-space: nowrap;
+}
+@media (max-width: 1360px) {
+  .cb-ds-bar__hint {
+    display: none;
+  }
+}
+.cb-ds-tabs button {
+  white-space: nowrap;
+}

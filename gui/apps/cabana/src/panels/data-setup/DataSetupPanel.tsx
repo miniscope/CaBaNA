@@ -31,7 +31,7 @@ import { InfoTip } from '../InfoTip.tsx';
 import { ApplySettings, ExamplePicker, fileList } from '../LoadPanel.tsx';
 import { fitToWindow } from '../QcPanel.tsx';
 import { StatusIcon } from '../QcParts.tsx';
-import { EntryView } from './EntryView.tsx';
+import { EntryPopup } from './EntryView.tsx';
 import { FileList } from './FileList.tsx';
 import { ProjectLibrary } from './ProjectLibrary.tsx';
 
@@ -80,14 +80,11 @@ export function DataSetupPanel(): JSX.Element {
   const [dragging, setDragging] = createSignal(false);
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
-  // Get started is the page until something loads, and again after Clear all.
+  // The Project library is the page until something loads, and again after Clear all.
   createEffect(
     on(
       () => loadedIds().length + unrecognized().length > 0,
-      (any) => {
-        if (any && entry() === 'start') openEntry('config');
-        if (!any) openEntry('start');
-      },
+      (any) => !any && openEntry('start'),
     ),
   );
   // A link from another page: open the file a label came from.
@@ -182,9 +179,9 @@ export function DataSetupPanel(): JSX.Element {
           style={{ display: reviewingConflicts() ? 'none' : undefined }}
         >
           <FileList />
-          <EntryView />
         </div>
       </Show>
+      <EntryPopup />
     </div>
   );
 }

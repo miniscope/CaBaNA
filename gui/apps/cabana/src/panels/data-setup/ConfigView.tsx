@@ -34,8 +34,8 @@ import { HelpMark } from '../../components/HelpMark.tsx';
 
 const round = (v: number) => Math.round(v * 100) / 100;
 
-// Kept while other entries are open.
-const [asYaml, setAsYaml] = createSignal(false);
+// Kept while other entries are open; the Data setup page's View opens the YAML.
+export const [asYaml, setAsYaml] = createSignal(false);
 
 function Session(): JSX.Element {
   return (
@@ -223,7 +223,6 @@ export function ConfigView(): JSX.Element {
   return (
     <div class="cb-ds-config">
       <div class="cb-ds-head">
-        <h3>Experiment config</h3>
         <ImportedConfig compact />
         <span class="cb-spacer" />
         <div class="cb-ds-view" role="tablist" aria-label="Show the config as">

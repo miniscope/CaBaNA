@@ -86,7 +86,7 @@ export function Modal(props: {
               ref={close}
               type="button"
               class="btn-secondary btn-small"
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
             >
               Close
             </button>
