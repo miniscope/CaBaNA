@@ -4,7 +4,7 @@
 
 import { createMemo, createSignal } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import { matchSlot, SLOTS, type Level, type SlotId } from './slots.ts';
+import { SLOTS, type Level, type SlotId } from './slots.ts';
 import { PARADIGMS } from './experiments.ts';
 import {
   readFootprints,
@@ -37,7 +37,7 @@ import { timingReport } from './framework.ts';
 import { column } from './parse.ts';
 import { parseCsvText } from './csv-text.ts';
 import { UNCALIBRATED } from './spec/pipeline.ts';
-import { isSessionConfig } from './config-read.ts';
+import { findConfig, placeFiles } from './file-match.ts';
 import { markerLabelCounts, readMarkers } from './markers.ts';
 import {
   agreement,
@@ -214,35 +214,16 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
   // A config is read first, so the file names it gives decide where the other files go.
   const config = slot ? undefined : await findConfig(files);
   if (config) await load('config', config);
-  const named = new Map(Object.entries(configFiles()).map(([id, n]) => [n, id as SlotId]));
   const rest: File[] = [];
   await Promise.all(
-    files.map((f) => {
-      if (f === config) return;
-      // Other YAML files are not data; they wait in Unmatched, where the user can still assign one.
-      const id = slot ?? named.get(f.name) ?? (isYaml(f) ? undefined : matchSlot(f.name));
-      // A frame-label file can also be the position file (the framework reads frame labels
-      // from the same file): when the config names it for another slot, it fills both.
-      if (id && !slot && id !== 'frame_labels' && matchSlot(f.name) === 'frame_labels')
-        return Promise.all([load(id, f), load('frame_labels', f)]);
-      if (id) return load(id, f);
-      rest.push(f);
+    placeFiles(files, config, configFiles(), slot).map(({ file, slots }) => {
+      if (file === config) return;
+      if (!slots.length) return void rest.push(file);
+      return Promise.all(slots.map((id) => load(id, file)));
     }),
   );
   setUnrecognized((u) => [...u, ...rest]);
   if (config || slot === 'config') loadHooks.forEach((f) => f());
-}
-
-const isYaml = (f: File) => /\.ya?ml$/i.test(f.name);
-
-/**
- * The session config among `files`, recognized by its content (a framework session layout), not
- * by its name. With several, the one named like a config wins.
- */
-async function findConfig(files: File[]): Promise<File | undefined> {
-  const configs: File[] = [];
-  for (const f of files.filter(isYaml)) if (isSessionConfig(await f.text())) configs.push(f);
-  return configs.find((f) => matchSlot(f.name) === 'config') ?? configs[0];
 }
 
 const loadHooks: (() => void)[] = [];
@@ -444,30 +425,41 @@ const EXAMPLE_FILES = [
   'config.yaml',
 ];
 
-/** Replace the loaded data with an example dataset. Files a dataset doesn't have are skipped. */
-export async function loadExample(id: string): Promise<void> {
+/** The files and the picture and video of an example dataset, fetched but not loaded. */
+export interface FetchedExample {
+  files: File[];
+  frame?: File;
+  video?: File;
+}
+
+/** Fetch an example's files; ones a dataset doesn't have are skipped. */
+export async function fetchExample(id: string): Promise<FetchedExample> {
   const base = `${import.meta.env.BASE_URL}example_data/${id}/`;
-  const got = await Promise.all(
-    EXAMPLE_FILES.map(async (n) => {
-      const res = await fetch(base + n);
-      // A missing file comes back as the app's own page, not an error.
-      return res.ok && !res.headers.get('content-type')?.includes('text/html')
-        ? new File([await res.blob()], n)
-        : undefined;
-    }),
-  );
+  const get = async (n: string, type?: string) => {
+    const res = await fetch(base + n);
+    // A missing file comes back as the app's own page, not an error.
+    return res.ok && !res.headers.get('content-type')?.includes('text/html')
+      ? new File([await res.blob()], n, type ? { type } : undefined)
+      : undefined;
+  };
+  const [files, media] = await Promise.all([
+    Promise.all(EXAMPLE_FILES.map((n) => get(n))),
+    Promise.all([get('arena_frame.png', 'image/png'), get('arena_video.mp4', 'video/mp4')]),
+  ]);
+  return { files: files.filter((f): f is File => !!f), frame: media[0], video: media[1] };
+}
+
+/** Replace the loaded data with an example fetched earlier. */
+export async function loadFetchedExample(id: string, got: FetchedExample): Promise<void> {
   clearAll();
   setSessionName(EXAMPLES.find((x) => x.id === id)?.label);
-  await addFiles(got.filter((f): f is File => !!f));
-  const media = await Promise.all(
-    ['arena_frame.png', 'arena_video.mp4'].map(async (n) => {
-      const res = await fetch(base + n);
-      return res.ok && !res.headers.get('content-type')?.includes('text/html')
-        ? new File([await res.blob()], n, { type: n.endsWith('png') ? 'image/png' : 'video/mp4' })
-        : undefined;
-    }),
-  );
-  setExampleMedia({ id, frame: media[0], video: media[1] });
+  await addFiles(got.files);
+  setExampleMedia({ id, frame: got.frame, video: got.video });
+}
+
+/** Replace the loaded data with an example dataset. */
+export async function loadExample(id: string): Promise<void> {
+  await loadFetchedExample(id, await fetchExample(id));
 }
 
 const [experimentId, setExperiment] = createSignal('custom');
@@ -484,8 +476,21 @@ try {
 /** The name of the session: the folder that was loaded, or the example. */
 export const [sessionName, setSessionName] = createSignal<string | undefined>();
 
-/** The page shown: a sidebar step, or `analyze_overview` for the Analyze section header. */
-export const [stepId, goToStep] = createSignal('data');
+/** The pages that are not a workflow step: Welcome, New Project, Project Library, About. */
+export const PROJECT_PAGES = ['welcome', 'new', 'library', 'about'];
+export const isProjectPage = (id: string): boolean => PROJECT_PAGES.includes(id);
+
+/**
+ * The page shown: a project page, a sidebar step, or `analyze_overview` for the Analyze section
+ * header. The app opens on Welcome.
+ */
+export const [stepId, goToStep] = createSignal('welcome');
+
+/** Close the session: clear what is loaded in this window and go back to Welcome. */
+export function closeSession(): void {
+  clearAll();
+  goToStep('welcome');
+}
 
 /** How much a file is needed for the chosen experiment. */
 export const levelOf = (id: SlotId): Level =>

@@ -175,17 +175,28 @@ const [saved, setSaved] = createSignal<SavedDataset[]>(readAll());
 /** Datasets whose settings can be applied: the most recent first, without the one loaded now. */
 export const savedDatasets = () => saved().filter((d) => d.name !== sessionName());
 
-function save(name: string, settings: Captured): void {
-  const list = [
-    { name, savedAt: new Date().toISOString(), settings },
-    ...saved().filter((d) => d.name !== name),
-  ].slice(0, KEEP);
+function store(list: SavedDataset[]): void {
   setSaved(list);
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
   } catch {
     // not remembered in this browser; applying from it is then unavailable
   }
+}
+
+function save(name: string, settings: Captured): void {
+  store(
+    [
+      { name, savedAt: new Date().toISOString(), settings },
+      ...saved().filter((d) => d.name !== name),
+    ].slice(0, KEEP),
+  );
+}
+
+/** Give the settings kept under one session name to another name, so a rename keeps them. */
+export function renameSaved(from: string, to: string): void {
+  if (from === to || !saved().some((d) => d.name === from)) return;
+  store(saved().flatMap((d) => (d.name === to ? [] : [d.name === from ? { ...d, name: to } : d])));
 }
 
 // Keep the loaded dataset's settings as they change. Nothing is saved until a dataset is loaded.
