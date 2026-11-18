@@ -277,11 +277,6 @@ export function setBinCm(v: number): void {
 const r = (v: number) => Math.round(v * 100) / 100;
 export const cmPts = (z: Zone) => z.pts.map((p) => toCm(p)!.map(r));
 
-export function arenaSummary(): string {
-  const [w, h] = sizeCm();
-  return `${arena.shape}, ${arena.shape === 'circle' ? `${r(w)} cm across` : `${r(w)} x ${r(h)} cm`}, ${arena.zones.length} zones, ${effectiveBin()} cm bins`;
-}
-
 /**
  * For each zone (not excluded regions): percent of the tracked frames the animal spent inside, and
  * the seconds. A frame in overlapping zones counts for the first zone, as the framework's
@@ -311,20 +306,4 @@ export const zoneShare = createMemo<
       index,
     };
   });
-});
-
-/** How many bins the arena has at the chosen size, and how long the animal spent in them. */
-export const binStats = createMemo(() => {
-  const g = pxPerCm() && arena.box ? binGrid(effectiveBin()) : undefined;
-  if (!g) return undefined;
-  const base: { n: number; open: number; median?: number; underPct?: number } = {
-    n: g.nx * g.ny,
-    open: g.open.filter(Boolean).length,
-  };
-  if (!positionsCm().x.length) return base;
-  const times = [...occupancy(g)].filter((_, i) => g.open[i]).sort((p, q) => p - q);
-  const under = times.filter((v) => v < arena.minOccupancy).length;
-  base.median = times[Math.floor(0.5 * (times.length - 1))] ?? 0;
-  base.underPct = (100 * under) / Math.max(times.length, 1);
-  return base;
 });

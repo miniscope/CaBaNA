@@ -41,9 +41,6 @@ export function setAnalysisData(kind: NeuralKind): void {
 export const isReference = (slot: SlotId): boolean =>
   slot !== analysisSlot() && NEURAL_LAYERS.some((l) => l.slot === slot) && isLoaded(slot);
 
-export const isNeuralKind = (k: unknown): k is NeuralKind =>
-  NEURAL_LAYERS.some((l) => l.kind === k);
-
 // QC of reference data is off at first. Turning it on only shows checks that already run; it is
 // remembered per file and dataset (by the session name) in this browser.
 const REF_QC_KEY = 'cabana.referenceQc';

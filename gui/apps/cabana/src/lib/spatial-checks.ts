@@ -4,14 +4,6 @@
 
 export type Stage = 'frame' | 'outline' | 'scale' | 'zones' | 'review';
 
-export const STAGE_LABEL: Record<Stage, string> = {
-  frame: 'Video frame',
-  outline: 'Arena outline',
-  scale: 'Scale',
-  zones: 'Zones',
-  review: 'Review',
-};
-
 export interface SpatialSnapshot {
   frameKind?: 'image' | 'video' | 'blank';
   /** A video's background frame (one frame or the empty-arena median) has been chosen. */

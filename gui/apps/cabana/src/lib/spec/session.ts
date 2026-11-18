@@ -1,8 +1,8 @@
 // Getting the loaded session to the Python bridge: upload each input file once (by hash), then
 // register the same config the Download config button writes (plan D-4).
 
-import { bridge, type Capabilities } from '../bridge-client.ts';
-import { buildSessionConfig, type Section } from '../session-config.ts';
+import { bridge } from '../bridge-client.ts';
+import { buildSessionConfig } from '../session-config.ts';
 import { slotFile } from '../store.ts';
 import { SLOTS, type SlotId } from '../slots.ts';
 
@@ -43,13 +43,6 @@ export interface UploadedSession {
   problems: string[];
   inputs: Record<string, string>;
 }
-
-/** Sections the installed framework cannot read; they stay in the stored full config. */
-export const sectionsToOmit = (caps: Capabilities): Section[] => [
-  ...(caps.session_metadata ? [] : (['metadata'] as Section[])),
-  ...(caps.session_markers ? [] : (['markers'] as Section[])),
-  ...(caps.frame_labels ? [] : (['frame_labels'] as Section[])),
-];
 
 /**
  * Upload inputs and register the session. The full config goes to the bridge, which writes the

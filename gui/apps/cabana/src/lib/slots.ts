@@ -154,8 +154,6 @@ export const SLOTS: Slot[] = [
   },
 ];
 
-export const GROUPS: Group[] = ['Neural', 'Behavioral', 'Configuration'];
-
 /** Slots are tested in list order, so a zone file is not taken for behavior annotations. */
 export function matchSlot(name: string): SlotId | undefined {
   return SLOTS.find((s) => s.match.test(name))?.id;

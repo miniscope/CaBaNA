@@ -14,7 +14,6 @@ import { commonInput } from './session-config.ts';
 import { annotationResults } from './store.ts';
 import { behaviorDecodingPipeline, positionDecodingPipeline } from './spec/decoding.ts';
 import { populationPipeline, type PopulationContext } from './spec/population.ts';
-import { prep } from './preprocess.ts';
 import type { CapabilityName } from './bridge-client.ts';
 import { shufflesFor } from './preview.ts';
 
@@ -57,9 +56,24 @@ const POSITION_DECODING_PREP = [
   'maxGapS',
 ];
 
-
-const PLACE_PREP = ['eventSigmaS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS', 'minSpeed'];
-const AUROC_PREP = ['eventSigmaS', 'labelPadS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS'];
+const PLACE_PREP = [
+  'eventSigmaS',
+  'maxGapS',
+  'fillGapS',
+  'posMethod',
+  'posWindowS',
+  'speedWindowS',
+  'minSpeed',
+];
+const AUROC_PREP = [
+  'eventSigmaS',
+  'labelPadS',
+  'maxGapS',
+  'fillGapS',
+  'posMethod',
+  'posWindowS',
+  'speedWindowS',
+];
 const AUROC_PREP_NO_POSITION = ['eventSigmaS', 'labelPadS'];
 
 /** The labels of a list that a run reads: the chosen ones, or all of them when none is chosen. */
@@ -132,7 +146,9 @@ export function registerAnalyses(): void {
         position,
         grid: position,
         labels:
-          settings.target === 'position' ? [] : chosenOr(settings.labels, ctx.labels[settings.target]),
+          settings.target === 'position'
+            ? []
+            : chosenOr(settings.labels, ctx.labels[settings.target]),
       },
     };
   });
@@ -164,6 +180,3 @@ export function registerAnalyses(): void {
     };
   });
 }
-
-/** Keys of `prep` that exist (guards against a typo in the lists above). */
-export const validPrepKeys = (keys: string[]) => keys.every((k) => k in prep);

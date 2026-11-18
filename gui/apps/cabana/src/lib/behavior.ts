@@ -108,42 +108,6 @@ export interface LabelStats {
   pctSession: number;
 }
 
-const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN);
-const sd = (v: number[]) => Math.sqrt(mean(v.map((x) => (x - mean(v)) ** 2)));
-
-function gaps(sorted: Epoch[]): number[] {
-  return sorted
-    .slice(1)
-    .map((e, i) => e.start - sorted[i].stop)
-    .filter((g) => g >= 0);
-}
-
-/** One row per label, then one for all labels together (gaps between consecutive epochs of any label). */
-export function annotationStats(epochs: Epoch[], duration: number): LabelStats[] {
-  const row = (label: string, own: Epoch[]): LabelStats => {
-    const sorted = own.filter((e) => e.stop > e.start).sort((a, b) => a.start - b.start);
-    const len = sorted.map((e) => e.stop - e.start);
-    return {
-      label,
-      n: sorted.length,
-      meanLen: mean(len),
-      sdLen: sd(len),
-      meanGap: mean(gaps(sorted)),
-      pctSession: (100 * len.reduce((a, b) => a + b, 0)) / duration,
-    };
-  };
-  const labels = [...new Set(epochs.map((e) => e.label))];
-  return [
-    ...labels.map((l) =>
-      row(
-        l,
-        epochs.filter((e) => e.label === l),
-      ),
-    ),
-    row('All labels', epochs),
-  ];
-}
-
 /** `merge_gap_s`: bouts of the same label that overlap or are less than `gap` seconds apart become one bout. */
 export function mergeBouts(epochs: Epoch[], gap: number): { epochs: Epoch[]; merged: number } {
   const out: Epoch[] = [];

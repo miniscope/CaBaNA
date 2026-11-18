@@ -5,7 +5,6 @@ import type { Level, SlotId } from './slots.ts';
 
 /** The three neural activity files, in processing order: raw, then denoised, then events. */
 export const ACTIVITY_SLOTS: SlotId[] = ['neural_raw', 'neural_denoised', 'neural_deconvolved'];
-export const isActivity = (slot: SlotId): boolean => ACTIVITY_SLOTS.includes(slot);
 
 export interface RowFacts {
   level: Level;
@@ -60,7 +59,7 @@ export function rowActions(f: Pick<RowFacts, 'loaded' | 'error'>): {
 export const rowMuted = (f: Pick<RowFacts, 'loaded' | 'error' | 'level'>): boolean =>
   !f.loaded && !f.error && (f.level === 'optional' || f.level === 'unused');
 
-export const LEVEL_WORD: Record<Level, string> = {
+const LEVEL_WORD: Record<Level, string> = {
   required: 'Required',
   recommended: 'Recommended',
   optional: 'Optional',

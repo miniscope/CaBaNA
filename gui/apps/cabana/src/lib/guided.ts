@@ -6,11 +6,6 @@ import { createRoot, createSignal } from 'solid-js';
 import { onClear } from './store.ts';
 
 export type Stage = 'configure' | 'review' | 'run';
-export const STAGES: { id: Stage; title: string }[] = [
-  { id: 'configure', title: 'Configure settings' },
-  { id: 'review', title: 'Review and preview' },
-  { id: 'run', title: 'Run analysis' },
-];
 
 export interface Guided {
   stage: () => Stage;

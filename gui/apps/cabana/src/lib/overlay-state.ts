@@ -5,7 +5,6 @@ import { annotationResults } from './store.ts';
 import { span } from './viz.ts';
 import {
   groupByFile,
-  isolate,
   layoutStripes,
   setAll,
   shownNames,
@@ -53,7 +52,6 @@ export const files = createMemo<AnnotationFile[]>(() =>
 const sessionSeconds = () => span()[1] - span()[0];
 export const groups = createMemo(() => groupByFile(files(), sessionSeconds()));
 export const shown = createMemo(() => shownNames(groups(), choices()));
-export const behaviorCount = () => groups().reduce((n, g) => n + g.behaviors.length, 0);
 
 /** Every shown bout of the session with its stripe; the same list is drawn and hit-tested. */
 export const stripes = createMemo(() => layoutStripes(visibleBouts(files(), shown(), span())));
@@ -66,10 +64,6 @@ export function setShown(name: string, on: boolean): void {
 }
 export function showAll(on: boolean): void {
   setChoices(setAll(groups(), choices(), on));
-  save();
-}
-export function isolateBehavior(name: string): void {
-  setChoices(isolate(groups(), choices(), name));
   save();
 }
 export function setIntensity(v: Intensity): void {

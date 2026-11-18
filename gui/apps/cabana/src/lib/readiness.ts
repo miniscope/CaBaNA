@@ -173,19 +173,6 @@ export const STATUS_TEXT: Record<StatusKind, string> = {
   outdated: 'Outdated',
   failed: 'Failed',
 };
-/** Icon names for the sidebar; the text is always shown with it (never color alone). */
-export const STATUS_ICON: Record<StatusKind, string> = {
-  not_started: 'circle',
-  optional: 'dash',
-  needs_input: 'alert',
-  framework_update: 'wrench',
-  ready: 'play',
-  in_progress: 'circle',
-  running: 'spinner',
-  complete: 'check',
-  outdated: 'refresh',
-  failed: 'x',
-};
 
 /** The five states the sidebar shows; every kind above maps to one, so the icons mean the same on every page. */
 export type Tone = 'complete' | 'in_progress' | 'needs_input' | 'not_started' | 'outdated';
@@ -342,9 +329,6 @@ export function analysisStatus(s: Snapshot, id: AnalysisItem): Status {
   return status('ready');
 }
 
-/** Pages that only inspect the data: never required, so never "Not started". */
-const OPTIONAL: ItemId[] = ['viz', 'qc', 'prep'];
-
 export function itemStatus(s: Snapshot, id: ItemId): Status {
   switch (id) {
     case 'data': {
@@ -403,7 +387,6 @@ export const ORDER: ItemId[] = [
   'results',
 ];
 const NEXT_SKIPS: ItemId[] = ['viz'];
-export const isOptional = (id: ItemId) => OPTIONAL.includes(id);
 
 export interface NextStep {
   item: ItemId;

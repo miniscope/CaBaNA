@@ -6,6 +6,7 @@
 import { For, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Pill } from '../../components/Pill.tsx';
+import { confirmAction } from '../../lib/confirm.ts';
 import { qcShown } from '../../lib/analysis-data.ts';
 import { arena } from '../../lib/arena.ts';
 import { openEntry, setAppliedNote } from '../../lib/data-setup-view.ts';
@@ -42,10 +43,10 @@ import {
   sessionDuration,
   traceMatrix,
 } from '../../lib/store.ts';
-import { behaviorCategories } from '../BehaviorQc.tsx';
+import { behaviorTests } from '../BehaviorQc.tsx';
 import { InfoTip } from '../InfoTip.tsx';
 import { RoleInfo, RoleTag } from './AnalysisRole.tsx';
-import { noteOf } from './FileList.tsx';
+import { noteOf } from './slot-text.ts';
 import { qcCounts } from './FileQc.tsx';
 
 const slot = (id: SlotId) => SLOTS.find((s) => s.id === id)!;
@@ -89,10 +90,16 @@ function replace(id: SlotId): void {
 
 function remove(id: SlotId): void {
   const name = loaded[id]?.name ?? 'this file';
-  if (window.confirm(`Remove ${name} from this session? The original file is not changed.`)) {
-    removeFile(id);
-    void forgetSlot(id);
-  }
+  confirmAction({
+    title: 'Remove file?',
+    message: `Remove ${name} from this project? The original file is not changed.`,
+    confirmLabel: 'Remove file',
+    danger: true,
+    onConfirm: () => {
+      removeFile(id);
+      void forgetSlot(id);
+    },
+  });
 }
 
 const rowMenu = (id: SlotId, canView: boolean): MenuItem[] => [
@@ -190,7 +197,7 @@ function Card(props: { title: string; ids: SlotId[]; children: JSX.Element }): J
 
 /** Experiment, arena, rates, duration, cells and the timestamp alignment, from what is loaded. */
 export function SummaryCard(): JSX.Element {
-  const timing = () => behaviorCategories().find((c) => c.id === 'timing')?.checks ?? [];
+  const timing = () => behaviorTests().find((c) => c.id === 'timing')?.checks ?? [];
   const alignment = () => alignmentText(timing().map((c) => c.status));
   const cells = () => (traceMatrix() ?? deconvolved())?.cells;
   const zones = () => arena.zones.filter((z) => z.kind === 'zone').length;

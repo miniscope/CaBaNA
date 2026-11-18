@@ -6,13 +6,6 @@ import type { SlotId } from './slots.ts';
 
 export type SectionId = 'overview' | 'arena' | 'qc' | 'prep';
 
-export const SECTION_TITLE: Record<SectionId, string> = {
-  overview: 'Overview',
-  arena: 'Arena and zones',
-  qc: 'QC',
-  prep: 'Preprocess',
-};
-
 /** Sections per data type, in stepper order. A data type left out has only an Overview. */
 const SECTIONS: Partial<Record<SlotId, SectionId[]>> = {
   neural_deconvolved: ['overview', 'qc', 'prep'],

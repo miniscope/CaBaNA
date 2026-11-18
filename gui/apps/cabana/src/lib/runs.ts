@@ -258,20 +258,3 @@ export async function refreshHistory(): Promise<void> {
       setLatest(produce((s) => void (s[rec.analysis as AnalysisId] = rec)));
   });
 }
-
-export const isPreliminary = (r: RunRecord) => r.scope === 'preview';
-
-/** Run several analyses in order; stops on cancel. Returns the ids that were started. */
-export async function runAll(
-  ids: AnalysisId[],
-  scope: 'full' | 'preview' = 'full',
-): Promise<AnalysisId[]> {
-  const started: AnalysisId[] = [];
-  const group = `all-${Date.now().toString(36)}`;
-  for (const id of ids) {
-    if (cancelRequested && started.length) break;
-    started.push(id);
-    await runAnalysis(id, scope, group);
-  }
-  return started;
-}

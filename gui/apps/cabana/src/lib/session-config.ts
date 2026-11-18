@@ -379,6 +379,3 @@ export function downloadYaml(yaml: string, name: string): void {
   Object.assign(document.createElement('a'), { href: url, download: name }).click();
   URL.revokeObjectURL(url);
 }
-
-/** Save the session config as config.yaml. */
-export const downloadConfig = (): void => downloadYaml(sessionYaml(), 'config.yaml');

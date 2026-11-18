@@ -7,8 +7,6 @@ import { openAnalysisWindow } from './analysis-window.ts';
 import { openRunOf } from './results-nav.ts';
 import { goToStep } from './store.ts';
 import type { AnalysisId } from './runs.ts';
-
-export const MIN_HISTORY_ROWS = 5;
 export const NEWER_VERSION_TEXT = 'Saved by a newer framework or GUI; update to open.';
 export const ANALYSIS_IDS: AnalysisId[] = ANALYSES.map((a) => a.id);
 export const analysisLabel = (id: string) => ANALYSES.find((a) => a.id === id)?.label ?? id;

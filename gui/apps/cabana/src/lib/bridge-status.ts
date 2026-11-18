@@ -61,5 +61,3 @@ export const CAPABILITY_TEXT: Record<CapabilityName, string> = {
   peth_gui_extensions:
     'Needs a framework update: PETH offset and both-ends alignment, and same-direction latency.',
 };
-export const missingText = (names: CapabilityName[]) =>
-  names.filter((n) => !hasCapability(n)).map((n) => CAPABILITY_TEXT[n]);
