@@ -8,14 +8,16 @@ import {
   createMemo,
   createSignal,
   For,
+  Match,
   onCleanup,
   onMount,
   Show,
+  Switch,
   type JSX,
 } from 'solid-js';
 import { ActionsMenu } from '../components/ActionsMenu.tsx';
 import { Pill } from '../components/Pill.tsx';
-import { ANALYSES, setAnalysisId } from '../lib/analyses.ts';
+import { ANALYSES } from '../lib/analyses.ts';
 import { dataChips, lastRunLine, readinessLine } from '../lib/analysis-cards.ts';
 import { ANALYSIS_INFO, blockedReason, rowReason } from '../lib/analyze-view.ts';
 import {
@@ -30,7 +32,6 @@ import { aurocStatus, watchAurocRuns } from '../lib/auroc-run.ts';
 import { queueOrder } from '../lib/batch-run.ts';
 import { bridgeReady, bridgeState, connectBridge, START_COMMAND } from '../lib/bridge-status.ts';
 import type { RunRecord } from '../lib/bridge-client.ts';
-import { guided } from '../lib/guided.ts';
 import { pethStatus } from '../lib/peth-run.ts';
 import { placeStatus, watchPlaceRuns } from '../lib/place-run.ts';
 import { snapshot, statusOfItem } from '../lib/readiness-snapshot.ts';
@@ -38,8 +39,14 @@ import type { AnalysisItem, Status } from '../lib/readiness.ts';
 import { formatWhen, listedRecords } from '../lib/results-overview.ts';
 import { cachedRecords } from '../lib/results-store.ts';
 import { active, history, refreshHistory } from '../lib/runs.ts';
-import { goToStep } from '../lib/store.ts';
+import { analysisWindow, openAnalysisWindow, setAnalysisWindow } from '../lib/analysis-window.ts';
+import { openItem } from '../components/Requirements.tsx';
+import { forgetBrowserRecord } from '../lib/browser-records.ts';
+import { openedRun, openRunOf } from '../lib/results-nav.ts';
 import { AnalysisConfigure } from './AnalysisConfigure.tsx';
+import { AnalysisLoad } from './AnalysisLoad.tsx';
+import { AnalysisPrevious } from './AnalysisPrevious.tsx';
+import { AnalysisPreview } from './AnalysisPreview.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 
 const label = (id: AnalysisItem) => ANALYSES.find((a) => a.id === id)!.label;
@@ -106,7 +113,6 @@ function EngineBanner(): JSX.Element {
 export function AnalysisCards(): JSX.Element {
   const [saved, setSaved] = createSignal<RunRecord[]>([]);
   const [listLoaded, setListLoaded] = createSignal(false);
-  const [configuring, setConfiguring] = createSignal<AnalysisItem>();
 
   onMount(() => {
     clearFinished();
@@ -149,6 +155,10 @@ export function AnalysisCards(): JSX.Element {
   const total = () =>
     ANALYSIS_ORDER.filter((id) => rowStates()[id] && rowStates()[id]!.kind !== 'skipped').length;
 
+  /** The page that fixes what is missing, when the analysis needs input. */
+  const fix = (id: AnalysisItem) =>
+    status(id).kind === 'needs_input' ? rowReason(status(id)).link : undefined;
+
   /** Why this card's own Run is unavailable, or undefined. */
   const runBlock = (id: AnalysisItem) => {
     const s = status(id);
@@ -188,11 +198,12 @@ export function AnalysisCards(): JSX.Element {
     }
   }
 
-  /** Preview and Previous results open the analysis's own page until their windows exist. */
-  const openPage = (id: AnalysisItem, stage?: 'review') => {
-    if (stage) guided(id, '').setStage(stage);
-    setAnalysisId(id);
+  const afterDelete = (r: RunRecord) => {
+    const id = r.analysis as AnalysisItem;
+    if (openedRun(id) === r.run_id) openRunOf(id, undefined);
+    void forgetBrowserRecord(r.run_id).then(() => cachedRecords().then(setSaved));
   };
+  const closeWindow = () => setAnalysisWindow(undefined);
 
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
@@ -268,6 +279,16 @@ export function AnalysisCards(): JSX.Element {
                 <div class="cb-ac__state">
                   <span class="cb-ac__ready" data-tone={line().tone}>
                     {line().text}
+                    <Show when={fix(id)}>
+                      {(f) => (
+                        <>
+                          {' '}
+                          <button type="button" class="cb-link" onClick={() => openItem(f().item)}>
+                            Open {f().label}
+                          </button>
+                        </>
+                      )}
+                    </Show>
                   </span>
                   <Show when={line().progress?.progress !== undefined}>
                     <progress
@@ -290,19 +311,22 @@ export function AnalysisCards(): JSX.Element {
                       {
                         kind: 'action',
                         label: 'Configure settings',
-                        onSelect: () => setConfiguring(id),
+                        onSelect: () => openAnalysisWindow(id, 'configure'),
                       },
-                      { kind: 'action', label: 'Preview', onSelect: () => openPage(id, 'review') },
+                      {
+                        kind: 'action',
+                        label: 'Preview',
+                        onSelect: () => openAnalysisWindow(id, 'preview'),
+                      },
                       {
                         kind: 'action',
                         label: 'Previous results',
-                        onSelect: () => goToStep('results'),
+                        onSelect: () => openAnalysisWindow(id, 'previous'),
                       },
                       {
                         kind: 'action',
                         label: 'Load configuration',
-                        disabled: 'Built in the next step',
-                        onSelect: () => undefined,
+                        onSelect: () => openAnalysisWindow(id, 'load'),
                       },
                     ]}
                   />
@@ -329,8 +353,28 @@ export function AnalysisCards(): JSX.Element {
         </div>
       </div>
 
-      <Show when={configuring()}>
-        {(id) => <AnalysisConfigure id={id()} onClose={() => setConfiguring(undefined)} />}
+      <Show when={analysisWindow()}>
+        {(w) => (
+          <Switch>
+            <Match when={w().kind === 'configure'}>
+              <AnalysisConfigure id={w().id} before={w().before} onClose={closeWindow} />
+            </Match>
+            <Match when={w().kind === 'preview'}>
+              <AnalysisPreview id={w().id} onClose={closeWindow} />
+            </Match>
+            <Match when={w().kind === 'previous'}>
+              <AnalysisPrevious
+                id={w().id}
+                records={records()}
+                onDeleted={afterDelete}
+                onClose={closeWindow}
+              />
+            </Match>
+            <Match when={w().kind === 'load'}>
+              <AnalysisLoad id={w().id} records={records()} onClose={closeWindow} />
+            </Match>
+          </Switch>
+        )}
       </Show>
     </div>
   );

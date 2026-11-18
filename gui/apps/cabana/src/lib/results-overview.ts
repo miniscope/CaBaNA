@@ -2,7 +2,8 @@
 // it can be opened, and the history list. No display code; nothing here changes a setting.
 
 import type { RunRecord } from './bridge-client.ts';
-import { ANALYSES, setAnalysisId } from './analyses.ts';
+import { ANALYSES, selectAnalysis, setAnalysisId } from './analyses.ts';
+import { openAnalysisWindow } from './analysis-window.ts';
 import { openRunOf } from './results-nav.ts';
 import { goToStep } from './store.ts';
 import type { AnalysisId } from './runs.ts';
@@ -132,9 +133,10 @@ export function openResult(analysis: AnalysisId, runId: string): void {
   goToStep('analyze');
 }
 
-/** Open an analysis page itself (for an analysis with no result yet). */
+/** Open an analysis's Configure settings window over the Analysis cards. */
 export function goToAnalysis(analysis: AnalysisId): void {
-  setAnalysisId(analysis);
+  selectAnalysis(analysis);
+  openAnalysisWindow(analysis, 'configure');
   goToStep('analyze');
 }
 

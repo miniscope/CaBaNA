@@ -240,10 +240,9 @@ const statusMemos = createRoot(() => {
 /** Reactive status of one sidebar item. */
 export const statusOfItem = (id: ItemId): Status => statusMemos[id]();
 
-/** The sidebar item the current page belongs to (the Analyze overview counts as just before the analyses). */
+/** The sidebar item the current page belongs to. */
 export function currentItem(step: string, analysis: AnalysisItem): ItemId {
   if (step === 'analyze') return analysis;
-  if (step === 'analyze_overview') return 'viz';
   return ORDERED.includes(step as ItemId) ? (step as ItemId) : 'data';
 }
 const ORDERED: ItemId[] = ['data', 'viz', 'results'];

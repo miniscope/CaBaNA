@@ -22,3 +22,8 @@ export function setAnalysisId(id: AnalysisId): void {
   setId(id);
   setAnalysisPageOpen(true);
 }
+
+/** Make `id` the current analysis (for the sidebar) without opening its own page. */
+export function selectAnalysis(id: AnalysisId): void {
+  setId(id);
+}

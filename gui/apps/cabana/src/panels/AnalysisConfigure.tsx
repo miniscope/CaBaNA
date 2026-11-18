@@ -6,7 +6,9 @@
 import { createSignal, type Component, type JSX } from 'solid-js';
 import { ActionsMenu } from '../components/ActionsMenu.tsx';
 import type { ConfigureControl } from '../components/ConfigureBody.tsx';
+import { HowItWorks } from '../components/GuidedReview.tsx';
 import { Modal } from '../components/Modal.tsx';
+import { Requirements } from '../components/Requirements.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
 import {
   resetSettings,
@@ -15,11 +17,16 @@ import {
   snapshotSettings,
 } from '../lib/analysis-draft.ts';
 import { prep } from '../lib/preprocess.ts';
+import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
 import { inputSignalText } from '../lib/peth-setup.ts';
 import { AurocSetup } from './AurocPanel.tsx';
-import { DecodingSetup } from './decoding/GuidedPage.tsx';
+import { DecodingSetup, Method as DecodingMethod } from './decoding/GuidedPage.tsx';
 import { PethSetup } from './PethPanel.tsx';
+import { PethMethodText } from './PethSetupHead.tsx';
+import { PlaceMethodText } from './PlaceMethodText.tsx';
+import { HowPopulationWorks } from './population/SetupSummary.tsx';
+import { AurocMethodText } from './AurocSetupFields.tsx';
 import { PlaceSetup } from './PlaceCellsPanel.tsx';
 import { PopulationSetup } from './PopulationPanel.tsx';
 import { neuralSummary } from './population/data.ts';
@@ -28,8 +35,16 @@ const SETUPS: Record<AnalysisItem, Component<{ configure: ConfigureControl }>> =
   place: PlaceSetup,
   auroc: AurocSetup,
   peth: PethSetup,
-  decoding: (p) => <DecodingSetup onResults={() => undefined} configure={p.configure} />,
+  decoding: DecodingSetup,
   population: PopulationSetup,
+};
+
+const METHOD: Record<AnalysisItem, Component> = {
+  place: PlaceMethodText,
+  auroc: AurocMethodText,
+  peth: PethMethodText,
+  decoding: DecodingMethod,
+  population: HowPopulationWorks,
 };
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -46,12 +61,18 @@ function dataLine(id: AnalysisItem): string {
   return cells + signal;
 }
 
-export function AnalysisConfigure(props: { id: AnalysisItem; onClose: () => void }): JSX.Element {
+export function AnalysisConfigure(props: {
+  id: AnalysisItem;
+  /** Settings text to go back to on Discard, when they were changed before the window opened. */
+  before?: string;
+  onClose: () => void;
+}): JSX.Element {
   // One window per analysis: the id never changes while it is open.
   // eslint-disable-next-line solid/reactivity
   const id = props.id;
   const label = ANALYSES.find((a) => a.id === id)!.label;
-  const before = snapshotSettings(id);
+  // eslint-disable-next-line solid/reactivity
+  const before = props.before ?? snapshotSettings(id);
   const [reset, setReset] = createSignal(false);
   const changed = () => reset() || settingsChanged(id, before);
   let kept = false;
@@ -66,13 +87,26 @@ export function AnalysisConfigure(props: { id: AnalysisItem; onClose: () => void
     if (!kept) restoreSettings(id, before);
     props.onClose();
   };
+  const needsAttention = () =>
+    ['needs_input', 'framework_update', 'outdated', 'failed'].includes(statusOfItem(id).kind);
   const Setup = SETUPS[id];
+  const Method = METHOD[id];
 
   return (
     <Modal
       label={`Configure settings, ${label}`}
       title={`Configure settings · ${label}`}
-      head={<span class="cb-muted cb-cfg__data">{dataLine(id)}</span>}
+      head={
+        <>
+          <span class="cb-muted cb-cfg__data">{dataLine(id)}</span>
+          <HowItWorks title={`How the ${label} analysis works`}>
+            <div class="cb-muted">
+              <Method />
+            </div>
+          </HowItWorks>
+        </>
+      }
+      bar={needsAttention() ? <Requirements analysis={id} /> : undefined}
       width={980}
       height={560}
       onClose={leave}

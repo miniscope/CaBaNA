@@ -481,8 +481,7 @@ export const PROJECT_PAGES = ['welcome', 'new', 'library', 'about'];
 export const isProjectPage = (id: string): boolean => PROJECT_PAGES.includes(id);
 
 /**
- * The page shown: a project page, a sidebar step, or `analyze_overview` for the Analyze section
- * header. The app opens on Welcome.
+ * The page shown: a project page or a sidebar step. The app opens on Welcome.
  */
 export const [stepId, goToStep] = createSignal('welcome');
 
