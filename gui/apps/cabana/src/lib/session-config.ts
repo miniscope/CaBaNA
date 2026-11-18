@@ -288,19 +288,39 @@ export function buildSessionConfig(omit: Section[] = []): Obj {
 }
 
 /** A config as YAML. Lists of numbers are written on one line. */
-function toYaml(config: Obj): string {
+function toYaml(config: Obj, header = HEADER): string {
   const doc = new Document(config);
   visit(doc, {
     Seq(_, node) {
       if (!node.items.some(isMap)) node.flow = true;
     },
   });
-  doc.commentBefore = HEADER;
+  doc.commentBefore = header;
   return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
 
 /** The session config as YAML. */
 export const sessionYaml = (): string => toYaml(exportedConfig());
+
+const EXPERIMENT_HEADER = [
+  ' Experimental setup. Same format the framework reads (cabana.loaders.load_session_dir).',
+  " Data files are matched to the project's data by name. Position jump choices are in",
+  ' processing.yaml and are added when a run is prepared.',
+].join('\n');
+
+/**
+ * The project's experiment.yaml: the session config without the position jump choices, which
+ * belong to processing.yaml (QC decisions).
+ */
+export function experimentConfig(): Obj {
+  const cfg = JSON.parse(JSON.stringify(exportedConfig())) as Obj;
+  dropPath(cfg, 'behavior.position.exclude_frames');
+  dropPath(cfg, 'metadata.position_kept_frames');
+  if (isObj(cfg.metadata) && !Object.keys(cfg.metadata).length) delete cfg.metadata;
+  return cfg;
+}
+export const experimentYaml = (config: Obj = experimentConfig()): string =>
+  toYaml(config, EXPERIMENT_HEADER);
 
 /** The session config as a template: without the animal's details (see config-template.ts). */
 export const templateYaml = (): string => toYaml(withoutAnimalDetails(exportedConfig()));
