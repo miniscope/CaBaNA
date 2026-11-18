@@ -4,14 +4,13 @@
 // also uses.
 
 import { Match, Switch, type JSX } from 'solid-js';
-import { Modal } from '../../components/Modal.tsx';
 import { entry, popupOpen, sectionOf } from '../../lib/data-setup-view.ts';
 import { SLOTS, type SlotId } from '../../lib/slots.ts';
 import { loaded } from '../../lib/store.ts';
+import { ArenaEditor } from '../ArenaEditor.tsx';
 import { closeArenaEditor } from './arena-editor.ts';
 import { EntryPopup } from './EntryView.tsx';
 import { ExperimentalSetup } from './ExperimentalSetup.tsx';
-import { FileArena } from './FileArena.tsx';
 import { ViewDataPopup } from './ViewData.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
@@ -32,11 +31,7 @@ export function SetupPopups(props: { onApplied: (text: string) => void }): JSX.E
         <ExperimentalSetup onApplied={props.onApplied} />
       </Match>
       <Match when={arena()}>
-        <Modal label="Arena editor" title="Arena editor" onClose={closeArenaEditor}>
-          <div class="cb-vw-arena">
-            <FileArena />
-          </div>
-        </Modal>
+        <ArenaEditor onClose={closeArenaEditor} />
       </Match>
       <Match when={view()}>{(id) => <ViewDataPopup id={id()} />}</Match>
     </Switch>

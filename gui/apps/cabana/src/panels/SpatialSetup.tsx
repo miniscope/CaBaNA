@@ -1286,7 +1286,7 @@ const CHANGED: Record<ChangeKind, string> = {
 };
 
 /** What happens to regions drawn before the outline, scale or picture changed. Stays until a choice is made. */
-function RegionNoticeBox(): JSX.Element {
+export function RegionNoticeBox(): JSX.Element {
   return (
     <Show when={regionNotice()}>
       {(n) => {

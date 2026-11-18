@@ -1,0 +1,366 @@
+/* Arena editor: a window with a toolbar and a dark canvas that shapes, lists and charts float over. */
+.cb-modal__body:has(> .cb-ae),
+.cb-modal__body:has(> .cb-ae-landing) {
+  padding: 0;
+}
+.cb-ae-landing {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.cb-ae-session {
+  font:
+    12.5px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--text-secondary);
+}
+
+/* Toolbar */
+.cb-ae-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+.cb-ae-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.cb-ae-scale {
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--text-secondary);
+}
+.cb-ae-occ-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  font-size: 13.6px;
+}
+
+/* Canvas stage */
+.cb-ae {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #2e2f33;
+  overflow: hidden;
+}
+.cb-ae-holder {
+  position: absolute;
+  inset: 44px 280px 52px 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.cb-ae-holder--wide {
+  right: 40px;
+}
+.cb-ae-canvas {
+  display: block;
+  transform-origin: center;
+  background: #8e9099;
+}
+.cb-ae-bins {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 55%;
+  padding: 3px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+}
+
+/* Things floating over the canvas */
+.cb-ae-layers,
+.cb-ae-pop,
+.cb-ae-occ,
+.cb-ae-win {
+  position: absolute;
+  background: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.cb-ae-layers {
+  left: 12px;
+  top: 12px;
+  width: 176px;
+  max-height: calc(100% - 70px);
+  overflow: auto;
+  padding: 6px 8px;
+}
+.cb-ae-layer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cb-ae-layer:hover,
+.cb-ae-layer--on {
+  background: var(--bg-secondary);
+}
+.cb-ae-layer i {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid;
+  border-radius: 2px;
+}
+.cb-ae-layer__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cb-ae-layer__kind {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.cb-ae-hint {
+  position: absolute;
+  left: 204px;
+  top: 12px;
+  right: 290px;
+  width: fit-content;
+  max-width: calc(100% - 500px);
+  padding: 5px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.cb-ae-float {
+  position: absolute;
+  left: 204px;
+  top: 52px;
+  width: 340px;
+  z-index: 4;
+}
+.cb-ae-float .cb-region-notice {
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: #fdf3dc;
+}
+
+/* The selected shape's pop-over */
+.cb-ae-pop {
+  width: 230px;
+  padding: 10px 12px;
+  z-index: 3;
+  font-size: 12.5px;
+}
+.cb-ae-field {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cb-ae-field > span:first-child {
+  color: var(--text-secondary);
+}
+.cb-ae-field input,
+.cb-ae-field select {
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+}
+.cb-ae-size {
+  margin: 8px 0;
+  font:
+    11.5px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--text-secondary);
+}
+.cb-ae-note {
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: #fdf3dc;
+  color: #b77900;
+  font-size: 12px;
+}
+.cb-ae-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Zone occupancy */
+.cb-ae-occ {
+  right: 12px;
+  top: 12px;
+  width: 250px;
+  padding: 10px 12px;
+}
+.cb-ae-occ__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13.6px;
+}
+.cb-ae-occ__row {
+  display: grid;
+  grid-template-columns: 62px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+.cb-ae-occ__row > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-ae-occ__track {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
+.cb-ae-occ__track > span {
+  display: block;
+  height: 7px;
+  border-radius: 4px;
+}
+.cb-ae-occ__pct {
+  text-align: right;
+  font:
+    11.5px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.cb-ae-occ__note,
+.cb-ae-occ .cb-muted {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+/* Bottom: notes and the check line, and zoom */
+.cb-ae-bottom {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 45%;
+}
+.cb-ae-chip {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+}
+.cb-ae-chip--ok {
+  color: var(--success);
+}
+.cb-ae-chip--warn {
+  background: #fdf3dc;
+  color: #b77900;
+}
+.cb-ae-zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+}
+
+/* Windows under the toolbar: Set scale, Animal size, Video frame */
+.cb-ae-win {
+  left: 204px;
+  top: 12px;
+  width: 330px;
+  padding: 12px 14px;
+  z-index: 6;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: 13px;
+}
+.cb-ae-win__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cb-ae-win__head b {
+  font-size: 14px;
+}
+.cb-ae-step {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cb-ae-step > div {
+  flex: 1;
+}
+.cb-ae-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6a51a3;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.cb-ae-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 4px;
+}
+.cb-ae-row input[type='number'] {
+  width: 80px;
+}
+.cb-ae-result {
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 12.5px;
+}
+.cb-ae-or {
+  display: block;
+  margin-top: 10px;
+}
+.cb-ae-scrub {
+  display: block;
+  margin: 8px 0;
+}
+.cb-ae-scrub input {
+  width: 100%;
+}
