@@ -197,3 +197,59 @@
 .cb-app--library .cb-sidebar {
   display: none;
 }
+
+/* Pop-up window (components/Modal.tsx): fills the window less a margin; the body scrolls only
+   when its content cannot fit. Above the page's popovers' anchors, below plot overlays. */
+.cb-modal-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.cb-modal {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 48px);
+  max-width: 1600px;
+  height: calc(100vh - 32px);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.cb-modal__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cb-modal__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cb-modal__esc {
+  font-size: 12px;
+}
+.cb-modal__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+.cb-modal__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 12px;
+  overflow: auto;
+}

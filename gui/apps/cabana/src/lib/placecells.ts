@@ -752,7 +752,11 @@ export function selectMinShift(
   }
   const tauPos = wsum > 0 ? tsum / wsum : NaN;
 
-  const minShiftS = minShiftFromTaus(tauNeural, tauPos, frames / fs, { multiple, floorS, maxFraction });
+  const minShiftS = minShiftFromTaus(tauNeural, tauPos, frames / fs, {
+    multiple,
+    floorS,
+    maxFraction,
+  });
   return { ...minShiftS, tauNeuralS: tauNeural, tauPositionS: tauPos };
 }
 

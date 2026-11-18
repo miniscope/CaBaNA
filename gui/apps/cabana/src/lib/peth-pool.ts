@@ -46,7 +46,9 @@ const router: MessageRouter<PethPoolJob, PethWorkerOutbound> = {
   buildDispatch(job) {
     const { kind, jobId, ...rest } = job as Record<string, unknown> & typeof job;
     // Callbacks stay on this side; only data goes to the worker.
-    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => typeof v !== 'function'));
+    const data = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => typeof v !== 'function'),
+    );
     const src = (job as { input?: PethInput }).input;
     if (!src) return [{ ...data, type: `${kind}-job`, jobId }, []];
     const input = {

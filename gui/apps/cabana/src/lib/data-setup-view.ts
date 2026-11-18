@@ -32,9 +32,17 @@ export function sectionOf(slot: SlotId): SectionId {
   return s && list.includes(s) ? s : list[0];
 }
 
-/** Open an entry, and optionally one of its sections. A loaded file counts as reviewed. */
+/** Whether the open entry is shown in its pop-up over the Data setup page. */
+export const [popupOpen, setPopupOpen] = createSignal(false);
+export const closeEntry = () => setPopupOpen(false);
+
+/**
+ * Open an entry in the pop-up, and optionally one of its sections. A loaded file counts as
+ * reviewed. Get started has no pop-up: it is the Project library.
+ */
 export function openEntry(id: EntryId, sec?: SectionId): void {
   setEntry(id);
+  setPopupOpen(id !== 'start');
   if (sec && isSlot(id)) setSection(id, sec);
   if (id !== 'start' && (!isSlot(id) || loaded[id]?.summary)) setOpened(id, true);
 }

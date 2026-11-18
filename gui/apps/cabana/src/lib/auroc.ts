@@ -67,7 +67,7 @@ export function averageRanks(x: ArrayLike<number>): Float64Array {
       return out;
     }
   const order = Uint32Array.from({ length: n }, (_, i) => i).sort((a, b) => x[a] - x[b] || a - b);
-  for (let i = 0; i < n; ) {
+  for (let i = 0; i < n;) {
     let j = i;
     while (j + 1 < n && x[order[j + 1]] === x[order[i]]) j++;
     const rank = (i + j + 2) / 2; // mean of 1-based ranks i+1 .. j+1
@@ -111,7 +111,8 @@ export function observedAuroc(m: AurocInput, minFrames = MIN_FRAMES): Float64Arr
 function denseRanks(x: ArrayLike<number>): { dense: Int32Array; width: number } {
   const sorted = Float64Array.from(x).sort();
   const u: number[] = [];
-  for (let i = 0; i < sorted.length; i++) if (i === 0 || sorted[i] !== sorted[i - 1]) u.push(sorted[i]);
+  for (let i = 0; i < sorted.length; i++)
+    if (i === 0 || sorted[i] !== sorted[i - 1]) u.push(sorted[i]);
   const dense = new Int32Array(x.length);
   for (let i = 0; i < x.length; i++) {
     let lo = 0;
@@ -240,7 +241,8 @@ export function maxStatAdjust(
   const ns = nullDraws.length / nb;
   const cols = Array.from({ length: nb }, (_, b) => {
     const v: number[] = [];
-    for (let i = 0; i < ns; i++) if (Number.isFinite(nullDraws[i * nb + b])) v.push(nullDraws[i * nb + b]);
+    for (let i = 0; i < ns; i++)
+      if (Number.isFinite(nullDraws[i * nb + b])) v.push(nullDraws[i * nb + b]);
     return Float64Array.from(v).sort();
   });
   const minP = new Float64Array(ns).fill(Infinity);
@@ -345,7 +347,8 @@ export function analyzeAuroc(
   const pAdj = new Float64Array(observed.length);
   for (let c = 0; c < m.cells; c++) {
     const draws = shiftedAurocCell(m, c, shifts, minFrames);
-    const column = (b: number) => Float64Array.from({ length: shifts.length }, (_, i) => draws[i * nb + b]);
+    const column = (b: number) =>
+      Float64Array.from({ length: shifts.length }, (_, i) => draws[i * nb + b]);
     for (let b = 0; b < nb; b++) pRaw[c * nb + b] = pTwoSided(observed[c * nb + b], column(b));
     const sl = (a: Float64Array) => a.subarray(c * nb, (c + 1) * nb);
     pAdj.set(

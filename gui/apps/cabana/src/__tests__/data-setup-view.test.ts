@@ -46,3 +46,29 @@ describe('experiment config sections', () => {
     expect(configOpen()).toBeUndefined();
   });
 });
+
+describe('entry pop-up', () => {
+  it('opens for every entry but Get started and closes on request', async () => {
+    const { closeEntry, popupOpen } = await import('../lib/data-setup-view.ts');
+    openEntry('position', 'qc');
+    expect(popupOpen()).toBe(true);
+    closeEntry();
+    expect(popupOpen()).toBe(false);
+    expect(entry()).toBe('position');
+    openEntry('start');
+    expect(popupOpen()).toBe(false);
+  });
+});
+
+describe('remove a file', () => {
+  it('empties its slot and leaves the others', async () => {
+    const { loaded, removeFile, slotFile } = await import('../lib/store.ts');
+    clearAll();
+    await addFiles([stamps(), new File(['frame,x,y\n0,1,1\n1,2,2\n'], 'position.csv')]);
+    expect(loaded.position?.summary).toBeTruthy();
+    removeFile('position');
+    expect(loaded.position).toBeUndefined();
+    expect(slotFile('position')).toBeUndefined();
+    expect(loaded.neural_timestamps?.summary).toBeTruthy();
+  });
+});

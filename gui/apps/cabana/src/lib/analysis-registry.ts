@@ -57,9 +57,24 @@ const POSITION_DECODING_PREP = [
   'maxGapS',
 ];
 
-
-const PLACE_PREP = ['eventSigmaS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS', 'minSpeed'];
-const AUROC_PREP = ['eventSigmaS', 'labelPadS', 'maxGapS', 'fillGapS', 'posMethod', 'posWindowS', 'speedWindowS'];
+const PLACE_PREP = [
+  'eventSigmaS',
+  'maxGapS',
+  'fillGapS',
+  'posMethod',
+  'posWindowS',
+  'speedWindowS',
+  'minSpeed',
+];
+const AUROC_PREP = [
+  'eventSigmaS',
+  'labelPadS',
+  'maxGapS',
+  'fillGapS',
+  'posMethod',
+  'posWindowS',
+  'speedWindowS',
+];
 const AUROC_PREP_NO_POSITION = ['eventSigmaS', 'labelPadS'];
 
 /** The labels of a list that a run reads: the chosen ones, or all of them when none is chosen. */
@@ -132,7 +147,9 @@ export function registerAnalyses(): void {
         position,
         grid: position,
         labels:
-          settings.target === 'position' ? [] : chosenOr(settings.labels, ctx.labels[settings.target]),
+          settings.target === 'position'
+            ? []
+            : chosenOr(settings.labels, ctx.labels[settings.target]),
       },
     };
   });

@@ -180,7 +180,7 @@ export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, 
   const maxFrames = maxGapS > 0 ? Math.floor(maxGapS * fs + 1e-9) : -1;
   const n = x.length;
   const runs: { start: number; len: number; fate: 'filled' | 'long' | 'edge' }[] = [];
-  for (let a = 0; a < n; ) {
+  for (let a = 0; a < n;) {
     if (Number.isFinite(x[a] + y[a])) {
       a++;
       continue;
@@ -188,7 +188,11 @@ export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, 
     let b = a;
     while (b < n && !Number.isFinite(x[b] + y[b])) b++;
     const len = b - a;
-    runs.push({ start: a, len, fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long' });
+    runs.push({
+      start: a,
+      len,
+      fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long',
+    });
     a = b;
   }
   return runs;

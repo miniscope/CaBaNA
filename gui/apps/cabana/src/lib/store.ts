@@ -302,6 +302,23 @@ export function clearAll(): void {
   setVersion((v) => v + 1);
 }
 
+/**
+ * Take one file out of the session; the slot is then empty as if it had never been loaded. What
+ * belongs to that file alone goes with it: annotation edits, frame-label column roles.
+ */
+export function removeFile(slot: SlotId): void {
+  delete data[slot];
+  delete texts[slot];
+  delete files[slot];
+  if (annotationEdits()[slot]) {
+    const { [slot]: _gone, ...rest } = annotationEdits();
+    setAnnotationEdits(rest);
+  }
+  if (slot === 'frame_labels') setFrameRoles({});
+  setLoaded(slot, undefined as unknown as LoadedInfo);
+  setVersion((v) => v + 1);
+}
+
 export const EXAMPLES = [
   {
     id: 'simulated_3chamber',

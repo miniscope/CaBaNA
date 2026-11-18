@@ -29,7 +29,10 @@ import { prepChanges } from './prep-deps.ts';
 export function pethChanges(): string[] {
   const o = pethOutcome();
   if (!o) return [];
-  return [...prepChanges('peth', o.prep, false), ...depChanges(o.deps, runDeps(pethUses(o.settings)))];
+  return [
+    ...prepChanges('peth', o.prep, false),
+    ...depChanges(o.deps, runDeps(pethUses(o.settings))),
+  ];
 }
 
 /** Settings that only change what is shown: the Wilcoxon p-value is computed either way. */
@@ -72,7 +75,8 @@ export function timeAxisLabel(): string {
 }
 
 /** What the p-value used for labels is called: with no correction it is not "adjusted". */
-export const pUsedName = (o: PethOutcome) => (o.settings.correction === 'max_stat' ? 'Adjusted p' : 'Uncorrected p');
+export const pUsedName = (o: PethOutcome) =>
+  o.settings.correction === 'max_stat' ? 'Adjusted p' : 'Uncorrected p';
 /** The correction, its scope and α, for headers and run details. */
 export const correctionText = (o: PethOutcome) =>
   o.settings.correction === 'max_stat'
@@ -96,7 +100,10 @@ export function behaviorReason(o: PethOutcome, b: number): string | undefined {
 
 /** Why one pair has no value, or undefined when it has one. */
 export function whyNotEvaluated(o: PethOutcome, c: number, b: number): string | undefined {
-  return behaviorReason(o, b) ?? (o.cellsMissing.includes(c) ? 'non-finite neural value in this cell' : undefined);
+  return (
+    behaviorReason(o, b) ??
+    (o.cellsMissing.includes(c) ? 'non-finite neural value in this cell' : undefined)
+  );
 }
 
 /** The mean curve, its SEM across onsets and the null band of one cell and behavior. */
@@ -113,7 +120,13 @@ export function curveOf(o: PethOutcome, c: number, b: number) {
 }
 
 /** Time of the largest value of `pick(mean)` among bins where `keep(time)`; NaN without a curve. */
-function argmaxTime(o: PethOutcome, c: number, b: number, pick: (v: number) => number, keep: (t: number) => boolean) {
+function argmaxTime(
+  o: PethOutcome,
+  c: number,
+  b: number,
+  pick: (v: number) => number,
+  keep: (t: number) => boolean,
+) {
   const { mean } = curveOf(o, c, b);
   let best = -Infinity;
   let t = NaN;
@@ -127,7 +140,14 @@ function argmaxTime(o: PethOutcome, c: number, b: number, pick: (v: number) => n
 }
 
 /** `plot_peth_data` sort "peak": time of the highest point of the mean curve over the whole window. */
-export const peakTimeS = (o: PethOutcome, c: number, b: number) => argmaxTime(o, c, b, (v) => v, () => true);
+export const peakTimeS = (o: PethOutcome, c: number, b: number) =>
+  argmaxTime(
+    o,
+    c,
+    b,
+    (v) => v,
+    () => true,
+  );
 
 /**
  * `plot_peth_data` sort "latency": the null-band latency when the band was computed; otherwise the
@@ -157,12 +177,17 @@ export const filterCells = (o: PethOutcome, b: number, cells: number[], filter: 
  */
 export function sortCells(o: PethOutcome, b: number, sort: CellSort): number[] {
   const key = (c: number) =>
-    sort === 'response' ? -valueOf(o, c, b) : sort === 'latency' ? sortLatencyS(o, c, b) : peakTimeS(o, c, b);
+    sort === 'response'
+      ? -valueOf(o, c, b)
+      : sort === 'latency'
+        ? sortLatencyS(o, c, b)
+        : peakTimeS(o, c, b);
   const cells = o.cellIds.map((_, c) => c);
   const k = cells.map(key);
   return cells.sort((x, y) => {
     const [a, d] = [k[x], k[y]];
-    if (Number.isNaN(a) || Number.isNaN(d)) return Number.isNaN(a) ? (Number.isNaN(d) ? x - y : 1) : -1;
+    if (Number.isNaN(a) || Number.isNaN(d))
+      return Number.isNaN(a) ? (Number.isNaN(d) ? x - y : 1) : -1;
     return a - d || x - y;
   });
 }
@@ -232,7 +257,10 @@ export function summarize(o: PethOutcome, align?: Align): Summary {
     label,
     onsets: o.reports[b].onsets.length,
     reason: behaviorReason(o, b),
-    counts: { excited: 0, inhibited: 0, 'not significant': 0, 'not evaluated': 0 } as Record<Response, number>,
+    counts: { excited: 0, inhibited: 0, 'not significant': 0, 'not evaluated': 0 } as Record<
+      Response,
+      number
+    >,
     latencies: { higher: [] as number[], lower: [] as number[] },
   }));
   let evaluated = 0;
@@ -258,7 +286,8 @@ export function summarize(o: PethOutcome, align?: Align): Summary {
         if (r === 'excited') higher++;
         else lower++;
         const l = latencyOf(o, c, b);
-        if (Number.isFinite(l)) perBehavior[b].latencies[r === 'excited' ? 'higher' : 'lower'].push(l);
+        if (Number.isFinite(l))
+          perBehavior[b].latencies[r === 'excited' ? 'higher' : 'lower'].push(l);
       }
     }
     if (!tested) continue;
@@ -311,7 +340,10 @@ export function boutTimeline(
 export type CurveAxis = Pick<PethOutcome, 'curves' | 'input' | 'params'>;
 
 export function binFrames(o: CurveAxis): number {
-  return Math.max(1, Math.round(2 * (o.curves.timeS[0] * o.input.fs + pethGeometry(o.params, o.input.fs).pre) + 1));
+  return Math.max(
+    1,
+    Math.round(2 * (o.curves.timeS[0] * o.input.fs + pethGeometry(o.params, o.input.fs).pre) + 1),
+  );
 }
 
 /** Time axis of the curves in seconds from the onset: frame k is centred on k / fs, so a bin spans its frames' edges. */
@@ -332,6 +364,8 @@ export function rawWindows(o: PethOutcome, c: number, b: number) {
   const len = o.curves.bins * binFrames(o);
   const onsets = o.onsets[b];
   const data = new Float32Array(onsets.length * len);
-  onsets.forEach((t, e) => data.set(neural.subarray(c * frames + t - pre, c * frames + t - pre + len), e * len));
+  onsets.forEach((t, e) =>
+    data.set(neural.subarray(c * frames + t - pre, c * frames + t - pre + len), e * len),
+  );
   return { data, rows: onsets.length, cols: len };
 }

@@ -25,7 +25,9 @@ export const DEFAULT_MATCH: MatchOptions = {
 
 /** Missing speed values become the median of the finite ones. */
 export function fillMissing(speed: ArrayLike<number>): Float64Array {
-  const finite = Array.from(speed).filter(Number.isFinite).sort((a, b) => a - b);
+  const finite = Array.from(speed)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
   if (!finite.length) throw new Error('The speed signal has no finite values.');
   const mid = finite.length >> 1;
   const median = finite.length % 2 ? finite[mid] : (finite[mid - 1] + finite[mid]) / 2;
