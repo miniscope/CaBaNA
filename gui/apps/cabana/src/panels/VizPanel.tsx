@@ -9,7 +9,7 @@ import {
   annotationResults,
   selectCell,
 } from '../lib/store.ts';
-import { mss, setWinLen, setWinStartClamped, WINDOW_CHOICES, win, winLen } from '../lib/viz.ts';
+import { setWinLen, setWinStartClamped, WINDOW_CHOICES, win, winLen } from '../lib/viz.ts';
 import {
   colorOf,
   heat,
@@ -40,6 +40,10 @@ import { FootprintViewer } from './FootprintViewer.tsx';
 import { Popover } from './Popover.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PlotCard } from './QcParts.tsx';
+import { ChecksRow, PARTS, Parts, REVIEW } from './VizChecks.tsx';
+import { EntryPopup } from './data-setup/EntryView.tsx';
+import { InfoTip } from './InfoTip.tsx';
+import { arena, pxPerCm } from '../lib/arena.ts';
 import { BehaviorRows, NeuralRows } from './SessionView.tsx';
 import { SessionNavigator } from './SessionNavigator.tsx';
 import { placed, Trajectory } from './Trajectory.tsx';
@@ -132,15 +136,26 @@ const INTENSITIES: { value: Intensity; label: string }[] = [
   { value: 'strong', label: 'Strong' },
 ];
 
-/** Which behaviors are shaded over the plots, grouped by annotation file. Hiding changes the shading only. */
-function OverlaysMenu(props: { anchor: HTMLElement }): JSX.Element {
+/**
+ * How the neural data is shown: the heat map's signal, and which behaviors are shaded over the
+ * plots, grouped by annotation file. View only: hiding a behavior changes the shading only.
+ */
+function DisplayMenu(props: { anchor: HTMLElement }): JSX.Element {
   return (
     <Popover
       anchor={props.anchor}
       onClose={() => setOverlaysAnchor()}
       width={340}
-      label="Behavior overlays"
+      label="Neural display"
     >
+      <Show when={sources().length}>
+        <label class="cb-plot__tool cb-disp__row">
+          Heat map
+          <select value={heat()} onChange={(e) => setHeatSrc(e.currentTarget.value as Source)}>
+            <For each={sources()}>{(s) => <option value={s}>{SOURCE_LABEL[s]}</option>}</For>
+          </select>
+        </label>
+      </Show>
       <div class="cb-pop__head">
         <strong>Behavior overlays</strong>
         <span class="cb-ovl__all">
@@ -168,6 +183,9 @@ function OverlaysMenu(props: { anchor: HTMLElement }): JSX.Element {
           )}
         </For>
       </div>
+      <Show when={behaviorCount() === 0}>
+        <p class="cb-muted">Load behavior annotations to shade bouts over the plots.</p>
+      </Show>
       <For each={groups()}>
         {(g) => (
           <div class="cb-trackgroup">
@@ -241,12 +259,75 @@ const WindowControls = (): JSX.Element => {
       <button class="btn-secondary btn-small" onClick={() => setWinStartClamped(win()[0] + half())}>
         Later
       </button>
-      <span class="cb-muted cb-viz__range">
-        {mss(win()[0])} – {mss(win()[1])}
-      </span>
     </>
   );
 };
+
+/** Path or time in bin; kept while other pages are visited. */
+const [trajMode, setTrajMode] = createSignal<'path' | 'time'>('path');
+
+/** One line under each box title: what it shows, in counts. */
+const footprintSummary = (): JSX.Element => (
+  <>
+    {nCells()} cells · <Parts parts={PARTS.cells()} />
+  </>
+);
+const neuralSummary = () =>
+  heat()
+    ? `heat map: ${SOURCE_LABEL[heat()!]}, 5th to 99.5th percentile per cell · cell ${cell() + 1} below`
+    : 'no neural data';
+const arenaSummaryLine = () =>
+  arena.box
+    ? `${arena.shape} · ${pxPerCm() ? `${pxPerCm()!.toFixed(2)} px/cm` : 'no scale'} · ${arena.zones.length} ${arena.zones.length === 1 ? 'zone' : 'zones'}`
+    : 'arena not drawn';
+const behaviorSummary = () => {
+  const b = rows().filter((r) => r.kind === 'Behavior').length;
+  const z = rows().filter((r) => r.kind === 'Zone').length;
+  return [
+    b && `${b} ${b === 1 ? 'label' : 'labels'}`,
+    z && `${z} ${z === 1 ? 'zone' : 'zones'}`,
+    pos() && 'position · speed',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+/** A box's review button; disabled with the reason when the file it opens is not loaded. */
+function ReviewButton(props: { kind: keyof typeof REVIEW; label: string }): JSX.Element {
+  const open = () => REVIEW[props.kind]();
+  return (
+    <button
+      type="button"
+      class="btn-secondary btn-small"
+      disabled={!open()}
+      title={open() ? undefined : 'The file this review opens is not loaded.'}
+      onClick={() => open()?.()}
+    >
+      {props.label}
+    </button>
+  );
+}
+
+const NEURAL_HELP = (
+  <>
+    <p>
+      Top: every cell over the selected window, one row per cell, colored from each cell's 5th
+      (dark) to 99.5th (yellow) percentile over the session. Click a row to select that cell; the
+      white tick at the left edge marks it.
+    </p>
+    <p>
+      Below: the selected cell's raw, denoised and deconvolved signals over the same window. Each
+      row has its own help marker. Display chooses the heat map's signal and the shaded behaviors.
+    </p>
+  </>
+);
+const BEHAVIOR_HELP = (
+  <p>
+    Behavior labels, zones, time markers, frame labels, position and speed on the same time axis as
+    the neural data. Hover over any plot to place the dashed cursor on all of them; the line under
+    the plots reads out the time, position and behavior there. Tracks chooses the rows.
+  </p>
+);
 
 export function VizPanel(): JSX.Element {
   const anything = () =>
@@ -256,147 +337,85 @@ export function VizPanel(): JSX.Element {
     footprints() ||
     positionResult() ||
     annotationResults().length;
-  const [trajMode, setTrajMode] = createSignal<'path' | 'time'>('path');
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   return (
     <div class="cb-viz" ref={root}>
       <div class="cb-viz__bar">
         <h2>Data visualization</h2>
+        <InfoTip label="About Data visualization">
+          The loaded data on one shared time window. Selecting a cell (footprints, heat map row or
+          the cell field), moving the window (navigator or Earlier and Later) and hovering a time
+          plot update every plot. The checks row sums up the quality checks; each chip and Review
+          button opens that file's checks and corrections, the same as in Data setup.
+        </InfoTip>
+        <span class="cb-spacer" />
         <Show when={anything()}>
           <Show when={nCells() > 0}>
             <CellBar />
           </Show>
           <WindowControls />
-          <Show when={sources().length}>
-            <label class="cb-plot__tool">
-              Heat map
-              <select value={heat()} onChange={(e) => setHeatSrc(e.currentTarget.value as Source)}>
-                <For each={sources()}>{(s) => <option value={s}>{SOURCE_LABEL[s]}</option>}</For>
-              </select>
-            </label>
-          </Show>
-          <button
-            type="button"
-            class="btn-secondary btn-small"
-            aria-haspopup="dialog"
-            aria-expanded={!!overlaysAnchor()}
-            disabled={behaviorCount() === 0}
-            title={
-              behaviorCount() === 0
-                ? 'Load behavior annotations to shade bouts over the plots.'
-                : undefined
-            }
-            onClick={(e) =>
-              setOverlaysAnchor((a) => (a === e.currentTarget ? undefined : e.currentTarget))
-            }
-          >
-            Behavior overlays ({shown().size}/{behaviorCount()})
-          </button>
-          <button
-            type="button"
-            class="btn-secondary btn-small"
-            aria-haspopup="dialog"
-            aria-expanded={!!tracksAnchor()}
-            onClick={(e) => openTracks(e.currentTarget)}
-          >
-            Tracks
-          </button>
         </Show>
       </div>
       <Show
         when={anything()}
         fallback={<div class="cb-empty">Load neural or behavior data to see it here.</div>}
       >
-        <div class="cb-viz__body">
-          <div class="cb-viz__col">
-            <PlotCard title="Cell footprints" help={HELP.footprints.text} class="cb-plot--grow2">
-              {(size) => (
-                <Show
-                  when={footprints()}
-                  fallback={<div class="cb-note">Load footprints to see the cells' shapes.</div>}
-                >
-                  <div class="cb-fpcard">
-                    <div
-                      style={{
-                        width: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
-                        height: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
-                      }}
-                    >
-                      <FootprintViewer />
-                    </div>
-                    <div class="cb-muted">Click a cell to select it. White = selected.</div>
+        <ChecksRow />
+        <div class="cb-viz__grid">
+          <PlotCard
+            title="Footprints"
+            help={HELP.footprints.text}
+            box
+            summary={footprintSummary()}
+            actions={<ReviewButton kind="footprints" label="Review cells" />}
+          >
+            {(size) => (
+              <Show
+                when={footprints()}
+                fallback={<div class="cb-note">Load footprints to see the cells' shapes.</div>}
+              >
+                <div class="cb-fpcard">
+                  <div
+                    style={{
+                      width: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
+                      height: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
+                    }}
+                  >
+                    <FootprintViewer />
                   </div>
-                </Show>
-              )}
-            </PlotCard>
-            <PlotCard
-              title="Trajectory"
-              help={HELP.trajectory.text}
-              class="cb-plot--grow3"
-              tools={
-                <Show when={hasPosition() && placed()}>
-                  <label class="cb-plot__tool">
-                    <select
-                      aria-label="Trajectory view"
-                      value={trajMode()}
-                      onChange={(e) => setTrajMode(e.currentTarget.value as 'path' | 'time')}
-                    >
-                      <option value="path">Path</option>
-                      <option value="time">Time in bin</option>
-                    </select>
-                  </label>
-                </Show>
-              }
-              legend={
-                <Show when={hasPosition()}>
-                  <Show
-                    when={trajMode() === 'path' || !placed()}
-                    fallback={
-                      <>
-                        Time in bin: low
-                        <span class="cb-legend__bar cb-legend__bar--viridis cb-legend__bar--sm" />
-                        high
-                      </>
-                    }
-                  >
-                    <span class="cb-key cb-key--gray" />
-                    Full session
-                    <span class="cb-key cb-key--blue" />
-                    Selected window
-                    <span class="cb-key cb-key--dot" />
-                    Cursor
-                  </Show>
-                </Show>
-              }
-            >
-              {() => (
-                <div class="cb-fill">
-                  <Show
-                    when={hasPosition()}
-                    fallback={
-                      <div class="cb-note">
-                        Load position and behavior camera timestamps to see the path.
-                      </div>
-                    }
-                  >
-                    <Trajectory bare linked mode={trajMode()} />
-                  </Show>
+                  <div class="cb-muted">Click a cell to select it. White = selected.</div>
                 </div>
-              )}
-            </PlotCard>
-          </div>
-          <div class="cb-viz__col">
+              </Show>
+            )}
+          </PlotCard>
+          <div class="cb-viz__stack">
+            <section class="cb-plot cb-viz__nav" aria-label="Session navigator">
+              <SessionNavigator />
+            </section>
             <PlotCard
               title="Neural data"
-              help={
-                <p>
-                  The raw, denoised and deconvolved signals of the selected cell over the shared
-                  window. Pick the cell with the arrows, the footprints or a row of the heat map.
-                  Each row has its own help button, which also explains the behavior shading.
-                </p>
+              help={NEURAL_HELP}
+              box
+              summary={neuralSummary()}
+              actions={
+                <>
+                  <button
+                    type="button"
+                    class="btn-secondary btn-small"
+                    aria-haspopup="dialog"
+                    aria-expanded={!!overlaysAnchor()}
+                    onClick={(e) =>
+                      setOverlaysAnchor((a) =>
+                        a === e.currentTarget ? undefined : e.currentTarget,
+                      )
+                    }
+                  >
+                    Display
+                  </button>
+                  <ReviewButton kind="neural" label="Review cells" />
+                </>
               }
-              class="cb-plot--grow2"
             >
               {() => (
                 <div class="cb-fill">
@@ -404,32 +423,96 @@ export function VizPanel(): JSX.Element {
                 </div>
               )}
             </PlotCard>
-            <PlotCard
-              title="Behavior and position"
-              help={
-                <p>
-                  Neural data and behavior on one time axis, aligned with the selected cell above.
-                  Hover over any plot to place the dashed cursor on all of them. Each track has its
-                  own help button. Choose tracks under Tracks and the shaded behavior bouts under
-                  Behavior overlays.
-                </p>
-              }
-              class="cb-plot--grow3"
-            >
-              {() => (
-                <div class="cb-fill">
-                  <BehaviorRows />
-                </div>
-              )}
-            </PlotCard>
           </div>
-        </div>
-        <div class="cb-viz__foot">
-          <SessionNavigator />
+          <PlotCard
+            title="Arena"
+            help={HELP.trajectory.text}
+            box
+            summary={arenaSummaryLine()}
+            actions={
+              <>
+                <ReviewButton kind="arena" label="Edit arena" />
+                <ReviewButton kind="position" label="Review position" />
+              </>
+            }
+          >
+            {() => (
+              <div class="cb-fill cb-viz__arena">
+                <Show
+                  when={hasPosition()}
+                  fallback={
+                    <div class="cb-note">
+                      Load position and behavior camera timestamps to see the path.
+                    </div>
+                  }
+                >
+                  <div class="cb-viz__traj">
+                    <Trajectory bare linked mode={trajMode()} />
+                  </div>
+                  <div class="cb-plot__legend cb-viz__key">
+                    <Show when={placed()}>
+                      <select
+                        aria-label="Trajectory view"
+                        value={trajMode()}
+                        onChange={(e) => setTrajMode(e.currentTarget.value as 'path' | 'time')}
+                      >
+                        <option value="path">Path</option>
+                        <option value="time">Time in bin</option>
+                      </select>
+                    </Show>
+                    <Show
+                      when={trajMode() === 'path' || !placed()}
+                      fallback={
+                        <>
+                          Time in bin: low
+                          <span class="cb-legend__bar cb-legend__bar--viridis cb-legend__bar--sm" />
+                          high
+                        </>
+                      }
+                    >
+                      <span class="cb-key cb-key--gray" />
+                      Full session
+                      <span class="cb-key cb-key--blue" />
+                      Selected window
+                      <span class="cb-key cb-key--dot" />
+                      Cursor
+                    </Show>
+                  </div>
+                </Show>
+              </div>
+            )}
+          </PlotCard>
+          <PlotCard
+            title="Behavior and position"
+            help={BEHAVIOR_HELP}
+            box
+            summary={behaviorSummary()}
+            actions={
+              <>
+                <button
+                  type="button"
+                  class="btn-secondary btn-small"
+                  aria-haspopup="dialog"
+                  aria-expanded={!!tracksAnchor()}
+                  onClick={(e) => openTracks(e.currentTarget)}
+                >
+                  Tracks
+                </button>
+                <ReviewButton kind="behavior" label="Review behavior" />
+              </>
+            }
+          >
+            {() => (
+              <div class="cb-fill">
+                <BehaviorRows />
+              </div>
+            )}
+          </PlotCard>
         </div>
       </Show>
-      <Show when={overlaysAnchor()}>{(a) => <OverlaysMenu anchor={a()} />}</Show>
+      <Show when={overlaysAnchor()}>{(a) => <DisplayMenu anchor={a()} />}</Show>
       <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>
+      <EntryPopup />
     </div>
   );
 }
