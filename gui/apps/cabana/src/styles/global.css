@@ -706,7 +706,7 @@ input:not([type='checkbox']):not([type='radio']):not([type='range']),
 select,
 textarea {
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 6px 10px;
   background: var(--bg-primary);
   font: inherit;
@@ -721,13 +721,13 @@ textarea {
 .cb-notebox,
 .cb-note,
 .cb-fix {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .cb-seg button:first-child {
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 .cb-seg button:last-child {
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 .btn-small {
   padding: 5px 12px;
@@ -5116,5 +5116,14 @@ textarea {
   border: 1px dashed var(--border-default);
   border-radius: var(--radius-md);
   font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Small-caps monospace label used for group headings and the header data line */
+.sc {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-secondary);
 }

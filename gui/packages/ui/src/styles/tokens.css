@@ -32,9 +32,24 @@
   --error-bg: rgba(211, 47, 47, 0.06);
   --success: #2e7d32;
 
+  /* Review states: flagged by a check, corrected by the user, changed by preprocessing */
+  --flag: #b77900;
+  --flag-bg: #fdf3dc;
+  --correction: #2171b5;
+  --correction-bg: rgba(33, 113, 181, 0.08);
+  --prep: #6a51a3;
+  --prep-bg: #f1edf8;
+  --error-text: #c62828;
+  --success-bg: #e9f5ea;
+
+  /* Chrome (header, sidebar) is gray; content is white */
+  --chrome: var(--bg-secondary);
+  --ink: var(--text-primary);
+
   /* Semantic borders — thin, neutral */
   --border-subtle: #e8e8e8;
   --border-default: #d4d4d4;
+  --border-strong: #d4d4d4;
 
   /* Panel tokens */
   --panel-bg: var(--bg-primary);
@@ -64,7 +79,7 @@
   --space-xl: 32px;
 
   /* Border radius — tight for scientific feel */
-  --radius-sm: 2px;
-  --radius-md: 4px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
   --radius-lg: 6px;
 }
