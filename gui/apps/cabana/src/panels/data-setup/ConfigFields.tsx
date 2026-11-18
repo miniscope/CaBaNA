@@ -3,7 +3,7 @@
 
 import { For, Show, type JSX } from 'solid-js';
 import { arena, setArena } from '../../lib/arena.ts';
-import { configOpen, openEntry, toggleAllFields } from '../../lib/data-setup-view.ts';
+import { openArenaEditor } from './arena-editor.ts';
 import { INDICATORS } from '../../lib/decon.ts';
 import { indicatorId, setIndicator } from '../../lib/decon-state.ts';
 import { PARADIGMS } from '../../lib/experiments.ts';
@@ -59,71 +59,55 @@ export function Select<T extends string>(props: {
 }
 
 /**
- * One section: a header bar (name, Required, Show all fields, and at the far right why it
- * matters) over its key fields. Show all fields adds the rest and folds every other section to
- * its bar with a one-line `summary`; clicking a folded bar shows all of that section instead.
- * `wide` fields take the whole width instead of the three columns.
+ * One group of the experimental setup: its title, why it matters, an optional action (the arena
+ * editor), then its fields. `more` fields follow the key fields. `wide` fields take the whole
+ * width instead of the three columns.
  */
 export function Section(props: {
   id: string;
   title: string;
   why: string;
-  summary: string;
   required?: boolean;
+  action?: JSX.Element;
   keyFields: JSX.Element;
   more?: JSX.Element;
   wide?: boolean;
 }): JSX.Element {
-  const all = () => configOpen() === props.id;
-  const folded = () => configOpen() !== undefined && !all();
   return (
-    <section class="cb-ds-cfg" classList={{ 'cb-ds-cfg--folded': folded() }}>
+    <section class="cb-ds-cfg" id={`cb-es-${props.id}`}>
       <header class="cb-ds-cfg__bar">
-        <Show
-          when={folded()}
-          fallback={
-            <>
-              <h4>{props.title}</h4>
-              <Show when={props.required}>
-                <span class="cb-warn">Required</span>
-              </Show>
-            </>
-          }
-        >
-          <button
-            type="button"
-            class="cb-ds-cfg__open"
-            aria-expanded="false"
-            onClick={() => toggleAllFields(props.id)}
-          >
-            <h4>{props.title}</h4>
-            <Show when={props.required}>
-              <span class="cb-warn">Required</span>
-            </Show>
-            <span class="cb-ds-cfg__sum">{props.summary}</span>
-          </button>
+        <h4>{props.title}</h4>
+        <Show when={props.required}>
+          <span class="cb-warn">Required</span>
         </Show>
-        <Show when={!folded() && (props.more || all())}>
-          <button class="cb-linkbtn" onClick={() => toggleAllFields(props.id)}>
-            {!all() ? 'Show all fields' : props.more ? 'Show fewer fields' : 'Show every section'}
-          </button>
-        </Show>
-        <span class="cb-spacer" />
         <InfoTip label={`Why ${props.title} matters`}>{props.why}</InfoTip>
+        <span class="cb-spacer" />
+        {props.action}
       </header>
-      <Show when={!folded()}>
-        <div class="cb-ds-cfg__body">
-          <Show when={!props.wide} fallback={props.keyFields}>
-            <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
-          </Show>
-          <Show when={all() && props.more}>
-            <div class="cb-setup-grid cb-ds-cfg__grid cb-ds-cfg__more">{props.more}</div>
-          </Show>
-        </div>
-      </Show>
+      <div class="cb-ds-cfg__body">
+        <Show when={!props.wide} fallback={props.keyFields}>
+          <div class="cb-setup-grid cb-ds-cfg__grid">{props.keyFields}</div>
+        </Show>
+        <Show when={props.more}>
+          <div class="cb-setup-grid cb-ds-cfg__grid cb-ds-cfg__more">{props.more}</div>
+        </Show>
+      </div>
     </section>
   );
 }
+
+const zoneCount = () => arena.zones.filter((z) => z.kind === 'zone').length;
+
+export const spatialSummary = () =>
+  [
+    arena.shape === 'circle' ? `Circle, ${arena.width} cm` : `${arena.width} × ${arena.height} cm`,
+    `${zoneCount()} ${zoneCount() === 1 ? 'zone' : 'zones'}`,
+  ].join(' · ');
+
+export const experimentSummary = () =>
+  [PARADIGMS.find((x) => x.id === experimentId())?.label, sessionName(), source.subjectId]
+    .filter(Boolean)
+    .join(' · ') || 'Nothing entered';
 
 export function Spatial(): JSX.Element {
   const zones = () => arena.zones.filter((z) => z.kind === 'zone');
@@ -131,13 +115,12 @@ export function Spatial(): JSX.Element {
     <Section
       id="spatial"
       title="Spatial setup"
-      summary={[
-        arena.shape === 'circle'
-          ? `Circle, ${arena.width} cm`
-          : `${arena.width} × ${arena.height} cm`,
-        `${zones().length} ${zones().length === 1 ? 'zone' : 'zones'}`,
-      ].join(' · ')}
       required
+      action={
+        <button type="button" class="cb-sp-accent" onClick={openArenaEditor}>
+          ✎ Open arena editor
+        </button>
+      }
       why="Turns positions into centimeters and defines the zones. Place cells, speed in cm/s, zone epochs and position decoding depend on it. Type the arena size here, or draw the outline, a known distance and the zones in the arena editor. Written to arena in config.yaml."
       keyFields={
         <>
@@ -170,9 +153,7 @@ export function Spatial(): JSX.Element {
                   .map((z) => z.name)
                   .join(', ')}.`
               : 'No zones yet.'}{' '}
-            <button class="cb-linkbtn" onClick={() => openEntry('position', 'arena')}>
-              Open arena editor
-            </button>
+            The arena, scale and zones are drawn and changed in the arena editor.
           </p>
         </>
       }
@@ -225,12 +206,7 @@ export function Experiment(): JSX.Element {
   return (
     <Section
       id="experiment"
-      title="Experiment & subjects"
-      summary={
-        [PARADIGMS.find((x) => x.id === experimentId())?.label, sessionName(), source.subjectId]
-          .filter(Boolean)
-          .join(' · ') || 'Nothing entered'
-      }
+      title="Experiment and subjects"
       why="Identifies the session so saved results can be traced back to it. The paradigm decides which files are marked required for this kind of experiment, and the calcium indicator sets the decay time deconvolution QC uses. Nothing else here changes a calculation."
       keyFields={
         <>
