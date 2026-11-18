@@ -169,3 +169,11 @@
 .cb-req .cb-un__item p {
   margin: 2px 0;
 }
+
+/* Header: gray chrome, monospace data line, white buttons */
+.compact-header {
+  background: var(--chrome);
+}
+.cb-hd-btn {
+  background: var(--bg-primary);
+}
