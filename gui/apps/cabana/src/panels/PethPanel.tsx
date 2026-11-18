@@ -1,5 +1,6 @@
 import { createMemo, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Requirements } from '../components/Requirements.tsx';
+import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
 import { SectionList, StageBar, StageFooter } from '../components/GuidedSetup.tsx';
 import { RunChoice, SettingsSummary } from '../components/GuidedReview.tsx';
 import { guided } from '../lib/guided.ts';
@@ -33,7 +34,8 @@ const SECTIONS = ['events', 'window', 'filtering', 'options', 'advanced'];
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('peth', 'events');
 
-function PethSetup(): JSX.Element {
+/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+export function PethSetup(props: { configure?: ConfigureControl }): JSX.Element {
   const s = createPethSetup();
   const ok = () => s.ok();
   const ps = pethSettings;
@@ -64,10 +66,46 @@ function PethSetup(): JSX.Element {
     void runPeth();
   };
 
-  let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
+  const sectionBody = (id: string) => (
+    <>
+      <h3 class="cb-pe-sectitle">{sections().find((x) => x.id === id)!.title}</h3>
+      <Show when={id === 'events'}>
+        <EventsSection s={s} />
+      </Show>
+      <Show when={id === 'window'}>
+        <WindowSection s={s} />
+      </Show>
+      <Show when={id === 'filtering'}>
+        <FilteringSection s={s} />
+      </Show>
+      <Show when={id === 'options'}>
+        <OptionsSection s={s} />
+      </Show>
+      <Show when={id === 'advanced'}>
+        <AdvancedSection />
+      </Show>
+    </>
+  );
+  const configureView = (c: () => ConfigureControl) => (
+    <Show
+      when={ok()}
+      fallback={
+        <div class="cb-empty">
+          {(s.data() as { error: string }).error} PETH needs deconvolved neural data, neural
+          timestamps and behavior annotations.
+        </div>
+      }
+    >
+      <ConfigureBody g={g} label="PETH settings" sections={sections()} control={c()}>
+        {sectionBody}
+      </ConfigureBody>
+    </Show>
+  );
 
-  return (
+  let root!: HTMLDivElement;
+  onMount(() => root && onCleanup(fitToWindow(root)));
+
+  const page = () => (
     <div class="cb-place cb-gs cb-pe-setup" ref={root}>
       <PethHead s={s} changes={changes()} />
 
@@ -90,26 +128,7 @@ function PethSetup(): JSX.Element {
 
       <Show when={ok() && g.stage() === 'configure'}>
         <SectionList g={g} label="PETH settings" sections={sections()}>
-          {(id) => (
-            <>
-              <h3 class="cb-pe-sectitle">{sections().find((x) => x.id === id)!.title}</h3>
-              <Show when={id === 'events'}>
-                <EventsSection s={s} />
-              </Show>
-              <Show when={id === 'window'}>
-                <WindowSection s={s} />
-              </Show>
-              <Show when={id === 'filtering'}>
-                <FilteringSection s={s} />
-              </Show>
-              <Show when={id === 'options'}>
-                <OptionsSection s={s} />
-              </Show>
-              <Show when={id === 'advanced'}>
-                <AdvancedSection />
-              </Show>
-            </>
-          )}
+          {sectionBody}
         </SectionList>
       </Show>
 
@@ -157,6 +176,12 @@ function PethSetup(): JSX.Element {
         }
       />
     </div>
+  );
+
+  return (
+    <Show when={props.configure} fallback={page()}>
+      {(c) => configureView(c)}
+    </Show>
   );
 }
 

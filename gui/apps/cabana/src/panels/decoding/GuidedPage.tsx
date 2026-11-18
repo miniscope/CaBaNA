@@ -3,6 +3,7 @@
 // Run. Same structure as Place cells.
 
 import { createResource, Show, onCleanup, onMount, type JSX } from 'solid-js';
+import { ConfigureBody, type ConfigureControl } from '../../components/ConfigureBody.tsx';
 import {
   SectionList,
   StageBar,
@@ -188,7 +189,11 @@ function RunStage(props: {
   );
 }
 
-export function DecodingSetup(props: { onResults: () => void }): JSX.Element {
+/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+export function DecodingSetup(props: {
+  onResults: () => void;
+  configure?: ConfigureControl;
+}): JSX.Element {
   const run = () => (active()?.id === 'decoding' ? active() : undefined);
   const c = () => checks();
   const [match] = createResource(
@@ -277,9 +282,36 @@ export function DecodingSetup(props: { onResults: () => void }): JSX.Element {
     }));
 
   let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
+  onMount(() => root && onCleanup(fitToWindow(root)));
 
-  return (
+  const sectionBody = (id: string) => (
+    <>
+      <Show when={id === 'target'}>
+        <h3 class="cb-dg-h">What would you like to predict?</h3>
+        <TargetCards />
+        <InputLine />
+        <FramesView />
+      </Show>
+      <Show when={id === 'decoder'}>
+        <DecoderView />
+      </Show>
+      <Show when={id === 'folds'}>
+        <FoldsView />
+      </Show>
+      <Show when={id === 'significance'}>
+        <SignificanceView />
+      </Show>
+    </>
+  );
+  const configureView = (c: () => ConfigureControl) => (
+    <div class="cb-dec-page">
+      <ConfigureBody g={g} label="Decoding settings" sections={sections()} control={c()}>
+        {sectionBody}
+      </ConfigureBody>
+    </div>
+  );
+
+  const page = () => (
     <div class="cb-place cb-gs cb-dec-page" ref={root}>
       <div class="cb-place-head">
         <div>
@@ -324,25 +356,7 @@ export function DecodingSetup(props: { onResults: () => void }): JSX.Element {
 
       <Show when={g.stage() === 'configure'}>
         <SectionList g={g} label="Decoding settings" sections={sections()}>
-          {(id) => (
-            <>
-              <Show when={id === 'target'}>
-                <h3 class="cb-dg-h">What would you like to predict?</h3>
-                <TargetCards />
-                <InputLine />
-                <FramesView />
-              </Show>
-              <Show when={id === 'decoder'}>
-                <DecoderView />
-              </Show>
-              <Show when={id === 'folds'}>
-                <FoldsView />
-              </Show>
-              <Show when={id === 'significance'}>
-                <SignificanceView />
-              </Show>
-            </>
-          )}
+          {sectionBody}
         </SectionList>
       </Show>
 
@@ -410,5 +424,11 @@ export function DecodingSetup(props: { onResults: () => void }): JSX.Element {
         }
       />
     </div>
+  );
+
+  return (
+    <Show when={props.configure} fallback={page()}>
+      {(c) => configureView(c)}
+    </Show>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { Requirements } from '../components/Requirements.tsx';
+import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
 import { SectionList, StageBar, StageFooter } from '../components/GuidedSetup.tsx';
 import { HowItWorks } from '../components/GuidedReview.tsx';
 import { guided } from '../lib/guided.ts';
@@ -214,7 +215,8 @@ const SECTIONS = ['type', 'conditions', 'frames', 'testing'];
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('auroc', 'type');
 
-function AurocSetup(): JSX.Element {
+/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+export function AurocSetup(props: { configure?: ConfigureControl }): JSX.Element {
   const data = createMemo(() => aurocData());
   const ok = () => {
     const x = data();
@@ -287,7 +289,7 @@ function AurocSetup(): JSX.Element {
   const [advanced, setAdvanced] = createSignal(false);
   let advBtn!: HTMLButtonElement;
   let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
+  onMount(() => root && onCleanup(fitToWindow(root)));
 
   const settingIssues = () => aurocSettingIssues(aurocSettings);
   const framework = () => engineFor('auroc') === 'framework';
@@ -353,7 +355,127 @@ function AurocSetup(): JSX.Element {
   const sections = () => aurocSections(view);
   const summary = () => aurocSummary(view);
 
-  return (
+  const sectionBody = (id: string) => (
+    <>
+      <Show when={id === 'type'}>
+        <AurocTypeSection />
+      </Show>
+
+      <Show when={id === 'conditions'}>
+        <AurocConditionsSection
+          ok={okData}
+          pairMode={pairMode}
+          pair={pair}
+          counts={counts}
+          eligible={eligible}
+          rowCounts={rowCounts}
+          tooFew={tooFew}
+          insufficient={insufficient}
+          toggle={toggle}
+        />
+      </Show>
+
+      <Show when={id === 'frames'}>
+        <AurocFramesSection frames={framesData} />
+      </Show>
+
+      <Show when={id === 'testing'}>
+        <AurocTestingSection
+          ok={okData}
+          selected={selected}
+          minP={minP}
+          openAdvanced={() => setAdvanced(true)}
+          advancedButton={(el: HTMLButtonElement) => (advBtn = el)}
+        />
+      </Show>
+    </>
+  );
+  const advancedWindow = () => (
+    <Show when={ok() && advanced()}>
+      <Modal
+        title="Advanced options"
+        onClose={() => {
+          setAdvanced(false);
+          advBtn?.focus();
+        }}
+      >
+        <div class="cb-as-adv-body">
+          <NumberBox k="seed" label="Random seed" step={1}>
+            Controls the random shifts so the same analysis can be reproduced: the same seed,
+            settings and data give the same shifts and results.
+          </NumberBox>
+          <Show
+            when={aurocSettings.method === 'speed'}
+            fallback={
+              <p class="cb-muted">
+                Speed-matching settings appear here when the null method is speed-matched.
+              </p>
+            }
+          >
+            <h4>Speed matching</h4>
+            <p class="cb-muted">Balance measure and tolerance are set next to the null method.</p>
+            <div class="cb-setting">
+              <Title text="Candidates per shift">
+                The most candidate shifts tried when looking for one that matches.
+              </Title>
+              <label
+                class="cb-prep-field"
+                classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}
+              >
+                <input
+                  type="number"
+                  aria-label="Candidates per shift"
+                  min="1"
+                  step="1"
+                  value={aurocSettings.match.maxTries}
+                  onInput={(e) =>
+                    +e.currentTarget.value >= 1 &&
+                    setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))
+                  }
+                />
+              </label>
+            </div>
+            <p class="cb-muted">
+              KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s starting
+              settings, not validated standards. There is no cut-off for a low acceptance rate; the
+              run stops if no shift can be matched, and does not fall back to unmatched shifts.
+            </p>
+            <Title text="Behaviors eligible for speed matching">
+              Behaviors with enough included frames for speed matching.
+            </Title>
+            <For each={matchEligible()}>
+              {(e) => (
+                <div class="cb-muted">
+                  {e.label}:{' '}
+                  {e.matched
+                    ? 'matched'
+                    : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
+                </div>
+              )}
+            </For>
+          </Show>
+        </div>
+      </Modal>
+    </Show>
+  );
+  const configureView = (c: () => ConfigureControl) => (
+    <Show
+      when={ok()}
+      fallback={
+        <div class="cb-empty">
+          {(data() as { error: string }).error} auROC needs deconvolved neural data, neural
+          timestamps and behavior annotations.
+        </div>
+      }
+    >
+      <ConfigureBody g={g} label="auROC settings" sections={sections()} control={c()}>
+        {sectionBody}
+      </ConfigureBody>
+      {advancedWindow()}
+    </Show>
+  );
+
+  const page = () => (
     <div class="cb-place cb-gs cb-au" ref={root}>
       <div class="cb-place-head">
         <div>
@@ -435,41 +557,7 @@ function AurocSetup(): JSX.Element {
 
       <Show when={ok() && g.stage() === 'configure'}>
         <SectionList g={g} label="auROC settings" sections={sections()}>
-          {(id) => (
-            <>
-              <Show when={id === 'type'}>
-                <AurocTypeSection />
-              </Show>
-
-              <Show when={id === 'conditions'}>
-                <AurocConditionsSection
-                  ok={okData}
-                  pairMode={pairMode}
-                  pair={pair}
-                  counts={counts}
-                  eligible={eligible}
-                  rowCounts={rowCounts}
-                  tooFew={tooFew}
-                  insufficient={insufficient}
-                  toggle={toggle}
-                />
-              </Show>
-
-              <Show when={id === 'frames'}>
-                <AurocFramesSection frames={framesData} />
-              </Show>
-
-              <Show when={id === 'testing'}>
-                <AurocTestingSection
-                  ok={okData}
-                  selected={selected}
-                  minP={minP}
-                  openAdvanced={() => setAdvanced(true)}
-                  advancedButton={(el: HTMLButtonElement) => (advBtn = el)}
-                />
-              </Show>
-            </>
-          )}
+          {sectionBody}
         </SectionList>
       </Show>
 
@@ -507,74 +595,14 @@ function AurocSetup(): JSX.Element {
         }
       />
 
-      <Show when={ok() && advanced()}>
-        <Modal
-          title="Advanced options"
-          onClose={() => {
-            setAdvanced(false);
-            advBtn?.focus();
-          }}
-        >
-          <div class="cb-as-adv-body">
-            <NumberBox k="seed" label="Random seed" step={1}>
-              Controls the random shifts so the same analysis can be reproduced: the same seed,
-              settings and data give the same shifts and results.
-            </NumberBox>
-            <Show
-              when={aurocSettings.method === 'speed'}
-              fallback={
-                <p class="cb-muted">
-                  Speed-matching settings appear here when the null method is speed-matched.
-                </p>
-              }
-            >
-              <h4>Speed matching</h4>
-              <p class="cb-muted">Balance measure and tolerance are set next to the null method.</p>
-              <div class="cb-setting">
-                <Title text="Candidates per shift">
-                  The most candidate shifts tried when looking for one that matches.
-                </Title>
-                <label
-                  class="cb-prep-field"
-                  classList={{ 'cb-prep-field--changed': aurocSettings.match.maxTries !== 20 }}
-                >
-                  <input
-                    type="number"
-                    aria-label="Candidates per shift"
-                    min="1"
-                    step="1"
-                    value={aurocSettings.match.maxTries}
-                    onInput={(e) =>
-                      +e.currentTarget.value >= 1 &&
-                      setAurocSettings('match', 'maxTries', Math.round(+e.currentTarget.value))
-                    }
-                  />
-                </label>
-              </div>
-              <p class="cb-muted">
-                KS distance, tolerance 0.10 and 20 candidates per shift are the framework’s starting
-                settings, not validated standards. There is no cut-off for a low acceptance rate;
-                the run stops if no shift can be matched, and does not fall back to unmatched
-                shifts.
-              </p>
-              <Title text="Behaviors eligible for speed matching">
-                Behaviors with enough included frames for speed matching.
-              </Title>
-              <For each={matchEligible()}>
-                {(e) => (
-                  <div class="cb-muted">
-                    {e.label}:{' '}
-                    {e.matched
-                      ? 'matched'
-                      : `not matched (fewer than ${aurocSettings.match.minFrames} included frames)`}
-                  </div>
-                )}
-              </For>
-            </Show>
-          </div>
-        </Modal>
-      </Show>
+      {advancedWindow()}
     </div>
+  );
+
+  return (
+    <Show when={props.configure} fallback={page()}>
+      {(c) => configureView(c)}
+    </Show>
   );
 }
 

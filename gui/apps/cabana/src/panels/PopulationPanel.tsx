@@ -8,6 +8,7 @@ import {
   Show,
   type JSX,
 } from 'solid-js';
+import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
 import { SectionList, StageBar, StageFooter } from '../components/GuidedSetup.tsx';
 import { HowItWorks } from '../components/GuidedReview.tsx';
 import { Requirements } from '../components/Requirements.tsx';
@@ -46,9 +47,10 @@ import { setShowResults, showResults } from './population/view-store.ts';
 const g = guided('population', 'target');
 const SECTIONS = ['target', 'methods', 'stats'];
 
-function PopulationSetup(): JSX.Element {
+/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+export function PopulationSetup(props: { configure?: ConfigureControl }): JSX.Element {
   let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
+  onMount(() => root && onCleanup(fitToWindow(root)));
   const n = neuralSummary;
   const engineOff = () => bridgeState().kind !== 'ready';
   const running = () => (active()?.id === 'population' ? active() : undefined);
@@ -91,7 +93,36 @@ function PopulationSetup(): JSX.Element {
     return 'Ready to run';
   };
   const last = () => latest.population;
-  return (
+  const sectionBody = (id: string) => (
+    <>
+      <Show when={id === 'target'}>
+        <TargetSection />
+      </Show>
+      <Show when={id === 'methods'}>
+        <MethodsSection />
+      </Show>
+      <Show when={id === 'stats'}>
+        <StatsSection />
+      </Show>
+    </>
+  );
+  const configureView = (c: () => ConfigureControl) => (
+    <Show
+      when={n()}
+      fallback={<div class="cb-empty">Load deconvolved events to run this analysis.</div>}
+    >
+      <ConfigureBody
+        g={g}
+        label="Population settings"
+        sections={populationSections()}
+        control={c()}
+      >
+        {sectionBody}
+      </ConfigureBody>
+    </Show>
+  );
+
+  const page = () => (
     <div class="cb-place cb-gs cb-pn" ref={root}>
       <div class="cb-place-head">
         <div>
@@ -139,19 +170,7 @@ function PopulationSetup(): JSX.Element {
 
       <Show when={g.stage() === 'configure'}>
         <SectionList g={g} label="Population settings" sections={populationSections()}>
-          {(id) => (
-            <>
-              <Show when={id === 'target'}>
-                <TargetSection />
-              </Show>
-              <Show when={id === 'methods'}>
-                <MethodsSection />
-              </Show>
-              <Show when={id === 'stats'}>
-                <StatsSection />
-              </Show>
-            </>
-          )}
+          {sectionBody}
         </SectionList>
       </Show>
 
@@ -189,6 +208,12 @@ function PopulationSetup(): JSX.Element {
         }
       />
     </div>
+  );
+
+  return (
+    <Show when={props.configure} fallback={page()}>
+      {(c) => configureView(c)}
+    </Show>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   Show,
   type JSX,
 } from 'solid-js';
+import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
 import {
   SectionList,
   StageBar,
@@ -63,7 +64,8 @@ function Section(props: { id: string; children: JSX.Element }): JSX.Element {
   );
 }
 
-function PlaceSetup(): JSX.Element {
+/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
+export function PlaceSetup(props: { configure?: ConfigureControl }): JSX.Element {
   const frames = createMemo(() => placeFrames());
   const ready = () => !!(deconvolved() && placeNeural());
   const ps = placeSettings;
@@ -111,7 +113,7 @@ function PlaceSetup(): JSX.Element {
   };
   const rejected = () => (deconvolved()?.cells ?? 0) - (placeNeural()?.cells ?? 0);
   let root!: HTMLDivElement;
-  onMount(() => onCleanup(fitToWindow(root)));
+  onMount(() => root && onCleanup(fitToWindow(root)));
 
   const framework = () => engineFor('place') === 'framework';
   const previewBlocked = () =>
@@ -140,7 +142,43 @@ function PlaceSetup(): JSX.Element {
     if (error()) return 'Needs attention';
     return 'Ready to run';
   };
-  return (
+  const sectionBody = () => (
+    <>
+      <Section id="maps">
+        <PlaceMapsSettings used={ok()!.used} />
+      </Section>
+
+      <Section id="tests">
+        <PlaceTuningSettings />
+      </Section>
+
+      <Section id="fields">
+        <PlaceFieldSettings />
+      </Section>
+
+      <Section id="occupancy">
+        <OccupancyPreview which={lastSettings()} />
+      </Section>
+    </>
+  );
+  const configureView = (c: () => ConfigureControl) => (
+    <Show
+      when={ready() && ok()}
+      fallback={
+        <div class="cb-empty">
+          {ready()
+            ? (error() ?? 'No frames to analyze.')
+            : 'Load deconvolved neural data and position to run this analysis.'}
+        </div>
+      }
+    >
+      <ConfigureBody g={g} label="Place cell settings" sections={sections()} control={c()}>
+        {sectionBody}
+      </ConfigureBody>
+    </Show>
+  );
+
+  const page = () => (
     <div class="cb-place cb-gs" ref={root}>
       <div class="cb-place-head">
         <div>
@@ -202,25 +240,7 @@ function PlaceSetup(): JSX.Element {
 
       <Show when={ready() && ok() && g.stage() === 'configure'}>
         <SectionList g={g} label="Place cell settings" sections={sections()}>
-          {() => (
-            <>
-              <Section id="maps">
-                <PlaceMapsSettings used={ok()!.used} />
-              </Section>
-
-              <Section id="tests">
-                <PlaceTuningSettings />
-              </Section>
-
-              <Section id="fields">
-                <PlaceFieldSettings />
-              </Section>
-
-              <Section id="occupancy">
-                <OccupancyPreview which={lastSettings()} />
-              </Section>
-            </>
-          )}
+          {sectionBody}
         </SectionList>
       </Show>
 
@@ -258,6 +278,12 @@ function PlaceSetup(): JSX.Element {
         }
       />
     </div>
+  );
+
+  return (
+    <Show when={props.configure} fallback={page()}>
+      {(c) => configureView(c)}
+    </Show>
   );
 }
 
