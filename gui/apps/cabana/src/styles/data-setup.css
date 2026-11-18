@@ -330,19 +330,80 @@
   flex: 1;
   min-height: 0;
 }
+/*
+ * Arena editor: the stages as a tool row across the top, the canvas filling the left, the
+ * current stage's settings and the time in each zone on the right. The editor's own wrappers
+ * are flattened so their parts sit on this grid; the editor itself is unchanged.
+ */
 .cb-ds-arena {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: var(--space-md);
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tools tools'
+    'view side'
+    'view time';
+  gap: 8px var(--space-md);
   min-height: 0;
 }
-.cb-ds-arena__main {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.cb-ds-arena__main,
+.cb-ds-arena .cb-es-body,
+.cb-ds-arena .cb-spatial,
+.cb-ds-arena .cb-sp-grid {
+  display: contents;
+}
+/* The start screen (no picture or outline yet) takes the whole editor. */
+.cb-ds-arena .cb-es-body > :not(.cb-spatial) {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
   min-height: 0;
+  overflow-y: auto;
+}
+.cb-ds-arena .cb-sp-stages {
+  grid-area: tools;
+  justify-self: start;
+  gap: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   overflow: hidden;
+}
+.cb-ds-arena .cb-sp-stages li + li::before {
+  content: none;
+}
+.cb-ds-arena .cb-sp-stages li + li button {
+  border-left: 1px solid var(--border-default);
+}
+.cb-ds-arena .cb-sp-stages button {
+  border-radius: 0;
+  border-width: 0;
+  padding: 4px 12px;
+  color: var(--text-primary);
+}
+.cb-ds-arena .cb-sp-stages .cb-sp-stages__on {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
+.cb-ds-arena .cb-sp-stages__on .cb-sp-num {
+  background: #fff;
+  color: var(--ink);
+}
+.cb-ds-arena .cb-arena-view {
+  grid-area: view;
+  min-width: 0;
+  min-height: 0;
+}
+.cb-ds-arena .cb-sp-side {
+  grid-area: side;
+  min-height: 0;
+  padding-left: var(--space-md);
+  border-left: 1px solid var(--border-subtle);
+}
+.cb-ds-arena .cb-ds-zt {
+  grid-area: time;
+  padding: 8px 0 0 var(--space-md);
+  border-left: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-subtle);
 }
 .cb-ds-zt {
   display: flex;
