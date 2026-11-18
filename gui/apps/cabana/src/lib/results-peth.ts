@@ -5,7 +5,7 @@
 import { DEFAULT_STYLE, PLOT_SPEC_VERSION, type PlotSpec } from './plot-spec.ts';
 import type { SavedTable } from './results-explorer.ts';
 import type { RunRecord } from './bridge-client.ts';
-import { niceLimit } from './peth-view.ts';
+import { deltaColor, niceLimit } from './peth-view.ts';
 
 export type PethResponse = 'Excited' | 'Inhibited' | 'Not significant' | 'Not evaluated' | '';
 
@@ -179,14 +179,9 @@ export function heatLimit(b: PethBehavior): number {
   return niceLimit(v.length ? v[Math.floor(0.99 * (v.length - 1))] : 0);
 }
 
-const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
-/** White at 0, red above and blue below; values beyond ±limit share the end colors. */
-export function heatColor(v: number, limit: number): string {
-  if (!Number.isFinite(v)) return '#e6e6e6';
-  const t = Math.min(1, Math.abs(v) / limit);
-  const end = v >= 0 ? [178, 24, 43] : [33, 102, 172];
-  return `rgb(${mix(255, end[0], t)},${mix(255, end[1], t)},${mix(255, end[2], t)})`;
-}
+/** The Analysis page's PETH scale (orange above 0, purple below), so one variable keeps one color. */
+export const heatColor = (v: number, limit: number): string =>
+  Number.isFinite(v) ? deltaColor(v, limit) : '#e6e6e6';
 
 /** Mean over cells with a value at each time bin (the curve under the heat map). */
 export function populationMean(b: PethBehavior): number[] {

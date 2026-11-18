@@ -4,6 +4,7 @@
 
 import type { RunRecord } from './bridge-client.ts';
 import type { ExplorerData } from './explorer-data.ts';
+import { outcomeCounts, placeCells } from './results-saved.ts';
 import { TABLE_SPECS } from './results-explorer.ts';
 import { analysisLabel, hasResults, isInProgress, overviewRows } from './results-overview.ts';
 import type { Match } from './results-match.ts';
@@ -93,8 +94,19 @@ export function headlineOf(analysis: AnalysisId, data: ExplorerData): string | u
     const sig = responses.filter((v) => v === 'Excited' || v === 'Inhibited').length;
     return `${sig} of ${evaluated} cell-behavior pairs significant`;
   }
+  const place =
+    analysis === 'place'
+      ? placeCells(data.tables.find((t) => t.name === 'place_cells.csv'))
+      : undefined;
+  if (place?.length) {
+    const n = outcomeCounts(place);
+    return `${n.both} of ${place.length - n.cannot} cells pass both place-cell tests`;
+  }
   const s = data.stats[0];
   if (!s) return undefined;
+  // Decoding and the other framework results: the range of the saved statistic when nothing was tested.
+  if (!(s.pAdj ?? s.pRaw) && s.range)
+    return `${s.name}: ${+s.range[0].toPrecision(3)} to ${+s.range[1].toPrecision(3)}`;
   const p = s.pAdj ?? s.pRaw;
   const what = s.basis ?? 'values';
   return p ? `${p.below} of ${p.n} ${what} below alpha` : `${s.n} ${what}`;

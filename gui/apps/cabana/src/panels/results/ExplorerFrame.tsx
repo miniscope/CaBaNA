@@ -17,7 +17,7 @@ import { bridgeReady } from '../../lib/bridge-status.ts';
 import { browserOutcomeInMemory } from '../../lib/live-outcome.ts';
 import { executedShuffles, preliminaryText } from '../../lib/preview.ts';
 import { exportItems } from '../../lib/results-export.ts';
-import { plotsAvailable, plotsOf } from '../../lib/results-explorer.ts';
+import { plotsAvailable, plotsOf, summarySentences } from '../../lib/results-explorer.ts';
 import { matchOfRecord } from '../../lib/results-match.ts';
 import { closeExplorer, openExplorer, type ExplorerTarget } from '../../lib/results-nav.ts';
 import { analysisLabel, formatWhen, hasResults } from '../../lib/results-overview.ts';
@@ -29,13 +29,14 @@ import { DeleteRun } from './DeleteRun.tsx';
 import type { ExplorerParts } from './explorer-parts.ts';
 import { StatisticsPane, SummaryPane, TablesPane } from './ExplorerPanes.tsx';
 import { pethParts } from './PethExplorer.tsx';
+import { aurocParts, placeParts } from './TableExplorers.tsx';
 import { openPlotEditor } from './PlotEditor.tsx';
-import { OverviewPane, openPlot } from './ResultsExplorer.tsx';
+import { OverviewPane, openPlot } from './RunFacts.tsx';
 import { RunDetailsBody } from './RunDetails.tsx';
 import { savedData } from './run-data.ts';
 
-/** The analyses whose explorer is built on the shared frame; the others keep their previous one. */
-export const FRAMED: AnalysisId[] = ['peth'];
+/** The analyses the shared frame explores. */
+export const FRAMED: AnalysisId[] = ['place', 'auroc', 'peth', 'decoding', 'population'];
 
 type View = 'main' | 'tables' | 'statistics' | 'summary';
 
@@ -101,7 +102,11 @@ export function ExplorerFrame(props: {
   );
   const parts = createMemo((): ExplorerParts | undefined => {
     const [r, d] = [record(), data()];
-    return r && d && analysis() === 'peth' ? pethParts(r, d) : undefined;
+    if (!r || !d) return undefined;
+    if (analysis() === 'peth') return pethParts(r, d);
+    if (analysis() === 'auroc') return aurocParts(d);
+    if (analysis() === 'place') return placeParts(d);
+    return undefined; // decoding and population: no main plot can be drawn from the saved tables
   });
 
   const [view, setView] = createSignal<View>('main');
@@ -112,6 +117,8 @@ export function ExplorerFrame(props: {
       { defer: true },
     ),
   );
+  // With no main plot to draw from the saved tables, the card opens on Statistics.
+  const shown = () => (view() === 'main' && !parts() && data() ? 'statistics' : view());
   const [dialog, setDialog] = createSignal<'settings' | 'details' | 'delete'>();
 
   const plots = () => {
@@ -275,21 +282,21 @@ export function ExplorerFrame(props: {
               <section class="cb-rx__card" aria-label="Main plot">
                 <div class="cb-rx__head">
                   <h3>
-                    {view() === 'main'
+                    {shown() === 'main'
                       ? (parts()?.title() ?? `${label()} results`)
                       : { tables: 'Tables', statistics: 'Statistics', summary: 'Summary text' }[
-                          view() as Exclude<View, 'main'>
+                          shown() as Exclude<View, 'main'>
                         ]}
                   </h3>
-                  <Show when={view() === 'main' && parts()}>{(p) => p().help()}</Show>
+                  <Show when={shown() === 'main' && parts()}>{(p) => p().help()}</Show>
                   <span class="cb-spacer" />
                   <select
                     class="cb-rx__pick"
                     aria-label="View"
-                    value={view()}
+                    value={shown()}
                     onChange={(e) => {
                       chooseView(e.currentTarget.value);
-                      e.currentTarget.value = view();
+                      e.currentTarget.value = shown();
                     }}
                   >
                     <option value="main">{parts()?.mainLabel ?? 'Main plot'}</option>
@@ -333,10 +340,10 @@ export function ExplorerFrame(props: {
                     {data.error instanceof Error ? data.error.message : String(data.error)}
                   </p>
                 </Show>
-                <Show when={view() === 'main' && parts()}>
+                <Show when={shown() === 'main' && parts()}>
                   <div class="cb-rx__subrow">
                     <p class="cb-muted cb-rx__sub">{parts()?.subtitle?.()}</p>
-                    <Show when={view() === 'main' && parts()?.switcher}>
+                    <Show when={shown() === 'main' && parts()?.switcher}>
                       {(s) => (
                         <span class="cb-seg" role="group" aria-label={s().label}>
                           <For each={s().options}>
@@ -357,7 +364,7 @@ export function ExplorerFrame(props: {
                   </div>
                 </Show>
                 <div class="cb-rx__body">
-                  <Show when={view() === 'main'}>
+                  <Show when={shown() === 'main'}>
                     <Show
                       when={parts()}
                       fallback={
@@ -375,13 +382,13 @@ export function ExplorerFrame(props: {
                   <Show when={data()}>
                     {(d) => (
                       <>
-                        <Show when={view() === 'tables'}>
+                        <Show when={shown() === 'tables'}>
                           <TablesPane data={d()} />
                         </Show>
-                        <Show when={view() === 'statistics'}>
+                        <Show when={shown() === 'statistics'}>
                           <StatisticsPane data={d()} />
                         </Show>
-                        <Show when={view() === 'summary'}>
+                        <Show when={shown() === 'summary'}>
                           <SummaryPane record={rec()} data={d()} />
                         </Show>
                       </>
@@ -399,7 +406,18 @@ export function ExplorerFrame(props: {
                     </p>
                   </InfoTip>
                 </div>
-                <Show when={parts()} fallback={<p class="cb-muted">No summary for this run.</p>}>
+                <Show
+                  when={parts()}
+                  fallback={
+                    <Show when={data()} fallback={<p class="cb-muted">Reading the saved run.</p>}>
+                      {(d) => (
+                        <For each={summarySentences({ record: rec(), ...d().summary })}>
+                          {(line) => <p class="cb-rx__p">{line}</p>}
+                        </For>
+                      )}
+                    </Show>
+                  }
+                >
                   {(p) => p().summary()}
                 </Show>
               </aside>

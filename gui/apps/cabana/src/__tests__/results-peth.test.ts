@@ -77,11 +77,10 @@ describe('PETH model from saved tables', () => {
 });
 
 describe('heat colors and the plot spec', () => {
-  it('is white at zero, red above, blue below and clipped', () => {
-    expect(heatColor(0, 1)).toBe('rgb(255,255,255)');
+  it('uses the Analysis page scale and clips beyond the limit', () => {
     expect(heatColor(5, 1)).toBe(heatColor(1, 1));
-    expect(heatColor(1, 1)).toMatch(/^rgb\(178,/);
-    expect(heatColor(-1, 1)).toMatch(/^rgb\(33,/);
+    expect(heatColor(1, 1)).toMatch(/^rgb\(242,/);
+    expect(heatColor(-1, 1)).toMatch(/^rgb\(106,/);
     expect(heatColor(NaN, 1)).toBe('#e6e6e6');
   });
   it('rounds the color limit up to a round number', () => {

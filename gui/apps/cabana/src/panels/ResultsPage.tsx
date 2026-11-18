@@ -9,9 +9,8 @@ import { prefetchRun } from '../lib/results-store.ts';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import type { AnalysisId } from '../lib/runs.ts';
 import { fitToWindow } from './QcPanel.tsx';
-import { ExplorerFrame, FRAMED } from './results/ExplorerFrame.tsx';
+import { ExplorerFrame } from './results/ExplorerFrame.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
-import { ResultsExplorer } from './results/ResultsExplorer.tsx';
 import { ResultsTable } from './results/ResultsTable.tsx';
 
 /**
@@ -95,17 +94,12 @@ export function ResultsPage(): JSX.Element {
         }
       >
         {(target) => (
-          <Show
-            when={FRAMED.includes(target().analysis)}
-            fallback={<ResultsExplorer target={target()} records={records()} />}
-          >
-            <ExplorerFrame
-              target={target()}
-              records={records()}
-              onDeleted={afterDelete}
-              onError={setNotice}
-            />
-          </Show>
+          <ExplorerFrame
+            target={target()}
+            records={records()}
+            onDeleted={afterDelete}
+            onError={setNotice}
+          />
         )}
       </Show>
     </div>

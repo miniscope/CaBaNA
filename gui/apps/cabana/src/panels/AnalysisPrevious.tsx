@@ -10,7 +10,9 @@ import type { RunRecord } from '../lib/bridge-client.ts';
 import { capabilities } from '../lib/bridge-status.ts';
 import { preliminaryText, executedShuffles } from '../lib/preview.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
-import { formatWhen, frameworkNote, openness, openResult } from '../lib/results-overview.ts';
+import { formatWhen, frameworkNote, openness } from '../lib/results-overview.ts';
+import { openExplorer } from '../lib/results-nav.ts';
+import { goToStep } from '../lib/store.ts';
 import { runRows } from '../lib/results-runs.ts';
 import { dataVersion } from '../lib/run-settings-view.ts';
 import { analysisSection } from '../lib/run-settings-view.ts';
@@ -74,7 +76,10 @@ export function AnalysisPrevious(props: {
               kind: 'action',
               label: 'Open in Results',
               disabled: blocked(),
-              onSelect: () => openResult(id, rec()!.run_id),
+              onSelect: () => {
+                openExplorer(id, rec()!.run_id);
+                goToStep('results');
+              },
             },
             {
               kind: 'action',

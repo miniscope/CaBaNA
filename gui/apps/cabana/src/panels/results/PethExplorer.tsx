@@ -234,15 +234,16 @@ export function pethParts(record: RunRecord, data: ExplorerData): ExplorerParts 
       set: setBehavior,
     },
     subtitle: () =>
-      'Each row is a cell, sorted by response (largest response minus baseline first). Red: above baseline, blue: below.',
+      'Each row is a cell, sorted by response (largest response minus baseline first). Orange: above baseline, purple: below.',
     help: () => (
       <HowTo title="Population PETH">
         <p>
           The heat map has one row per cell and one column per time bin around the aligned frame
           (dashed line). Color is the cell's mean response across bouts
-          {model.baselineSubtracted ? ", relative to each window's baseline mean" : ''} (a.u.): red
-          above, blue below. One color scale is shared by all cells of the behavior, clipped at ±
-          {heatLimit(first())}; larger values share the end colors. Gray cells have no value.
+          {model.baselineSubtracted ? ", relative to each window's baseline mean" : ''} (a.u.):
+          orange above, purple below. One color scale is shared by all cells of the behavior,
+          clipped at ±{heatLimit(first())}; larger values share the end colors. Gray cells have no
+          value.
         </p>
         <p>
           Rows are sorted by the response (mean response minus mean baseline), largest first. The
