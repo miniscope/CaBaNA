@@ -26,6 +26,8 @@ export interface ChangeEntry {
   detail: string;
   /** How many cells or frames it touches, in words. */
   touches: string;
+  /** What undoing it, or restoring the default, does. */
+  restore: string;
   action?: ChangeAction;
   /** Why Undo or Edit is unavailable. */
   blocked?: string;
@@ -33,8 +35,6 @@ export interface ChangeEntry {
 
 export interface ChangesInput {
   rejected: number[];
-  /** Reason per rejected cell, when one was given. */
-  reasons?: Record<number, string>;
   /** Position jumps whose frames are left out: when (s) and how many frames. */
   jumps: { first: number; start: number; frames: number }[];
   /** One line per annotation fix applied (the store's log). */
@@ -105,6 +105,7 @@ function prepEntries(i: ChangesInput): ChangeEntry[] {
         what: `${STEPS[s].label} ${stepValues(s, i.prep)}`,
         detail: `${STEP_DETAIL[s] ?? ''} · default ${stepValues(s, i.defaults)}`,
         touches: touchesOf(s, i.prep, i.filledFrames),
+        restore: `restore default: ${stepValues(s, i.defaults)}`,
         action,
         blocked:
           action && 'slot' in action && !i.loaded(action.slot)
@@ -121,8 +122,9 @@ export function buildChanges(i: ChangesInput): ChangeEntry[] {
       ref: `cell:${c}`,
       group: 'correction',
       what: `Rejected cell ${c + 1}`,
-      detail: i.reasons?.[c] ?? 'No reason given',
+      detail: 'Left out of the analyses',
       touches: '1 cell',
+      restore: `undo: cell ${c + 1} is kept`,
       action: { undo: 'cell', cell: c },
     }));
   const jumps: ChangeEntry[] = i.jumps.map((j, index) => ({
@@ -131,6 +133,7 @@ export function buildChanges(i: ChangesInput): ChangeEntry[] {
     what: `Left out the position jump at ${clock(j.start)}`,
     detail: 'Position, treated as lost frames',
     touches: plural(j.frames, 'frame'),
+    restore: 'undo: the frames are kept',
     action: { undo: 'jump', index },
   }));
   const fixes: ChangeEntry[] = i.annotationFixes.map((text) => ({
@@ -145,9 +148,22 @@ export function buildChanges(i: ChangesInput): ChangeEntry[] {
       Number(/\d+/.exec(text)?.[0] ?? 0),
       text.startsWith('Merged') ? 'pair' : 'bout',
     ),
+    restore: 'undo: every annotation fix is removed',
     action: { undo: 'annotations' },
   }));
   return [...cells, ...jumps, ...fixes, ...prepEntries(i)];
+}
+
+/** Preprocessing steps still at their defaults, for the Revert window ("nothing to restore"). */
+export function stepsAtDefault(
+  prep: typeof DEFAULT_PREP,
+  defaults: typeof DEFAULT_PREP,
+): { ref: string; step: StepId; what: string }[] {
+  return (Object.keys(STEPS) as StepId[])
+    .filter(
+      (s) => STEPS[s].kind === 'optional' && STEPS[s].keys.every((k) => prep[k] === defaults[k]),
+    )
+    .map((s) => ({ ref: `prep:${s}`, step: s, what: STEPS[s].label }));
 }
 
 /** Entries per group, for the chip and the tab. */

@@ -21,11 +21,11 @@ describe('buildChanges', () => {
     expect(buildChanges(base())).toEqual([]);
   });
 
-  it('lists rejected cells in order, 1-based, with their reason or none', () => {
-    const list = buildChanges(base({ rejected: [9, 2], reasons: { 9: 'Flat trace' } }));
-    expect(list.map((e) => [e.what, e.detail, e.touches])).toEqual([
-      ['Rejected cell 3', 'No reason given', '1 cell'],
-      ['Rejected cell 10', 'Flat trace', '1 cell'],
+  it('lists rejected cells in order, 1-based, without a reason', () => {
+    const list = buildChanges(base({ rejected: [9, 2] }));
+    expect(list.map((e) => [e.what, e.touches, e.restore])).toEqual([
+      ['Rejected cell 3', '1 cell', 'undo: cell 3 is kept'],
+      ['Rejected cell 10', '1 cell', 'undo: cell 10 is kept'],
     ]);
     expect(list[0].action).toEqual({ undo: 'cell', cell: 2 });
     expect(list[0].ref).toBe('cell:2');

@@ -9,28 +9,62 @@ import { history, lastApplied, type LogEvent } from '../lib/changes-log.ts';
 import { buildChanges, changeCounts, type ChangeEntry } from '../lib/changes.ts';
 import { openEntry } from '../lib/data-setup-view.ts';
 import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
-import { DEFAULT_PREP, prep } from '../lib/preprocess.ts';
+import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
+import { STEPS, type StepId } from '../lib/prep-deps.ts';
 import { fs, gapSummary, setPrepStep } from '../lib/prep-view.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
 import { upstreamItems } from '../lib/upstream.ts';
+import { BOX_TITLE, forBox, type VizBox } from '../lib/viz-pills.ts';
 import {
   annotationLog,
   goToStep,
   loaded,
   alignmentResults,
   rejected,
-  rejectReasons,
   restoreCell,
   timingResults,
   undoAnnotationEdits,
 } from '../lib/store.ts';
 import { segments } from './BehaviorQc.tsx';
 import { footprintCheckList } from './NeuralQcShared.tsx';
-import { UTabs } from './VizMenus.tsx';
 
 export const [changesOpen, setChangesOpen] = createSignal(false);
+/** The box whose changes the drawer lists; all of them when none. */
+export const [changesBox, setChangesBox] = createSignal<VizBox | undefined>();
+
+/** Open the drawer for one box's data, or for all of it. */
+export function openChanges(box?: VizBox): void {
+  setChangesBox(box);
+  setChangesOpen(true);
+}
+
+/** Small underlined tabs. */
+function UTabs<T extends string>(props: {
+  label: string;
+  tabs: { id: T; label: string }[];
+  value: T;
+  onPick: (id: T) => void;
+}): JSX.Element {
+  return (
+    <div class="cb-utabs" role="tablist" aria-label={props.label}>
+      <For each={props.tabs}>
+        {(t) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.value === t.id}
+            classList={{ 'cb-utabs--on': props.value === t.id }}
+            onClick={() => props.onPick(t.id)}
+          >
+            {t.label}
+          </button>
+        )}
+      </For>
+    </div>
+  );
+}
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
 
@@ -44,7 +78,6 @@ export const changes = createRoot(() =>
   createMemo(() =>
     buildChanges({
       rejected: [...rejected()],
-      reasons: rejectReasons(),
       jumps: leftOut().map((s) => ({ first: s.first, start: s.start, frames: jumpRows(s).length })),
       annotationFixes: annotationLog(),
       prep: { ...prep },
@@ -58,10 +91,17 @@ export const changes = createRoot(() =>
   ),
 );
 
+/** The Applied list for the box the drawer was opened from, or all of it. */
+const shownChanges = () => (changesBox() ? forBox(changes(), changesBox()!) : changes());
+const shownHistory = () =>
+  changesBox()
+    ? history().filter((e) => e.refs.some((r) => forBox([{ ref: r }], changesBox()!).length))
+    : history();
+
 /** Analyses whose newest saved result no longer matches the current data and settings. */
 export const needRerun = () => ANALYSES.filter((a) => statusOfItem(a.id).kind === 'outdated');
 
-const when = (ms: number | undefined) =>
+export const when = (ms: number | undefined) =>
   ms === undefined
     ? ''
     : new Date(ms).toLocaleString([], {
@@ -88,6 +128,25 @@ function act(e: ChangeEntry): void {
   setPrepStep(a.step);
   openEntry(a.slot, 'prep');
 }
+
+/**
+ * Revert entries of the Applied list with the same actions as Undo (corrections) and restoring the
+ * defaults of a step's settings (what Reset does on Preprocess). Jumps go last to first, since
+ * undoing one renumbers the ones after it.
+ */
+export function revertEntries(entries: ChangeEntry[]): void {
+  const undo = (kind: string) =>
+    entries.filter((e) => e.action && 'undo' in e.action && e.action.undo === kind);
+  for (const e of undo('cell')) act(e);
+  for (const e of undo('jump').sort((a, b) => jumpIndex(b) - jumpIndex(a))) act(e);
+  for (const e of undo('annotations')) act(e);
+  for (const e of entries) {
+    if (!e.ref.startsWith('prep:')) continue;
+    for (const k of STEPS[e.ref.slice(5) as StepId].keys) setPrep(k, DEFAULT_PREP[k]);
+  }
+}
+const jumpIndex = (e: ChangeEntry) =>
+  e.action && 'undo' in e.action && e.action.undo === 'jump' ? e.action.index : -1;
 
 const KIND = { correction: 'Correction', prep: 'Preprocessing' } as const;
 
@@ -135,7 +194,7 @@ function Group(props: { title: string; entries: ChangeEntry[]; empty: string }):
 function Applied(): JSX.Element {
   const files = () =>
     SLOTS.filter((s) => s.id !== 'config' && isLoaded(s.id)).map((s) => loaded[s.id]!.name);
-  const of = (g: ChangeEntry['group']) => changes().filter((e) => e.group === g);
+  const of = (g: ChangeEntry['group']) => shownChanges().filter((e) => e.group === g);
   return (
     <>
       <div class="cb-chg__orig">
@@ -198,11 +257,11 @@ const ACTION_WORD: Record<LogEvent['action'], string> = {
 function History(): JSX.Element {
   return (
     <Show
-      when={history().length}
+      when={shownHistory().length}
       fallback={<p class="cb-muted">Nothing applied or undone in this window yet.</p>}
     >
       <ul class="cb-chg__list">
-        <For each={[...history()].reverse()}>
+        <For each={[...shownHistory()].reverse()}>
           {(e) => (
             <li class="cb-chg">
               <span class={`cb-chg__kind cb-chg__kind--${e.group}`}>{ACTION_WORD[e.action]}</span>
@@ -278,14 +337,26 @@ export function ChangesDrawer(): JSX.Element {
         label="Changes"
         title="Changes"
         side
-        head={<span class="cb-muted">Applied in this session</span>}
+        head={
+          <span class="cb-muted">
+            {changesBox() ? BOX_TITLE[changesBox()!] : 'Applied in this session'}
+          </span>
+        }
         onClose={() => setChangesOpen(false)}
       >
+        <Show when={changesBox()}>
+          <p class="cb-muted cb-chg__intro">
+            Showing the changes to {BOX_TITLE[changesBox()!].toLowerCase()}.{' '}
+            <button type="button" class="cb-link" onClick={() => setChangesBox()}>
+              Show all changes
+            </button>
+          </p>
+        </Show>
         <UTabs
           label="Changes"
           tabs={[
-            { id: 'applied', label: `Applied ${changes().length}` },
-            { id: 'history', label: `History ${history().length}` },
+            { id: 'applied', label: `Applied ${shownChanges().length}` },
+            { id: 'history', label: `History ${shownHistory().length}` },
             { id: 'upstream', label: `Upstream ${upstream().length}` },
           ]}
           value={tab()}
@@ -305,7 +376,7 @@ export function ChangesDrawer(): JSX.Element {
   );
 }
 
-/** The chip's counts: entries applied, and results that need a rerun. */
+/** Applied corrections and settings, and results that need a rerun: the toolbar's Change history count. */
 export function changesSummary(): { applied: number; reruns: number } {
   const c = changeCounts(changes());
   return { applied: c.corrections + c.prep, reruns: needRerun().length };
