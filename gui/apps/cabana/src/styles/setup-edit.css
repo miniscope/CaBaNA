@@ -1,0 +1,138 @@
+/* Experimental setup pop-up and the Apply settings and Export a copy dialogs (panels/data-setup). */
+.cb-modal__body:has(> .cb-es),
+.cb-modal__body:has(> .cb-dlg) {
+  padding: 0;
+}
+.cb-es {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+.cb-es-nav {
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+  border-right: 1px solid var(--border-subtle);
+}
+.cb-es-nav__item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cb-es-nav__item:hover,
+.cb-es-nav__item--on {
+  background: var(--chrome);
+}
+.cb-es-nav__sum {
+  display: block;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-es-pane {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 18px;
+  overflow: auto;
+}
+.cb-es-pane__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+/* The group's fields sit directly on the pane, not in a card. */
+.cb-es .cb-ds-cfg {
+  border: 0;
+  overflow: visible;
+}
+.cb-es .cb-ds-cfg__bar {
+  padding: 0 0 6px;
+  background: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cb-es .cb-ds-cfg__bar h4 {
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-primary);
+}
+.cb-es .cb-ds-cfg__body {
+  padding: 10px 0 0;
+}
+.cb-sp-accent {
+  height: 28px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cb-sp-accent:hover {
+  filter: brightness(0.9);
+}
+
+/* Dialogs */
+.cb-dlg {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px;
+  overflow: auto;
+}
+.cb-dlg__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.cb-dlg__row input {
+  height: 30px;
+}
+.cb-dlg__note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.cb-dlg__check {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13.6px;
+}
+.cb-dlg__from {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-size: 13.6px;
+}
+.cb-dlg__group {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13.6px;
+}
+.cb-dlg__sub {
+  display: block;
+  font-size: 12px;
+}
+.cb-dlg__never {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--flag-bg);
+  font-size: 12.5px;
+}
