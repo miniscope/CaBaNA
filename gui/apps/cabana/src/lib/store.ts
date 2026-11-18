@@ -262,10 +262,6 @@ export function restoreCell(c: number): void {
     logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`, [`cell:${c}`]);
   setRejected((r) => new Set<number>([...r].filter((x) => x !== c)));
 }
-export function togglePending(c: number): void {
-  setPending((p) => new Set<number>(p.has(c) ? [...p].filter((x) => x !== c) : [...p, c]));
-}
-export const setPendingTo = (cells: number[]) => setPending(new Set(cells));
 
 /** The file name a loaded config.yaml gives for each slot. */
 export const [configFiles, setConfigFiles] = createSignal<Partial<Record<SlotId, string>>>({});
@@ -442,17 +438,17 @@ export async function fetchExample(id: string): Promise<FetchedExample> {
   return { files: files.filter((f): f is File => !!f), frame: media[0], video: media[1] };
 }
 
+/** Replace the loaded data with an example dataset. */
+export async function loadExample(id: string): Promise<void> {
+  await loadFetchedExample(id, await fetchExample(id));
+}
+
 /** Replace the loaded data with an example fetched earlier. */
 export async function loadFetchedExample(id: string, got: FetchedExample): Promise<void> {
   clearAll();
   setSessionName(EXAMPLES.find((x) => x.id === id)?.label);
   await addFiles(got.files);
   setExampleMedia({ id, frame: got.frame, video: got.video });
-}
-
-/** Replace the loaded data with an example dataset. */
-export async function loadExample(id: string): Promise<void> {
-  await loadFetchedExample(id, await fetchExample(id));
 }
 
 const [experimentId, setExperiment] = createSignal('custom');
@@ -488,9 +484,6 @@ export function closeSession(): void {
 export const levelOf = (id: SlotId): Level =>
   experiment().levels[id] ?? SLOTS.find((s) => s.id === id)!.level;
 
-export const missingRequired = () =>
-  SLOTS.filter((s) => levelOf(s.id) === 'required' && !loaded[s.id]?.summary);
-
 /** How the data was collected. Units change the QC; the rest tell the user how to export their files. */
 const DEFAULT_SOURCE = {
   sessionDate: '',
@@ -518,11 +511,6 @@ const DEFAULT_SOURCE = {
   deconTool: 'other',
 };
 export const [source, setSource] = createStore(structuredClone(DEFAULT_SOURCE));
-
-/** Record that the arena settings were provided without a config file. */
-export function markConfigProvided(summary: string): void {
-  setLoaded('config', { name: 'entered in Experimental Setup', size: 0, summary });
-}
 
 /** The trace used for per-cell checks: raw if there is one, since noise is only measurable there. */
 export const traceMatrix = () => matrix('neural_raw') ?? matrix('neural_denoised');
@@ -784,18 +772,6 @@ export const annotationResults = createMemo(() => {
   return out;
 });
 
-/** What each fix would change right now. */
-export const annotationFixCounts = createMemo(() => {
-  let merge = 0;
-  let drop = 0;
-  for (const r of annotationResults()) {
-    if (r.error) continue;
-    merge += mergeBouts(r.epochs, tol.mergeGapS).merged;
-    drop += dropShortBouts(r.epochs, tol.minBoutS).removed;
-  }
-  return { merge, drop };
-});
-
 /** How the footprint map is colored. */
 export const [colorBy, setColorBy] = createSignal<'cell' | 'quality'>('cell');
 
@@ -871,15 +847,6 @@ export const [labelRoles, setLabelRoles] = createStore<Record<string, LabelRole>
 export const roleOf = (name: string): LabelRole =>
   resolveRole(name, labelRoles, experiment().controlledLabels);
 export const setRole = (name: string, role: LabelRole): void => setLabelRoles(name, role);
-
-/** Distinct names of the loaded labels that analyses can use (not blocked). */
-export const usableLabels = () => [
-  ...new Set(
-    labelRegistry()
-      .filter((e) => !e.blocked)
-      .map((e) => e.name),
-  ),
-];
 
 /** Camera frame numbers in file order, the keys position and frame labels both join on. */
 export const cameraFrameNumbers = createMemo(() => {

@@ -1,26 +1,15 @@
 // auROC setup: the stage list and review summary, the review stage, and the run stage.
-import { Show, type JSX } from 'solid-js';
+import { type JSX } from 'solid-js';
 import type { GuidedSection } from '../components/GuidedSetup.tsx';
 import { RunChoice, SettingsSummary, type SummaryGroup } from '../components/GuidedReview.tsx';
-import { MetricCards } from '../components/MetricCards.tsx';
 import type { Guided } from '../lib/guided.ts';
-import {
-  aurocOutcome,
-  aurocPlan,
-  aurocProgressText,
-  aurocSettings,
-  aurocStatus,
-  setAurocShowResults,
-  type AurocData,
-} from '../lib/auroc-run.ts';
-import { aurocChanges, summarize } from '../lib/auroc-view.ts';
+import { aurocPlan, aurocSettings, type AurocData } from '../lib/auroc-run.ts';
 import { frameSelection, percentOf } from '../lib/auroc-setup.ts';
-import { preliminaryText, shufflesFor } from '../lib/preview.ts';
+import { shufflesFor } from '../lib/preview.ts';
 import { prep } from '../lib/preprocess.ts';
-import { goToStep } from '../lib/store.ts';
 import { ShuffleReach } from './parts.tsx';
 import { ComparisonTimeline } from './AurocComparisonTimeline.tsx';
-import { EngineNotice, RunProgress } from './results/EngineNotice.tsx';
+import { EngineNotice } from './results/EngineNotice.tsx';
 
 /** What the stage list and the review summary read from the setup page. */
 export interface AurocSetupView {
@@ -172,90 +161,5 @@ export function AurocReviewStage(props: {
         </div>
       </div>
     </>
-  );
-}
-
-/** Run stage: progress while running, then what the last run found and a link to its results. */
-export function AurocRunStage(props: {
-  running?: Extract<ReturnType<typeof aurocStatus>, { kind: 'running' }>;
-  error?: string;
-}): JSX.Element {
-  return (
-    <div class="cb-gs-run">
-      <Show when={props.running}>
-        {(r) => (
-          <div>
-            <p>
-              {r().step}
-              {aurocProgressText(r()) ? ` (${aurocProgressText(r())})` : '…'}
-            </p>
-            <RunProgress done={r().done} total={r().total} />
-          </div>
-        )}
-      </Show>
-      <Show when={props.error}>
-        <div class="cb-note">{props.error}</div>
-      </Show>
-      <Show
-        when={!props.running && aurocOutcome()}
-        fallback={
-          <Show when={!props.running && !props.error}>
-            <p class="cb-muted">
-              No run yet. Choose Quick preview or the full analysis in Review and preview.
-            </p>
-          </Show>
-        }
-      >
-        {(o) => {
-          const s = () => summarize(o());
-          return (
-            <>
-              <h3>
-                Last run
-                <Show when={o().record?.scope === 'preview'}>
-                  <span class="cb-badge cb-badge--warn">{preliminaryText(o().record!)}</span>
-                </Show>
-              </h3>
-              <MetricCards
-                label="Last run"
-                cards={[
-                  {
-                    label: 'Cells with a significant result',
-                    value: String(s().respondingCells),
-                    denom: `of ${s().evaluated} cells evaluated`,
-                    tone: 'blue',
-                  },
-                  {
-                    label: 'Significant cell-behavior pairs',
-                    value: String(s().significantPairs),
-                    denom: `of ${s().evaluatedPairs} pairs evaluated`,
-                  },
-                  {
-                    label: 'Cells not evaluated',
-                    value: String(s().missingCells),
-                    denom: `of ${s().cells} cells; not a failed test`,
-                    tone: 'gray',
-                  },
-                ]}
-              />
-              <Show when={aurocChanges().length}>
-                <div class="cb-note">
-                  Earlier settings: since this run, {aurocChanges().join(', ')} changed. Run again
-                  to update the results.
-                </div>
-              </Show>
-              <div class="cb-controls">
-                <button class="btn-primary" onClick={() => setAurocShowResults(true)}>
-                  Open results
-                </button>
-                <button class="cb-link" onClick={() => goToStep('results')}>
-                  All results
-                </button>
-              </div>
-            </>
-          );
-        }}
-      </Show>
-    </div>
   );
 }

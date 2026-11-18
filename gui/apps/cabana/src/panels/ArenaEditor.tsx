@@ -24,7 +24,7 @@ import {
   ShapePopover,
 } from './ArenaPanels.tsx';
 import { SpatialLanding } from './SpatialLanding.tsx';
-import { RegionNoticeBox } from './SpatialSetup.tsx';
+import { RegionNoticeBox } from './RegionNoticeBox.tsx';
 
 const ZONE_SHAPES: [ZoneDrawShape, string][] = [
   ['rect', 'Rectangle'],

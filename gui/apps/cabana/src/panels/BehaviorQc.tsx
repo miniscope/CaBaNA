@@ -3,7 +3,7 @@ import type uPlot from 'uplot';
 import { TracePanel } from '@calab/ui/chart';
 import type { Epoch } from '../lib/behavior.ts';
 import { clockProgress, timingChecks, type PositionQc } from '../lib/qc.ts';
-import { positionSegments, type Segment } from '../lib/qc-segments.ts';
+import { positionSegments } from '../lib/qc-segments.ts';
 import {
   alignmentResults,
   annotationResults,
@@ -29,8 +29,6 @@ export function ticks(a: number, b: number, n = 6): number[] {
   for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(6));
   return out;
 }
-
-export const fmtS = (t: number, d = 1) => `${t.toFixed(d)} s`;
 
 export const posOk = () => {
   const p = positionResult();
@@ -271,11 +269,6 @@ export function SpeedPlot(props: { p: PositionQc; h: number }): JSX.Element {
     />
   );
 }
-
-export const segLabel = (s: Segment) =>
-  s.kind === 'jump'
-    ? `Jump, ${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${s.n} steps` : ''}`
-    : `Lost for ${(s.stop - s.start).toFixed(1)} s (${s.n} frames)`;
 
 /** Each recording's progress against time on the neural clock; the two lines should start and end together. */
 export function ClockPlot(props: { h: number }): JSX.Element {

@@ -3,8 +3,6 @@ import { pendingZones } from '../lib/arena.ts';
 import { configReport } from '../lib/config-import.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
 import { configFiles, loaded } from '../lib/store.ts';
-import { PopButton } from './QcParts.tsx';
-import { openData } from '../lib/data-setup-view.ts';
 
 const label = (id: SlotId) => SLOTS.find((s) => s.id === id)?.label ?? id;
 
@@ -86,79 +84,6 @@ export function ConfigReport(): JSX.Element {
           <For each={r().kept}>{(k) => <code>{k.path.join('.')} </code>}</For>
         </p>
       </Show>
-    </div>
-  );
-}
-
-/** The two-part box under the file list: what the config set, and the first setup problem. */
-export function ConfigSummary(): JSX.Element {
-  const items = setupItems;
-  return (
-    <div class="cb-cfgsum">
-      <div class="cb-cfgsum__part">
-        <Show
-          when={configReport()}
-          fallback={
-            <>
-              <strong>
-                {loaded.config ? 'Settings entered by hand' : 'No configuration file'}
-              </strong>
-              <span class="cb-muted">
-                {loaded.config
-                  ? 'Arena and timing settings come from Experimental setup.'
-                  : 'Load config.yaml, or enter the settings in Experimental setup.'}
-              </span>
-            </>
-          }
-        >
-          <strong>Configuration loaded</strong>
-          <span class="cb-muted">
-            {configReport()!.read.length} settings applied to Experimental setup
-          </span>
-        </Show>
-      </div>
-      <div class="cb-cfgsum__part">
-        <Show
-          when={items().length}
-          fallback={
-            <>
-              <strong>Setup</strong>
-              <span class="cb-muted">
-                {configReport() ? 'Nothing in the config needs attention.' : 'Not checked yet.'}
-              </span>
-            </>
-          }
-        >
-          <strong class="cb-warn" title={items()[0].text}>
-            {items()[0].short}
-          </strong>
-          <span class="cb-muted">
-            {items().length} {items().length === 1 ? 'warning' : 'warnings'} ·{' '}
-            <PopButton
-              label="Review all warnings"
-              title="Configuration warnings"
-              width={460}
-              class="cb-linkbtn"
-              button="Review all warnings"
-            >
-              {(close) => (
-                <>
-                  <ConfigReport />
-                  <button
-                    class="btn-primary btn-small"
-                    onClick={() => {
-                      close();
-                      openData('config');
-                    }}
-                  >
-                    Open Experiment config
-                  </button>
-                </>
-              )}
-            </PopButton>
-          </span>
-        </Show>
-      </div>
     </div>
   );
 }

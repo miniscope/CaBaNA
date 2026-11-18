@@ -183,15 +183,9 @@ const fitRows = () => (innerHeight >= 760 ? 6 : 4);
 export const isOn = (key: string, rank?: number) =>
   choice[key] ?? (rank === undefined || rank < fitRows());
 export { setChoice };
-export const shownRows = createMemo(() => rows().filter((r, i) => isOn(r.key, i)));
-export const hiddenCount = () =>
-  rows().length -
-  shownRows().length +
-  (['position', 'speed'] as const).filter((k) => pos() && !isOn(k)).length;
 
 /** The element the Tracks popover is anchored to, when it is open. */
 export const [tracksAnchor, setTracksAnchor] = createSignal<HTMLElement>();
-export const openTracks = (el: HTMLElement) => setTracksAnchor((a) => (a === el ? undefined : el));
 
 /** Frame-label values at time `t`: binary labels that are 1 and the category value. */
 function frameLabelsAt(t: number): string[] {
