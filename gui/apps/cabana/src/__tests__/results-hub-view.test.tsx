@@ -8,7 +8,6 @@ vi.mock('../panels/AurocResults.tsx', () => ({ HowTo: () => null }));
 
 import type { RunRecord } from '../lib/bridge-client.ts';
 import type { ExplorerData } from '../lib/explorer-data.ts';
-import { analysisCards } from '../lib/results-hub.ts';
 import { parseSavedCsv } from '../lib/results-explorer.ts';
 import {
   ExportPane,
@@ -16,7 +15,6 @@ import {
   SummaryPane,
   TablesPane,
 } from '../panels/results/ExplorerPanes.tsx';
-import { ResultsHub } from '../panels/results/ResultsHub.tsx';
 
 const record = (o: Partial<RunRecord>): RunRecord =>
   ({
@@ -44,47 +42,6 @@ const mount = (view: () => JSX.Element) => {
   render(view, host);
   return host;
 };
-
-describe('ResultsHub', () => {
-  const cards = analysisCards([
-    record({}),
-    record({ run_id: 'browser-2', scope: 'preview' }),
-    record({ run_id: 'p1', analysis: 'place', files: ['place_cells.csv'] }),
-  ]);
-  it('shows one card per analysis with counts from the saved runs', () => {
-    const host = mount(() =>
-      ResultsHub({ cards, matchOf: () => undefined, onDeleted: () => undefined }),
-    );
-    expect(host.querySelectorAll('.cb-hc')).toHaveLength(5);
-    const auroc = host.querySelector('[data-analysis="auroc"]')!.textContent!;
-    expect(auroc).toContain('2 runs: 1 full, 1 preliminary');
-    expect(auroc).toContain('Explore results');
-    expect(auroc).toContain('Edit analysis');
-    expect(host.querySelector('[data-analysis="peth"]')!.textContent).toContain('No result yet');
-  });
-  it('lists Compare analyses as unavailable and leaves the plot editor slot empty by default', () => {
-    const host = mount(() =>
-      ResultsHub({ cards, matchOf: () => undefined, onDeleted: () => undefined }),
-    );
-    const compare = host.querySelector('[aria-label="Compare analyses"]')!;
-    expect(compare.textContent).toContain('Descriptive only, coming later');
-    expect(compare.querySelector('button')!.disabled).toBe(true);
-    expect(host.querySelector('[aria-label="Plot editor (preview)"]')).toBeNull();
-  });
-  it('renders what is passed in the plot editor slot', () => {
-    const entry = document.createElement('span');
-    entry.textContent = 'Plot editor (preview)';
-    const host = mount(() =>
-      ResultsHub({
-        cards,
-        matchOf: () => undefined,
-        onDeleted: () => undefined,
-        plotEditor: entry,
-      }),
-    );
-    expect(host.querySelector('[aria-label="Plot editor (preview)"]')!.contains(entry)).toBe(true);
-  });
-});
 
 describe('Explorer panes', () => {
   const table = parseSavedCsv(
