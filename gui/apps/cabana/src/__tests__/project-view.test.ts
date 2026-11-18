@@ -4,7 +4,6 @@ import {
   differenceTexts,
   exportSizes,
   exportTotal,
-  frozenText,
   sizeText,
   storageRows,
   viewLines,
@@ -55,7 +54,6 @@ describe('storage and export', () => {
 });
 
 describe('file viewer', () => {
-  const run = 'a: 1\nb: 2\nd: 5\n';
   const now = 'a: 1\nb: 3\nc: 4\nd: 5\n';
   // the comparison the engine makes (difflib opcodes of the run against the current file)
   const changes: FileChange[] = [
@@ -72,35 +70,6 @@ describe('file viewer', () => {
     const lines = viewLines(now, changes);
     expect(lines.map((l) => l.changed)).toEqual([false, true, true, false]);
     expect(lines[1].was).toEqual(['b: 2']);
-  });
-
-  it('rebuilds the file a run froze', () => {
-    expect(frozenText(now, changes)).toBe(run);
-    expect(frozenText(now, [])).toBe(now);
-  });
-
-  it('rebuilds a run copy with a line the run lacked and one it had extra', () => {
-    const del: FileChange = {
-      op: 'delete',
-      run_lines: [3, 3],
-      current_lines: [3, 2],
-      run: ['x: 9'],
-      current: [],
-    };
-    const ins: FileChange = {
-      op: 'insert',
-      run_lines: [4, 3],
-      current_lines: [3, 3],
-      run: [],
-      current: ['z: 1'],
-    };
-    // run: a, b, x ; now: a, b, z  (x replaced by z is a replace; here x deleted then z inserted later)
-    expect(
-      frozenText('a: 1\nb: 2\nz: 1\n', [
-        { ...del, current_lines: [3, 2] },
-        { ...ins, current_lines: [3, 3] },
-      ]),
-    ).toBe('a: 1\nb: 2\nx: 9\n');
   });
 
   it('says each difference in one line', () => {

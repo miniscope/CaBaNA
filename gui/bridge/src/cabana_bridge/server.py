@@ -450,6 +450,19 @@ def file_compare(h: Handler, q: dict, pid: str, name: str) -> None:
     h._json(project_files(h, pid).compare(name, run_id, folder / "runs"))
 
 
+def file_last_valid(h: Handler, q: dict, pid: str, name: str) -> None:
+    h._send(200, project_files(h, pid).last_valid_text(name).encode(), "text/plain; charset=utf-8")
+
+
+def run_config(h: Handler, q: dict, run_id: str, name: str) -> None:
+    """The yaml file as it was frozen with the run."""
+    from .project_files import check_name
+    path = h.project.inside(h.project.run_dir(check_id(run_id)) / "config" / check_name(name))
+    if not path.exists():
+        raise FileNotFoundError(f"run {run_id} has no frozen {name}")
+    h._send(200, path.read_bytes(), "text/plain; charset=utf-8")
+
+
 def history_get(h: Handler, q: dict, pid: str) -> None:
     h._json(project_files(h, pid).history_view())
 
@@ -564,6 +577,8 @@ ROUTES: list[Route] = [
     ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_get),
     ("PUT", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_put),
     ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)/compare", file_compare),
+    ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)/last-valid", file_last_valid),
+    ("GET", rf"/runs/{ID}/config/([a-z]+\.yaml)", run_config),
     ("GET", rf"/projects/{PROJECT_ID}/storage", storage_get),
     ("POST", rf"/projects/{PROJECT_ID}/storage/delete", storage_delete),
     ("POST", rf"/runs/{ID}/delete-outputs", run_delete_outputs),

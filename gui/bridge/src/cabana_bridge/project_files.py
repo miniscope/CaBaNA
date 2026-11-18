@@ -81,6 +81,13 @@ class ProjectFiles:
                 "modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(path.stat().st_mtime)) if path.exists() else None,
                 "valid": error is None, "error": error, "in_use": "this" if error is None else "last-valid"}
 
+    def last_valid_text(self, name: str) -> str:
+        """The last valid copy of a file; FileNotFoundError when none was kept yet."""
+        backup = self.history / "last-valid" / check_name(name)
+        if not backup.exists():
+            raise FileNotFoundError(f"no last valid copy of {name}")
+        return backup.read_text()
+
     def load(self, name: str) -> dict:
         """The settings the engine uses: the file, or its last valid copy when the file is broken."""
         path = self._path(name)

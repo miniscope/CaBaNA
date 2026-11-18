@@ -134,6 +134,13 @@ export const projects = {
       `/projects/${id}/files/${name}/compare?run=${enc(run)}`,
     ),
 
+  /** The last valid copy of a file the engine kept, as text. */
+  lastValid: async (id: string, name: FileName) =>
+    (await bridgeCall('GET', `/projects/${id}/files/${name}/last-valid`)).text(),
+  /** The yaml file as it was frozen with a run of the open project. */
+  runConfig: async (runId: string, name: FileName) =>
+    (await bridgeCall('GET', `/runs/${runId}/config/${name}`)).text(),
+
   history: (id: string) => bridgeJson<HistoryReport>(`/projects/${id}/history`),
   restore: (id: string, snapshot: string) =>
     postJson<{ restored: string[]; saved_at: string }>(

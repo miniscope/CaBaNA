@@ -263,6 +263,26 @@ def test_compare_with_a_runs_frozen_copy(pb):
     assert c.call("GET", f"/projects/{pid}/files/analysis.yaml/compare?run=20260101-000000-bbbbbb")[0] == 404
 
 
+def test_last_valid_and_frozen_texts(pb):
+    c, app, _ = pb
+    info = create(c)
+    pid, folder = info["id"], Path(info["path"])
+    put(c, pid, "analysis.yaml", text="a: 1\n", summary="edit")
+    c.json("GET", f"/projects/{pid}/files/analysis.yaml")  # a valid read keeps the copy
+    (folder / "analysis.yaml").write_text("a: [broken\n")
+    assert c.json("GET", f"/projects/{pid}/files/analysis.yaml")[1]["valid"] is False
+    status, text = c.call("GET", f"/projects/{pid}/files/analysis.yaml/last-valid")
+    assert (status, text) == (200, b"a: 1\n")
+    assert c.call("GET", f"/projects/{pid}/files/other.yaml/last-valid")[0] == 400
+    assert c.call("POST", "/projects/open", {"id": pid})[0] == 200
+    frozen = folder / "runs" / "20260101-000000-aaaaaa" / "config"
+    frozen.mkdir(parents=True)
+    (frozen / "analysis.yaml").write_text("a: 0\n")
+    assert c.call("GET", "/runs/20260101-000000-aaaaaa/config/analysis.yaml") == (200, b"a: 0\n")
+    assert c.call("GET", "/runs/20260101-000000-aaaaaa/config/processing.yaml")[0] == 404
+    assert c.call("GET", "/runs/20260101-000000-bbbbbb/config/analysis.yaml")[0] == 404
+
+
 def test_unknown_project_and_missing_secret(pb):
     c, _, _ = pb
     assert c.call("GET", "/projects/0123456789ab/history")[0] == 404

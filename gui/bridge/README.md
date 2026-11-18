@@ -92,6 +92,9 @@ projects start with `{}` in the last three.
 | `PUT /projects/{id}/files/{name}` | `{data}` (object) or `{text}` (YAML), `summary` | `{saved_at}`. 400 when the text is not valid YAML or not a mapping (message starts "Line N:"). `project.yaml` must keep its `id`. |
 | `GET /projects/{id}/files/{name}/compare?run={run id}` | | `{name, run, identical, changes: [{op, run_lines: [first, last], current_lines: [first, last], run: [lines], current: [lines]}]}` against `runs/<run id>/config/<name>`; 404 when the run has no frozen copy |
 
+| `GET /projects/{id}/files/{name}/last-valid` | | The text of `history/last-valid/<name>` (text/plain); 404 when none was kept yet |
+| `GET /runs/{id}/config/{name}` | | The yaml file as frozen with the run in the open project (`runs/<id>/config/<name>`, text/plain); 404 when the run has none |
+
 A file edited outside CaBaNA is parsed on every read. On an error, `valid` is false, `error` names
 the line, and the engine keeps using the last valid copy (`history/last-valid/<name>`, refreshed
 on each valid read or write). Writes go through a temp file and a rename. Only the four names

@@ -5,7 +5,7 @@ type Call = { method: string; url: string; body?: unknown; secret: string | null
 let calls: Call[];
 
 /** A fetch that answers each request with the next reply and records what was asked. */
-function fakeFetch(replies: (object | ArrayBuffer | number)[]) {
+function fakeFetch(replies: (object | ArrayBuffer | string | number)[]) {
   calls = [];
   vi.stubGlobal(
     'fetch',
@@ -19,6 +19,7 @@ function fakeFetch(replies: (object | ArrayBuffer | number)[]) {
       const reply = replies.shift() ?? {};
       if (typeof reply === 'number')
         return new Response(JSON.stringify({ error: 'no' }), { status: reply });
+      if (typeof reply === 'string') return new Response(reply);
       if (reply instanceof ArrayBuffer) return new Response(reply);
       return new Response(JSON.stringify(reply));
     }),
@@ -87,6 +88,16 @@ describe('projects client', () => {
       '/projects/abc/storage/delete',
     ]);
     expect(calls[2].body).toEqual({ include: { results: true, figures: false, data: false } });
+  });
+
+  it('reads the last valid copy and the frozen file of a run as text', async () => {
+    fakeFetch(['a: 1\n', 'a: 0\n']);
+    expect(await projects.lastValid('abc', 'analysis.yaml')).toBe('a: 1\n');
+    expect(await projects.runConfig('run12345', 'analysis.yaml')).toBe('a: 0\n');
+    expect(calls.map((c) => c.url.replace(base, ''))).toEqual([
+      '/projects/abc/files/analysis.yaml/last-valid',
+      '/runs/run12345/config/analysis.yaml',
+    ]);
   });
 
   it('turns an engine error into a message', async () => {

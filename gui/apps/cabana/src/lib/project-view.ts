@@ -139,17 +139,3 @@ export function differenceTexts(changes: FileChange[]): string[] {
     return `${now} (run: ${was})`;
   });
 }
-
-/** The file as a run froze it, rebuilt from the current text and the comparison with that run. */
-export function frozenText(current: string, changes: FileChange[]): string {
-  const now = current.replace(/\n$/, '').split('\n');
-  const out: string[] = [];
-  let at = 0;
-  for (const c of changes) {
-    const start = c.current_lines[0] - 1;
-    out.push(...now.slice(at, start), ...c.run);
-    at = Math.max(at, c.current_lines[1]);
-  }
-  out.push(...now.slice(at));
-  return out.join('\n') + '\n';
-}

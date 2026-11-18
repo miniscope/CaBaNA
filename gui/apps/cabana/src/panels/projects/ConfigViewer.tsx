@@ -7,10 +7,9 @@ import { createMemo, createResource, createSignal, For, Show, type JSX } from 's
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Modal } from '../../components/Modal.tsx';
 import type { RunRecord } from '../../lib/bridge-client.ts';
-import { rewriteFromState } from '../../lib/autosave.ts';
 import { openProject } from '../../lib/open-project.ts';
 import { configViewer, setConfigViewer } from '../../lib/project-dialogs.ts';
-import { differenceTexts, frozenText, viewLines } from '../../lib/project-view.ts';
+import { differenceTexts, viewLines } from '../../lib/project-view.ts';
 import { projects, type ConfigFile, type FileName } from '../../lib/projects-client.ts';
 import { formatWhen } from '../../lib/results-overview.ts';
 import { history } from '../../lib/runs.ts';
@@ -64,6 +63,7 @@ function Lines(props: { text: string; changes?: ReturnType<typeof viewLines>; ba
 export function ConfigViewer(): JSX.Element {
   const target = configViewer()!;
   const project = openProject()!;
+  const frozen = !!target.run;
   const [version, setVersion] = createSignal(0);
   const [comparing, setComparing] = createSignal(!!target.run);
   const [runId, setRunId] = createSignal<string | undefined>(target.run?.run_id);
@@ -74,26 +74,30 @@ export function ConfigViewer(): JSX.Element {
       (r) => ['framework', 'browser-ts'].includes(r.engine) && r.status !== 'failed',
     );
   const [diff] = createResource(
-    () => (comparing() && runId() ? runId() : undefined),
+    () => (comparing() && !frozen && runId() ? runId() : undefined),
     (run) => projects.compare(project.id, target.name, run).catch(() => undefined),
   );
   const compareRun = (): RunRecord | undefined => runs().find((r) => r.run_id === runId());
-  const frozen = !!target.run;
-  // The copy a run froze is the current file with the run's changes put back.
-  const text = createMemo(() => {
-    const f = file();
-    if (!f) return '';
-    const d = diff();
-    return frozen && d ? frozenText(f.text, d.changes) : f.text;
-  });
+  // The copy a run froze comes from the engine; otherwise the file as it is now.
+  const [frozenCopy] = createResource(
+    () => (frozen ? target.run!.run_id : undefined),
+    (run) => projects.runConfig(run, target.name).catch(() => undefined),
+  );
+  const text = createMemo(() => (frozen ? (frozenCopy() ?? '') : (file()?.text ?? '')));
   const marks = () =>
     !frozen && comparing() && diff() ? viewLines(text(), diff()!.changes) : undefined;
   const invalid = (f: ConfigFile) => !f.valid;
 
+  // The engine keeps the last valid copy; writing it back makes it the file again.
   const restore = async () => {
     setMessage('');
     try {
-      await rewriteFromState(target.name as 'experiment.yaml');
+      await projects.writeFile(
+        project.id,
+        target.name,
+        { text: await projects.lastValid(project.id, target.name) },
+        'Restored the last valid version',
+      );
       setVersion((v) => v + 1);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -193,11 +197,9 @@ export function ConfigViewer(): JSX.Element {
             >
               Check the file again
             </button>
-            <Show when={REWRITABLE.includes(target.name)}>
-              <button type="button" class="btn-secondary btn-small" onClick={() => void restore()}>
-                Restore the last valid version
-              </button>
-            </Show>
+            <button type="button" class="btn-secondary btn-small" onClick={() => void restore()}>
+              Restore the last valid version
+            </button>
           </Show>
           <Show when={comparing() && !frozen}>
             <div class="sc">compared with</div>
