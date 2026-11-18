@@ -50,6 +50,7 @@ export function PositionQcPopup(): JSX.Element {
   return (
     <QcPopup
       kind="qc"
+      settings="position"
       title="Position · QC"
       sub={
         segments().length

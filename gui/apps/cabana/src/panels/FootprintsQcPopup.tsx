@@ -45,6 +45,7 @@ export function FootprintsQcPopup(): JSX.Element {
   return (
     <QcPopup
       kind="qc"
+      settings="footprints"
       title="Footprints · QC"
       sub={`${pairs().length} overlapping ${pairs().length === 1 ? 'pair' : 'pairs'}`}
       width={1000}

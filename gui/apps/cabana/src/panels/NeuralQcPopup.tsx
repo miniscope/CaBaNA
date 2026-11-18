@@ -93,6 +93,7 @@ export function NeuralQcPopup(): JSX.Element {
   return (
     <QcPopup
       kind="qc"
+      settings="neural"
       title="Neural data · QC"
       sub={`${notFlaggedNow().length} cells flagged · ${notes()} ${notes() === 1 ? 'note' : 'notes'}`}
       help={

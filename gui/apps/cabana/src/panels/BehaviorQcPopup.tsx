@@ -24,8 +24,7 @@ import {
   undoAnnotationEdits,
 } from '../lib/store.ts';
 import { DEFAULT_TOL } from '../lib/store.ts';
-import { PALETTE, ticks } from './BehaviorQc.tsx';
-import { flaggedOf } from './BehaviorQcAnnotations.tsx';
+import { flaggedOf, PALETTE, ticks } from './BehaviorQc.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
 
@@ -201,6 +200,7 @@ export function BehaviorQcPopup(): JSX.Element {
     <>
       <QcPopup
         kind="qc"
+        settings="behavior"
         title="Behavior and position · QC"
         sub={
           lines().flags.length

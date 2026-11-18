@@ -4,10 +4,11 @@
 // marks the section reviewed and closes; × closes without marking it, and asks first when choices
 // are pending. Choices are a draft the caller keeps: nothing changes until Apply changes.
 
-import { For, Show, type JSX } from 'solid-js';
+import { createSignal, For, Show, type JSX } from 'solid-js';
 import { InfoTip } from '../panels/InfoTip.tsx';
 import type { MenuItem } from '../lib/actions-menu.ts';
 import { ActionsMenu } from './ActionsMenu.tsx';
+import { QcSettingsModal, type SettingsId } from '../panels/QcSettingsModal.tsx';
 import { Modal } from './Modal.tsx';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -44,9 +45,12 @@ export function QcPopup(props: {
   onClose: () => void;
   /** Prep only: the item that imports settings from another project. */
   onImport?: () => void;
+  /** QC only: the QC settings window of this pop-up's tests, opened from Actions. */
+  settings?: SettingsId;
 }): JSX.Element {
   const qc = () => props.kind === 'qc';
   const word = () => props.pendingWord ?? (qc() ? 'correction' : 'setting');
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
   const items = (): MenuItem[] => [
     // Each action closes the window, so no separate close call is needed after it.
     { kind: 'action', label: 'Apply changes', onSelect: () => (props.onApply(), props.onClose()) },
@@ -65,66 +69,81 @@ export function QcPopup(props: {
           } as MenuItem,
         ]
       : []),
+    ...(qc() && props.settings
+      ? [
+          { kind: 'separator' } as MenuItem,
+          {
+            kind: 'action',
+            label: 'QC settings…',
+            onSelect: () => setSettingsOpen(true),
+          } as MenuItem,
+        ]
+      : []),
   ];
   const n = () => props.pending;
   return (
-    <Modal
-      label={props.title}
-      title={props.title}
-      headClass={`cb-qp__head cb-qp__head--${props.kind}`}
-      head={<span class="cb-qp__sub">{props.sub}</span>}
-      width={props.width ?? 1120}
-      height={props.height ?? 590}
-      closeLabel="Close without marking this section reviewed"
-      confirmTitle="Close without applying?"
-      discardLabel="Discard and close"
-      confirmClose={() =>
-        n()
-          ? `${plural(n(), word())} ${n() === 1 ? 'is' : 'are'} ${qc() ? 'selected' : 'changed'} but not applied. Closing discards ${n() === 1 ? 'it' : 'them'} and leaves this section not reviewed.`
-          : undefined
-      }
-      actions={
-        <>
-          <InfoTip label={`About ${props.title}`}>{props.help}</InfoTip>
-          <span class="cb-qp__note">
-            Either action marks this section reviewed and closes the window.
-          </span>
-          <ActionsMenu items={items()} />
-        </>
-      }
-      onClose={props.onClose}
-    >
-      <div class="cb-qp">
-        <div class="cb-qp__main">
-          {props.top}
-          <div class="cb-qp__plot">{props.children}</div>
-        </div>
-        <aside class="cb-qp__side" aria-label="Controls">
-          {props.right}
-          <label class="cb-qp__reset">
-            <input
-              type="checkbox"
-              checked={props.resetChecked}
-              onChange={(e) => props.onReset(e.currentTarget.checked)}
-            />
-            <span>
-              {qc() ? 'Restore original data' : 'Reset to defaults'}
-              <span class="cb-muted">
-                {props.resetNote ??
-                  (qc()
-                    ? 'Shows this data with no corrections. Takes effect on Apply changes.'
-                    : 'Shows the default settings. Takes effect on Apply changes.')}
-              </span>
+    <>
+      <Modal
+        label={props.title}
+        title={props.title}
+        headClass={`cb-qp__head cb-qp__head--${props.kind}`}
+        head={<span class="cb-qp__sub">{props.sub}</span>}
+        width={props.width ?? 1120}
+        height={props.height ?? 590}
+        closeLabel="Close without marking this section reviewed"
+        confirmTitle="Close without applying?"
+        discardLabel="Discard and close"
+        confirmClose={() =>
+          n()
+            ? `${plural(n(), word())} ${n() === 1 ? 'is' : 'are'} ${qc() ? 'selected' : 'changed'} but not applied. Closing discards ${n() === 1 ? 'it' : 'them'} and leaves this section not reviewed.`
+            : undefined
+        }
+        actions={
+          <>
+            <InfoTip label={`About ${props.title}`}>{props.help}</InfoTip>
+            <span class="cb-qp__note">
+              Either action marks this section reviewed and closes the window.
             </span>
-          </label>
-          <Show when={props.status}>
-            <div class="cb-qp__status cb-muted" role="status">
-              Status: {props.status}
-            </div>
-          </Show>
-        </aside>
-      </div>
-    </Modal>
+            <ActionsMenu items={items()} />
+          </>
+        }
+        onClose={props.onClose}
+      >
+        <div class="cb-qp">
+          <div class="cb-qp__main">
+            {props.top}
+            <div class="cb-qp__plot">{props.children}</div>
+          </div>
+          <aside class="cb-qp__side" aria-label="Controls">
+            {props.right}
+            <label class="cb-qp__reset">
+              <input
+                type="checkbox"
+                checked={props.resetChecked}
+                onChange={(e) => props.onReset(e.currentTarget.checked)}
+              />
+              <span>
+                {qc() ? 'Restore original data' : 'Reset to defaults'}
+                <span class="cb-muted">
+                  {props.resetNote ??
+                    (qc()
+                      ? 'Shows this data with no corrections. Takes effect on Apply changes.'
+                      : 'Shows the default settings. Takes effect on Apply changes.')}
+                </span>
+              </span>
+            </label>
+            <Show when={props.status}>
+              <div class="cb-qp__status cb-muted" role="status">
+                Status: {props.status}
+              </div>
+            </Show>
+          </aside>
+        </div>
+      </Modal>
+      <Show when={settingsOpen() && props.settings}>
+        <QcSettingsModal id={props.settings!} onClose={() => setSettingsOpen(false)} />
+      </Show>
+    </>
   );
 }
 
