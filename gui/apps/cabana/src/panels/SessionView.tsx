@@ -13,14 +13,12 @@ import {
   markersInView,
   markerNear,
   heatScale,
-  hiddenCount,
   isOn,
   matrixOf,
   neuralT,
-  openTracks,
   pos,
-  readout,
-  shownRows,
+  rows,
+  setChoice,
   SOURCE_COLOR,
   SOURCE_LABEL,
   sources,
@@ -136,6 +134,33 @@ function drawOverlay(ctx: CanvasRenderingContext2D, H: number, [t0, t1]: [number
 
 const Swatch = (props: { color: string }): JSX.Element => <i style={{ background: props.color }} />;
 
+/** What a row shows when its checkbox is off: a dashed line, so the row and its checkbox stay. */
+function drawOff(ctx: CanvasRenderingContext2D, H: number): void {
+  ctx.strokeStyle = '#d4d4d4';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/** The checkbox in front of a row's label; it turns the row's drawing on or off. */
+const RowToggle = (props: {
+  name: string;
+  on: boolean;
+  set: (on: boolean) => void;
+}): JSX.Element => (
+  <input
+    type="checkbox"
+    class="cb-trk__chk"
+    aria-label={`Show ${props.name}`}
+    checked={props.on}
+    onChange={(e) => props.set(e.currentTarget.checked)}
+  />
+);
+
 /**
  * One temporal row: a label column (with its own help button) and a plot area. Every row uses the
  * same columns, so all time axes line up. Hovering sets the shared time, drawn as a dashed line.
@@ -156,6 +181,8 @@ function Track(props: {
   markerLabels?: boolean;
   /** A timeline row of this behavior: hovering a bout in it links to the plots. */
   rowLabel?: string;
+  /** A checkbox before the label; off draws a dashed line in the row. */
+  toggle?: { name: string; on: boolean; set: (on: boolean) => void };
 }): JSX.Element {
   let c: HTMLCanvasElement | undefined;
   let hl: HTMLCanvasElement | undefined;
@@ -165,6 +192,7 @@ function Track(props: {
     if (!c || !ctx) return;
     ctx.fillStyle = '#fafafa';
     ctx.fillRect(0, 0, W, props.height);
+    if (props.toggle && !props.toggle.on) return drawOff(ctx, props.height);
     props.draw(ctx, props.height);
     if (props.overlay !== false) drawOverlay(ctx, props.height, win());
   });
@@ -206,6 +234,9 @@ function Track(props: {
       }}
     >
       <div class="cb-trk__lab">
+        <Show when={props.toggle}>
+          {(t) => <RowToggle name={t().name} on={t().on} set={t().set} />}
+        </Show>
         <span class="cb-trk__name">{props.label}</span>
         <Show when={props.help}>{(h) => <HowTo title={h().title}>{h().text}</HowTo>}</Show>
       </div>
@@ -379,6 +410,11 @@ export function NeuralRows(): JSX.Element {
               help={HELP[r.src]}
               min={22}
               height={110}
+              toggle={{
+                name: r.label,
+                on: isOn(`trace:${r.src}`),
+                set: (on) => setChoice(`trace:${r.src}`, on),
+              }}
               draw={(ctx, H) => {
                 const m = matrixOf(r.src)!;
                 drawSeries(
@@ -401,13 +437,13 @@ export function NeuralRows(): JSX.Element {
 
 /** Behavior and zone rows, time markers, frame labels, position and speed on the shared window. */
 export function BehaviorRows(): JSX.Element {
-  const firstOfKind = (i: number) => shownRows()[i - 1]?.kind !== shownRows()[i].kind;
+  const firstOfKind = (i: number) => rows()[i - 1]?.kind !== rows()[i].kind;
   return (
     <div class="cb-trks">
-      <Show when={!shownRows().length && !pos() && !markersInView().length && !frameBands().length}>
+      <Show when={!rows().length && !pos() && !markersInView().length && !frameBands().length}>
         <div class="cb-note">Load behavior annotations, zones or position to see them here.</div>
       </Show>
-      <For each={shownRows()}>
+      <For each={rows()}>
         {(r, i) => (
           <Track
             label={
@@ -422,17 +458,15 @@ export function BehaviorRows(): JSX.Element {
             height={20}
             overlay={false}
             rowLabel={r.kind === 'Behavior' ? r.name : undefined}
+            toggle={{
+              name: r.name,
+              on: isOn(r.key, i()),
+              set: (on) => setChoice(r.key, on),
+            }}
             draw={(ctx, H) => drawBars(ctx, [r], H, win())}
           />
         )}
       </For>
-      <Show when={hiddenCount() > 0}>
-        <div class="cb-trk__more">
-          <button type="button" class="cb-link" onClick={(e) => openTracks(e.currentTarget)}>
-            +{hiddenCount()} hidden {hiddenCount() === 1 ? 'track' : 'tracks'}
-          </button>
-        </div>
-      </Show>
       <Show when={markersInView().length}>
         <Track
           label={<>Time markers</>}
@@ -468,7 +502,7 @@ export function BehaviorRows(): JSX.Element {
           />
         )}
       </For>
-      <Show when={pos() && isOn('position')}>
+      <Show when={pos()}>
         <Track
           label={
             <>
@@ -477,6 +511,11 @@ export function BehaviorRows(): JSX.Element {
             </>
           }
           help={HELP.position}
+          toggle={{
+            name: 'position',
+            on: isOn('position'),
+            set: (on) => setChoice('position', on),
+          }}
           grow={2}
           min={36}
           height={110}
@@ -489,7 +528,7 @@ export function BehaviorRows(): JSX.Element {
           }}
         />
       </Show>
-      <Show when={pos() && isOn('speed')}>
+      <Show when={pos()}>
         <Track
           label={
             <>
@@ -498,6 +537,7 @@ export function BehaviorRows(): JSX.Element {
             </>
           }
           help={HELP.speed}
+          toggle={{ name: 'speed', on: isOn('speed'), set: (on) => setChoice('speed', on) }}
           grow={1.5}
           min={30}
           height={90}
@@ -507,10 +547,6 @@ export function BehaviorRows(): JSX.Element {
       {/* Stays at the bottom of the box when the rows scroll. */}
       <div class="cb-trks__foot">
         <Axis />
-        <div class="cb-muted cb-trks__readout">
-          {readout() ??
-            'Move the mouse over a plot to read the time, position and behavior at that moment.'}
-        </div>
       </div>
     </div>
   );

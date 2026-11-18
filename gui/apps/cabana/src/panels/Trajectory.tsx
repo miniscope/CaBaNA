@@ -12,13 +12,41 @@ import {
   toPx,
   type Pt,
 } from '../lib/arena.ts';
-import { arenaOutline, drawZones } from '../lib/draw.ts';
+import { arenaOutline, shapePath, ZONE_COLORS } from '../lib/draw.ts';
 import { cameraTimes, positionResult } from '../lib/store.ts';
 import { lowerBound } from '../lib/framework.ts';
+import { arenaShow } from '../lib/viz-display.ts';
 import { hoverT, span, win } from '../lib/viz.ts';
 
 /** Whether the arena is set up, so positions can be drawn on its picture. */
 export const placed = () => !!(pxPerCm() && arena.box && frame());
+
+/**
+ * Zones as Experimental Setup draws them (colored by position in the list, excluded regions dashed
+ * red), leaving out the kinds the view turns off. Colors follow the list, so hiding one keeps the others'.
+ */
+function drawShownZones(
+  ctx: CanvasRenderingContext2D,
+  lineWidth: number,
+  fontPx: number,
+  show: { zones: boolean; excluded: boolean },
+): void {
+  arena.zones.forEach((z, i) => {
+    if (!(z.kind === 'exclude' ? show.excluded : show.zones)) return;
+    shapePath(ctx, z);
+    const col = z.kind === 'exclude' ? '#d32f2f' : ZONE_COLORS[i % ZONE_COLORS.length];
+    ctx.fillStyle = col + '33';
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash(z.kind === 'exclude' ? [8, 5] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = col;
+    ctx.font = `${fontPx}px sans-serif`;
+    ctx.fillText(z.name, z.pts[0][0] + 4, z.pts[0][1] - 4);
+  });
+}
 
 /** The path of the animal over the arena, colored by time, or the time spent in each bin. */
 /** `bare` leaves out the heading and the choice of view; `mode` then picks the view. */
@@ -33,6 +61,11 @@ export function Trajectory(props: {
   const [drawn, setDrawn] = createSignal<{ pts: (Pt | undefined)[]; w: number; h: number }>();
   const [chosen, setMode] = createSignal<'path' | 'time'>('path');
   const mode = () => props.mode ?? chosen();
+  // Only the linked view in Data visualization has these choices; the other views draw everything.
+  const show = () =>
+    props.linked
+      ? arenaShow
+      : { full: true, window: true, cursor: true, zones: true, excluded: true };
 
   createEffect(() => {
     const c = canvas;
@@ -100,12 +133,12 @@ export function Trajectory(props: {
           ctx.restore();
         }
       }
-      drawZones(ctx, arena.zones, lw, Math.max(12, c.width / 50));
+      drawShownZones(ctx, lw, Math.max(12, c.width / 50), show());
     }
     if (mode() === 'path' || !placed()) {
       const n = pts.length;
       ctx.lineWidth = lw;
-      for (let i = 1; i < n; i++) {
+      for (let i = 1; show().full && i < n; i++) {
         const a = pts[i - 1];
         const b = pts[i];
         if (!a || !b) continue;
@@ -117,7 +150,7 @@ export function Trajectory(props: {
         ctx.stroke();
       }
       // The time window of the session view, drawn thick.
-      if (t) {
+      if (t && show().window) {
         const [w0, w1] = win();
         ctx.strokeStyle = props.linked ? '#2171b5' : '#e8590c';
         ctx.lineWidth = lw * 2.2;
@@ -147,7 +180,7 @@ export function Trajectory(props: {
     if (dot.width !== d.w) dot.width = d.w;
     dot.height = d.h;
     const t = cameraTimes();
-    const ht = hoverT();
+    const ht = show().cursor ? hoverT() : undefined;
     const q = t && ht !== undefined ? d.pts[Math.min(lowerBound(t, ht), t.length - 1)] : undefined;
     if (!q) return;
     ctx.beginPath();

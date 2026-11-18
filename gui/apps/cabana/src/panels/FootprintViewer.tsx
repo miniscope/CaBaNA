@@ -1,4 +1,4 @@
-import { createEffect, createMemo, type JSX } from 'solid-js';
+import { createEffect, createMemo, Show, type JSX } from 'solid-js';
 import {
   cell,
   cellResult,
@@ -6,9 +6,17 @@ import {
   colorBy,
   footprints,
   overlapPartner,
+  rejected,
   selectCell,
 } from '../lib/store.ts';
 import { FOOTPRINT_CUTOFF, normalizeFootprints } from '../lib/qc.ts';
+import { cellDrawn, cellVisibility, footprintShow } from '../lib/viz-display.ts';
+
+/** Cells the Data visualization map marks: flagged ones and members of overlapping pairs. */
+export interface MapMarks {
+  flagged: () => ReadonlySet<number>;
+  overlapping: () => ReadonlySet<number>;
+}
 
 // Hue per cell from the golden angle, so neighbors get different colors.
 const rgb = (c: number): [number, number, number] => {
@@ -27,8 +35,9 @@ const QUALITY = { good: [46, 160, 80], warn: [235, 170, 20], bad: [215, 50, 50] 
  * whole on top of its neighbors. With `partners`, the neighbor it correlates with most is orange
  * and an overlapping partner picked from the QC list is cyan.
  */
-export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
+export function FootprintViewer(props: { partners?: boolean; marks?: MapMarks }): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
+  let rings: HTMLCanvasElement | undefined;
   const map = createMemo(() => {
     const f = footprints();
     if (!f) return undefined;
@@ -36,12 +45,24 @@ export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
     const px = f.height * f.width;
     const owner = new Int16Array(px).fill(-1);
     const value = new Float32Array(px);
-    for (let c = 0; c < f.cells; c++)
+    // Weighted centers, where the rings go.
+    const center = new Float32Array(f.cells * 2).fill(NaN);
+    for (let c = 0; c < f.cells; c++) {
+      let sum = 0;
+      let sx = 0;
+      let sy = 0;
       for (let i = 0; i < px; i++) {
         const v = norm[c * px + i];
         if (v > value[i] && v > FOOTPRINT_CUTOFF * 0.5) [owner[i], value[i]] = [c, v];
+        if (v > FOOTPRINT_CUTOFF) {
+          sum += v;
+          sx += v * (i % f.width);
+          sy += v * Math.floor(i / f.width);
+        }
       }
-    return { f, norm, owner, value };
+      if (sum > 0) [center[2 * c], center[2 * c + 1]] = [sx / sum, sy / sum];
+    }
+    return { f, norm, owner, value, center };
   });
 
   // Each pixel's cell as drawn: the brightest cell, except that the selected cell covers all of
@@ -58,7 +79,18 @@ export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
         const v = m.norm[sel * px + i];
         if (v > FOOTPRINT_CUTOFF * 0.5) [owner[i], value[i]] = [sel, v];
       }
-    return { f: m.f, owner, value };
+    // Cells left out of the view are not drawn; the selected cell always is.
+    if (props.marks && cellVisibility() !== 'all') {
+      const drawn = new Map<number, boolean>();
+      for (let i = 0; i < px; i++) {
+        const c = owner[i];
+        if (c < 0) continue;
+        if (!drawn.has(c))
+          drawn.set(c, cellDrawn(c, cellVisibility(), rejected(), props.marks.flagged(), sel));
+        if (!drawn.get(c)) owner[i] = -1;
+      }
+    }
+    return { f: m.f, owner, value, center: m.center };
   });
 
   createEffect(() => {
@@ -75,7 +107,8 @@ export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
       marks.set(cellResult()?.partner[sel] ?? -1, [255, 150, 30]);
       marks.set(overlapPartner(), [60, 200, 255]);
     }
-    marks.set(sel, [255, 255, 255]);
+    if (!props.marks || footprintShow.selected) marks.set(sel, [255, 255, 255]);
+    const outlines = !!props.marks && footprintShow.outlines;
     canvas.width = f.width;
     canvas.height = f.height;
     const img = ctx.createImageData(f.width, f.height);
@@ -91,10 +124,41 @@ export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
               : byQuality
                 ? QUALITY[scores?.[c]?.overall ?? 'good']
                 : rgb(c)));
-      const k = c < 0 ? 1 : mark ? Math.max(0.5, value[i]) : 0.25 + 0.55 * value[i];
+      // An outline is the cell's edge at full brightness.
+      const edge =
+        outlines &&
+        c >= 0 &&
+        (owner[i - 1] !== c ||
+          owner[i + 1] !== c ||
+          owner[i - f.width] !== c ||
+          owner[i + f.width] !== c);
+      const k = c < 0 ? 1 : edge ? 1 : mark ? Math.max(0.5, value[i]) : 0.25 + 0.55 * value[i];
       img.data.set([r * k, g * k, b * k, 255], i * 4);
     }
     ctx.putImageData(img, 0, 0);
+  });
+
+  // Rings round flagged cells (amber) and overlapping pairs (cyan), at the canvas's own resolution.
+  const RINGS = 512;
+  createEffect(() => {
+    const m = shown();
+    const ctx = rings?.getContext('2d');
+    if (!m || !rings || !ctx || !props.marks) return;
+    ctx.clearRect(0, 0, RINGS, RINGS);
+    const k = RINGS / m.f.width;
+    const ring = (cells: ReadonlySet<number>, color: string) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      for (const c of cells) {
+        const [x, y] = [m.center[2 * c], m.center[2 * c + 1]];
+        if (!Number.isFinite(x) || m.owner[Math.round(y) * m.f.width + Math.round(x)] < 0) continue;
+        ctx.beginPath();
+        ctx.arc(x * k, y * k, 7, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    };
+    if (footprintShow.overlap) ring(props.marks.overlapping(), '#00bcd4');
+    if (footprintShow.flagged) ring(props.marks.flagged(), '#e09800');
   });
 
   const pick = (e: MouseEvent) => {
@@ -107,5 +171,21 @@ export function FootprintViewer(props: { partners?: boolean }): JSX.Element {
     if (c >= 0) selectCell(c);
   };
 
-  return <canvas ref={canvas} class="cb-footprints" onClick={pick} aria-label="Cell footprints" />;
+  const picture = (
+    <canvas ref={canvas} class="cb-footprints" onClick={pick} aria-label="Cell footprints" />
+  );
+  return (
+    <Show when={props.marks} fallback={picture}>
+      <div class="cb-fpmap">
+        {picture}
+        <canvas
+          ref={rings}
+          class="cb-fpmap__rings"
+          width={RINGS}
+          height={RINGS}
+          aria-hidden="true"
+        />
+      </div>
+    </Show>
+  );
 }

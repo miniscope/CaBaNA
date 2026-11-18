@@ -146,7 +146,7 @@ export function ActionsMenu(props: {
             onPointerEnter={() => level === 0 && path().length > 0 && setPath([])}
             onClick={() => {
               if (item.disabled) return;
-              close();
+              if (!item.keepOpen) close();
               item.onSelect();
             }}
           >
@@ -162,14 +162,19 @@ export function ActionsMenu(props: {
             type="button"
             role="menuitemradio"
             aria-checked={item.checked}
+            aria-disabled={item.disabled ? 'true' : undefined}
+            title={item.disabled}
             tabIndex={-1}
             class="cb-menu__row cb-menu__row--option"
-            onClick={() => item.onSelect()}
+            onClick={() => !item.disabled && item.onSelect()}
           >
             <span class="cb-menu__mark" aria-hidden="true">
               {item.checked ? '✓' : ''}
             </span>
             {item.label}
+            <Show when={item.disabled}>
+              <span class="cb-menu__sub">{item.disabled}</span>
+            </Show>
           </button>
         );
       case 'many':

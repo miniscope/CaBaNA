@@ -9,13 +9,22 @@ export type MenuItem =
       sub?: string;
       danger?: boolean;
       disabled?: string;
+      /** Leave the menu open after the action (a view setting that updates the plot at once). */
+      keepOpen?: boolean;
       onSelect: () => void;
     }
   | { kind: 'separator' }
   | { kind: 'header'; label: string }
   | { kind: 'category'; label: string; items: MenuItem[] }
   /** One-of option: a mark column, shown on the chosen one. The menu stays open. */
-  | { kind: 'one'; label: string; checked: boolean; onSelect: () => void }
+  | {
+      kind: 'one';
+      label: string;
+      checked: boolean;
+      /** Why the option cannot be chosen; shown on the row. */
+      disabled?: string;
+      onSelect: () => void;
+    }
   /** Many-of option: a checkbox. The menu stays open. */
   | { kind: 'many'; label: string; checked: boolean; onToggle: (next: boolean) => void };
 
