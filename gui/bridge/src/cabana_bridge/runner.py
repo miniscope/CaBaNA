@@ -53,6 +53,16 @@ class Runner:
                 rec.setdefault("errors", []).append({"message": "bridge stopped while this run was active"})
                 self.project.write_run(rec["run_id"], rec)
 
+    def busy(self) -> bool:
+        return any(r.get("status") in {"queued", "running"} for r in self.project.list_runs())
+
+    def switch_project(self, store: Project) -> None:
+        """Point at another store (workspace or project folder). Refused while a run is active."""
+        if self.busy():
+            raise Refused("A run is in progress. Wait for it to finish or cancel it first.")
+        self.project = store
+        self._recover()
+
     # -- submit ------------------------------------------------------------------------
     def submit(self, body: dict[str, Any]) -> str:
         session_id = body.get("session_id")
@@ -80,7 +90,7 @@ class Runner:
         reproduce.write_text(
             "#!/bin/sh\n# Re-runs this analysis with the CLI; compare reproduced/ with out/.\n"
             'cd "$(dirname "$0")" || exit 1\n'
-            f"cabana run pipeline.yaml --session ../../sessions/{session_id} --out reproduced --on-error record\n"
+            f"cabana run pipeline.yaml --session {self.project.sessions_path_from_run}/{session_id} --out reproduced --on-error record\n"
         )
         reproduce.chmod(0o755)
         gui = dict(body.get("gui_meta") or {})

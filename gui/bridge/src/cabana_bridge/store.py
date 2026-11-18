@@ -68,10 +68,16 @@ def _pop_path(config: dict, path: tuple[str, ...]) -> Any:
 
 
 class Project:
-    def __init__(self, root: Path) -> None:
+    """The engine's store. `root` is the workspace (`--project-dir`) or, when `in_project` is
+    true, a CaBaNA project folder: runs stay in `runs/`, regenerable inputs and sessions move to
+    `processed/` so the folder holds only configuration, history and results."""
+
+    def __init__(self, root: Path, in_project: bool = False) -> None:
         self.root = Path(root).resolve()
-        for sub in ("inputs", "sessions", "runs"):
-            (self.root / sub).mkdir(parents=True, exist_ok=True)
+        self.in_project = in_project
+        self.cache_dir = self.root / "processed" if in_project else self.root
+        for path in (self.inputs_dir, self.sessions_dir, self.root / "runs"):
+            path.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
 
     # -- paths -------------------------------------------------------------------------
@@ -84,10 +90,19 @@ class Project:
 
     @property
     def inputs_dir(self) -> Path:
-        return self.root / "inputs"
+        return self.cache_dir / "inputs"
+
+    @property
+    def sessions_dir(self) -> Path:
+        return self.cache_dir / "sessions"
+
+    @property
+    def sessions_path_from_run(self) -> str:
+        """Sessions folder as seen from `runs/<id>/`, for reproduce.sh."""
+        return "../../" + str(self.sessions_dir.relative_to(self.root)).replace("\\", "/")
 
     def session_dir(self, session_id: str) -> Path:
-        return self.inside(self.root / "sessions" / check_id(session_id))
+        return self.inside(self.sessions_dir / check_id(session_id))
 
     def run_dir(self, run_id: str) -> Path:
         return self.inside(self.root / "runs" / check_id(run_id))
@@ -201,11 +216,15 @@ class Project:
     def delete_run(self, run_id: str) -> None:
         shutil.rmtree(self.run_dir(run_id), ignore_errors=True)
 
+    @property
+    def state_file(self) -> Path:
+        return self.cache_dir / "project.json"
+
     def read_project(self) -> dict[str, Any]:
-        path = self.root / "project.json"
+        path = self.state_file
         return json.loads(path.read_text()) if path.exists() else {}
 
     def write_project(self, data: dict[str, Any]) -> None:
-        tmp = self.root / "project.json.tmp"
+        tmp = self.state_file.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2))
-        os.replace(tmp, self.root / "project.json")
+        os.replace(tmp, self.state_file)

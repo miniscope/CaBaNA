@@ -20,6 +20,8 @@ from . import __version__
 from . import capabilities as caps_mod
 from . import pipeline_prep as prep
 from . import serialize
+from .project_files import ProjectFiles
+from .projects import PROJECT_ID, Conflict, NotSupported, Projects
 from .runner import Refused, Runner
 from .store import BadRequest, Project, check_id
 
@@ -32,12 +34,31 @@ DEFAULT_ORIGINS = ("http://localhost:5199", "http://localhost:5173", "http://127
 class App:
     """State shared by all requests."""
 
-    def __init__(self, project: Project, secret: str, origins: tuple[str, ...] = DEFAULT_ORIGINS) -> None:
-        self.project, self.secret, self.origins = project, secret, origins
+    def __init__(self, project: Project, secret: str, origins: tuple[str, ...] = DEFAULT_ORIGINS,
+                 projects_root: Path | None = None) -> None:
+        self.workspace = self.project = project  # `project` is the store in use: the workspace or an open project
+        self.secret, self.origins = secret, origins
+        self.projects = Projects(projects_root)
+        self.current: Path | None = None  # folder of the open project
         self.capabilities = caps_mod.Capabilities()
         self.sessions = prep.SessionCache(project)
         self.runner = Runner(project, self.capabilities, self.sessions)
         self._describe: Any = None
+
+    def _use(self, store: Project, current: Path | None) -> None:
+        self.runner.switch_project(store)  # refuses while a run is active
+        self.project, self.current = store, current
+        self.sessions.project = store
+        self.sessions.clear()
+
+    def open_project(self, folder: Path) -> None:
+        self._use(Project(folder, in_project=True), folder.resolve())
+
+    def close_project(self) -> None:
+        self._use(self.workspace, None)
+
+    def is_current(self, folder: Path) -> bool:
+        return self.current is not None and self.current == folder.resolve()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -107,6 +128,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": f"not found: {exc}"}, 404)
                 except KeyError as exc:
                     self._json({"error": f"not found: {exc}"}, 404)
+                except Conflict as exc:
+                    self._json({"error": str(exc)}, 409)
+                except NotSupported as exc:
+                    self._json({"error": str(exc)}, 501)
                 except Refused as exc:
                     self._json(exc.payload, 409)
                 except serialize.UnsupportedResults as exc:
@@ -321,6 +346,88 @@ def project_put(h: Handler, q: dict) -> None:
     h._send(204)
 
 
+# -- projects ----------------------------------------------------------------------------
+def projects_list(h: Handler, q: dict) -> None:
+    h._json({"root": str(h.app.projects.root), "projects": h.app.projects.list()})
+
+
+def projects_create(h: Handler, q: dict) -> None:
+    body = h._body_json()
+    h._json(h.app.projects.create(body.get("name", ""), body.get("parent")), 201)
+
+
+def projects_open(h: Handler, q: dict) -> None:
+    body = h._body_json()
+    folder = h.app.projects.resolve_open(body.get("id"), body.get("path"))
+    h.app.open_project(folder)
+    h._json(h.app.projects.remember_opened(folder))
+
+
+def projects_close(h: Handler, q: dict) -> None:
+    h.app.close_project()
+    h._json({"project": None})
+
+
+def projects_current(h: Handler, q: dict) -> None:
+    h._json({"project": h.app.projects.describe(h.app.current) if h.app.current else None})
+
+
+def project_rename(h: Handler, q: dict, pid: str) -> None:
+    folder = h.app.projects.folder_of(pid)
+    was_open = h.app.is_current(folder)
+    if was_open:
+        h.app.close_project()  # refused while a run is active, before anything is renamed
+    try:
+        info = h.app.projects.rename(pid, h._body_json().get("name", ""))
+    finally:
+        if was_open:
+            h.app.open_project(h.app.projects.folder_of(pid))
+    h._json(info)
+
+
+def project_duplicate(h: Handler, q: dict, pid: str) -> None:
+    h._json(h.app.projects.duplicate(pid, h._body_json().get("name")), 201)
+
+
+def project_delete(h: Handler, q: dict, pid: str) -> None:
+    folder = h.app.projects.folder_of(pid)
+    if h.app.is_current(folder):
+        h.app.close_project()
+    h._json({"trashed_to": h.app.projects.delete(pid)})
+
+
+def project_reveal(h: Handler, q: dict, pid: str) -> None:
+    h.app.projects.reveal(pid)
+    h._send(204)
+
+
+def project_files(h: Handler, pid: str) -> ProjectFiles:
+    return ProjectFiles(h.app.projects.folder_of(pid))
+
+
+def file_get(h: Handler, q: dict, pid: str, name: str) -> None:
+    h._json(project_files(h, pid).read(name))
+
+
+def file_put(h: Handler, q: dict, pid: str, name: str) -> None:
+    body = h._body_json()
+    h._json(project_files(h, pid).write(name, body.get("data"), body.get("text"), body.get("summary", "")))
+
+
+def file_compare(h: Handler, q: dict, pid: str, name: str) -> None:
+    run_id = check_id((q.get("run") or [""])[0])
+    folder = h.app.projects.folder_of(pid)
+    h._json(project_files(h, pid).compare(name, run_id, folder / "runs"))
+
+
+def history_get(h: Handler, q: dict, pid: str) -> None:
+    h._json(project_files(h, pid).history_view())
+
+
+def history_restore(h: Handler, q: dict, pid: str, snapshot: str) -> None:
+    h._json(project_files(h, pid).restore(snapshot))
+
+
 Route = tuple[str, str, Callable[..., None]]
 ID = r"([0-9a-zA-Z_-]{8,64})"
 ROUTES: list[Route] = [
@@ -349,6 +456,20 @@ ROUTES: list[Route] = [
     ("POST", r"/run-records", run_records_post),
     ("GET", r"/project", project_get),
     ("PUT", r"/project", project_put),
+    ("GET", r"/projects", projects_list),
+    ("POST", r"/projects", projects_create),
+    ("POST", r"/projects/open", projects_open),
+    ("POST", r"/projects/close", projects_close),
+    ("GET", r"/projects/current", projects_current),
+    ("POST", rf"/projects/{PROJECT_ID}/rename", project_rename),
+    ("POST", rf"/projects/{PROJECT_ID}/duplicate", project_duplicate),
+    ("DELETE", rf"/projects/{PROJECT_ID}", project_delete),
+    ("POST", rf"/projects/{PROJECT_ID}/reveal", project_reveal),
+    ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_get),
+    ("PUT", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)", file_put),
+    ("GET", rf"/projects/{PROJECT_ID}/files/([a-z]+\.yaml)/compare", file_compare),
+    ("GET", rf"/projects/{PROJECT_ID}/history", history_get),
+    ("POST", rf"/projects/{PROJECT_ID}/history/([0-9]{{8}}-[0-9]{{6}}(?:-[0-9]+)?)/restore", history_restore),
 ]
 
 
