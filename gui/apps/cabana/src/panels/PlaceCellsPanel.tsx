@@ -1,31 +1,15 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  onMount,
-  Show,
-  type JSX,
-} from 'solid-js';
+import { createEffect, createMemo, createSignal, Show, type JSX } from 'solid-js';
 import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
-import {
-  SectionList,
-  StageBar,
-  StageFooter,
-  type GuidedSection,
-} from '../components/GuidedSetup.tsx';
-import { HowItWorks } from '../components/GuidedReview.tsx';
+import { type GuidedSection } from '../components/GuidedSetup.tsx';
 import { guided } from '../lib/guided.ts';
-import { Requirements } from '../components/Requirements.tsx';
+import { BackToCards } from './AnalysisBack.tsx';
 import { arena, effectiveBin } from '../lib/arena.ts';
 import {
-  cancelPlaceRun,
   placeOutcome,
   placeSettings,
   placeStatus,
   runPlaceCells,
   placeShowResults,
-  progressText,
   setPlaceShowResults,
   watchPlaceRuns,
 } from '../lib/place-run.ts';
@@ -33,21 +17,15 @@ import { engineFor, frameworkReady, startRunTracking } from '../lib/engine.ts';
 import { placeChanges } from '../lib/place-ui.ts';
 import { placeFrames, placeNeural, positionIssue } from '../lib/prepared.ts';
 import { prep } from '../lib/preprocess.ts';
-import { openData } from '../lib/data-setup-view.ts';
-import { deconvolved, rawTrace } from '../lib/store.ts';
-import { InfoTip } from './InfoTip.tsx';
+import { deconvolved } from '../lib/store.ts';
 import { OccupancyPreview } from './OccupancyPreview.tsx';
 import { PlaceFieldSettings } from './PlaceFieldSettings.tsx';
-import { PlaceIntro, PlaceMethodText } from './PlaceMethodText.tsx';
 import { PlaceMapsSettings } from './PlaceMapsSettings.tsx';
 import { PlaceResults } from './PlaceResults.tsx';
 import { PlaceReviewStage, placeSummary } from './PlaceReviewStage.tsx';
-import { PlaceRunStage } from './PlaceRunStage.tsx';
 import { auto } from './PlaceSettingFields.tsx';
 import { PlaceTuningSettings } from './PlaceTuningSettings.tsx';
-import { fitToWindow } from './QcPanel.tsx';
 
-const SECTIONS = ['maps', 'tests', 'fields', 'occupancy'];
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('place', 'maps');
 // The occupancy check follows the settings group opened last.
@@ -64,8 +42,12 @@ function Section(props: { id: string; children: JSX.Element }): JSX.Element {
   );
 }
 
-/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
-export function PlaceSetup(props: { configure?: ConfigureControl }): JSX.Element {
+/** The Configure settings groups, or with `review` the Preview window's content. */
+export function PlaceSetup(props: {
+  configure?: ConfigureControl;
+  /** The Preview window's content instead of the setting groups. */
+  review?: boolean;
+}): JSX.Element {
   const frames = createMemo(() => placeFrames());
   const ready = () => !!(deconvolved() && placeNeural());
   const ps = placeSettings;
@@ -111,10 +93,6 @@ export function PlaceSetup(props: { configure?: ConfigureControl }): JSX.Element
       ? 'No frame passes the speed threshold. Lower the minimum speed.'
       : undefined;
   };
-  const rejected = () => (deconvolved()?.cells ?? 0) - (placeNeural()?.cells ?? 0);
-  let root!: HTMLDivElement;
-  onMount(() => root && onCleanup(fitToWindow(root)));
-
   const framework = () => engineFor('place') === 'framework';
   const previewBlocked = () =>
     !framework()
@@ -131,17 +109,10 @@ export function PlaceSetup(props: { configure?: ConfigureControl }): JSX.Element
           ? 'The framework engine is not connected. Use the browser engine button above, or connect the bridge.'
           : undefined;
   const start = (preview: boolean) => {
-    g.setStage('run');
+    g.setStage('run'); // the Preview window closes when a run starts
     void runPlaceCells(preview ? { preview: true } : {});
   };
 
-  const status = () => {
-    const s = running();
-    if (s) return `${s.step}${progressText(s) ? ` (${progressText(s)})` : '…'}`;
-    if (!ready()) return 'Load deconvolved neural data and position';
-    if (error()) return 'Needs attention';
-    return 'Ready to run';
-  };
   const sectionBody = () => (
     <>
       <Section id="maps">
@@ -178,128 +149,48 @@ export function PlaceSetup(props: { configure?: ConfigureControl }): JSX.Element
     </Show>
   );
 
-  const page = () => (
-    <div class="cb-place cb-gs" ref={root}>
-      <div class="cb-place-head">
-        <div>
-          <h2>
-            Place cell analysis
-            <InfoTip label="About the place cell analysis">
-              <PlaceIntro />
-            </InfoTip>
-            <HowItWorks title="How the place cell analysis works">
-              <div class="cb-muted">
-                <PlaceMethodText />
-              </div>
-            </HowItWorks>
-          </h2>
+  const reviewView = () => (
+    <Show
+      when={ready() && ok()}
+      fallback={
+        <div class="cb-empty">
+          {ready()
+            ? (error() ?? 'No frames to analyze.')
+            : 'Load deconvolved neural data and position to run this analysis.'}
         </div>
-        <div class="cb-place-head__side">
-          <span class="cb-place-method__status">
-            <i classList={{ 'cb-dot--ok': ready() && !error() && !running() }} /> {status()}
-          </span>
-          <Show when={placeNeural()}>
-            <span class="cb-muted">
-              {placeNeural()!.cells} cells included
-              <Show when={rejected() > 0}>
-                {' · '}
-                {rejected()} excluded in{' '}
-                <button
-                  class="cb-link"
-                  onClick={() => openData(rawTrace() ? 'neural_raw' : 'neural_denoised', 'qc')}
-                >
-                  Data setup
-                </button>
-              </Show>
-            </span>
-          </Show>
-        </div>
-        <div class="cb-controls">
-          <Show when={placeOutcome()}>
-            <button class="btn-secondary" onClick={() => setPlaceShowResults(true)}>
-              {placeChanges().length ? 'View results (earlier settings)' : 'View results'}
-            </button>
-          </Show>
-        </div>
-      </div>
-
-      <StageBar
+      }
+    >
+      <PlaceReviewStage
         g={g}
-        done={{
-          configure: SECTIONS.every((id) => g.reviewed(id)),
-          review: !!placeOutcome() && placeOutcome()!.record?.scope === 'preview',
-          run: !!placeOutcome() && placeOutcome()!.record?.scope !== 'preview',
-        }}
+        groups={placeSummary(ok()?.used, framework())}
+        running={!!running()}
+        blocked={blocked()}
+        previewBlocked={previewBlocked()}
+        onRun={start}
       />
-      <Show when={!ready()}>
-        <div class="cb-empty">Load deconvolved neural data and position to run this analysis.</div>
-      </Show>
-      <Show when={ready() && g.stage() !== 'run' && error()}>
-        <div class="cb-note">{error()}</div>
-      </Show>
-
-      <Show when={ready() && ok() && g.stage() === 'configure'}>
-        <SectionList g={g} label="Place cell settings" sections={sections()}>
-          {sectionBody}
-        </SectionList>
-      </Show>
-
-      <Show when={ready() && g.stage() === 'review'}>
-        <PlaceReviewStage
-          g={g}
-          groups={placeSummary(ok()?.used, framework())}
-          running={!!running()}
-          blocked={blocked()}
-          previewBlocked={previewBlocked()}
-          onRun={start}
-        />
-      </Show>
-
-      <Show when={ready() && g.stage() === 'run'}>
-        <PlaceRunStage
-          running={running()}
-          error={placeStatus().kind === 'error' ? error() : undefined}
-        />
-      </Show>
-
-      <StageFooter
-        g={g}
-        status={
-          <span>
-            <i classList={{ 'cb-dot--ok': ready() && !error() && !running() }} /> {status()}
-          </span>
-        }
-        actions={
-          <Show when={running()}>
-            <button class="btn-secondary" onClick={cancelPlaceRun}>
-              Cancel
-            </button>
-          </Show>
-        }
-      />
-    </div>
+    </Show>
   );
 
   return (
-    <Show when={props.configure} fallback={page()}>
-      {(c) => configureView(c)}
+    <Show
+      when={props.review}
+      fallback={<Show when={props.configure}>{(c) => configureView(c)}</Show>}
+    >
+      {reviewView()}
     </Show>
   );
 }
 
-/** The Place cells page: its settings, or after a run its results. The results stay while the settings are edited. */
+/** The Place cells results page. Without a result, setup is in the card's Actions. */
 export function PlaceCellsPanel(): JSX.Element {
   startRunTracking();
   watchPlaceRuns();
   const changes = createMemo(placeChanges);
   return (
-    <>
-      <Requirements analysis="place" />
-      <Show when={placeShowResults() && placeOutcome()} keyed fallback={<PlaceSetup />}>
-        {(out) => (
-          <PlaceResults out={out} changes={changes()} onEdit={() => setPlaceShowResults(false)} />
-        )}
-      </Show>
-    </>
+    <Show when={placeShowResults() && placeOutcome()} keyed fallback={<BackToCards id="place" />}>
+      {(out) => (
+        <PlaceResults out={out} changes={changes()} onEdit={() => setPlaceShowResults(false)} />
+      )}
+    </Show>
   );
 }
