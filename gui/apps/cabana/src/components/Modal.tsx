@@ -28,6 +28,11 @@ export function Modal(props: {
   footer?: JSX.Element;
   /** Returns a message when closing would lose changes; × / Escape / backdrop then ask first. */
   confirmClose?: () => string | undefined;
+  /** Heading and discard button of that question. Default: "Discard changes?" / "Discard changes". */
+  confirmTitle?: string;
+  discardLabel?: string;
+  /** Extra class on the title row, e.g. a tinted band. */
+  headClass?: string;
   /** A drawer along the right edge instead of a window in the middle. */
   side?: boolean;
   /** Name and tooltip of the ×, e.g. "Close. Changes are applied as you type". */
@@ -113,7 +118,7 @@ export function Modal(props: {
             if (files.length) props.onDropFiles(files);
           }}
         >
-          <div class="cb-modal__head">
+          <div class="cb-modal__head" classList={{ [props.headClass ?? '']: !!props.headClass }}>
             <h2 class="cb-modal__title">{props.title}</h2>
             {props.head}
             <span class="cb-spacer" />
@@ -131,7 +136,7 @@ export function Modal(props: {
             {(message) => (
               <div class="cb-modal__warn-bg">
                 <div class="cb-modal__warn" role="alertdialog" aria-label="Close with changes">
-                  <div class="cb-modal__warn-title">Discard changes?</div>
+                  <div class="cb-modal__warn-title">{props.confirmTitle ?? 'Discard changes?'}</div>
                   <p class="cb-muted">{message()}</p>
                   <div class="cb-modal__warn-actions">
                     <button
@@ -147,7 +152,7 @@ export function Modal(props: {
                       class="btn-primary btn-small"
                       onClick={() => props.onClose()}
                     >
-                      Discard changes
+                      {props.discardLabel ?? 'Discard changes'}
                     </button>
                   </div>
                 </div>
