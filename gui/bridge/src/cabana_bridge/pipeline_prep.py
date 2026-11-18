@@ -27,6 +27,9 @@ class SessionCache:
         self.project, self.size = project, size
         self._items: OrderedDict[str, Any] = OrderedDict()
 
+    def clear(self) -> None:
+        self._items.clear()
+
     def get(self, session_id: str) -> Any:
         if session_id in self._items:
             self._items.move_to_end(session_id)

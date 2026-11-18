@@ -24,6 +24,8 @@ def assert_framework() -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cabana-bridge", description=__doc__)
     parser.add_argument("--project-dir", required=True, type=Path, help="workspace for inputs, sessions and runs")
+    parser.add_argument("--projects-root", type=Path, default=None,
+                        help="where projects live (default: ~/CaBaNA Projects, created on first write)")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--secret", default=None, help="default: generated and printed")
     args = parser.parse_args(argv)
@@ -33,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     from .store import Project
 
     secret = args.secret or secrets.token_urlsafe(16)
-    app = App(Project(args.project_dir), secret)
+    app = App(Project(args.project_dir), secret, projects_root=args.projects_root)
     server = make_server(app, args.port)
     print(f"cabana-bridge listening on http://127.0.0.1:{args.port}")
     print(f"open the GUI with ?bridge=http://127.0.0.1:{args.port}&bridge_secret={secret}", flush=True)
