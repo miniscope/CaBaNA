@@ -16,8 +16,7 @@ import {
 } from '../lib/viz-pills.ts';
 import { behaviorSlot } from '../lib/viz-reviewed.ts';
 import { changes } from './ChangesDrawer.tsx';
-import { flaggedOf } from './BehaviorQcAnnotations.tsx';
-import { posOk, segments } from './BehaviorQc.tsx';
+import { flaggedOf, posOk, segments } from './BehaviorQc.tsx';
 import { setQcPopup, type QcPopupId } from '../lib/qc-popup-view.ts';
 import { cellChecks, flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
 

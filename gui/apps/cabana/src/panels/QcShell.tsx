@@ -3,7 +3,7 @@
 
 import type { Status } from '../lib/qc.ts';
 import { qcPlotTab } from '../lib/qc-view.ts';
-import type { Category } from './QcPanel.tsx';
+import type { PlotTest } from './QcPanel.tsx';
 
 export const RESULT: Record<Status | 'none', string> = {
   pass: 'Pass',
@@ -13,7 +13,7 @@ export const RESULT: Record<Status | 'none', string> = {
 };
 
 /** The plot tab currently shown for a test. */
-export function plotTabOf(cat: Category): string {
+export function plotTabOf(cat: PlotTest): string {
   const id = qcPlotTab[cat.id];
   return (cat.tabs ?? []).some((t) => t.id === id) ? id : (cat.tabs?.[0]?.id ?? '');
 }
