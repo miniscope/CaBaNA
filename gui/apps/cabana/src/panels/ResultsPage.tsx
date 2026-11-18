@@ -1,47 +1,34 @@
-import { createEffect, createSignal, For, onMount, onCleanup, Show, type JSX } from 'solid-js';
-import { PlotEditorEntry } from './results/PlotEditor.tsx';
-import type { RunRecord } from '../lib/bridge-client.ts';
+import { createEffect, createSignal, onMount, onCleanup, Show, type JSX } from 'solid-js';
 import { bridgeReady } from '../lib/bridge-status.ts';
+import { forgetBrowserRecord } from '../lib/browser-records.ts';
+import { resultIndex, runOutcome } from '../lib/result-index.ts';
+import { matchOfRecord, type Match } from '../lib/results-match.ts';
 import { explorerTarget, openedRun, openRunOf } from '../lib/results-nav.ts';
 import { ANALYSIS_IDS, hasResults } from '../lib/results-overview.ts';
-import { analysisCards, type AnalysisCard } from '../lib/results-hub.ts';
 import { prefetchRun } from '../lib/results-store.ts';
-import { compareToRecord, type AnalysisId } from '../lib/runs.ts';
-import { resultIndex, runOutcome } from '../lib/result-index.ts';
-import { forgetBrowserRecord } from '../lib/browser-records.ts';
-import { goToAnalysis } from '../lib/results-overview.ts';
-import { ANALYSES } from '../lib/analyses.ts';
-import { InfoTip } from './InfoTip.tsx';
+import type { RunRecord } from '../lib/bridge-client.ts';
+import type { AnalysisId } from '../lib/runs.ts';
 import { fitToWindow } from './QcPanel.tsx';
-import { AnalysisHistory } from './results/AnalysisHistory.tsx';
+import { ExplorerFrame, FRAMED } from './results/ExplorerFrame.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
-import type { Match } from './results/RunBanner.tsx';
-import { ResultsHub } from './results/ResultsHub.tsx';
-import { RunsView } from './results/RunsView.tsx';
 import { ResultsExplorer } from './results/ResultsExplorer.tsx';
-import { PREVIEW_TEXT } from '../lib/preview.ts';
-
-type Tab = 'runs' | 'cards' | 'history';
-const TABS: [Tab, string][] = [
-  ['runs', 'Saved runs'],
-  ['cards', 'Analysis cards'],
-  ['history', 'Analysis history'],
-];
+import { ResultsTable } from './results/ResultsTable.tsx';
 
 /**
- * Results: the Hub (a card per analysis, and the history of every run) and, once a card or a run
- * is opened, that analysis's Explorer. `plotEditor` fills the Hub's Plot editor (preview) entry.
+ * Results: the overview table (one row per analysis) and, once a row or a run is opened, that
+ * analysis's explorer. Opening a result never changes the current settings.
  */
-export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Element {
+export function ResultsPage(): JSX.Element {
   let root!: HTMLDivElement;
-  const [tab, setTab] = createSignal<Tab>('runs');
-  const [matches, setMatches] = createSignal<Partial<Record<AnalysisId, Match>>>({});
+  const [matches, setMatches] = createSignal<
+    Partial<Record<AnalysisId, { runId: string; match?: Match }>>
+  >({});
+  const [notice, setNotice] = createSignal('');
 
   onMount(() => onCleanup(fitToWindow(root)));
 
-  // One list for this page, its history and the sidebar (`result-index.ts`).
+  // One list for this page and the sidebar (`result-index.ts`).
   const records = resultIndex;
-  const cards = () => analysisCards(records());
   // Keep finished framework results readable after the engine stops.
   createEffect(() => {
     if (!bridgeReady()) return;
@@ -50,36 +37,29 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
         void prefetchRun(r.run_id);
   });
 
-  // Whether the settings now match each analysis's newest framework result.
+  // Whether the settings and inputs now match each analysis's newest result.
   let seq = 0;
   createEffect(() => {
-    if (!bridgeReady()) return setMatches({});
     const mine = ++seq;
     const newest = ANALYSIS_IDS.map((id) => runOutcome(id).result);
     void Promise.all(
-      ANALYSIS_IDS.map((id, i) =>
-        newest[i]?.engine === 'framework'
-          ? compareToRecord(id, newest[i]!).catch(() => undefined)
-          : undefined,
-      ),
+      newest.map((r) => (r ? matchOfRecord(r, true).catch(() => undefined) : undefined)),
     ).then((found) => {
-      if (mine === seq)
-        setMatches(
-          Object.fromEntries(ANALYSIS_IDS.flatMap((id, i) => (found[i] ? [[id, found[i]]] : []))),
-        );
+      if (mine !== seq) return;
+      setMatches(
+        Object.fromEntries(
+          ANALYSIS_IDS.flatMap((id, i) =>
+            newest[i] ? [[id, { runId: newest[i]!.run_id, match: found[i] }]] : [],
+          ),
+        ),
+      );
     });
   });
-  // Only the run the comparison was made against shows match information.
-  const matchOf = (card: AnalysisCard): Match | undefined =>
-    card.latest && runOutcome(card.analysis).result?.run_id === card.latest.run_id
-      ? matches()[card.analysis]
-      : undefined;
-
-  // The table's status: only the run the comparison was made against has a match.
-  const matchOfRun = (r: RunRecord) =>
-    runOutcome(r.analysis as AnalysisId).result?.run_id === r.run_id
-      ? matches()[r.analysis as AnalysisId]
-      : undefined;
+  // Only the newest result of an analysis is compared.
+  const matchOf = (r: RunRecord): Match | undefined => {
+    const m = matches()[r.analysis as AnalysisId];
+    return m?.runId === r.run_id ? m.match : undefined;
+  };
 
   const afterDelete = (r: RunRecord) => {
     const id = r.analysis as AnalysisId;
@@ -87,7 +67,6 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
     void forgetBrowserRecord(r.run_id);
   };
 
-  const empty = () => records().length === 0;
   return (
     <div class="cb-place cb-res" ref={root}>
       <Show when={!bridgeReady()}>
@@ -96,73 +75,38 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
         </p>
         <Unavailable engineOff />
       </Show>
+      <Show when={notice()}>
+        <p class="cb-res__off" role="alert">
+          {notice()}{' '}
+          <button type="button" class="cb-link" onClick={() => setNotice('')}>
+            Dismiss
+          </button>
+        </p>
+      </Show>
       <Show
         when={explorerTarget()}
         fallback={
-          <>
-            <div class="cb-place-head">
-              <div class="cb-res__title">
-                <h2>Results</h2>
-                <InfoTip label="About saved results">
-                  <p>
-                    Every saved run, with the settings and data version that produced it. Opening a
-                    result never changes the current settings.
-                  </p>
-                  <p>
-                    Current means the run matches the settings and inputs now. Needs rerun means
-                    they changed since. Preliminary means a Quick preview: {PREVIEW_TEXT}. Each
-                    result shows the count it ran.
-                  </p>
-                </InfoTip>
-              </div>
-              <div class="cb-seg" role="tablist" aria-label="Results views">
-                <For each={TABS}>
-                  {([id, label]) => (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={tab() === id}
-                      classList={{ 'cb-seg__on': tab() === id }}
-                      onClick={() => setTab(id)}
-                    >
-                      {label}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </div>
-            <Show when={tab() === 'runs' && !empty()}>
-              <RunsView records={records()} matchOf={matchOfRun} onDeleted={afterDelete} />
-            </Show>
-            <Show when={tab() === 'cards' || (tab() === 'runs' && empty())}>
-              <Show when={empty()}>
-                <p class="cb-res__empty" role="status">
-                  No results yet. Set up and run an analysis.{' '}
-                  {ANALYSES.map((a) => (
-                    <button
-                      type="button"
-                      class="cb-link cb-res__lnk"
-                      onClick={() => goToAnalysis(a.id)}
-                    >
-                      {a.label}
-                    </button>
-                  ))}
-                </p>
-              </Show>
-              <ResultsHub
-                cards={cards()}
-                matchOf={matchOf}
-                onDeleted={afterDelete}
-                plotEditor={props.plotEditor ?? <PlotEditorEntry />}
-              />
-            </Show>
-            <Show when={tab() === 'history'}>
-              <AnalysisHistory records={records()} onDeleted={afterDelete} />
-            </Show>
-          </>
+          <ResultsTable
+            records={records()}
+            matchOf={matchOf}
+            onDeleted={afterDelete}
+            onError={setNotice}
+          />
         }
       >
-        {(target) => <ResultsExplorer target={target()} records={records()} />}
+        {(target) => (
+          <Show
+            when={FRAMED.includes(target().analysis)}
+            fallback={<ResultsExplorer target={target()} records={records()} />}
+          >
+            <ExplorerFrame
+              target={target()}
+              records={records()}
+              onDeleted={afterDelete}
+              onError={setNotice}
+            />
+          </Show>
+        )}
       </Show>
     </div>
   );
