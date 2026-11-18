@@ -98,6 +98,7 @@ export const PARTS: Record<ChipId, () => Part[]> = {
         ? {
             failed: files.reduce((n, a) => n + (a.error ? 1 : fails(a.checks)), 0),
             epochs: files.reduce((n, a) => n + flaggedOf(a.id).length, 0),
+            unpaired: files.reduce((n, a) => n + a.pairs.length, 0),
           }
         : undefined,
     );

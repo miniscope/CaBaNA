@@ -16,12 +16,12 @@ const CSV = [
 ].join('\n');
 
 describe('onset and offset pairs', () => {
-  it('finds each kind of unpaired row with its file row and label', () => {
+  it('finds each kind of unpaired row with its data row and label', () => {
     expect(pairIssues(parseCsvText(CSV))).toEqual([
-      { row: 3, label: 'sniff', kind: 'no-stop' },
-      { row: 4, label: 'groom', kind: 'no-start' },
-      { row: 5, label: 'groom', kind: 'reversed' },
-      { row: 6, label: 'sniff', kind: 'zero' },
+      { row: 1, label: 'sniff', kind: 'no-stop' },
+      { row: 2, label: 'groom', kind: 'no-start' },
+      { row: 3, label: 'groom', kind: 'reversed' },
+      { row: 4, label: 'sniff', kind: 'zero' },
     ]);
   });
 
@@ -45,7 +45,7 @@ describe('onset and offset pairs', () => {
     expect(c.value).toBe('4 of 6 rows');
     expect(c.detail).toContain('1 row has a start but no stop');
     expect(c.detail).toContain('1 row stops before it starts');
-    expect(c.detail).toContain('File rows 3 (sniff), 4 (groom), 5 (groom), 6 (sniff).');
+    expect(c.detail).toContain('Data table rows 1 (sniff), 2 (groom), 3 (groom), 4 (sniff).');
     const clean = parseCsvText('label,start_s,stop_s\nsniff,1,2');
     expect(pairCheck(pairIssues(clean), 1)).toMatchObject({ status: 'pass', value: 'None found' });
   });

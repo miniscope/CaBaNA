@@ -1,5 +1,8 @@
 // Behavioral QC annotations: the epoch plot, per-label stats and the flagged-epoch list.
-import { Show, type JSX } from 'solid-js';
+import { For, Show, type JSX } from 'solid-js';
+import type { PairIssue } from '../lib/behavior.ts';
+import { showRows } from '../lib/data-setup-view.ts';
+import type { SlotId } from '../lib/slots.ts';
 import { denomText } from '../lib/metrics.ts';
 import type { MetricCard } from '../components/MetricCards.tsx';
 import { sessionDuration } from '../lib/store.ts';
@@ -85,9 +88,46 @@ export function AnnotationPlot(props: { id: string; tab: string }): JSX.Element 
   );
 }
 
+const PAIR_TEXT: Record<PairIssue['kind'], string> = {
+  'no-stop': 'start but no stop',
+  'no-start': 'stop but no start',
+  reversed: 'stops before it starts',
+  zero: 'stops when it starts',
+};
+
+/** Rows of the file whose start and stop do not make a pair; each opens the data table there. */
+function UnpairedRows(props: { id: string }): JSX.Element {
+  const rows = () => fileOf(props.id)?.pairs ?? [];
+  return (
+    <Show when={rows().length}>
+      <div class="cb-unpaired">
+        <span class="cb-warn">
+          {rows().length} unpaired {rows().length === 1 ? 'row' : 'rows'} in the file:
+        </span>
+        <For each={rows().slice(0, 6)}>
+          {(r) => (
+            <button
+              type="button"
+              class="cb-link"
+              title="Show this row in the data table"
+              onClick={() => showRows(props.id as SlotId, r.row)}
+            >
+              Row {r.row}: {r.label}, {PAIR_TEXT[r.kind]}
+            </button>
+          )}
+        </For>
+        <Show when={rows().length > 6}>
+          <span class="cb-muted">and {rows().length - 6} more (see Onset and offset pairs)</span>
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
 export function AnnotationFlagged(props: { id: string }): JSX.Element {
   return (
     <RailBox title="Flagged epochs" grow>
+      <UnpairedRows id={props.id} />
       <PagedList
         id={listIdOf(props.id)}
         rowH={46}

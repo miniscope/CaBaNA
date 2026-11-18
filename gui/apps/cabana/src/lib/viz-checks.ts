@@ -69,12 +69,19 @@ export function positionParts(
   return parts.length ? parts : [{ text: 'none flagged', tone: 'ok' }];
 }
 
-/** Behavior annotations: failed checks (or files that could not be read), then flagged epochs. */
-export function behaviorParts(f: { failed: number; epochs: number } | undefined): Part[] {
+/**
+ * Behavior annotations: failed checks (or files that could not be read), flagged epochs, then rows
+ * whose start and stop do not make a pair.
+ */
+export function behaviorParts(
+  f: { failed: number; epochs: number; unpaired?: number } | undefined,
+): Part[] {
   if (!f) return NOT_LOADED;
   const parts: Part[] = [];
   if (f.failed) parts.push({ text: `${f.failed} failed`, tone: 'fail' });
   if (f.epochs) parts.push({ text: n(f.epochs, 'epoch flagged', 'epochs flagged'), tone: 'flag' });
+  if (f.unpaired)
+    parts.push({ text: n(f.unpaired, 'unpaired row', 'unpaired rows'), tone: 'flag' });
   return parts.length ? parts : [{ text: 'none flagged', tone: 'ok' }];
 }
 

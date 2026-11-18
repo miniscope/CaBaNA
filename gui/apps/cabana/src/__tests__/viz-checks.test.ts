@@ -46,6 +46,7 @@ describe('viz checks row', () => {
     expect(partsText(positionParts({ failed: 0, jumps: 1, gaps: 0 }))).toBe('1 jump');
     expect(partsText(behaviorParts({ failed: 0, epochs: 1 }))).toBe('1 epoch flagged');
     expect(partsText(behaviorParts({ failed: 2, epochs: 3 }))).toBe('2 failed · 3 epochs flagged');
+    expect(partsText(behaviorParts({ failed: 0, epochs: 0, unpaired: 2 }))).toBe('2 unpaired rows');
   });
 });
 

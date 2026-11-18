@@ -31,7 +31,7 @@ export function readEpochs(t: Table): Epoch[] {
 
 /** A row whose onset (start) and offset (stop) do not make a pair. */
 export interface PairIssue {
-  /** Row of the file, counting the header as row 1. */
+  /** Data row, numbered from 0 as in the Data table. */
   row: number;
   label: string;
   kind: 'no-start' | 'no-stop' | 'reversed' | 'zero';
@@ -70,7 +70,7 @@ export function pairIssues(t: Table): PairIssue[] {
               : Number(r[ei]) === Number(r[si])
                 ? 'zero'
                 : undefined;
-    if (kind) out.push({ row: k + 2, label: r[li], kind });
+    if (kind) out.push({ row: k, label: r[li], kind });
   });
   return out;
 }
@@ -90,7 +90,7 @@ export function pairCheck(issues: PairIssue[], rows: number): Check {
     status: k ? 'warn' : 'pass',
     value: k ? `${k} of ${rows} rows` : 'None found',
     detail: k
-      ? `${kinds.join('; ')}. File rows ${listed.join(', ')}${k > listed.length ? ` and ${k - listed.length} more` : ''}. Such rows are read as written; an empty time reads as 0.`
+      ? `${kinds.join('; ')}. Data table rows ${listed.join(', ')}${k > listed.length ? ` and ${k - listed.length} more` : ''}. Such rows are read as written; an empty time reads as 0.`
       : 'Every row has a start and a later stop.',
     fix: 'Correct these rows in the annotation file, then reload it.',
   };

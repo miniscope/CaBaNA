@@ -3301,6 +3301,15 @@ button[aria-expanded='true'] > .cb-help {
   justify-content: flex-end;
   gap: 6px;
 }
+/* Behavior annotations QC: rows whose start and stop do not make a pair. */
+.cb-unpaired {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
 /* Display and Tracks pop-ups: underlined tabs, settings as name + control rows. */
 .cb-dpop__head {
   flex-direction: column;
