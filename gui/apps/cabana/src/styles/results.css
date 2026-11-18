@@ -38,3 +38,200 @@
 .cb-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
 .cb-un__engine{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}.cb-un__engine .cb-un__cmd{display:inline-block;margin:0}
+
+/* Results: counts, table of saved runs, selected run on the right. */
+.cb-rn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-md);
+  min-height: 0;
+  flex: 1;
+}
+.cb-rn__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+  min-height: 0;
+}
+.cb-rn__counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cb-rn__count,
+.cb-rn__box,
+.cb-rn__side {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+.cb-rn__count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+}
+.cb-rn__n {
+  font-size: 24px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1.1;
+}
+.cb-rn__n--warn {
+  color: var(--flag);
+}
+.cb-rn__box {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-sm) var(--space-md);
+}
+.cb-rn__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-xs);
+}
+.cb-rn__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.cb-rn__t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cb-rn__t th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  text-align: left;
+  font-weight: var(--font-weight-normal);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+.cb-rn__t td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+.cb-rn__t tbody tr {
+  cursor: pointer;
+}
+.cb-rn__t tbody tr:hover,
+.cb-rn__on {
+  background: var(--bg-inset);
+}
+.cb-rn__pick {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  color: inherit;
+  cursor: pointer;
+}
+.cb-rn__target {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-rn__when {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.cb-rn__act {
+  text-align: right;
+  white-space: nowrap;
+}
+.cb-rn__t .cb-ro__why {
+  display: none;
+}
+.cb-rn__status {
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+.cb-rn__status[data-kind='current'] {
+  color: var(--success);
+}
+.cb-rn__status[data-kind='needs_rerun'],
+.cb-rn__status[data-kind='preliminary'],
+.cb-rn__status[data-kind='partial'],
+.cb-rn__status[data-kind='cancelled'] {
+  color: var(--flag);
+}
+.cb-rn__status[data-kind='failed'] {
+  color: var(--error-text);
+}
+.cb-rn__status[data-kind='earlier'],
+.cb-rn__status[data-kind='saved'] {
+  color: var(--text-secondary);
+}
+.cb-rn__foot {
+  margin: var(--space-xs) 0 0;
+  font-size: 12px;
+}
+.cb-rn__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-md);
+}
+.cb-rn__side h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.cb-rn__sep {
+  color: var(--text-secondary);
+}
+.cb-rn__when + .cb-rn__facts,
+.cb-rn__side > p {
+  margin: 0;
+}
+.cb-rn__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px var(--space-md);
+  margin: 0;
+  font-size: 13px;
+}
+.cb-rn__facts dt {
+  color: var(--text-secondary);
+}
+.cb-rn__facts dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.cb-rn__acts,
+.cb-rn__export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.cb-rn__export {
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-rn__export .cb-muted {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.cb-rn__details {
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
