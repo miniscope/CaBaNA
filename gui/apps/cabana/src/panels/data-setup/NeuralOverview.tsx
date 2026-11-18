@@ -2,11 +2,12 @@
 // then the selected cell in every layer beside its footprint, close up. The selected cell is the store's, shared with Footprints and the QC.
 
 import { viridisRGB } from '@calab/ui/chart';
-import { createEffect, createMemo, createSignal, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { NEURAL_LAYERS } from '../../lib/analysis-data.ts';
 import { NEIGHBOR_PX } from '../../lib/cells.ts';
 import { cellPeaks, cropAround, inMask, MASK } from '../../lib/footprint-zoom.ts';
 import { cellOrder, heatmapBins, type CellSort } from '../../lib/neural-heatmap.ts';
+import { rowFractions, type QcFlag } from '../../lib/qc-markers.ts';
 import type { Matrix } from '../../lib/parse.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import {
@@ -31,7 +32,13 @@ export const MATRIX: Partial<Record<SlotId, () => Matrix | undefined>> = {
 
 const [sortBy, setSortBy] = createSignal<CellSort>('cell');
 
-function HeatCanvas(props: { m: Matrix; peak: boolean; w: number; h: number }): JSX.Element {
+function HeatCanvas(props: {
+  m: Matrix;
+  peak: boolean;
+  w: number;
+  h: number;
+  marks?: QcFlag[];
+}): JSX.Element {
   let canvas!: HTMLCanvasElement;
   const snr = () => cellResult()?.snr;
   const order = createMemo(() => cellOrder(props.m.cells, sortBy(), snr()));
@@ -72,12 +79,33 @@ function HeatCanvas(props: { m: Matrix; peak: boolean; w: number; h: number }): 
         style={{ top: `${rowOf(cell()) * rowH()}px`, height: `${Math.max(2, rowH())}px` }}
         aria-hidden="true"
       />
+      {/* QC flags: an amber tick at each flagged cell's row and the flag's number at the first. */}
+      <For each={props.marks?.filter((f) => f.cells?.length)}>
+        {(flag) => {
+          const rows = () => rowFractions(flag.cells!, order());
+          return (
+            <>
+              <For each={rows()}>
+                {(y) => <i class="cb-ds-heat__tick" style={{ top: `${y * props.h}px` }} />}
+              </For>
+              <Show when={rows()[0] !== undefined}>
+                <span
+                  class="cb-qcnum cb-ds-heat__num"
+                  style={{ top: `${Math.min(rows()[0] * props.h, props.h - 8)}px` }}
+                >
+                  {flag.n}
+                </span>
+              </Show>
+            </>
+          );
+        }}
+      </For>
     </div>
   );
 }
 
 /** Every cell of one file over the whole session, one row per cell. */
-export function LayerHeatmap(props: { slot: SlotId }): JSX.Element {
+export function LayerHeatmap(props: { slot: SlotId; marks?: QcFlag[] }): JSX.Element {
   const m = () => MATRIX[props.slot]?.();
   const label = () => NEURAL_LAYERS.find((l) => l.slot === props.slot)?.label ?? '';
   const peak = () => props.slot === 'neural_deconvolved';
@@ -117,7 +145,9 @@ export function LayerHeatmap(props: { slot: SlotId }): JSX.Element {
       {(s) => (
         <div class="cb-ds-heatwrap">
           <span class="cb-ds-heat__y">{m()?.cells ?? 0} cells</span>
-          {m() && <HeatCanvas m={m()!} peak={peak()} w={s().w - 60} h={s().h - 18} />}
+          {m() && (
+            <HeatCanvas m={m()!} peak={peak()} w={s().w - 60} h={s().h - 18} marks={props.marks} />
+          )}
           <span class="cb-ds-heat__x">
             <span>0 s</span>
             <span>Time (s)</span>

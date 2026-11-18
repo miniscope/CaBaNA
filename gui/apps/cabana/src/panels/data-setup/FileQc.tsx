@@ -7,6 +7,7 @@
 import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { analysisSlot, isReference, qcShown } from '../../lib/analysis-data.ts';
+import type { Check } from '../../lib/qc.ts';
 import { qcStatusText } from '../../lib/qc-status.ts';
 import { reviewed, setQcPlotTab } from '../../lib/qc-view.ts';
 import type { SlotId } from '../../lib/slots.ts';
@@ -186,14 +187,19 @@ function testsOf(id: SlotId | 'sync'): string[] {
   return id === analysisSlot() && own !== 'cells' && traceMatrix() ? [own, 'cells'] : [own];
 }
 
-/** Failed, noted and total checks of a file's QC tests, for the step wizard. */
-export function qcCounts(id: SlotId): { fails: number; notes: number; total: number } {
+/** Every check of a file's QC tests, as computed. */
+export function qcChecks(id: SlotId | 'sync'): Check[] {
   const ids = testsOf(id);
   const cats = [
     ...(ids.some((t) => NEURAL.has(t)) ? neuralCategories() : []),
     ...(ids.some((t) => !NEURAL.has(t)) ? behaviorCategories() : []),
   ];
-  const checks = cats.filter((c) => ids.includes(c.id)).flatMap((c) => c.checks);
+  return cats.filter((c) => ids.includes(c.id)).flatMap((c) => c.checks);
+}
+
+/** Failed, noted and total checks of a file's QC tests, for the step wizard. */
+export function qcCounts(id: SlotId): { fails: number; notes: number; total: number } {
+  const checks = qcChecks(id);
   return {
     fails: checks.filter((c) => c.status === 'fail').length,
     notes: checks.filter((c) => c.status === 'warn').length,
