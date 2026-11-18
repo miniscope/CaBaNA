@@ -756,38 +756,30 @@ function LimitsForm(props: { keys: TolKey[] }): JSX.Element {
   );
 }
 
-/**
- * One QC settings button for a QC page: every threshold and pass/fail limit of the page, grouped
- * by test, in a single popover. A group's `children` holds its other settings (the jump threshold,
- * say); its `keys` are pass/fail limits.
- */
-export function QcSettings(props: {
-  groups: { title: string; keys?: TolKey[]; children?: JSX.Element }[];
-}): JSX.Element {
-  const changed = () =>
-    props.groups.some((g) => (g.keys ?? []).some((k) => tol[k] !== DEFAULT_TOL[k]));
+export interface SettingsGroup {
+  title: string;
+  /** Pass/fail limits of this group. */
+  keys?: TolKey[];
+  /** Other settings of the group (the jump threshold, say). */
+  children?: JSX.Element;
+}
+
+/** Every threshold and pass/fail limit of a QC window, grouped by test. Changes re-run the checks. */
+export function QcSettingsBody(props: { groups: SettingsGroup[] }): JSX.Element {
   return (
-    <PopButton
-      label="QC settings: thresholds and pass/fail limits"
-      title="QC settings"
-      width={460}
-      class="btn-secondary cb-qcset__btn"
-      button={<>⚙ QC settings{changed() ? ' (changed)' : ''}</>}
-    >
-      <div class="cb-qcset">
-        <For each={props.groups}>
-          {(g) => (
-            <section class="cb-qcset__grp">
-              <h4>{g.title}</h4>
-              {g.children}
-              <Show when={g.keys?.length}>
-                <LimitsForm keys={g.keys!} />
-              </Show>
-            </section>
-          )}
-        </For>
-      </div>
-    </PopButton>
+    <div class="cb-qcset">
+      <For each={props.groups}>
+        {(g) => (
+          <section class="cb-qcset__grp">
+            <h4>{g.title}</h4>
+            {g.children}
+            <Show when={g.keys?.length}>
+              <LimitsForm keys={g.keys!} />
+            </Show>
+          </section>
+        )}
+      </For>
+    </div>
   );
 }
 
