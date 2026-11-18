@@ -238,17 +238,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 .cb-modal__title {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
-}
-.cb-modal__esc {
-  font-size: 12px;
 }
 .cb-modal__bar {
   display: flex;

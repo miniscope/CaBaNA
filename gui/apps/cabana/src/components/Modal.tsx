@@ -1,9 +1,11 @@
-// A pop-up window over the page: dimmed backdrop, a title row with Close, an optional bar under
-// it, and a body that takes the rest of the window. Escape and Close close it; focus stays
-// inside while it is open and returns to where it was when it closes.
+// A pop-up window over the page: dimmed backdrop, a title row ending in ×, an optional bar under
+// it, a body that takes the rest of the window, and an optional footer. Escape, × and a click on
+// the backdrop close it (or ask first, see confirmClose); focus stays inside while it is open and
+// returns to where it was when it closes.
 
-import { onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
+import { CloseX } from './CloseX.tsx';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -17,6 +19,15 @@ export function Modal(props: {
   /** Under the title row, across the window. */
   bar?: JSX.Element;
   onClose: () => void;
+  /** Window size in px; never larger than 92% of the viewport. Default: nearly the whole page. */
+  width?: number;
+  height?: number;
+  /** In the title row, just before the ×: an Actions menu or a status. */
+  actions?: JSX.Element;
+  /** A bar along the bottom of the window. */
+  footer?: JSX.Element;
+  /** Returns a message when closing would lose changes; × / Escape / backdrop then ask first. */
+  confirmClose?: () => string | undefined;
   /** A drawer along the right edge instead of a window in the middle. */
   side?: boolean;
   /** Files dropped anywhere on the window. */
@@ -25,12 +36,20 @@ export function Modal(props: {
 }): JSX.Element {
   let box!: HTMLDivElement;
   let close!: HTMLButtonElement;
+  const [warning, setWarning] = createSignal<string>();
+  const requestClose = () => {
+    const message = props.confirmClose?.();
+    if (message) setWarning(message);
+    else props.onClose();
+  };
   const before = document.activeElement as HTMLElement | null;
   // Only the topmost window answers Escape: an expanded plot opened from inside closes first.
   const key = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
     const open = document.querySelectorAll('[aria-modal="true"]');
-    if (open[open.length - 1] === box) props.onClose();
+    if (open[open.length - 1] !== box) return;
+    if (warning()) setWarning(undefined);
+    else requestClose();
   };
   const trap = (e: KeyboardEvent) => {
     if (e.key !== 'Tab') return;
@@ -61,7 +80,7 @@ export function Modal(props: {
       <div
         class="cb-modal-bg"
         classList={{ 'cb-modal-bg--side': props.side }}
-        onClick={(e) => e.target === e.currentTarget && props.onClose()}
+        onClick={(e) => e.target === e.currentTarget && requestClose()}
       >
         <div
           ref={box}
@@ -70,6 +89,14 @@ export function Modal(props: {
           role="dialog"
           aria-modal="true"
           aria-label={props.label}
+          style={
+            props.side
+              ? undefined
+              : {
+                  ...(props.width ? { width: `min(${props.width}px, 92vw)` } : {}),
+                  ...(props.height ? { height: `min(${props.height}px, 92vh)` } : {}),
+                }
+          }
           onKeyDown={trap}
           onDragOver={(e) => {
             if (!props.onDropFiles) return;
@@ -88,20 +115,43 @@ export function Modal(props: {
             <h2 class="cb-modal__title">{props.title}</h2>
             {props.head}
             <span class="cb-spacer" />
-            <span class="cb-muted cb-modal__esc">Esc to close</span>
-            <button
-              ref={close}
-              type="button"
-              class="btn-secondary btn-small"
-              onClick={() => props.onClose()}
-            >
-              Close
-            </button>
+            {props.actions}
+            <CloseX ref={(el) => (close = el)} onClick={requestClose} />
           </div>
           <Show when={props.bar}>
             <div class="cb-modal__bar">{props.bar}</div>
           </Show>
           <div class="cb-modal__body">{props.children}</div>
+          <Show when={props.footer}>
+            <div class="cb-modal__foot">{props.footer}</div>
+          </Show>
+          <Show when={warning()}>
+            {(message) => (
+              <div class="cb-modal__warn-bg">
+                <div class="cb-modal__warn" role="alertdialog" aria-label="Close with changes">
+                  <div class="cb-modal__warn-title">Discard changes?</div>
+                  <p class="cb-muted">{message()}</p>
+                  <div class="cb-modal__warn-actions">
+                    <button
+                      type="button"
+                      class="btn-secondary btn-small"
+                      ref={(el) => queueMicrotask(() => el.focus())}
+                      onClick={() => setWarning(undefined)}
+                    >
+                      Keep editing
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-primary btn-small"
+                      onClick={() => props.onClose()}
+                    >
+                      Discard changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Show>
         </div>
       </div>
     </Portal>
