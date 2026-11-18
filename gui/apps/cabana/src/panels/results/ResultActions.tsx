@@ -1,133 +1,13 @@
-import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, createSignal, Show, type JSX } from 'solid-js';
 import { bridge, type RunRecord } from '../../lib/bridge-client.ts';
 import { bridgeReady } from '../../lib/bridge-status.ts';
 import { download } from '../../lib/export-figure.ts';
-import { UnsupportedVersion } from '../../lib/results-load.ts';
-import { runSource } from '../../lib/results-store.ts';
-import {
-  analysisLabel,
-  openness,
-  openResult,
-  unavailableReason,
-} from '../../lib/results-overview.ts';
+import { analysisLabel, unavailableReason } from '../../lib/results-overview.ts';
 import { active, blockers, refreshHistory, runAnalysis, type AnalysisId } from '../../lib/runs.ts';
 import { Popover } from '../Popover.tsx';
 import { RunDetailsBody } from './RunDetails.tsx';
-import { keptFile } from '../../lib/browser-records.ts';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/** Open a saved result on its analysis page; a browser-engine record opens its stored files. */
-export function OpenResult(props: { record: RunRecord; onDone?: () => void }): JSX.Element {
-  const [error, setError] = createSignal('');
-  const how = () => openness(props.record);
-  const open = async () => {
-    setError('');
-    const r = props.record;
-    if (how().kind === 'full') {
-      try {
-        await runSource(r.run_id).manifest(); // refuses a result from a newer framework before leaving
-      } catch (e) {
-        if (e instanceof UnsupportedVersion) return setError(e.message);
-        return setError(`Could not read this result: ${errorText(e)}`);
-      }
-    }
-    openResult(r.analysis as AnalysisId, r.run_id);
-  };
-  const blocked = () => {
-    const h = how();
-    return h.kind === 'blocked' ? h.reason : undefined;
-  };
-  return (
-    <span class="cb-ro">
-      <Show
-        when={how().kind !== 'files'}
-        fallback={<StoredFiles record={props.record} onDone={props.onDone} />}
-      >
-        <button
-          type="button"
-          class="btn-primary btn-small"
-          disabled={!!blocked()}
-          title={blocked()}
-          onClick={() => void open()}
-        >
-          Open
-        </button>
-      </Show>
-      <Show when={error()}>
-        <span class="cb-ro__err" role="alert">
-          {error()}
-        </span>
-      </Show>
-    </span>
-  );
-}
-
-/** Summary and stored files of a browser-engine record (interactive plots need the data loaded). */
-function StoredFiles(props: { record: RunRecord; onDone?: () => void }): JSX.Element {
-  const [open, setOpen] = createSignal(false);
-  const [name, setName] = createSignal<string>();
-  // This browser keeps the files of the browser runs it made, so they open with the engine off.
-  const kept = () => (name() ? keptFile(props.record.run_id, name()!) : undefined);
-  const [text] = createResource(
-    () =>
-      name() && kept() === undefined && bridgeReady()
-        ? { id: props.record.run_id, file: name()! }
-        : undefined,
-    (k) => bridge.runFile(k.id, k.file).catch((e) => `Could not read the file: ${errorText(e)}`),
-  );
-  const shown = () => kept() ?? text();
-  const readable = () =>
-    bridgeReady() ||
-    (props.record.files ?? []).some((f) => keptFile(props.record.run_id, f) !== undefined);
-  let btn!: HTMLButtonElement;
-  return (
-    <>
-      <button
-        ref={btn}
-        type="button"
-        class="btn-primary btn-small"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        onClick={() => setOpen(!open())}
-      >
-        Open
-      </button>
-      <Show when={open()}>
-        <Popover anchor={btn} onClose={() => setOpen(false)} width={460} label="Stored result">
-          <div class="cb-pop__head">
-            <strong>{analysisLabel(props.record.analysis)}: summary and stored files</strong>
-          </div>
-          <p class="cb-muted">
-            Saved by the browser engine. Interactive plots need the data loaded in the setup.
-          </p>
-          <Show
-            when={readable()}
-            fallback={<p class="cb-muted">Stored files need the Python engine.</p>}
-          >
-            <ul class="cb-ro__files">
-              <For
-                each={props.record.files ?? []}
-                fallback={<li class="cb-muted">No stored files.</li>}
-              >
-                {(f) => (
-                  <li>
-                    <button type="button" class="cb-link" onClick={() => setName(f)}>
-                      {f}
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
-            <Show when={shown()}>
-              <pre class="cb-rd__pre">{shown()}</pre>
-            </Show>
-          </Show>
-        </Popover>
-      </Show>
-    </>
-  );
-}
 
 type View = 'menu' | 'details';
 
@@ -297,29 +177,5 @@ export function ResultActions(props: {
         </Popover>
       </Show>
     </>
-  );
-}
-
-/** Rerun with the current settings; unavailable with the reason written beside it. */
-export function RerunButton(props: { record: RunRecord }): JSX.Element {
-  const id = () => props.record.analysis as AnalysisId;
-  const reason = () =>
-    unavailableReason(bridgeReady(), bridgeReady() ? blockers(id()) : []) ??
-    (active() ? 'A run is already in progress.' : undefined);
-  return (
-    <span class="cb-ro">
-      <button
-        type="button"
-        class="btn-primary btn-small"
-        disabled={!!reason()}
-        title={reason()}
-        onClick={() => void runAnalysis(id(), props.record.scope)}
-      >
-        Rerun
-      </button>
-      <Show when={reason()}>
-        <span class="cb-muted cb-ro__why">{reason()}</span>
-      </Show>
-    </span>
   );
 }
