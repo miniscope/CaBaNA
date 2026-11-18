@@ -16,7 +16,7 @@ describe('changes history', () => {
     restoreCell(3);
     restoreCell(3); // not rejected any more: nothing logged
     expect(history().map((e) => [e.action, e.text])).toEqual([
-      ['apply', 'Rejected cells 4 and 9'],
+      ['apply', 'Rejected cells 4 and 9: no reason given'],
       ['undo', 'Restored cell 4'],
     ]);
     expect(lastApplied('cell:8')).toBeTypeOf('number');

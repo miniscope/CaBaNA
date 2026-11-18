@@ -43,6 +43,7 @@ import {
 } from './frame-labels.ts';
 import { buildRegistry, resolveRole, type LabelInput, type LabelRole } from './labels.ts';
 import { cellsText, clearHistory, logChange } from './changes-log.ts';
+import { NO_REASON } from './reject-reasons.ts';
 
 export interface LoadedInfo {
   name: string;
@@ -247,24 +248,34 @@ export async function assignFile(file: File, slot: SlotId): Promise<void> {
 
 const [rejected, setRejected] = createSignal<ReadonlySet<number>>(new Set());
 const [pending, setPending] = createSignal<ReadonlySet<number>>(new Set());
-export { rejected, pending };
+/** Why each rejected cell was rejected, when a reason was given. A record only: `rejected` decides. */
+const [rejectReasons, setRejectReasons] = createSignal<Readonly<Record<number, string>>>({});
+export { rejected, pending, rejectReasons };
+/** The reason a cell was rejected, or "No reason given". */
+export const reasonOf = (c: number): string => rejectReasons()[c] ?? NO_REASON;
 
-/** Cells the user marked to reject. Nothing is removed yet: QC leaves them out and later steps skip them. */
-export function rejectCells(cells: number[]): void {
+/**
+ * Cells the user marked to reject, with the reason chosen. Nothing is removed yet: QC leaves them
+ * out and later steps skip them. A cell already rejected keeps its first reason.
+ */
+export function rejectCells(cells: number[], reason?: string): void {
   const added = [...new Set(cells)].filter((c) => !rejected().has(c));
   setRejected((r) => new Set<number>([...r, ...cells]));
   setPending(new Set<number>());
-  if (added.length)
-    logChange(
-      'apply',
-      'correction',
-      `Rejected ${cellsText(added).toLowerCase()}`,
-      added.map((c) => `cell:${c}`),
-    );
+  if (!added.length) return;
+  if (reason)
+    setRejectReasons((m) => ({ ...m, ...Object.fromEntries(added.map((c) => [c, reason])) }));
+  logChange(
+    'apply',
+    'correction',
+    `Rejected ${cellsText(added).toLowerCase()}: ${reason ?? NO_REASON.toLowerCase()}`,
+    added.map((c) => `cell:${c}`),
+  );
 }
 export function restoreCell(c: number): void {
   if (rejected().has(c))
     logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`, [`cell:${c}`]);
+  setRejectReasons(({ [c]: _gone, ...rest }) => rest);
   setRejected((r) => new Set<number>([...r].filter((x) => x !== c)));
 }
 export function togglePending(c: number): void {
@@ -297,6 +308,7 @@ export function clearAll(): void {
   setAnnotationLog([]);
   setExampleMedia(undefined);
   setRejected(new Set<number>());
+  setRejectReasons({});
   setPending(new Set<number>());
   clearHistory();
   setAnnotationFixed({ merge: false, drop: false });

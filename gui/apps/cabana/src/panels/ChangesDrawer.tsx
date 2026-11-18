@@ -19,6 +19,7 @@ import {
   goToStep,
   loaded,
   rejected,
+  rejectReasons,
   restoreCell,
   undoAnnotationEdits,
 } from '../lib/store.ts';
@@ -39,6 +40,7 @@ export const changes = createRoot(() =>
   createMemo(() =>
     buildChanges({
       rejected: [...rejected()],
+      reasons: rejectReasons(),
       jumps: leftOut().map((s) => ({ first: s.first, start: s.start, frames: jumpRows(s).length })),
       annotationFixes: annotationLog(),
       prep: { ...prep },
