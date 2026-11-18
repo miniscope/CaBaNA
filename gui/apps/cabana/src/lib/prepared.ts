@@ -46,29 +46,39 @@ export const positionCm = createMemo(() =>
   trackedPosition() && positionsCm().x.length ? positionsCm() : undefined,
 );
 
+/** The preprocessing settings position goes through. */
+export interface PositionParams {
+  maxGapS: number;
+  fillGapS: number;
+  posMethod: 'median' | 'gaussian';
+  posWindowS: number;
+  speedWindowS: number;
+}
+
 /**
  * Position as the framework sees it: on the miniscope's frames (resample_signal, gaps over `maxGapS` stay lost),
- * then interpolate_gaps, smooth_signal, then speed.
+ * then interpolate_gaps, smooth_signal, then speed. Taking the settings as an argument lets
+ * the Preprocess pop-up preview settings that are not applied yet.
  */
-export const positionOnNeural = createMemo(() => {
-  const c = positionCm();
-  const ct = cameraTimes();
-  const nt = frameTimes();
-  if (!c || !ct || !nt) return undefined;
-  const ok = ct.map((v, i) => Number.isFinite(v) && (i === 0 || v > ct[i - 1]));
-  const tb = ct.filter((_, i) => ok[i]);
-  // Jumps marked Interpolate in Position QC are lost frames, as the framework's exclude_frames.
-  const ex = excludedRows();
+export function positionPipeline(
+  c: { x: number[]; y: number[] },
+  ct: ArrayLike<number>,
+  nt: ArrayLike<number>,
+  ex: ReadonlySet<number>,
+  f: number,
+  prm: PositionParams,
+) {
+  const ok = Array.from(ct, (v, i) => Number.isFinite(v) && (i === 0 || v > ct[i - 1]));
+  const tb = Array.from(ct).filter((_, i) => ok[i]);
   const onFrames = (v: number[]) =>
     resampleLinear(
       tb,
       v.map((w, i) => (ex.has(i) ? NaN : w)).filter((_, i) => ok[i]),
       nt,
-      prep.maxGapS,
+      prm.maxGapS,
     );
-  const f = samplingRate() ?? 30;
   const fill = (v: Float64Array) =>
-    prep.fillGapS > 0 ? interpolateGaps(v, f, prep.fillGapS) : { out: v, filled: 0 };
+    prm.fillGapS > 0 ? interpolateGaps(v, f, prm.fillGapS) : { out: v, filled: 0 };
   // Kept before filling so Preprocess can show what gap filling adds.
   const rx = onFrames(c.x);
   const ry = onFrames(c.y);
@@ -76,7 +86,7 @@ export const positionOnNeural = createMemo(() => {
   const fy = fill(ry);
   const [x, y] = [fx.out, fy.out];
   const smooth = (v: Float64Array) =>
-    prep.posWindowS > 0 ? smoothSignal(v, f, prep.posMethod, prep.posWindowS) : v;
+    prm.posWindowS > 0 ? smoothSignal(v, f, prm.posMethod, prm.posWindowS) : v;
   const sx = smooth(x);
   const sy = smooth(y);
   return {
@@ -87,9 +97,18 @@ export const positionOnNeural = createMemo(() => {
     filled: fx.filled,
     sx,
     sy,
-    speedBefore: speedOver(x, y, nt, f, prep.speedWindowS),
-    speedAfter: speedOver(sx, sy, nt, f, prep.speedWindowS),
+    speedBefore: speedOver(x, y, nt, f, prm.speedWindowS),
+    speedAfter: speedOver(sx, sy, nt, f, prm.speedWindowS),
   };
+}
+
+/** Position on the neural frames with the applied settings. Jumps marked Interpolate in Position QC are lost frames. */
+export const positionOnNeural = createMemo(() => {
+  const c = positionCm();
+  const ct = cameraTimes();
+  const nt = frameTimes();
+  if (!c || !ct || !nt) return undefined;
+  return positionPipeline(c, ct, nt, excludedRows(), samplingRate() ?? 30, prep);
 });
 
 /** Events (smoothed as chosen in Preprocess) of the cells that were not rejected. */
@@ -180,7 +199,7 @@ export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, 
   const maxFrames = maxGapS > 0 ? Math.floor(maxGapS * fs + 1e-9) : -1;
   const n = x.length;
   const runs: { start: number; len: number; fate: 'filled' | 'long' | 'edge' }[] = [];
-  for (let a = 0; a < n; ) {
+  for (let a = 0; a < n;) {
     if (Number.isFinite(x[a] + y[a])) {
       a++;
       continue;
@@ -188,7 +207,11 @@ export function gapRuns(x: ArrayLike<number>, y: ArrayLike<number>, fs: number, 
     let b = a;
     while (b < n && !Number.isFinite(x[b] + y[b])) b++;
     const len = b - a;
-    runs.push({ start: a, len, fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long' });
+    runs.push({
+      start: a,
+      len,
+      fate: a === 0 || b === n ? 'edge' : len <= maxFrames ? 'filled' : 'long',
+    });
     a = b;
   }
   return runs;
