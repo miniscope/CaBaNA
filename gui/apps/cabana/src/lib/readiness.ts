@@ -136,6 +136,8 @@ export interface Snapshot {
   /** The loaded data makes a setup card required (a position file needs the arena). */
   setupRequired: boolean;
   hasRuns: boolean;
+  /** Data visualization boxes whose file has been reviewed, of those with a file loaded. */
+  vizReview?: { reviewed: number; total: number };
 }
 
 export const ITEM_LABEL: Record<ItemId, string> = {
@@ -375,6 +377,10 @@ export function itemStatus(s: Snapshot, id: ItemId): Status {
       if (!s.neural)
         return status('needs_input', { input: [{ text: 'Load neural data first.', link: LOAD }] });
       // Looking at an optional page is not work, so opening it changes nothing.
+      if (id === 'viz' && s.vizReview?.total)
+        return status('optional', {
+          text: `${s.vizReview.reviewed} of ${s.vizReview.total} reviewed`,
+        });
       return status('optional');
     case 'results':
       return s.hasRuns

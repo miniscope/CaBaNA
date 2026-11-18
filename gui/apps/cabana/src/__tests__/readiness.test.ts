@@ -288,3 +288,11 @@ describe('analysis data', () => {
     );
   });
 });
+
+describe('Data visualization status', () => {
+  it('says how many boxes have been reviewed', async () => {
+    const { itemStatus } = await import('../lib/readiness.ts');
+    const s = { neural: true, vizReview: { reviewed: 2, total: 4 } } as never;
+    expect(itemStatus(s, 'viz').text).toBe('2 of 4 reviewed');
+  });
+});

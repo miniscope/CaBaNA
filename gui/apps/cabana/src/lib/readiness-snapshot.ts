@@ -147,6 +147,13 @@ function browserRunState(
   };
 }
 
+/**
+ * Where the Data visualization review count comes from. viz-reviewed.ts registers it when loaded,
+ * so this file does not import the Data setup view state itself.
+ */
+const [vizReviewSource, setVizReviewSource] = createSignal<() => Snapshot['vizReview']>();
+export { setVizReviewSource };
+
 export function buildSnapshot(): Snapshot {
   const reg = labelRegistry();
   const setup = setupSnapshot();
@@ -199,6 +206,7 @@ export function buildSnapshot(): Snapshot {
     setupStarted: CARDS.some((c) => statusOf(c.id, setup) !== 'Empty'),
     setupRequired: position,
     hasRuns: hasSavedResults(),
+    vizReview: vizReviewSource()?.(),
   };
 }
 
