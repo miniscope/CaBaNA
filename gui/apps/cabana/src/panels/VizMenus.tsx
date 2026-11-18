@@ -1,264 +1,222 @@
-// The Display and Tracks pop-ups of Data visualization. View settings only: they change what is
-// drawn, never the data or results. Groups of settings sit under small underlined tabs; small
-// choices are segmented controls.
+// The Actions menu of each Data visualization box. Display settings are view only: they change
+// what is drawn, never the data or the results, and the menu stays open so the plot updates live.
 
-import { createSignal, For, Show, type JSX } from 'solid-js';
+import type { JSX } from 'solid-js';
+import { ActionsMenu } from '../components/ActionsMenu.tsx';
+import type { MenuItem } from '../lib/actions-menu.ts';
+import { groups, intensity, setIntensity, setShown, shown, showAll } from '../lib/overlay-state.ts';
+import { colorBy, setColorBy } from '../lib/store.ts';
 import {
-  behaviorCount,
-  groups,
-  intensity,
-  isolateBehavior,
-  setIntensity,
-  setShown,
-  shown,
-  showAll,
-} from '../lib/overlay-state.ts';
-import { coverageText, type Intensity } from '../lib/overlays.ts';
+  arenaShow,
+  cellVisibility,
+  footprintShow,
+  setArenaShow,
+  setCellVisibility,
+  setFootprintShow,
+  setTrajMode,
+  trajMode,
+} from '../lib/viz-display.ts';
+import { forBox, type VizBox } from '../lib/viz-pills.ts';
 import {
-  colorOf,
   heat,
   isOn,
   pos,
   rows,
   setChoice,
   setHeatSrc,
-  setTracksAnchor,
   SOURCE_LABEL,
   sources,
 } from '../lib/viz-tracks.ts';
-import { Popover } from './Popover.tsx';
+import { changes, openChanges } from './ChangesDrawer.tsx';
+import { setRevertBox } from './RevertChanges.tsx';
+import { placed } from './Trajectory.tsx';
+import { PREPROCESS, REVIEW } from './VizChecks.tsx';
 
-/** Small underlined tabs; nothing is drawn for a single tab. */
-export function UTabs<T extends string>(props: {
-  label: string;
-  tabs: { id: T; label: string }[];
-  value: T;
-  onPick: (id: T) => void;
-}): JSX.Element {
-  return (
-    <Show when={props.tabs.length > 1}>
-      <div class="cb-utabs" role="tablist" aria-label={props.label}>
-        <For each={props.tabs}>
-          {(t) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={props.value === t.id}
-              classList={{ 'cb-utabs--on': props.value === t.id }}
-              onClick={() => props.onPick(t.id)}
-            >
-              {t.label}
-            </button>
-          )}
-        </For>
-      </div>
-    </Show>
+const NOT_YET = 'Not available yet';
+
+const one = (
+  label: string,
+  checked: boolean,
+  onSelect: () => void,
+  disabled?: string,
+): MenuItem => ({ kind: 'one', label, checked, onSelect, disabled });
+const many = (label: string, checked: boolean, onToggle: (on: boolean) => void): MenuItem => ({
+  kind: 'many',
+  label,
+  checked,
+  onToggle,
+});
+/** A greyed row saying what a category needs, so an empty category explains itself. */
+const needs = (label: string, reason: string): MenuItem => ({
+  kind: 'action',
+  label,
+  disabled: reason,
+  onSelect: () => {},
+});
+const category = (label: string, items: MenuItem[]): MenuItem => ({
+  kind: 'category',
+  label,
+  items,
+});
+
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * Data version. The plots draw the data as loaded together with the corrections applied; a
+ * separate original copy to switch to or draw beside it is not kept yet.
+ */
+const dataVersion = (): MenuItem =>
+  category('Data version', [
+    one('Current (processed)', true, () => {}),
+    one('Original (as loaded)', false, () => {}, NOT_YET),
+    one('Compare both', false, () => {}, NOT_YET),
+  ]);
+
+const neuralDisplay = (): MenuItem[] => [
+  dataVersion(),
+  category(
+    'Heat map signal',
+    sources().length
+      ? sources().map((s) => one(sentence(SOURCE_LABEL[s]), heat() === s, () => setHeatSrc(s)))
+      : [needs('Load neural data', 'Needed to draw the heat map.')],
+  ),
+  category(
+    'Behavior overlays',
+    groups().length
+      ? [
+          { kind: 'header', label: 'Intensity' },
+          one('Subtle', intensity() === 'subtle', () => setIntensity('subtle')),
+          one('Strong', intensity() === 'strong', () => setIntensity('strong')),
+          { kind: 'separator' },
+          { kind: 'header', label: 'Show' },
+          { kind: 'action', label: 'Show all', keepOpen: true, onSelect: () => showAll(true) },
+          { kind: 'action', label: 'Hide all', keepOpen: true, onSelect: () => showAll(false) },
+          ...groups().flatMap((g) =>
+            g.behaviors.map((b) => many(b.name, shown().has(b.name), (on) => setShown(b.name, on))),
+          ),
+        ]
+      : [needs('Load behavior annotations', 'Needed to shade bouts over the plots.')],
+  ),
+];
+
+const footprintDisplay = (): MenuItem[] => [
+  category('Color map', [
+    one('By cell', colorBy() === 'cell', () => setColorBy('cell')),
+    one('By quality (green, amber, red)', colorBy() === 'quality', () => setColorBy('quality')),
+  ]),
+  category('Overlay', [
+    many('Flagged cells (amber)', footprintShow.flagged, (on) => setFootprintShow('flagged', on)),
+    many('Overlapping pairs (cyan)', footprintShow.overlap, (on) =>
+      setFootprintShow('overlap', on),
+    ),
+    many('Selected cell (white)', footprintShow.selected, (on) => setFootprintShow('selected', on)),
+  ]),
+  category('Cell visibility', [
+    one('All cells', cellVisibility() === 'all', () => setCellVisibility('all')),
+    one('Hide rejected cells', cellVisibility() === 'hide-rejected', () =>
+      setCellVisibility('hide-rejected'),
+    ),
+    one('Flagged cells only', cellVisibility() === 'flagged', () => setCellVisibility('flagged')),
+  ]),
+  { kind: 'separator' },
+  many('Show cell outlines', footprintShow.outlines, (on) => setFootprintShow('outlines', on)),
+];
+
+const arenaDisplay = (): MenuItem[] => [
+  category('Trajectory', [
+    one('Path', trajMode() === 'path', () => setTrajMode('path')),
+    one(
+      'Time in bin',
+      trajMode() === 'time',
+      () => setTrajMode('time'),
+      placed() ? undefined : 'Needs the arena set up',
+    ),
+  ]),
+  category('Show', [
+    many('Full session path', arenaShow.full, (on) => setArenaShow('full', on)),
+    many('Selected window', arenaShow.window, (on) => setArenaShow('window', on)),
+    many('Cursor', arenaShow.cursor, (on) => setArenaShow('cursor', on)),
+    many('Zones', arenaShow.zones, (on) => setArenaShow('zones', on)),
+    many('Excluded regions', arenaShow.excluded, (on) => setArenaShow('excluded', on)),
+  ]),
+  dataVersion(),
+];
+
+const behaviorDisplay = (): MenuItem[] => [
+  category(
+    'Show events',
+    rows().length
+      ? rows().map((r, i) => many(r.name, isOn(r.key, i), (on) => setChoice(r.key, on)))
+      : [needs('Load behavior annotations or zones', 'Needed to draw the rows.')],
+  ),
+  category(
+    'Trace display',
+    pos()
+      ? [
+          many('Position (x, y)', isOn('position'), (on) => setChoice('position', on)),
+          many('Speed', isOn('speed'), (on) => setChoice('speed', on)),
+        ]
+      : [needs('Load position', 'Needed to draw position and speed.')],
+  ),
+  dataVersion(),
+];
+
+const DISPLAY: Record<VizBox, () => MenuItem[]> = {
+  footprints: footprintDisplay,
+  neural: neuralDisplay,
+  arena: arenaDisplay,
+  behavior: behaviorDisplay,
+};
+
+/** The menu items of one box. */
+export function boxMenu(box: VizBox, expand: () => void): MenuItem[] {
+  const qc = REVIEW[box]();
+  const prep = box === 'footprints' ? undefined : PREPROCESS[box]();
+  const applied = forBox(changes(), box).length;
+  const items: MenuItem[] = [
+    {
+      kind: 'action',
+      label: 'Review QC',
+      disabled: qc ? undefined : 'The file this review opens is not loaded.',
+      onSelect: () => qc?.(),
+    },
+  ];
+  if (box !== 'footprints')
+    items.push({
+      kind: 'action',
+      label: 'Preprocess',
+      disabled: prep ? undefined : 'The file this step acts on is not loaded.',
+      onSelect: () => prep?.(),
+    });
+  items.push(
+    { kind: 'separator' },
+    category('Display settings', DISPLAY[box]()),
+    { kind: 'action', label: 'View change history', onSelect: () => openChanges(box) },
+    {
+      kind: 'action',
+      label: 'Revert changes',
+      disabled: applied ? undefined : 'Nothing applied to this data.',
+      onSelect: () => setRevertBox(box),
+    },
+    { kind: 'separator' },
+    { kind: 'action', label: 'Expand view', onSelect: expand },
   );
+  return items;
 }
 
-/** A setting's name in small caps, then its control. */
-const Setting = (props: { name: string; children: JSX.Element }): JSX.Element => (
-  <div class="cb-dctl">
-    <span class="sc">{props.name}</span>
-    <div>{props.children}</div>
-  </div>
-);
-
-function Seg<T extends string>(props: {
-  label: string;
-  options: { value: T; label: string }[];
-  value: T | undefined;
-  onPick: (v: T) => void;
+/** The Actions button of a box. The second panel opens to the left at the right edge, and upward at the bottom. */
+export function BoxActions(props: {
+  box: VizBox;
+  expand: () => void;
+  side?: 'left';
+  up?: boolean;
 }): JSX.Element {
   return (
-    <div class="cb-ds-seg" role="radiogroup" aria-label={props.label}>
-      <For each={props.options}>
-        {(o) => (
-          <button
-            type="button"
-            role="radio"
-            aria-checked={props.value === o.value}
-            classList={{ 'cb-ds-seg--on': props.value === o.value }}
-            onClick={() => props.onPick(o.value)}
-          >
-            {o.label}
-          </button>
-        )}
-      </For>
-    </div>
-  );
-}
-
-const Head = (props: { title: string }): JSX.Element => (
-  <div class="cb-pop__head cb-dpop__head">
-    <strong>{props.title}</strong>
-    <span class="cb-muted">View only. Data and results do not change.</span>
-  </div>
-);
-
-const Check = (props: { k: string; rank?: number; name: string; color?: string }): JSX.Element => (
-  <label class="cb-trackopt">
-    <input
-      type="checkbox"
-      checked={isOn(props.k, props.rank)}
-      onChange={(e) => setChoice(props.k, e.currentTarget.checked)}
+    <ActionsMenu
+      label="Actions"
+      side={props.side}
+      up={props.up}
+      items={() => boxMenu(props.box, props.expand)}
     />
-    <Show when={props.color}>
-      <i style={{ background: props.color }} />
-    </Show>
-    {props.name}
-  </label>
-);
-
-type TrackTab = 'Behavior' | 'Zone' | 'Position';
-const [trackTab, setTrackTab] = createSignal<TrackTab>('Behavior');
-
-/** The rows of the behavior and position timeline, each with a checkbox, one tab per kind. */
-export function TracksMenu(props: { anchor: HTMLElement }): JSX.Element {
-  const tabs = () =>
-    [
-      rows().some((r) => r.kind === 'Behavior') && { id: 'Behavior' as const, label: 'Behavior' },
-      rows().some((r) => r.kind === 'Zone') && { id: 'Zone' as const, label: 'Zones' },
-      pos() && { id: 'Position' as const, label: 'Position' },
-    ].filter((t) => !!t);
-  const tab = () => (tabs().some((t) => t.id === trackTab()) ? trackTab() : tabs()[0]?.id);
-  return (
-    <Popover anchor={props.anchor} onClose={() => setTracksAnchor()} width={300} label="Tracks">
-      <Head title="Tracks" />
-      <UTabs label="Kind of track" tabs={tabs()} value={tab()!} onPick={setTrackTab} />
-      <Show when={!tabs().length}>
-        <p class="cb-muted">Load behavior annotations, zones or position to choose tracks.</p>
-      </Show>
-      <div class="cb-trackgroup">
-        <For each={rows()}>
-          {(r, i) => (
-            <Show when={r.kind === tab()}>
-              <Check k={r.key} rank={i()} name={r.name} color={r.color} />
-            </Show>
-          )}
-        </For>
-        <Show when={tab() === 'Position'}>
-          <Check k="position" name="Position (x, y)" />
-          <Check k="speed" name="Speed" />
-        </Show>
-      </div>
-    </Popover>
-  );
-}
-
-const INTENSITIES: { value: Intensity; label: string }[] = [
-  { value: 'subtle', label: 'Subtle' },
-  { value: 'strong', label: 'Strong' },
-];
-
-/** Which behaviors are shaded over the plots, grouped by annotation file. */
-function Overlays(): JSX.Element {
-  return (
-    <Show
-      when={behaviorCount() > 0}
-      fallback={<p class="cb-muted">Load behavior annotations to shade bouts over the plots.</p>}
-    >
-      <Setting name="Intensity">
-        <Seg
-          label="Overlay intensity"
-          options={INTENSITIES}
-          value={intensity()}
-          onPick={setIntensity}
-        />
-      </Setting>
-      <Setting name="Behaviors">
-        <span class="cb-ovl__all">
-          <button type="button" class="cb-link" onClick={() => showAll(true)}>
-            Show all
-          </button>
-          <button type="button" class="cb-link" onClick={() => showAll(false)}>
-            Hide all
-          </button>
-        </span>
-      </Setting>
-      <For each={groups()}>
-        {(g) => (
-          <div class="cb-trackgroup">
-            <div class="cb-muted" title={g.name}>
-              {g.name} · {coverageText(g.coverage)}
-              <Show when={g.startsOff}> · starts hidden, covers most of the session</Show>
-            </div>
-            <For each={g.behaviors}>
-              {(b) => (
-                <div class="cb-ovl__row">
-                  <label class="cb-trackopt">
-                    <input
-                      type="checkbox"
-                      checked={shown().has(b.name)}
-                      onChange={(e) => setShown(b.name, e.currentTarget.checked)}
-                    />
-                    <i style={{ background: colorOf(b.name) }} />
-                    <span class="cb-ovl__name" title={b.name}>
-                      {b.name}
-                    </span>
-                    <span class="cb-muted">
-                      {b.bouts} {b.bouts === 1 ? 'bout' : 'bouts'} · {Math.round(b.seconds)} s
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    class="cb-link"
-                    aria-label={`Show only ${b.name}`}
-                    onClick={() => isolateBehavior(b.name)}
-                  >
-                    Only
-                  </button>
-                </div>
-              )}
-            </For>
-          </div>
-        )}
-      </For>
-      <p class="cb-muted cb-ovl__note">
-        Shaded regions mark behavioral bouts aligned to the neural data. Hiding a behavior removes
-        its shading only; the data, analyses and timeline rows are unchanged.
-      </p>
-    </Show>
-  );
-}
-
-type DisplayTab = 'heat' | 'overlays';
-const [displayTab, setDisplayTab] = createSignal<DisplayTab>('heat');
-const DISPLAY_TABS: { id: DisplayTab; label: string }[] = [
-  { id: 'heat', label: 'Heat map' },
-  { id: 'overlays', label: 'Behavior overlays' },
-];
-
-/** How the neural data is shown: the heat map's signal and the shaded behaviors. */
-export function DisplayMenu(props: { anchor: HTMLElement; onClose: () => void }): JSX.Element {
-  return (
-    <Popover anchor={props.anchor} onClose={props.onClose} width={360} label="Neural display">
-      <Head title="Neural display" />
-      <UTabs
-        label="Display settings"
-        tabs={DISPLAY_TABS}
-        value={displayTab()}
-        onPick={setDisplayTab}
-      />
-      <Show when={displayTab() === 'heat'} fallback={<Overlays />}>
-        <Show
-          when={sources().length}
-          fallback={<p class="cb-muted">Load neural data to see the heat map.</p>}
-        >
-          <Setting name="Signal">
-            <Seg
-              label="Heat map signal"
-              options={sources().map((s) => ({ value: s, label: SOURCE_LABEL[s] }))}
-              value={heat()}
-              onPick={setHeatSrc}
-            />
-          </Setting>
-          <p class="cb-muted cb-ovl__note">
-            Each cell is colored from its own 5th to 99.5th percentile over the session, so cells
-            with different ranges can be compared by timing, not by amplitude.
-          </p>
-        </Show>
-      </Show>
-    </Popover>
   );
 }
