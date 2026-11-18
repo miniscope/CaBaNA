@@ -73,7 +73,7 @@ describe('autosave', () => {
 
   it('saves a rejected cell when it applies', async () => {
     open();
-    rejectCells([11], 'Low SNR');
+    rejectCells([11]);
     await vi.advanceTimersByTimeAsync(1100);
     expect(write.mock.calls[0][3]).toBe('Cell 12 rejected');
   });
@@ -105,7 +105,7 @@ describe('autosave', () => {
 describe('processing state', () => {
   it('is put back as it was saved', () => {
     setPrep('eventSigmaS', 0.2);
-    rejectCells([3, 7], 'Low SNR');
+    rejectCells([3, 7]);
     const saved = captureProcessing();
     const text = yamlText(processingToData(saved), PROCESSING_HEADER);
     clearAll();

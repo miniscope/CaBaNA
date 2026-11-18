@@ -34,7 +34,6 @@ export interface PrepValues {
 export interface ProcessingState {
   /** 0-based cell indices, as the stores keep them (the lists show them 1-based). */
   rejectedCells: number[];
-  rejectReasons: Record<number, string>;
   /** Camera frame numbers of position jumps left out, and of jumps looked at and kept. */
   excludeFrames: number[];
   keptFrames: number[];
@@ -63,11 +62,9 @@ export type AnalysisSections = Record<string, Obj>;
 
 /** processing.yaml as an object, in the viewer's shape (`qc:` then `preprocess:`). */
 export function processingToData(s: ProcessingState): Obj {
-  const reasons = Object.fromEntries(Object.entries(s.rejectReasons).map(([c, r]) => [c, r]));
   return {
     qc: {
       rejected_cells: [...s.rejectedCells].sort((a, b) => a - b),
-      ...(Object.keys(reasons).length && { rejected_reasons: reasons }),
       position_jumps: {
         ...(s.excludeFrames.length && { exclude_frames: s.excludeFrames }),
         ...(s.keptFrames.length && { kept_frames: s.keptFrames }),
@@ -111,15 +108,9 @@ export function processingFromData(raw: unknown, base: ProcessingState): Process
   const smoothing = isObj(pre.position_smoothing) ? pre.position_smoothing : {};
   const onto = isObj(pre.position_onto_neural_frames) ? pre.position_onto_neural_frames : {};
   const decon = isObj(pre.deconvolution) ? pre.deconvolution : {};
-  const reasons = isObj(qc.rejected_reasons) ? qc.rejected_reasons : {};
   const p = base.prep;
   return {
     rejectedCells: 'rejected_cells' in qc ? nums(qc.rejected_cells) : base.rejectedCells,
-    rejectReasons: Object.fromEntries(
-      Object.entries(reasons)
-        .filter((e): e is [string, string] => typeof e[1] === 'string')
-        .map(([c, r]) => [Number(c), r]),
-    ),
     excludeFrames: nums(jumps.exclude_frames),
     keptFrames: nums(jumps.kept_frames),
     annotationFixes: { merge: fixes.includes('merge'), drop: fixes.includes('remove') },

@@ -39,7 +39,6 @@ import {
   maxSpeed,
   proceed,
   rejected,
-  rejectReasons,
   restoreRejected,
   setMaxSpeed,
   setProceed,
@@ -60,7 +59,6 @@ const trueKeys = (o: Record<string, boolean>) =>
 export function captureProcessing(): ProcessingState {
   return {
     rejectedCells: [...rejected()].sort((a, b) => a - b),
-    rejectReasons: copy(rejectReasons()) as Record<number, string>,
     excludeFrames: [...excludedFrames()],
     keptFrames: [...keptFrames()],
     annotationFixes: { ...annotationFixed() },
@@ -75,7 +73,7 @@ export function captureProcessing(): ProcessingState {
 /** Put a saved processing.yaml back. Call after the session's files are loaded. */
 export function applyProcessing(raw: unknown): void {
   const s = processingFromData(raw, captureProcessing());
-  restoreRejected(s.rejectedCells, s.rejectReasons);
+  restoreRejected(s.rejectedCells);
   restoreChoices(s.excludeFrames, s.keptFrames);
   setTol(s.limits.tol);
   setMaxSpeed(s.limits.maxSpeed);

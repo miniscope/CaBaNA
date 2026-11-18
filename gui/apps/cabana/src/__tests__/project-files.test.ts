@@ -16,7 +16,6 @@ import {
 
 const defaults = (): ProcessingState => ({
   rejectedCells: [],
-  rejectReasons: {},
   excludeFrames: [],
   keptFrames: [],
   annotationFixes: { merge: false, drop: false },
@@ -40,7 +39,6 @@ const defaults = (): ProcessingState => ({
 const changed = (): ProcessingState => ({
   ...defaults(),
   rejectedCells: [11, 3],
-  rejectReasons: { 11: 'Low SNR' },
   excludeFrames: [120, 121, 122],
   keptFrames: [400],
   annotationFixes: { merge: true, drop: false },
