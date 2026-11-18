@@ -14,7 +14,7 @@ import {
 import { projectsOn } from '../../lib/project-session.ts';
 import { projectDatasets } from '../../lib/project-sources.ts';
 import { sessionName } from '../../lib/store.ts';
-import { listed, savedWhen } from '../LoadPanel.tsx';
+import { listed, savedWhen } from '../file-input.ts';
 
 export function ApplyFrom(props: {
   onClose: () => void;

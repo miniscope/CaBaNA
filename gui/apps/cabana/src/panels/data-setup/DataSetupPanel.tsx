@@ -16,7 +16,7 @@ import type { SlotId } from '../../lib/slots.ts';
 import { addFiles, labelRegistry, unrecognized } from '../../lib/store.ts';
 import { ConflictReview } from '../ConflictReview.tsx';
 import { InfoTip } from '../InfoTip.tsx';
-import { fileList } from '../LoadPanel.tsx';
+import { fileList } from '../file-input.ts';
 import { fitToWindow } from '../QcPanel.tsx';
 import { StatusIcon } from '../QcParts.tsx';
 import { OtherFiles } from './OtherFiles.tsx';

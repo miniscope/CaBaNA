@@ -7,7 +7,6 @@ import {
   analysisSlot,
   isReference,
   loadedLayers,
-  NEURAL_LAYERS,
   qcShown,
   setAnalysisData,
   type NeuralKind,
@@ -60,25 +59,6 @@ export function RoleTag(props: { slot: SlotId }): JSX.Element {
   );
 }
 
-/** A tag that opens the explanation. */
-export function RoleTagButton(props: { slot: SlotId }): JSX.Element {
-  return (
-    <Show when={roleOf(props.slot)}>
-      {(r) => (
-        <PopButton
-          label={`${ROLE_NAME[r()]}: what does this mean?`}
-          title="Analysis data and reference data"
-          width={380}
-          class={`cb-ds-tag cb-ds-tag--${r()} cb-ds-tag--btn`}
-          button={ROLE_NAME[r()]}
-        >
-          <RoleHelp />
-        </PopButton>
-      )}
-    </Show>
-  );
-}
-
 /** The ⓘ beside the Neural heading of the file list. */
 export function RoleInfo(): JSX.Element {
   return (
@@ -91,33 +71,6 @@ export function RoleInfo(): JSX.Element {
     >
       <RoleHelp />
     </PopButton>
-  );
-}
-
-/** What each reference file is used for, in one sentence. */
-export const REFERENCE_USE: Partial<Record<SlotId, string>> = {
-  neural_raw: "Not analyzed. Used to check the analysis data: each cell's signal to noise.",
-  neural_denoised:
-    "Not analyzed. Used to check the analysis data: the deconvolution check, and each cell's signal to noise when raw traces are not loaded.",
-  neural_deconvolved:
-    'Not analyzed. The deconvolution check compares these events with the traces.',
-};
-
-/** Make this file the analysis data. */
-export function UseAsAnalysis(props: { slot: SlotId; link?: boolean }): JSX.Element {
-  const kind = () => NEURAL_LAYERS.find((l) => l.slot === props.slot)?.kind;
-  return (
-    <Show when={kind()}>
-      {(k) => (
-        <button
-          type="button"
-          class={props.link ? 'cb-linkbtn' : 'btn-secondary btn-small'}
-          onClick={() => setAnalysisData(k())}
-        >
-          Use as analysis data
-        </button>
-      )}
-    </Show>
   );
 }
 
