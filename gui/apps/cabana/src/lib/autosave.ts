@@ -84,11 +84,13 @@ function showSaved(): void {
   setSaveStatus({ kind: 'saved', at: new Date(), dir: session.project.path, files: savedFiles() });
 }
 
-async function write(force: boolean, summary?: string): Promise<void> {
+async function write(force: boolean, summary?: string, only?: Written[]): Promise<void> {
   const s = session;
   if (!s) return;
   const snap = untrack(snapshot);
-  const changed = WRITTEN.filter((f) => force || keyOf(snap, f) !== keyOf(s.saved, f));
+  const changed = (only ?? WRITTEN).filter(
+    (f) => force || keyOf(snap, f) !== keyOf(s.saved, f),
+  );
   if (!changed.length) return showSaved();
   setSaveStatus({ kind: 'saving' });
   try {
@@ -134,6 +136,18 @@ function schedule(ms: number): void {
   clearTimeout(timer);
   timer = setTimeout(() => void saveNow(), ms);
 }
+
+/** Write one file again from the current state (restoring a file that was edited into an invalid one). */
+export async function rewriteFromState(name: Written): Promise<void> {
+  await writing;
+  writing = write(true, 'Rewritten from the current settings', [name]).finally(
+    () => (writing = undefined),
+  );
+  await writing;
+}
+
+/** Whether the project has changes not yet on disk (manual saving). */
+export const hasUnsaved = (): boolean => dirty();
 
 /** Write all three files as they are now (a new project). */
 export async function saveEverything(summary: string): Promise<void> {
