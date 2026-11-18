@@ -14,7 +14,7 @@ import {
   visited,
 } from '../../lib/data-setup-view.ts';
 import { SECTION_TITLE, sectionsFor, type SectionId } from '../../lib/file-sections.ts';
-import { isOptional, STEP_TEXT, stepState, type StepState } from '../../lib/file-steps.ts';
+import { isOptional, STEP_TEXT, stepState } from '../../lib/file-steps.ts';
 import { SLOTS, type SlotId } from '../../lib/slots.ts';
 import { scaleSet } from '../../lib/spatial-checks.ts';
 import { spatialSnapshot } from '../../lib/spatial-state.ts';
@@ -22,8 +22,6 @@ import { loaded } from '../../lib/store.ts';
 import { REFERENCE_USE, roleOf, UseAsAnalysis } from './AnalysisRole.tsx';
 import { qcCounts } from './FileQc.tsx';
 import { slotLabel } from './FileList.tsx';
-
-const ICON: Partial<Record<StepState, string>> = { done: '✓', attention: '!' };
 
 function facts(slot: SlotId, section: SectionId) {
   return stepState({
@@ -65,7 +63,7 @@ export function StepWizard(props: { slot: SlotId }): JSX.Element {
                 }}
               >
                 <span class="cb-ds-wz__n" aria-hidden="true">
-                  {(!on() && ICON[f().state]) || i() + 1}
+                  {i() + 1}
                 </span>
                 <span class="cb-ds-wz__name">
                   {SECTION_TITLE[s]}
