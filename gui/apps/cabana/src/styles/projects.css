@@ -385,3 +385,15 @@
 .cb-pl__empty {
   margin: 20px 4px;
 }
+.cb-np__where {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cb-np__problem {
+  margin: 6px 0 0;
+}
+.cb-pl__missing {
+  color: var(--warning);
+}
