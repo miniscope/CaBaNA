@@ -3,7 +3,7 @@
 // another step is visited. Reviewing is never required; it only marks what has been looked at.
 
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
+import { createStore } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
 import { SLOTS, type SlotId } from './slots.ts';
 import { goToStep, loaded, sessionName, unrecognized } from './store.ts';
@@ -56,17 +56,6 @@ export const reviewed = (id: EntryId): boolean => !!opened[id];
 /** Mark an entry reviewed without opening it (a QC or Preprocess pop-up was applied or continued). */
 export const markReviewed = (id: EntryId): void => setOpened(id, true);
 
-/** Steps of a file that have been shown, and optional steps skipped, by `slot|section`. */
-const [visits, setVisits] = createStore<Record<string, 'visited' | 'skipped'>>({});
-const key = (slot: SlotId, sec: SectionId) => `${slot}|${sec}`;
-export const visited = (slot: SlotId, sec: SectionId) => !!visits[key(slot, sec)];
-export const skipped = (slot: SlotId, sec: SectionId) => visits[key(slot, sec)] === 'skipped';
-/** Mark a step visited. A skipped step stays skipped unless the user opens it on purpose. */
-export function markVisited(slot: SlotId, sec: SectionId, onPurpose = false): void {
-  if (onPurpose || !visits[key(slot, sec)]) setVisits(key(slot, sec), 'visited');
-}
-export const markSkipped = (slot: SlotId, sec: SectionId) => setVisits(key(slot, sec), 'skipped');
-
 /** Overview of a file: its plots, or its values as a table. */
 const [view, setViewOf] = createStore<Partial<Record<string, 'plot' | 'table'>>>({});
 export const viewOf = (slot: SlotId) => view[slot] ?? 'plot';
@@ -85,13 +74,6 @@ export function openData(id: EntryId, sec?: SectionId): void {
   goToStep('data');
 }
 
-/** Open a file's table at a row, from a QC finding. */
-export function showRows(slot: SlotId, row: number): void {
-  openEntry(slot, 'overview');
-  setView(slot, 'table');
-  setTableAt(slot, { row });
-}
-
 // A new dataset starts with nothing reviewed.
 createRoot(() =>
   createEffect(
@@ -100,17 +82,8 @@ createRoot(() =>
       () => {
         setOpened((o) => Object.fromEntries(Object.keys(o).map((k) => [k, false])));
         setAppliedNote(undefined);
-        setVisits(reconcile({}));
       },
       { defer: true },
     ),
   ),
 );
-
-/**
- * Experiment config: the one section showing all its fields. With none, every section shows its
- * key fields; with one, the others fold to their header bars with a summary.
- */
-export const [configOpen, setConfigOpen] = createSignal<string>();
-/** Show all fields of a section, or every section's key fields again when it is the open one. */
-export const toggleAllFields = (id: string) => setConfigOpen(configOpen() === id ? undefined : id);

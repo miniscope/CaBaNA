@@ -76,7 +76,7 @@ describe('arena geometry', () => {
   });
   it('moves and resizes a rectangle, keeping the opposite corner', () => {
     const z = {
-      shape: 'rect',
+      shape: 'rect' as const,
       pts: [
         [10, 10],
         [30, 20],
@@ -98,7 +98,7 @@ describe('arena geometry', () => {
   });
   it('resizes a circle by its edge point and leaves a polygon alone', () => {
     const c = {
-      shape: 'circle',
+      shape: 'circle' as const,
       pts: [
         [10, 10],
         [14, 10],
@@ -110,7 +110,7 @@ describe('arena geometry', () => {
     ]);
     expect(regionBox(c)).toEqual({ x: 6, y: 6, w: 8, h: 8 });
     const p = {
-      shape: 'polygon',
+      shape: 'polygon' as const,
       pts: [
         [0, 0],
         [4, 0],

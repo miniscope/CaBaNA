@@ -34,19 +34,6 @@ describe('data setup view', () => {
   });
 });
 
-describe('experiment config sections', () => {
-  it('shows all fields of one section at a time', async () => {
-    const { configOpen, toggleAllFields } = await import('../lib/data-setup-view.ts');
-    expect(configOpen()).toBeUndefined();
-    toggleAllFields('spatial');
-    expect(configOpen()).toBe('spatial');
-    toggleAllFields('session');
-    expect(configOpen()).toBe('session');
-    toggleAllFields('session');
-    expect(configOpen()).toBeUndefined();
-  });
-});
-
 describe('entry pop-up', () => {
   it('opens for every entry but Get started and closes on request', async () => {
     const { closeEntry, popupOpen } = await import('../lib/data-setup-view.ts');
