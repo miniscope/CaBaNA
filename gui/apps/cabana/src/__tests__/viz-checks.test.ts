@@ -5,6 +5,7 @@ import {
   behaviorParts,
   cellsParts,
   inputsParts,
+  navTicks,
   neuralParts,
   partsText,
   positionParts,
@@ -45,5 +46,15 @@ describe('viz checks row', () => {
     expect(partsText(positionParts({ failed: 0, jumps: 1, gaps: 0 }))).toBe('1 jump');
     expect(partsText(behaviorParts({ failed: 0, epochs: 1 }))).toBe('1 epoch flagged');
     expect(partsText(behaviorParts({ failed: 2, epochs: 3 }))).toBe('2 failed · 3 epochs flagged');
+  });
+});
+
+describe('navigator ticks', () => {
+  it('places flagged and corrected times as percent of the session, merging close ones', () => {
+    expect(navTicks([50, 10, 10.1, 200, NaN], [25], [0, 100])).toEqual([
+      { left: 10, kind: 'flag' },
+      { left: 50, kind: 'flag' },
+      { left: 25, kind: 'correction' },
+    ]);
   });
 });

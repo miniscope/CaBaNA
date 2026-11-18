@@ -1,5 +1,9 @@
-import { createEffect, type JSX } from 'solid-js';
-import { cell } from '../lib/store.ts';
+import { createEffect, createMemo, For, type JSX } from 'solid-js';
+import { choiceOf } from '../lib/position-corrections.ts';
+import { annotationResults, cameraTimes, cell } from '../lib/store.ts';
+import { navTicks } from '../lib/viz-checks.ts';
+import { flaggedOf } from './BehaviorQcAnnotations.tsx';
+import { segments } from './BehaviorQc.tsx';
 import { mss, setWinLen, setWinStartClamped, span, win } from '../lib/viz.ts';
 import { matrixOf, neuralT, sources } from '../lib/viz-tracks.ts';
 import { HowTo } from './QcParts.tsx';
@@ -9,10 +13,28 @@ import { HELP } from './VizHelp.tsx';
 const MIN_LEN = 1;
 
 /**
+ * Amber: flagged position segments and flagged annotation epochs. Blue: position jumps with a
+ * correction chosen (interpolate or keep). Position rows are placed by their camera time on the
+ * neural clock.
+ */
+function navMarks() {
+  const ct = cameraTimes();
+  const at = (i: number) => ct?.[i] ?? NaN;
+  const segs = segments();
+  const flagged = [
+    ...segs.filter((s) => !choiceOf(s)).map((s) => at(s.first)),
+    ...annotationResults().flatMap((a) => flaggedOf(a.id).map((e) => e.start)),
+  ];
+  const corrected = segs.filter((s) => choiceOf(s)).map((s) => at(s.first));
+  return navTicks(flagged, corrected, span());
+}
+
+/**
  * The whole session as a strip with a box for the window. Drag the box to move it, its edges to
  * resize it. Laid out as a timeline row, so the strip lines up with the time plots below it.
  */
 export function SessionNavigator(): JSX.Element {
+  const ticks = createMemo(navMarks);
   let strip!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
   const T = () => span()[1] - span()[0];
@@ -93,6 +115,15 @@ export function SessionNavigator(): JSX.Element {
           }}
         >
           <canvas ref={canvas} width={1200} height={40} />
+          <For each={ticks()}>
+            {(t) => (
+              <span
+                class={`cb-nav2__tick cb-nav2__tick--${t.kind}`}
+                style={{ left: `${t.left}%` }}
+                aria-hidden="true"
+              />
+            )}
+          </For>
           <div
             class="cb-nav2__box"
             tabindex="0"

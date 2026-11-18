@@ -3463,6 +3463,21 @@ button[aria-expanded='true'] > .cb-help {
   height: 100%;
   pointer-events: none;
 }
+.cb-nav2__tick {
+  position: absolute;
+  width: 3px;
+  height: 5px;
+  margin-left: -1px;
+  pointer-events: none;
+}
+.cb-nav2__tick--flag {
+  top: 1px;
+  background: #f0b429;
+}
+.cb-nav2__tick--correction {
+  bottom: 1px;
+  background: var(--correction);
+}
 .cb-nav2__box {
   position: absolute;
   top: -1px;

@@ -145,7 +145,8 @@ export const HELP: Record<string, Help> = {
       <p>
         The whole session. The box is the selected window. Drag the box to move it, drag its edges
         to resize it, or click the strip to center the window there. The gray trace is the selected
-        cell.
+        cell. Amber marks along the top are flagged position segments and flagged annotation epochs;
+        blue marks along the bottom are position jumps with a correction chosen.
       </p>
     ),
   },
