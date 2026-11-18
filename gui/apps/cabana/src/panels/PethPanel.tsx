@@ -1,21 +1,9 @@
-import { createMemo, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { Requirements } from '../components/Requirements.tsx';
+import { createMemo, Show, type JSX } from 'solid-js';
 import { ConfigureBody, type ConfigureControl } from '../components/ConfigureBody.tsx';
-import { SectionList, StageBar, StageFooter } from '../components/GuidedSetup.tsx';
-import { RunChoice, SettingsSummary } from '../components/GuidedReview.tsx';
-import { guided } from '../lib/guided.ts';
-import {
-  cancelPethRun,
-  pethOutcome,
-  pethSettings,
-  pethShowResults,
-  pethStatus,
-  runPeth,
-  setPethShowResults,
-} from '../lib/peth-run.ts';
-import { pethChanges, pethSettingChanges } from '../lib/peth-view.ts';
-import { shufflesFor } from '../lib/preview.ts';
-import { ShuffleReach } from './parts.tsx';
+import { SettingsSummary } from '../components/GuidedReview.tsx';
+import { guided, pFloorText } from '../lib/guided.ts';
+import { pethOutcome, pethSettings, pethShowResults, setPethShowResults } from '../lib/peth-run.ts';
+import { BackToCards } from './AnalysisBack.tsx';
 import { PethPreview } from './PethPreview.tsx';
 import { PethResults } from './PethResults.tsx';
 import {
@@ -26,45 +14,16 @@ import {
   WindowSection,
 } from './PethSections.tsx';
 import { createPethSetup } from './PethSetupState.ts';
-import { PethHead, PethRunStage } from './PethSetupHead.tsx';
 import { pethSections, pethSummary } from './PethSetupSummary.ts';
-import { fitToWindow } from './QcPanel.tsx';
 
-const SECTIONS = ['events', 'window', 'filtering', 'options', 'advanced'];
-// Kept outside the page so the open stage and section survive a visit to the results.
-const g = guided('peth', 'events');
+// Kept outside the page so the open section survives closing and reopening the window.
+export const g = guided('peth', 'events');
 
-/** The settings page; with `configure` only the setting groups, for the Configure settings window. */
-export function PethSetup(props: { configure?: ConfigureControl }): JSX.Element {
+/** The Configure settings window's setting groups. */
+export function PethSetup(props: { configure: ConfigureControl }): JSX.Element {
   const s = createPethSetup();
   const ok = () => s.ok();
-  const ps = pethSettings;
-  const running = () => {
-    const st = pethStatus();
-    return st.kind === 'running' ? st : undefined;
-  };
-  const error = () => {
-    const st = pethStatus();
-    return st.kind === 'error' ? st.message : undefined;
-  };
-  const changes = () => [...pethChanges(), ...pethSettingChanges()];
-
   const sections = () => pethSections(s);
-  const summary = () => pethSummary(s);
-
-  const blocked = () =>
-    !ok() ? (s.data() as { error: string }).error : running() ? 'A run is in progress.' : s.issue();
-  const status = () => {
-    const r = running();
-    if (r) return r.step;
-    if (!ok()) return 'Needs deconvolved events and behavior annotations';
-    if (s.issue()) return 'Needs attention';
-    return 'Ready to run';
-  };
-  const start = () => {
-    g.setStage('run');
-    void runPeth();
-  };
 
   const sectionBody = (id: string) => (
     <>
@@ -86,7 +45,7 @@ export function PethSetup(props: { configure?: ConfigureControl }): JSX.Element 
       </Show>
     </>
   );
-  const configureView = (c: () => ConfigureControl) => (
+  return (
     <Show
       when={ok()}
       fallback={
@@ -96,104 +55,50 @@ export function PethSetup(props: { configure?: ConfigureControl }): JSX.Element 
         </div>
       }
     >
-      <ConfigureBody g={g} label="PETH settings" sections={sections()} control={c()}>
+      <ConfigureBody g={g} label="PETH settings" sections={sections()} control={props.configure}>
         {sectionBody}
       </ConfigureBody>
     </Show>
   );
+}
 
-  let root!: HTMLDivElement;
-  onMount(() => root && onCleanup(fitToWindow(root)));
-
-  const page = () => (
-    <div class="cb-place cb-gs cb-pe-setup" ref={root}>
-      <PethHead s={s} changes={changes()} />
-
-      <StageBar
-        g={g}
-        done={{
-          configure: SECTIONS.every((id) => g.reviewed(id)),
-          run: !!pethOutcome(),
-        }}
-      />
-      <Show when={!ok()}>
+/** The Preview window: the mean-curve preview beside the settings it was drawn with. */
+export function PethPreviewView(): JSX.Element {
+  const s = createPethSetup();
+  const ps = pethSettings;
+  return (
+    <Show
+      when={s.ok()}
+      fallback={
         <div class="cb-empty">
           {(s.data() as { error: string }).error} PETH needs deconvolved neural data, neural
           timestamps and behavior annotations.
         </div>
-      </Show>
-      <Show when={ok() && error()}>
-        <div class="cb-note">{error()}</div>
-      </Show>
-
-      <Show when={ok() && g.stage() === 'configure'}>
-        <SectionList g={g} label="PETH settings" sections={sections()}>
-          {sectionBody}
-        </SectionList>
-      </Show>
-
-      <Show when={ok() && g.stage() === 'review'}>
-        <div class="cb-gs-review">
-          <div class="cb-pe-review">
-            <SettingsSummary g={g} groups={summary()} />
-            <PethPreview s={s} />
-          </div>
-          <RunChoice
-            full={ps.nShuffles}
-            preview={shufflesFor('preview', ps.nShuffles)}
-            noPreview
-            previewBlocked="PETH has no framework engine, so no reduced-shuffle run."
-            blocked={blocked()}
-            noTest={
-              ps.test === 'none' ? 'No shuffle test: the run computes curves only.' : undefined
-            }
-            onPreview={() => undefined}
-            onFull={start}
-          />
-          <Show when={ps.test === 'circular'}>
-            <ShuffleReach shuffles={ps.nShuffles} alpha={ps.alpha} preview={false} />
-          </Show>
+      }
+    >
+      <div class="cb-pe-review cb-pe-review--window">
+        <PethPreview s={s} />
+        <div class="cb-pe-review__side">
+          <SettingsSummary g={g} groups={pethSummary(s)} />
+          <p class="cb-muted">
+            PETH runs in the browser, so there is no shorter run with fewer shuffles: the preview
+            shows curves only. The full analysis
+            {ps.test === 'circular'
+              ? ` uses ${ps.nShuffles.toLocaleString()} shuffles (${pFloorText(ps.nShuffles)}).`
+              : ' computes curves only, with no shuffle test.'}
+          </p>
         </div>
-      </Show>
-
-      <Show when={ok() && g.stage() === 'run'}>
-        <PethRunStage s={s} running={running()} error={error()} changes={changes()} />
-      </Show>
-
-      <StageFooter
-        g={g}
-        status={
-          <span>
-            <i classList={{ 'cb-dot--ok': !!ok() && !s.issue() && !running() }} /> {status()}
-          </span>
-        }
-        actions={
-          <Show when={running()}>
-            <button class="btn-secondary" onClick={cancelPethRun}>
-              Cancel
-            </button>
-          </Show>
-        }
-      />
-    </div>
-  );
-
-  return (
-    <Show when={props.configure} fallback={page()}>
-      {(c) => configureView(c)}
+      </div>
     </Show>
   );
 }
 
-/** The PETH page: its settings, or after a run its results. */
+/** The PETH results page. Without a result there is nothing here: setup is in the card's Actions. */
 export function PethPanel(): JSX.Element {
   const hasResults = createMemo(() => pethShowResults() && pethOutcome());
   return (
-    <>
-      <Requirements analysis="peth" />
-      <Show when={hasResults()} keyed fallback={<PethSetup />}>
-        {(out) => <PethResults out={out} onEdit={() => setPethShowResults(false)} />}
-      </Show>
-    </>
+    <Show when={hasResults()} keyed fallback={<BackToCards id="peth" />}>
+      {(out) => <PethResults out={out} onEdit={() => setPethShowResults(false)} />}
+    </Show>
   );
 }

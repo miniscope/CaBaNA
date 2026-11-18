@@ -36,7 +36,7 @@ import { cachedRecords, runSource } from '../lib/results-store.ts';
 import type { ResultSource } from '../lib/results-load.ts';
 import { compareToLatest, history, latest, setLatest } from '../lib/runs.ts';
 import { DecodingResults } from './DecodingResults.tsx';
-import { DecodingSetup } from './decoding/GuidedPage.tsx';
+import { BackToCards } from './AnalysisBack.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
 
 /** Copy the settings of a saved run into the setup (an explicit action; viewing never does it). */
@@ -224,7 +224,7 @@ export function DecodingPanel(): JSX.Element {
   );
   return (
     <Show when={!(import.meta.env.DEV && fixture)} fallback={<FixtureResults name={fixture!} />}>
-      <Show when={results()} fallback={<DecodingSetup onResults={open} />}>
+      <Show when={results()} fallback={<BackToCards id="decoding" />}>
         <Show
           when={shownEngine() === 'browser' && browserRun()}
           fallback={<Results onBack={() => setResults(false)} />}
