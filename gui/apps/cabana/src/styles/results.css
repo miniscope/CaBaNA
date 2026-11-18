@@ -416,10 +416,10 @@
   font-weight: 600;
 }
 .cb-rx__up {
-  color: #c62828;
+  color: #e8851a;
 }
 .cb-rx__down {
-  color: #2171b5;
+  color: #6a3db8;
 }
 .cb-rx__sig {
   flex: 1;
@@ -456,4 +456,23 @@
   font: inherit;
   color: inherit;
   cursor: pointer;
+}
+.cb-rx__legend,
+.cb-rx__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  font-size: 12px;
+}
+.cb-rx__counts {
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.cb-rx__counts li {
+  display: flex;
+  justify-content: space-between;
 }
