@@ -459,7 +459,7 @@ export function LoadPanel(): JSX.Element {
             </tbody>
           </table>
           <p class="cb-muted cb-load__hint">
-            ⓘ Select a row to preview it. Unmatched files can be assigned a type by hand.
+            Select a row to preview it. Unmatched files can be assigned a type by hand.
           </p>
           <ConfigSummary />
         </section>

@@ -175,7 +175,7 @@ export function PlacePopulation(props: { ctx: ResultsCtx }): JSX.Element {
               title={`For each cell, the grey band runs from the median of its shuffled scores up to the value that only ${alpha() * 100}% of them reach. A real score above the band gives p < ${alpha()}.`}
             >
               <i style={{ background: '#d9d9d5' }} />
-              Shuffled scores: median to {100 - alpha() * 100}th percentile ⓘ
+              Shuffled scores: median to {100 - alpha() * 100}th percentile
             </span>
           </div>
           <HowToRead>

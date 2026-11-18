@@ -1,6 +1,7 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { Popover } from '../panels/Popover.tsx';
 import { STATUS_ICON, TONE_TEXT, type Status, type Tone } from '../lib/readiness.ts';
+import { HelpMark } from './HelpMark.tsx';
 
 const PATHS: Record<string, JSX.Element> = {
   circle: <circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.5" />,
@@ -144,7 +145,7 @@ export function StatusLegend(): JSX.Element {
         aria-expanded={open()}
         onClick={() => setOpen(!open())}
       >
-        ?
+        <HelpMark />
       </button>
       <Show when={open()}>
         <Popover anchor={btn} onClose={() => setOpen(false)} width={300} label="Status indicators">

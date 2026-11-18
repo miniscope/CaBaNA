@@ -1,15 +1,16 @@
 import { createSignal, Show, type JSX } from 'solid-js';
 import { Popover } from './Popover.tsx';
+import { HelpMark } from '../components/HelpMark.tsx';
 
 let nextId = 1;
 
 /**
- * An ⓘ button with a short explanation. It opens on hover or keyboard focus and closes when the
+ * An "i" button with a short explanation. It opens on hover or keyboard focus and closes when the
  * pointer or focus leaves; a click or tap keeps it open until Escape or a click elsewhere.
  */
 export function InfoTip(props: {
   label: string;
-  /** Replaces the ⓘ. */
+  /** Replaces the i marker. */
   icon?: JSX.Element;
   class?: string;
   children: JSX.Element;
@@ -41,7 +42,7 @@ export function InfoTip(props: {
           setOpen(pin);
         }}
       >
-        {props.icon ?? <span aria-hidden="true">ⓘ</span>}
+        {props.icon ?? <HelpMark />}
       </button>
       <Show when={open()}>
         <Popover

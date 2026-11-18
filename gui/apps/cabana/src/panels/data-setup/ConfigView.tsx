@@ -30,6 +30,7 @@ import { analysisKind, NEURAL_LAYERS } from '../../lib/analysis-data.ts';
 import { AnalysisDataField, AnalysisDataTable } from './AnalysisRole.tsx';
 import { Experiment, Num, Section, Select, Spatial } from './ConfigFields.tsx';
 import { AboutConfig, YamlView } from './ConfigYaml.tsx';
+import { HelpMark } from '../../components/HelpMark.tsx';
 
 const round = (v: number) => Math.round(v * 100) / 100;
 
@@ -266,7 +267,7 @@ export function ConfigView(): JSX.Element {
           title="About config.yaml"
           width={620}
           class="cb-tip__btn"
-          button={<span aria-hidden="true">ⓘ</span>}
+          button={<HelpMark />}
         >
           {(close) => (
             <AboutConfig

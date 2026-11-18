@@ -17,6 +17,7 @@ import type { Category } from '../QcPanel.tsx';
 import { PlotHeadSlot, PopButton, ReviewActions, StatusIcon, worst } from '../QcParts.tsx';
 import { plotTabOf, RESULT } from '../QcShell.tsx';
 import { QcOffPanel, RefQcSwitch } from './RefPanels.tsx';
+import { HelpMark } from '../../components/HelpMark.tsx';
 
 /** The QC test of each file, by the test's id; annotation tests use the file's slot id. */
 const TEST: Partial<Record<SlotId | 'sync', string>> = {
@@ -105,7 +106,7 @@ function Correction(props: { cat: Category }): JSX.Element {
         title="Correction"
         width={360}
         class="cb-tip__btn"
-        button={<span aria-hidden="true">ⓘ</span>}
+        button={<HelpMark />}
       >
         {props.cat.correction()}
       </PopButton>

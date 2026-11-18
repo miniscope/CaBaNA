@@ -29,6 +29,7 @@ import {
   setReviewed,
 } from '../lib/qc-view.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { HelpMark } from '../components/HelpMark.tsx';
 
 export type Shown = Status | 'reviewed' | 'none';
 const ICON: Record<Shown, string> = { pass: '✓', warn: '!', fail: '✕', reviewed: '✓', none: '–' };
@@ -131,7 +132,7 @@ export function HowTo(props: { title: string; children: JSX.Element }): JSX.Elem
       title={`How to read: ${props.title}`}
       width={440}
       class="cb-ib cb-ib--q"
-      button="?"
+      button={<HelpMark />}
     >
       <div class="cb-howto-body">{props.children}</div>
     </PopButton>
@@ -198,7 +199,7 @@ export function PlotCard(props: {
             title="How to read this plot"
             onClick={() => props.onHelp!()}
           >
-            ?
+            <HelpMark />
           </button>
         </Show>
         <button

@@ -2704,12 +2704,28 @@ textarea {
   color: var(--text-primary);
 }
 .cb-ib--q {
-  font-weight: var(--font-weight-semibold);
-  font-size: 13px;
-  border-color: var(--border-default);
-  border-radius: 50%;
   min-width: 22px;
   height: 22px;
+}
+/* The i help marker */
+.cb-help {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font: italic 600 10px Georgia, 'Times New Roman', serif;
+  line-height: 1;
+}
+button:hover > .cb-help,
+button:focus-visible > .cb-help,
+button[aria-expanded='true'] > .cb-help {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
 }
 .cb-segbar {
   display: flex;

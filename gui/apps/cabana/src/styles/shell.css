@@ -81,11 +81,8 @@
   padding-right: 0;
 }
 .cb-legend__btn {
-  border-radius: 50%;
-  border: 1.5px solid var(--text-secondary);
   min-width: 20px;
   height: 20px;
-  font-size: 12px;
 }
 .cb-legend__head {
   display: flex;

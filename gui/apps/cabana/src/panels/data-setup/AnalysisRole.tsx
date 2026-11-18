@@ -15,6 +15,7 @@ import {
 import { sectionsFor } from '../../lib/file-sections.ts';
 import type { SlotId } from '../../lib/slots.ts';
 import { PopButton } from '../QcParts.tsx';
+import { HelpMark } from '../../components/HelpMark.tsx';
 
 export type Role = 'analysis' | 'reference';
 
@@ -86,7 +87,7 @@ export function RoleInfo(): JSX.Element {
       title="Analysis data and reference data"
       width={380}
       class="cb-tip__btn"
-      button={<span aria-hidden="true">ⓘ</span>}
+      button={<HelpMark />}
     >
       <RoleHelp />
     </PopButton>
