@@ -77,12 +77,18 @@ def touch(folder: Path) -> None:
         atomic_write(folder / "project.yaml", yaml.safe_dump(meta, sort_keys=False))
 
 
+# Slot ids are the GUI's (`SlotId` in gui/apps/cabana/src/lib/slots.ts).
+SLOT_KINDS = {
+    "neural_timestamps": "neural", "neural_deconvolved": "neural", "neural_denoised": "neural",
+    "neural_raw": "neural", "footprints": "neural",
+    "behavior_timestamps": "behavior", "position": "position", "head_orientation": "position",
+    "zone_annotations": "behavior", "behavior_annotations": "behavior", "time_markers": "behavior",
+    "frame_labels": "behavior", "config": None,
+}
+
+
 def data_kind(slot: str) -> str | None:
-    """Which kind of data a slot holds, from its config path (`neural.file`, `behavior.position.file`)."""
-    if "position" in slot:
-        return "position"
-    head = slot.split(".")[0]
-    return head if head in ("neural", "behavior") else None
+    return SLOT_KINDS.get(slot)
 
 
 def folder_size(path: Path) -> int:
@@ -288,8 +294,9 @@ class Projects:
         subprocess.run(["open", "-R", str(self.folder_of(project_id))], check=True)
 
     # -- project.yaml ------------------------------------------------------------------
-    def update_meta(self, folder: Path, changes: dict[str, Any]) -> dict[str, Any]:
-        meta = self._read_meta(folder)
+    @staticmethod
+    def update_meta(folder: Path, changes: dict[str, Any]) -> dict[str, Any]:
+        meta = Projects._read_meta(folder)
         if meta is None:
             raise FileNotFoundError(f"{folder}/project.yaml")
         meta.update(changes)

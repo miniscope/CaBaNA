@@ -9,7 +9,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Callable
 
 import yaml
 
@@ -75,6 +75,9 @@ class Project:
     def __init__(self, root: Path, in_project: bool = False) -> None:
         self.root = Path(root).resolve()
         self.in_project = in_project
+        # Finds a registered data file by hash (set when a project is open); such files are
+        # read where they are instead of being copied into inputs/.
+        self.reference_lookup: Callable[[str], Path | None] | None = None
         self.cache_dir = self.root / "processed" if in_project else self.root
         for path in (self.inputs_dir, self.sessions_dir, self.root / "runs"):
             path.mkdir(parents=True, exist_ok=True)
@@ -112,7 +115,9 @@ class Project:
         if not SHA_RE.match(sha):
             raise BadRequest("bad sha256")
         hits = [p for p in self.inputs_dir.glob(f"{sha}*") if not p.name.endswith(".meta.json")]
-        return hits[0] if hits else None
+        if hits:
+            return hits[0]
+        return self.reference_lookup(sha) if self.reference_lookup else None
 
     def put_input(self, sha: str, stream: BinaryIO, length: int, name: str) -> bool:
         """Store the bytes if the hash matches. Returns True when newly stored."""
@@ -143,7 +148,10 @@ class Project:
 
     def input_meta(self, sha: str) -> dict[str, Any]:
         meta = self.inputs_dir / f"{sha}.meta.json"
-        return json.loads(meta.read_text()) if meta.exists() else {}
+        if meta.exists():
+            return json.loads(meta.read_text())
+        referenced = self.input_file(sha)
+        return {"name": referenced.name, "bytes": referenced.stat().st_size} if referenced else {}
 
     # -- sessions ----------------------------------------------------------------------
     def register_session(self, config: dict, files: dict[str, Any], caps: dict[str, bool]) -> tuple[str, dict]:

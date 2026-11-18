@@ -62,8 +62,8 @@ def test_list_reports_data_kinds_sizes_and_missing(pb):
     meta = yaml.safe_load((folder / "project.yaml").read_text())
     here = tmp / "neural.npy"
     here.write_bytes(b"x")
-    meta["data"] = [{"slot": "neural.file", "path": str(here)},
-                    {"slot": "behavior.position.file", "path": str(tmp / "gone.csv")}]
+    meta["data"] = [{"slot": "neural_deconvolved", "path": str(here)},
+                    {"slot": "position", "path": str(tmp / "gone.csv")}]
     (folder / "project.yaml").write_text(yaml.safe_dump(meta))
     row = c.json("GET", "/projects")[1]["projects"][0]
     assert row["kinds"] == ["neural", "position"]
