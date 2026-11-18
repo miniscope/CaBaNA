@@ -45,12 +45,14 @@ export function setChoice(s: Segment, c: Choice | undefined): void {
   if (before === c) return;
   const at = `position jump at ${clock(s.start)}`;
   const n = jumpRows(s).length;
+  const ref = [`jump:${s.first}`];
   const frames = `${n} frame${n === 1 ? '' : 's'}`;
-  if (before === 'interpolate') logChange('undo', 'correction', `Put back ${frames} of the ${at}`);
+  if (before === 'interpolate')
+    logChange('undo', 'correction', `Put back ${frames} of the ${at}`, ref);
   else if (before === 'keep' && !c)
-    logChange('undo', 'correction', `Cleared the review of the ${at}`);
-  if (c === 'interpolate') logChange('apply', 'correction', `Left out ${frames} of the ${at}`);
-  else if (c === 'keep') logChange('apply', 'correction', `Reviewed the ${at}: kept as real`);
+    logChange('undo', 'correction', `Cleared the review of the ${at}`, ref);
+  if (c === 'interpolate') logChange('apply', 'correction', `Left out ${frames} of the ${at}`, ref);
+  else if (c === 'keep') logChange('apply', 'correction', `Reviewed the ${at}: kept as real`, ref);
 }
 
 /** Seconds as m:ss.s, for the history. */

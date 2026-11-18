@@ -254,11 +254,17 @@ export function rejectCells(cells: number[]): void {
   const added = [...new Set(cells)].filter((c) => !rejected().has(c));
   setRejected((r) => new Set<number>([...r, ...cells]));
   setPending(new Set<number>());
-  if (added.length) logChange('apply', 'correction', `Rejected ${cellsText(added).toLowerCase()}`);
+  if (added.length)
+    logChange(
+      'apply',
+      'correction',
+      `Rejected ${cellsText(added).toLowerCase()}`,
+      added.map((c) => `cell:${c}`),
+    );
 }
 export function restoreCell(c: number): void {
   if (rejected().has(c))
-    logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`);
+    logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`, [`cell:${c}`]);
   setRejected((r) => new Set<number>([...r].filter((x) => x !== c)));
 }
 export function togglePending(c: number): void {
@@ -692,11 +698,12 @@ export function editAnnotations(kind: 'merge' | 'drop'): void {
       ? `Merged ${n} pairs of bouts that were less than ${tol.mergeGapS} s apart.`
       : `Removed ${n} bouts shorter than ${tol.minBoutS} s.`;
   setAnnotationLog((l) => [...l, text]);
-  logChange('apply', 'correction', text);
+  logChange('apply', 'correction', text, ['annotations']);
 }
 
 export function undoAnnotationEdits(): void {
-  if (annotationLog().length) logChange('undo', 'correction', 'Undid the annotation fixes');
+  if (annotationLog().length)
+    logChange('undo', 'correction', 'Undid the annotation fixes', ['annotations']);
   setAnnotationEdits({});
   setAnnotationLog([]);
   setAnnotationFixed({ merge: false, drop: false });

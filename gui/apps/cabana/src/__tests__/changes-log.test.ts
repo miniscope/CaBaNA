@@ -19,8 +19,8 @@ describe('changes history', () => {
       ['apply', 'Rejected cells 4 and 9'],
       ['undo', 'Restored cell 4'],
     ]);
-    expect(lastApplied((e) => e.text.includes('9'))).toBeTypeOf('number');
-    expect(lastApplied((e) => e.text.includes('12'))).toBeUndefined();
+    expect(lastApplied('cell:8')).toBeTypeOf('number');
+    expect(lastApplied('cell:11')).toBeUndefined();
   });
 
   it('is emptied when the session is cleared', () => {

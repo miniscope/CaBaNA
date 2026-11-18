@@ -33,6 +33,7 @@ function flush(): void {
       'change',
       'prep',
       `${s.label}: ${stepValues(id, baseline)} to ${stepValues(id, now)}`,
+      [`prep:${id}`],
     );
   }
   baseline = now;

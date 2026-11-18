@@ -13,22 +13,30 @@ export interface LogEvent {
   action: LogAction;
   group: LogGroup;
   text: string;
+  /** What it acted on, e.g. "cell:3", "jump:120", "annotations", "prep:fillGaps". */
+  refs: string[];
 }
 
 const [history, setHistory] = createSignal<LogEvent[]>([]);
 export { history };
 
 /** Add one event, stamped with the current time. */
-export function logChange(action: LogAction, group: LogGroup, text: string): void {
-  setHistory((h) => [...h, { at: Date.now(), action, group, text }]);
+export function logChange(
+  action: LogAction,
+  group: LogGroup,
+  text: string,
+  refs: string[] = [],
+): void {
+  setHistory((h) => [...h, { at: Date.now(), action, group, text, refs }]);
 }
 
 export const clearHistory = () => setHistory([]);
 
-/** When something matching `text` was last applied or changed, for the time beside an entry. */
-export function lastApplied(match: (e: LogEvent) => boolean): number | undefined {
+/** When `ref` was last applied or changed, for the time beside an entry. */
+export function lastApplied(ref: string): number | undefined {
   const h = history();
-  for (let i = h.length - 1; i >= 0; i--) if (h[i].action !== 'undo' && match(h[i])) return h[i].at;
+  for (let i = h.length - 1; i >= 0; i--)
+    if (h[i].action !== 'undo' && h[i].refs.includes(ref)) return h[i].at;
   return undefined;
 }
 
