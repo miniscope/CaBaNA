@@ -43,15 +43,6 @@ function set<K extends keyof typeof DEFAULT_POSITION_DECODING>(
   else setBehaviorDecoding(key as never, value as never);
 }
 
-/** Back to the starting settings of the chosen target. */
-export function resetStartingSettings(): void {
-  if (isPosition()) setPositionDecoding({ ...DEFAULT_POSITION_DECODING });
-  else setBehaviorDecoding({ ...DEFAULT_BEHAVIOR_DECODING, labels: [] });
-}
-export const isStartingSettings = () =>
-  JSON.stringify(shared()) ===
-  JSON.stringify(isPosition() ? DEFAULT_POSITION_DECODING : DEFAULT_BEHAVIOR_DECODING);
-
 /** The line above the views: what the decoder reads, or why the input is not met. */
 export function InputLine(): JSX.Element {
   const f = () => facts();

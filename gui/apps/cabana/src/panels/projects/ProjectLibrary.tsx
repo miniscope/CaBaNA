@@ -19,7 +19,7 @@ import {
 import { projects, type ProjectSummary } from '../../lib/projects-client.ts';
 import { applySettings, savedDatasets, TEMPLATE_GROUPS } from '../../lib/settings-template.ts';
 import { addFiles, goToStep } from '../../lib/store.ts';
-import { fileList } from '../LoadPanel.tsx';
+import { fileList } from '../file-input.ts';
 import { FolderButton } from './FolderButton.tsx';
 import { DeleteProjectDialog, RenameDialog } from './ProjectDialogs.tsx';
 

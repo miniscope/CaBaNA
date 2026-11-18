@@ -32,7 +32,7 @@ import {
   setSessionName,
 } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
-import { fileList } from '../LoadPanel.tsx';
+import { fileList } from '../file-input.ts';
 import { FolderButton } from './FolderButton.tsx';
 
 // Kept outside the page so the list survives a visit to another page.

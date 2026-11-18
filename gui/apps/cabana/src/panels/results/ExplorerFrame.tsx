@@ -22,7 +22,7 @@ import { matchOfRecord } from '../../lib/results-match.ts';
 import { closeExplorer, openExplorer, type ExplorerTarget } from '../../lib/results-nav.ts';
 import { analysisLabel, formatWhen, hasResults } from '../../lib/results-overview.ts';
 import { reasonText } from '../../lib/results-table.ts';
-import { active, type AnalysisId } from '../../lib/runs.ts';
+import { active } from '../../lib/runs.ts';
 import { AnalysisRunSettings } from '../AnalysisRunSettings.tsx';
 import { InfoTip } from '../InfoTip.tsx';
 import { DeleteOutputs, deleteOutputsNeeds } from './DeleteOutputs.tsx';
@@ -39,9 +39,6 @@ import { openPlotEditor } from './PlotEditor.tsx';
 import { OverviewPane, openPlot } from './RunFacts.tsx';
 import { RunDetailsBody } from './RunDetails.tsx';
 import { savedData } from './run-data.ts';
-
-/** The analyses the shared frame explores. */
-export const FRAMED: AnalysisId[] = ['place', 'auroc', 'peth', 'decoding', 'population'];
 
 type View = 'main' | 'tables' | 'statistics' | 'summary';
 

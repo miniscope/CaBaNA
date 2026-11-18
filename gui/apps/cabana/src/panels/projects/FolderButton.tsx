@@ -1,5 +1,5 @@
 import type { JSX } from 'solid-js';
-import { fileList } from '../LoadPanel.tsx';
+import { fileList } from '../file-input.ts';
 
 /** A hidden folder input inside a button-styled label. */
 export function FolderButton(props: {

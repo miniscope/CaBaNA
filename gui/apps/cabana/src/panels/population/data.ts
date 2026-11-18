@@ -4,7 +4,6 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import { behaviorFrames } from '../../lib/auroc.ts';
 import { arena } from '../../lib/arena.ts';
-import { populationContext } from '../../lib/analysis-registry.ts';
 import { populationSettings, setPopulationSettings } from '../../lib/population-settings.ts';
 import { positionIssue } from '../../lib/prepared.ts';
 import {
@@ -16,7 +15,6 @@ import {
   rejected,
   samplingRate,
 } from '../../lib/store.ts';
-import { populationProblems } from '../../lib/spec/population.ts';
 import {
   labelReason,
   labelRow,
@@ -112,11 +110,6 @@ export const readiness = createMemo(() => {
     POPULATION_METHODS.map((m) => [m.id, methodReadiness(m.id, populationSettings, ctx)]),
   ) as Record<(typeof POPULATION_METHODS)[number]['id'], ReturnType<typeof methodReadiness>>;
 });
-
-/** Problems that apply to the whole run, from the pipeline builder. */
-export const runProblems = createMemo(() =>
-  populationProblems(populationSettings, populationContext()),
-);
 
 /** Switches off the labels of `target` that a saved selection does not contain (empty = all on). */
 export function setOffLabels(target: string, saved: string[], all: Record<string, string[]>): void {

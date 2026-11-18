@@ -15,7 +15,7 @@ import { decodeEvents } from '../../lib/decode-data.ts';
 import { gapBlock } from './engines.ts';
 import type { DecodeView } from './review.ts';
 import { suggestSeparation, type SeparationSuggestion } from '../../lib/fold-gap.ts';
-import { active, blockers } from '../../lib/runs.ts';
+import { blockers } from '../../lib/runs.ts';
 import { behaviorDecodingPipeline, positionDecodingPipeline } from '../../lib/spec/decoding.ts';
 import {
   annotationResults,
@@ -126,7 +126,6 @@ export function runBlock(): string {
   const rest = blockers('decoding');
   return rest[0] ?? '';
 }
-export const canRun = () => !active() && runBlock() === '';
 export { OTHER_NAME };
 
 /** The settings of the chosen target in the shape the Review labels read. */

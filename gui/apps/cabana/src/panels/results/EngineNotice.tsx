@@ -48,12 +48,3 @@ export function EngineNotice(props: {
     </>
   );
 }
-
-/** A progress bar that fills when the run reports how far along it is, and is indeterminate when it does not. */
-export function RunProgress(props: { done: number; total: number }): JSX.Element {
-  return (
-    <Show when={props.total > 1} fallback={<progress class="cb-progress" />}>
-      <progress class="cb-progress" value={props.done} max={props.total} />
-    </Show>
-  );
-}
