@@ -8,10 +8,17 @@ import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Pill } from '../../components/Pill.tsx';
 import { qcShown } from '../../lib/analysis-data.ts';
 import { arena } from '../../lib/arena.ts';
-import { openEntry } from '../../lib/data-setup-view.ts';
+import { openEntry, setAppliedNote } from '../../lib/data-setup-view.ts';
 import { sectionsFor } from '../../lib/file-sections.ts';
 import type { MenuItem } from '../../lib/actions-menu.ts';
+import { missingFileOf } from '../../lib/open-project.ts';
 import { pickFile } from '../../lib/pick-file.ts';
+import {
+  chooseFilePath,
+  forgetSlot,
+  projectsOn,
+  useFileForSlot,
+} from '../../lib/project-session.ts';
 import {
   ACTIVITY_SLOTS,
   cardActions,
@@ -65,13 +72,27 @@ function facts(id: SlotId): RowFacts {
   };
 }
 
-/** Replace the file of one data type with a chosen file. */
-const replace = (id: SlotId) => pickFile((f) => void addFiles([f], id));
+/**
+ * Replace the file of one data type with a chosen file. With the engine on a file is chosen by its
+ * path, so the project can keep it (and find it again); otherwise by the browser's chooser.
+ */
+function replace(id: SlotId): void {
+  if (!projectsOn()) return pickFile((f) => void addFiles([f], id));
+  chooseFilePath('Choose the file for this data type')
+    .then(async (path) => {
+      if (path) await useFileForSlot(id, path);
+    })
+    .catch((e) =>
+      setAppliedNote(`The file could not be used: ${e instanceof Error ? e.message : e}`),
+    );
+}
 
 function remove(id: SlotId): void {
   const name = loaded[id]?.name ?? 'this file';
-  if (window.confirm(`Remove ${name} from this session? The original file is not changed.`))
+  if (window.confirm(`Remove ${name} from this session? The original file is not changed.`)) {
     removeFile(id);
+    void forgetSlot(id);
+  }
 }
 
 const rowMenu = (id: SlotId, canView: boolean): MenuItem[] => [
@@ -87,18 +108,22 @@ const rowMenu = (id: SlotId, canView: boolean): MenuItem[] => [
 function SlotRow(props: { id: SlotId; sub?: boolean }): JSX.Element {
   const s = () => slot(props.id);
   const f = () => facts(props.id);
-  const st = () => cardStatus(f());
+  const st = () => (gone() ? { text: 'Missing', tone: 'fail' as const } : cardStatus(f()));
   const present = () => f().loaded || !!f().error;
+  // A file the open project lists that is not at its recorded path any more.
+  const gone = () => (present() ? undefined : missingFileOf(props.id));
   const description = () =>
-    present()
-      ? rowDescription(s().label, f().level, f().loaded ? loaded[props.id]!.summary : undefined)
-      : rowDescription(s().label, f().level, undefined, s().format);
+    gone()
+      ? `Missing: ${gone()!.name}, last seen at ${gone()!.last_seen_path ?? gone()!.path}`
+      : present()
+        ? rowDescription(s().label, f().level, f().loaded ? loaded[props.id]!.summary : undefined)
+        : rowDescription(s().label, f().level, undefined, s().format);
   return (
     <div class="cb-sp-row" classList={{ 'cb-sp-row--sub': props.sub }}>
       <div class="cb-sp-row__main">
         <div class="cb-sp-row__file" title={loaded[props.id]?.name}>
-          <span class="cb-sp-mono" classList={{ 'cb-sp-mono--empty': !present() }}>
-            {present() ? loaded[props.id]!.name : s().label}
+          <span class="cb-sp-mono" classList={{ 'cb-sp-mono--empty': !present() && !gone() }}>
+            {present() ? loaded[props.id]!.name : (gone()?.name ?? s().label)}
           </span>
           <Show when={props.sub && f().loaded}>
             <RoleTag slot={props.id} />
@@ -116,7 +141,7 @@ function SlotRow(props: { id: SlotId; sub?: boolean }): JSX.Element {
           when={present()}
           fallback={
             <button type="button" class="btn-secondary btn-small" onClick={() => replace(props.id)}>
-              Load file
+              {gone() ? 'Locate file' : 'Load file'}
             </button>
           }
         >

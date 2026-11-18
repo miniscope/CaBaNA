@@ -4,13 +4,13 @@
 import { readConfig, isSessionConfig } from './config-read.ts';
 import { matchSlot, type SlotId } from './slots.ts';
 
-export interface Placement {
-  file: File;
+export interface Placement<T extends { name: string } = File> {
+  file: T;
   /** The data types the file fills; empty when it matches none. */
   slots: SlotId[];
 }
 
-const isYaml = (f: File) => /\.ya?ml$/i.test(f.name);
+const isYaml = (f: { name: string }) => /\.ya?ml$/i.test(f.name);
 
 /**
  * The session config among `files`, recognized by its content (a framework session layout), not
@@ -27,12 +27,12 @@ export async function findConfig(files: File[]): Promise<File | undefined> {
  * A frame-label file that another slot claims fills both slots: the framework reads frame labels
  * from the same file. With `slot`, every file goes there.
  */
-export function placeFiles(
-  files: File[],
-  config: File | undefined,
+export function placeFiles<T extends { name: string }>(
+  files: T[],
+  config: T | undefined,
   named: Partial<Record<SlotId, string>>,
   slot?: SlotId,
-): Placement[] {
+): Placement<T>[] {
   const byName = new Map(Object.entries(named).map(([id, n]) => [n, id as SlotId]));
   return files.map((file) => {
     if (file === config) return { file, slots: ['config'] };

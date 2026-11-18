@@ -17,6 +17,9 @@ import {
 import { headerLine, type SessionFacts } from '../lib/header-line.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { renameSaved } from '../lib/settings-template.ts';
+import { openProject, setOpenProject } from '../lib/open-project.ts';
+import { projects } from '../lib/projects-client.ts';
+import { updateAutosaveProject } from '../lib/autosave.ts';
 import type { MenuItem } from '../lib/actions-menu.ts';
 import { ClearSessionDialog, RenameDialog } from '../panels/projects/ProjectDialogs.tsx';
 import { ActionsMenu } from './ActionsMenu.tsx';
@@ -70,6 +73,20 @@ export function Header(): JSX.Element {
     },
   ];
   const rename = (name: string) => {
+    const project = openProject();
+    if (project) {
+      // The engine renames the folder too; the session name follows what it made of the name.
+      projects
+        .rename(project.id, name)
+        .then((p) => {
+          setOpenProject(p);
+          updateAutosaveProject(p);
+          setSessionName(p.name);
+          setDialog(undefined);
+        })
+        .catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
+      return;
+    }
     const old = sessionName();
     if (old) renameSaved(old, name);
     setSessionName(name);

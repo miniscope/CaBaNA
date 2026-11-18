@@ -46,3 +46,18 @@ export function requiredNote(matched: ReadonlySet<SlotId>): { ok: boolean; missi
   );
   return { ok: !missing.length, missing };
 }
+
+/**
+ * The default name for a project made from files at known paths: the nearest folder they share,
+ * else `Project YYYY-MM-DD` when that folder is the home folder or a disk root.
+ */
+export function defaultNameFromPaths(paths: string[], now = new Date()): string {
+  const dirs = paths.map((p) => p.split('/').slice(0, -1));
+  const shared = dirs.length ? dirs.reduce((a, d) => a.slice(0, commonLength(a, d))) : [];
+  const home = paths[0]?.match(/^\/Users\/[^/]+/)?.[0].split('/') ?? [];
+  const isRoot = shared.length <= 1 || (shared[1] === 'Volumes' && shared.length <= 3);
+  const isHome = home.length > 0 && shared.length <= home.length;
+  if (!isRoot && !isHome) return shared[shared.length - 1];
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `Project ${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
