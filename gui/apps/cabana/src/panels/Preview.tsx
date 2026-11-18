@@ -3,7 +3,6 @@ import { SLOTS, type SlotId } from '../lib/slots.ts';
 import {
   annotationResults,
   addFiles,
-  assignFile,
   cell,
   deconvolved,
   denoisedTrace,
@@ -332,38 +331,5 @@ export function SlotPreview(props: { slot: SlotId }): JSX.Element {
         ))
       )(props.slot)}
     </Show>
-  );
-}
-
-/** The selected file, drawn the way that suits its data type. */
-export function Preview(props: { item: PreviewItem }): JSX.Element {
-  return (
-    <div class="cb-preview">
-      <Show
-        when={'slot' in props.item && props.item.slot}
-        keyed
-        fallback={
-          <Box title="Unmatched file">
-            <p>
-              <code>{(props.item as { file: File }).file.name}</code> did not match any data type by
-              name. If it holds data, choose its type; otherwise leave it. Unassigned files are
-              ignored.
-            </p>
-            <select
-              aria-label="Assign a data type"
-              onChange={(e) => {
-                const f = (props.item as { file: File }).file;
-                if (e.currentTarget.value) void assignFile(f, e.currentTarget.value as SlotId);
-              }}
-            >
-              <option value="">Assign to…</option>
-              <For each={SLOTS}>{(s) => <option value={s.id}>{s.label}</option>}</For>
-            </select>
-          </Box>
-        }
-      >
-        {(slot) => <SlotPreview slot={slot} />}
-      </Show>
-    </div>
   );
 }
