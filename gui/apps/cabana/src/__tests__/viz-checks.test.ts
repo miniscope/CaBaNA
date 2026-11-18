@@ -20,9 +20,9 @@ describe('viz checks row', () => {
     expect(inputsParts([])[0].tone).toBe('muted');
   });
 
-  it('lists flagged cells, overlapping pairs and rejected cells', () => {
+  it('lists flagged cells and overlapping pairs; rejected cells are left to Changes', () => {
     expect(partsText(cellsParts({ flagged: 7, pairs: 1, rejected: 2, failed: 0 }))).toBe(
-      '7 flagged · 1 overlapping pair · 2 rejected',
+      '7 flagged · 1 overlap',
     );
     expect(cellsParts({ flagged: 0, pairs: 0, rejected: 0, failed: 0 })).toEqual([
       { text: 'none flagged', tone: 'ok' },

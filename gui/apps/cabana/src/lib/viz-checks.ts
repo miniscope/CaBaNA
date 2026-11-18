@@ -36,7 +36,7 @@ export function inputsParts(checks: { status: Status }[] | undefined): Part[] {
   return parts;
 }
 
-/** Cells flagged for review, overlapping footprint pairs, and cells the user rejected. */
+/** Cells flagged for review and overlapping footprint pairs. Rejected cells are listed in Changes. */
 export function cellsParts(
   f: { flagged: number; pairs: number; rejected: number; failed: number } | undefined,
 ): Part[] {
@@ -44,9 +44,7 @@ export function cellsParts(
   const parts: Part[] = [];
   if (f.failed) parts.push({ text: `${f.failed} failed`, tone: 'fail' });
   if (f.flagged) parts.push({ text: `${f.flagged} flagged`, tone: 'flag' });
-  if (f.pairs)
-    parts.push({ text: n(f.pairs, 'overlapping pair', 'overlapping pairs'), tone: 'flag' });
-  if (f.rejected) parts.push({ text: `${f.rejected} rejected`, tone: 'ok' });
+  if (f.pairs) parts.push({ text: n(f.pairs, 'overlap', 'overlaps'), tone: 'flag' });
   return parts.length ? parts : [{ text: 'none flagged', tone: 'ok' }];
 }
 
