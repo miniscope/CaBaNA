@@ -17,6 +17,8 @@ export function Modal(props: {
   /** Under the title row, across the window. */
   bar?: JSX.Element;
   onClose: () => void;
+  /** A drawer along the right edge instead of a window in the middle. */
+  side?: boolean;
   /** Files dropped anywhere on the window. */
   onDropFiles?: (files: File[]) => void;
   children: JSX.Element;
@@ -56,10 +58,15 @@ export function Modal(props: {
   });
   return (
     <Portal>
-      <div class="cb-modal-bg" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <div
+        class="cb-modal-bg"
+        classList={{ 'cb-modal-bg--side': props.side }}
+        onClick={(e) => e.target === e.currentTarget && props.onClose()}
+      >
         <div
           ref={box}
           class="cb-modal"
+          classList={{ 'cb-modal--side': props.side }}
           role="dialog"
           aria-modal="true"
           aria-label={props.label}

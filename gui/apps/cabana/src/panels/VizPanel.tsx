@@ -15,6 +15,7 @@ import { FootprintViewer } from './FootprintViewer.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PlotCard } from './QcParts.tsx';
 import { ChecksRow, InputsPop, PARTS, Parts, REVIEW } from './VizChecks.tsx';
+import { ChangesDrawer } from './ChangesDrawer.tsx';
 import { EntryPopup } from './data-setup/EntryView.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { arena, pxPerCm } from '../lib/arena.ts';
@@ -349,6 +350,7 @@ export function VizPanel(): JSX.Element {
         {(a) => <InputsPop anchor={a()} onClose={() => setInputsAnchor()} />}
       </Show>
       <EntryPopup />
+      <ChangesDrawer />
     </div>
   );
 }

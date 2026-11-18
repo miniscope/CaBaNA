@@ -221,6 +221,19 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
+/* The same window as a drawer along the right edge (the Changes drawer). */
+.cb-modal-bg--side {
+  justify-content: flex-end;
+  align-items: stretch;
+  background: rgba(0, 0, 0, 0.2);
+}
+.cb-modal--side {
+  width: min(520px, 100vw);
+  height: 100vh;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
 .cb-modal__head {
   display: flex;
   align-items: center;

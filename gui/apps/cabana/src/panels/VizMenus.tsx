@@ -29,7 +29,7 @@ import {
 import { Popover } from './Popover.tsx';
 
 /** Small underlined tabs; nothing is drawn for a single tab. */
-function UTabs<T extends string>(props: {
+export function UTabs<T extends string>(props: {
   label: string;
   tabs: { id: T; label: string }[];
   value: T;

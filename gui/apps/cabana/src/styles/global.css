@@ -3170,6 +3170,10 @@ button[aria-expanded='true'] > .cb-help {
 .cb-vchip[aria-expanded='true'] {
   border-color: var(--ink);
 }
+/* Changes sits at the right end of the row, also when the row wraps. */
+.cb-vchip--end {
+  margin-left: auto;
+}
 .cb-vchip:disabled {
   cursor: default;
   color: var(--text-secondary);
@@ -3185,6 +3189,83 @@ button[aria-expanded='true'] > .cb-help {
 }
 .cb-vtone--muted {
   color: var(--text-secondary);
+}
+/* Changes drawer: entries with a kind tag in words, the originals line and the rerun banner. */
+.cb-chg__orig {
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 12.5px;
+}
+.cb-chg__group {
+  margin-top: 10px;
+}
+.cb-chg__group > .cb-muted {
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+.cb-chg__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cb-chg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.cb-chg__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cb-chg__meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.cb-chg__kind {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+.cb-chg__kind--correction {
+  color: var(--correction);
+  background: var(--correction-bg);
+}
+.cb-chg__kind--prep {
+  color: var(--prep);
+  background: var(--prep-bg);
+}
+.cb-chg__kind--flag {
+  color: var(--flag);
+  background: var(--flag-bg);
+}
+.cb-chg__rerun {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--flag);
+  border-radius: var(--radius-md);
+  background: var(--flag-bg);
+}
+.cb-chg__rerun-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-chg__rerun p,
+.cb-chg__foot {
+  margin: 6px 0 0;
+  font-size: 12.5px;
 }
 /* Display and Tracks pop-ups: underlined tabs, settings as name + control rows. */
 .cb-dpop__head {

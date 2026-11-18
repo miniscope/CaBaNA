@@ -24,6 +24,7 @@ import {
   type ChipId,
   type Part,
 } from '../lib/viz-checks.ts';
+import { changesOpen, changesSummary, setChangesOpen } from './ChangesDrawer.tsx';
 import { flaggedOf } from './BehaviorQcAnnotations.tsx';
 import { posOk, segments, timing } from './BehaviorQc.tsx';
 import { pickTest } from './data-setup/FileQc.tsx';
@@ -158,7 +159,38 @@ export function ChecksRow(props: {
           );
         }}
       </For>
+      <ChangesChip />
     </div>
+  );
+}
+
+/** Opens the Changes drawer: corrections and settings applied, and results that need a rerun. */
+function ChangesChip(): JSX.Element {
+  const parts = (): Part[] => {
+    const s = changesSummary();
+    return [
+      {
+        text: s.applied ? `${s.applied} applied` : 'none applied',
+        tone: s.applied ? 'ok' : 'muted',
+      },
+      ...(s.reruns
+        ? [{ text: `${s.reruns} need${s.reruns === 1 ? 's' : ''} rerun`, tone: 'flag' as const }]
+        : []),
+    ];
+  };
+  return (
+    <button
+      type="button"
+      class="cb-vchip cb-vchip--end"
+      aria-haspopup="dialog"
+      aria-expanded={changesOpen()}
+      title="Corrections and preprocessing applied in this session, and their history"
+      aria-label={`Changes: ${partsText(parts())}`}
+      onClick={() => setChangesOpen(!changesOpen())}
+    >
+      <span class="sc cb-vchip__k">Changes</span>
+      <Parts parts={parts()} />
+    </button>
   );
 }
 
