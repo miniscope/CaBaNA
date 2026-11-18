@@ -1,0 +1,291 @@
+/* Shared parts: Actions menu, close ×, modal footer and warning, pill, slider with number, save
+   indicator. Loaded after the other styles so the modal rules refine shell.css. */
+
+/* ---- Actions menu (components/ActionsMenu.tsx) ---- */
+.cb-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+}
+.cb-menu__panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  padding: 4px;
+}
+.cb-menu__panel--second {
+  position: absolute;
+  top: -5px;
+  left: 100%;
+  margin-left: 2px;
+  min-width: 210px;
+}
+.cb-menu__panel--second.cb-menu__panel--lt {
+  left: auto;
+  right: 100%;
+  margin: 0 2px 0 0;
+}
+.cb-menu__panel--second.cb-menu__panel--up {
+  top: auto;
+  bottom: -5px;
+}
+.cb-menu__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.6px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cb-menu__row:hover,
+.cb-menu__row:focus-visible,
+.cb-menu__row--open {
+  background: var(--chrome);
+  outline: none;
+}
+.cb-menu__row[aria-disabled='true'] {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.cb-menu__row--danger {
+  color: var(--error-text);
+}
+.cb-menu__sub {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.cb-menu__caret {
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.cb-menu__back {
+  color: var(--accent);
+}
+.cb-menu__sep {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 4px 0;
+}
+.cb-menu__header {
+  padding: 4px 10px 2px;
+  font: 10.5px var(--font-mono);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--text-secondary);
+}
+.cb-menu__mark {
+  display: inline-block;
+  width: 18px;
+}
+.cb-menu__row--option input {
+  margin: 0 8px 0 0;
+  pointer-events: none;
+}
+
+/* ---- Close × ---- */
+.cb-closex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: 300 24px/1 system-ui;
+  cursor: pointer;
+}
+.cb-closex:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+/* ---- Modal footer and close warning ---- */
+.cb-modal {
+  position: relative;
+}
+.cb-modal__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cb-modal__warn-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 20, 0.38);
+}
+.cb-modal__warn {
+  width: min(420px, 90%);
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+}
+.cb-modal__warn-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.cb-modal__warn p {
+  margin: 6px 0 14px;
+}
+.cb-modal__warn-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- Pill ---- */
+.cb-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border: 0;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cb-pill--button {
+  cursor: pointer;
+}
+.cb-pill--neutral {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.cb-pill--flag {
+  background: var(--flag-bg);
+  color: var(--flag);
+}
+.cb-pill--ok {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.cb-pill--prep {
+  background: var(--prep-bg);
+  color: var(--prep);
+}
+.cb-pill--corr {
+  background: var(--correction-bg);
+  color: var(--correction);
+}
+
+/* ---- Slider with number ---- */
+.cb-slidernum {
+  margin-bottom: 10px;
+}
+.cb-slidernum__label,
+.cb-slidernum__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.cb-slidernum__label b {
+  font-weight: 500;
+}
+.cb-slidernum__controls {
+  margin-top: 2px;
+}
+.cb-slidernum__controls input[type='range'] {
+  flex: 1;
+  accent-color: var(--text-primary);
+}
+.cb-slidernum__num {
+  box-sizing: border-box;
+  width: 64px;
+  height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font: 12.5px var(--font-mono);
+  text-align: right;
+}
+.cb-slidernum__unit {
+  min-width: 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.cb-slidernum__def {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+/* ---- Save indicator ---- */
+.cb-saved {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cb-saved--neutral,
+.cb-saved__text--neutral {
+  color: var(--text-secondary);
+}
+.cb-saved--flag,
+.cb-saved__text--flag {
+  color: var(--flag);
+}
+.cb-saved--accent,
+.cb-saved__text--accent {
+  color: var(--accent);
+}
+.cb-saved__title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.cb-saved__sub {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.cb-saved__dir {
+  margin-bottom: 8px;
+  font: 12px var(--font-mono);
+}
+.cb-saved__files {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  font-size: 12.5px;
+}
+.cb-saved__file {
+  font: 12px var(--font-mono);
+}
+.cb-saved__head {
+  margin-top: 10px;
+  font: 10.5px var(--font-mono);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--text-secondary);
+}
+.cb-saved__state {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+}
