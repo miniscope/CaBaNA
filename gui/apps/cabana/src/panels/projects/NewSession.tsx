@@ -1,18 +1,27 @@
 // New Project: pick a folder, files or an example dataset. The files are held in a list, with the
 // data type each will be matched as, and load only when the user continues to Data setup.
 
-import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, createSignal, For, onMount, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { nothingLoaded } from '../../lib/data-setup-view.ts';
-import { previewPlacements } from '../../lib/file-match.ts';
+import { placeFiles, previewPlacements } from '../../lib/file-match.ts';
 import {
+  defaultNameFromPaths,
   defaultProjectName,
   formatBytes,
   mergeHeld,
   pathOf,
   requiredNote,
 } from '../../lib/new-project.ts';
-import { SLOTS, type SlotId } from '../../lib/slots.ts';
+import {
+  createFromFiles,
+  library,
+  projectsOn,
+  refreshLibrary,
+  tidyPath,
+} from '../../lib/project-session.ts';
+import { chosenPaths, projects, type ScannedFile } from '../../lib/projects-client.ts';
+import { matchSlot, SLOTS, type SlotId } from '../../lib/slots.ts';
 import {
   addFiles,
   clearAll,
@@ -30,17 +39,27 @@ import { FolderButton } from './FolderButton.tsx';
 const [held, setHeld] = createSignal<File[]>([]);
 /** The example the list came from; its picture and video load with it. */
 const [example, setExample] = createSignal<{ id: string; frame?: File; video?: File }>();
+/** Files chosen through the engine's dialog (a project keeps them by path, so a path is needed). */
+const [scanned, setScanned] = createSignal<ScannedFile[]>([]);
+/** The folder to make the project in, when changed from the projects folder. */
+const [parentDir, setParentDir] = createSignal<string>();
 const [typedName, setTypedName] = createSignal<string>();
 const [loading, setLoading] = createSignal(false);
 const [problem, setProblem] = createSignal<string>();
 const [busy, setBusy] = createSignal(false);
 
 const exampleLabel = () => EXAMPLES.find((x) => x.id === example()?.id)?.label;
-const projectName = () => typedName() ?? exampleLabel() ?? defaultProjectName(held());
+const projectName = () =>
+  typedName() ??
+  exampleLabel() ??
+  (scanned().length
+    ? defaultNameFromPaths(scanned().map((f) => f.path))
+    : defaultProjectName(held()));
 const slotLabel = (id: SlotId) => SLOTS.find((s) => s.id === id)!.label;
 
 function clearList(): void {
   setHeld([]);
+  setScanned([]);
   setExample(undefined);
   setTypedName(undefined);
   setProblem(undefined);
@@ -48,6 +67,38 @@ function clearList(): void {
 
 /** Add picked files; picking after an example keeps the example's files and adds to them. */
 const addHeld = (files: File[]) => files.length && setHeld((h) => mergeHeld(h, files));
+
+/** Add files the engine scanned; a path chosen again replaces the earlier entry. */
+const addScanned = (files: ScannedFile[]) =>
+  files.length &&
+  setScanned((list) => [...list.filter((f) => !files.some((n) => n.path === f.path)), ...files]);
+
+/** Ask for a folder or files with the engine's dialog and list what they hold. */
+async function chooseWithDialog(kind: 'folder' | 'files'): Promise<void> {
+  setProblem(undefined);
+  try {
+    const paths = chosenPaths(
+      await projects.dialog(kind, {
+        title: kind === 'folder' ? 'Choose a session folder' : 'Choose data files',
+      }),
+    );
+    if (paths) addScanned((await projects.scan(paths)).files);
+  } catch (e) {
+    setProblem(e instanceof Error ? e.message : 'The file dialog could not be opened.');
+  }
+}
+
+/** Where the project folder goes: the projects folder unless another was chosen. */
+const saveParent = () => parentDir() ?? library()?.root;
+
+async function changeParent(): Promise<void> {
+  try {
+    const paths = chosenPaths(await projects.dialog('folder', { title: 'Save the project in' }));
+    if (paths) setParentDir(paths[0]);
+  } catch (e) {
+    setProblem(e instanceof Error ? e.message : 'The folder dialog could not be opened.');
+  }
+}
 
 async function chooseExample(id: string): Promise<void> {
   clearList();
@@ -68,6 +119,22 @@ async function chooseExample(id: string): Promise<void> {
 async function next(): Promise<void> {
   const name = projectName().trim();
   setBusy(true);
+  if (scanned().length) {
+    try {
+      await createFromFiles(
+        name || `Project ${new Date().toISOString().slice(0, 10)}`,
+        parentDir(),
+        scanned()
+          .map((f) => ({ path: f.path, slots: slotsOfScanned(f) }))
+          .filter((f) => f.slots.length),
+      );
+      clearList();
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : 'The project could not be created.');
+    }
+    setBusy(false);
+    return;
+  }
   const ex = example();
   if (ex) await loadFetchedExample(ex.id, { files: held(), frame: ex.frame, video: ex.video });
   else {
@@ -81,6 +148,12 @@ async function next(): Promise<void> {
   goToStep('data');
 }
 
+/** The data types a scanned file fills, by its name; a config.yaml goes to the config slot. */
+function slotsOfScanned(f: ScannedFile): SlotId[] {
+  if (/\.ya?ml$/i.test(f.name)) return matchSlot(f.name) === 'config' ? ['config'] : [];
+  return placeFiles([f], undefined, {})[0].slots;
+}
+
 /** The folder every held file was picked in, when there is one. */
 const rootFolder = () => {
   const roots = new Set(held().map((f) => pathOf(f).split('/')[0]));
@@ -92,12 +165,17 @@ function EmptyState(): JSX.Element {
   return (
     <div
       class="cb-np__drop"
-      onClick={(e) => !(e.target as HTMLElement).closest('.cb-np__actions') && picker.click()}
+      onClick={(e) =>
+        !(e.target as HTMLElement).closest('.cb-np__actions') &&
+        (projectsOn() ? void chooseWithDialog('files') : picker.click())
+      }
     >
       <p class="cb-np__droptitle">
         {loading()
           ? 'Loading the example files…'
-          : 'Drop a session folder or files here, or click to browse'}
+          : projectsOn()
+            ? 'Choose a session folder or files'
+            : 'Drop a session folder or files here, or click to browse'}
       </p>
       <p class="cb-muted cb-np__dropnote">
         Files are matched by name: timestamps, traces, footprints, position, annotations,
@@ -107,13 +185,31 @@ function EmptyState(): JSX.Element {
         <p class="cb-warn">{problem()}</p>
       </Show>
       <div class="cb-np__actions">
-        <FolderButton class="btn-primary" onFiles={addHeld}>
-          Choose folder
-        </FolderButton>
-        <label class="btn-secondary cb-file">
-          Choose files
-          <input type="file" hidden multiple onChange={(e) => addHeld(fileList(e))} />
-        </label>
+        <Show
+          when={projectsOn()}
+          fallback={
+            <>
+              <FolderButton class="btn-primary" onFiles={addHeld}>
+                Choose folder
+              </FolderButton>
+              <label class="btn-secondary cb-file">
+                Choose files
+                <input type="file" hidden multiple onChange={(e) => addHeld(fileList(e))} />
+              </label>
+            </>
+          }
+        >
+          <button type="button" class="btn-primary" onClick={() => void chooseWithDialog('folder')}>
+            Choose folder
+          </button>
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() => void chooseWithDialog('files')}
+          >
+            Choose files
+          </button>
+        </Show>
         <ExampleMenu />
       </div>
       <input ref={picker} type="file" hidden multiple onChange={(e) => addHeld(fileList(e))} />
@@ -136,30 +232,70 @@ function ExampleMenu(): JSX.Element {
   );
 }
 
+/** One line of the list, from a browser file or a file the engine scanned. */
+interface Row {
+  key: string;
+  name: string;
+  size: number;
+  slots: SlotId[];
+  remove: () => void;
+}
+
 function FileTable(): JSX.Element {
   const [placed] = createResource(held, previewPlacements);
-  const rows = () => placed() ?? held().map((file) => ({ file, slots: [] as SlotId[] }));
+  const rows = (): Row[] =>
+    scanned().length
+      ? scanned().map((f) => ({
+          key: f.path,
+          name: f.name,
+          size: f.size,
+          slots: slotsOfScanned(f),
+          remove: () => setScanned((l) => l.filter((x) => x !== f)),
+        }))
+      : (placed() ?? held().map((file) => ({ file, slots: [] as SlotId[] }))).map((r) => ({
+          key: pathOf(r.file),
+          name: pathOf(r.file).split('/').pop()!,
+          size: r.file.size,
+          slots: r.slots,
+          remove: () => setHeld((h) => h.filter((f) => f !== r.file)),
+        }));
+  const count = () => scanned().length || held().length;
   const matched = () => new Set(rows().flatMap((r) => r.slots));
   const used = () => rows().filter((r) => r.slots.length).length;
   const note = () => requiredNote(matched());
+  const heading = () =>
+    example()
+      ? `Example: ${exampleLabel()}`
+      : scanned().length
+        ? (scanned()[0].path.split('/').slice(-2, -1)[0] ?? `${count()} files selected`)
+        : (rootFolder() ?? `${count()} files selected`);
   return (
     <div class="cb-proj__card">
       <div class="cb-np__head">
         <div>
-          <div class="cb-np__folder">
-            {example()
-              ? `Example: ${exampleLabel()}`
-              : (rootFolder() ?? `${held().length} files selected`)}
-          </div>
+          <div class="cb-np__folder">{heading()}</div>
           <div class="cb-muted cb-np__meta">
-            {held().length} files · {formatBytes(held().reduce((n, f) => n + f.size, 0))} · {used()}{' '}
+            {count()} files · {formatBytes(rows().reduce((n, r) => n + r.size, 0))} · {used()}{' '}
             recognized
           </div>
         </div>
-        <label class="btn-secondary btn-small cb-file">
-          Add files
-          <input type="file" hidden multiple onChange={(e) => addHeld(fileList(e))} />
-        </label>
+        <Show
+          when={scanned().length}
+          fallback={
+            <label class="btn-secondary btn-small cb-file">
+              Add files
+              <input type="file" hidden multiple onChange={(e) => addHeld(fileList(e))} />
+            </label>
+          }
+        >
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            onClick={() => void chooseWithDialog('files')}
+          >
+            Add files
+          </button>
+        </Show>
         <button type="button" class="btn-secondary btn-small" onClick={clearList}>
           Clear all
         </button>
@@ -174,8 +310,33 @@ function FileTable(): JSX.Element {
       </label>
       <div class="cb-np__row">
         <span>Saved to</span>
-        <span class="cb-muted">Not saved: engine off · work is kept in this browser</span>
+        <Show
+          when={scanned().length}
+          fallback={
+            <span class="cb-muted">
+              {projectsOn()
+                ? 'Not saved: example data is not kept as a project'
+                : 'Not saved: engine off · work is kept in this browser'}
+            </span>
+          }
+        >
+          <span class="cb-np__where">
+            <span class="cb-np__path">
+              {tidyPath(saveParent() ?? '~/CaBaNA Projects')}/{projectName()}/
+            </span>
+            <button
+              type="button"
+              class="btn-secondary btn-small"
+              onClick={() => void changeParent()}
+            >
+              Change…
+            </button>
+          </span>
+        </Show>
       </div>
+      <Show when={problem()}>
+        <p class="cb-warn cb-np__problem">{problem()}</p>
+      </Show>
       <div class="cb-np__table">
         <table>
           <thead>
@@ -190,15 +351,15 @@ function FileTable(): JSX.Element {
             <For each={rows()}>
               {(r) => (
                 <tr classList={{ 'cb-np__unused': !r.slots.length }}>
-                  <td>{pathOf(r.file).split('/').pop()}</td>
+                  <td>{r.name}</td>
                   <td>{r.slots.length ? r.slots.map(slotLabel).join(', ') : 'not used'}</td>
-                  <td>{formatBytes(r.file.size)}</td>
+                  <td>{formatBytes(r.size)}</td>
                   <td>
                     <button
                       type="button"
                       class="cb-linkbtn"
-                      aria-label={`Remove ${r.file.name}`}
-                      onClick={() => setHeld((h) => h.filter((f) => f !== r.file))}
+                      aria-label={`Remove ${r.name}`}
+                      onClick={r.remove}
                     >
                       Remove
                     </button>
@@ -232,6 +393,8 @@ function FileTable(): JSX.Element {
 
 export function NewSession(): JSX.Element {
   const [over, setOver] = createSignal(false);
+  // The projects folder, for the "Saved to" line.
+  onMount(() => projectsOn() && !library() && void refreshLibrary());
   return (
     <div
       class="cb-proj"
@@ -243,7 +406,10 @@ export function NewSession(): JSX.Element {
       onDrop={(e) => {
         e.preventDefault();
         setOver(false);
-        addHeld(Array.from(e.dataTransfer?.files ?? []));
+        // A project keeps files by path; a dropped file has none, so it goes through the dialog.
+        if (projectsOn() && !example())
+          setProblem('Dropped files have no folder path. Use Choose folder or Choose files.');
+        else addHeld(Array.from(e.dataTransfer?.files ?? []));
       }}
       classList={{ 'cb-load--drag': over() }}
     >
@@ -255,14 +421,14 @@ export function NewSession(): JSX.Element {
           </p>
         </div>
       </div>
-      <Show when={held().length} fallback={<EmptyState />}>
+      <Show when={held().length || scanned().length} fallback={<EmptyState />}>
         <FileTable />
       </Show>
       <div class="cb-proj__foot">
         <button
           type="button"
           class="btn-primary"
-          disabled={!held().length || busy()}
+          disabled={!(held().length || scanned().length) || busy()}
           onClick={() => void next()}
         >
           {busy() ? 'Loading…' : 'Next: Data setup'}
