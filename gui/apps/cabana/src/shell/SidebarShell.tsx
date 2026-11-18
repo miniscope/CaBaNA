@@ -7,9 +7,13 @@ import { analysisSummary } from '../lib/analysis-list.ts';
 import { ITEM_LABEL, statusDetail, type ItemId } from '../lib/readiness.ts';
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
-import { entry, nothingLoaded } from '../lib/data-setup-view.ts';
-import { goToStep, stepId } from '../lib/store.ts';
+import { nothingLoaded } from '../lib/data-setup-view.ts';
+import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { AnalyzeOverview } from '../panels/AnalyzeOverview.tsx';
+import { About } from '../panels/projects/About.tsx';
+import { NewSession } from '../panels/projects/NewSession.tsx';
+import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
+import { Welcome } from '../panels/projects/Welcome.tsx';
 import type { Step } from './types.ts';
 
 const FOLD_KEY = 'cabana-sidebar-folded';
@@ -40,25 +44,30 @@ function SideItem(props: {
   /** Status words for a row that is not one item (the Analysis page). */
   statusText?: string;
   on: boolean;
+  /** Greyed and not clickable, with the reason as its status line. */
+  disabled?: string;
   onClick: () => void;
 }): JSX.Element {
   const st = () =>
-    props.item
-      ? statusOfItem(props.item)
-      : props.statusText
-        ? { text: props.statusText, detail: props.statusText }
-        : undefined;
+    props.disabled
+      ? { text: props.disabled, detail: props.disabled }
+      : props.item
+        ? statusOfItem(props.item)
+        : props.statusText
+          ? { text: props.statusText, detail: props.statusText }
+          : undefined;
   return (
-    <div class="cb-side" classList={{ 'cb-side--on': props.on }}>
+    <div class="cb-side" classList={{ 'cb-side--on': props.on, 'cb-side--off': !!props.disabled }}>
       <button
         type="button"
         class="cb-side__go"
+        aria-disabled={props.disabled ? 'true' : undefined}
         aria-label={st() ? `${props.label}: ${st()!.text}` : props.label}
         aria-current={props.on ? 'page' : undefined}
         title={
           folded() ? props.label : props.item ? statusDetail(statusOfItem(props.item)) : st()?.text
         }
-        onClick={() => props.onClick()}
+        onClick={() => !props.disabled && props.onClick()}
       >
         <span class="cb-side__name">{short(props.label)}</span>
         <Show when={st() && !folded()}>
@@ -69,6 +78,76 @@ function SideItem(props: {
   );
 }
 
+const PAGES = [
+  { id: 'new', label: '+ New Project', short: '+' },
+  { id: 'library', label: 'Project Library', short: 'L' },
+];
+
+/**
+ * The first sidebar row. On a project page it is highlighted with its menu open; inside a session
+ * it is collapsed and a click toggles the menu.
+ */
+function ProjectsRow(): JSX.Element {
+  const [menu, setMenu] = createSignal(false);
+  const onPage = () => isProjectPage(stepId());
+  const shown = () => onPage() || menu();
+  const status = () => (nothingLoaded() ? 'No project open' : sessionName() || 'Open session');
+  return (
+    <>
+      <div class="cb-side cb-side--proj" classList={{ 'cb-side--on': onPage() }}>
+        <button
+          type="button"
+          class="cb-side__go"
+          aria-expanded={shown()}
+          aria-label={`Projects: ${status()}`}
+          title={folded() ? 'Projects' : undefined}
+          onClick={() => !onPage() && setMenu(!menu())}
+        >
+          <span class="cb-side__name">
+            {short('Projects')}
+            <Show when={!folded()}>
+              <span class="cb-side__caret" aria-hidden="true">
+                {shown() ? '▾' : '▸'}
+              </span>
+            </Show>
+          </span>
+          <Show when={!folded()}>
+            <span class="cb-side__status">{status()}</span>
+          </Show>
+        </button>
+      </div>
+      <Show when={shown()}>
+        <div class="cb-side__menu" role="menu" aria-label="Projects">
+          <For each={PAGES}>
+            {(p) => (
+              <button
+                type="button"
+                role="menuitem"
+                classList={{ 'cb-side__menu--on': stepId() === p.id }}
+                title={folded() ? p.label : undefined}
+                onClick={() => {
+                  setMenu(false);
+                  goToStep(p.id);
+                }}
+              >
+                {folded() ? p.short : p.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+      <div class="cb-side__rule" />
+    </>
+  );
+}
+
+const PROJECT_PANELS: Record<string, Component> = {
+  welcome: Welcome,
+  new: NewSession,
+  library: ProjectLibrary,
+  about: About,
+};
+
 /** The Next button and the optional pages, in the bottom action area of every page but Results. */
 function Footer(): JSX.Element {
   const here = () => currentItem(stepId(), analysisId());
@@ -77,7 +156,7 @@ function Footer(): JSX.Element {
   const optionalHint = () =>
     stepId() === 'data' && next().item !== 'viz' && statusOfItem('viz').kind !== 'needs_input';
   return (
-    <Show when={stepId() !== 'results'}>
+    <Show when={stepId() !== 'results' && !isProjectPage(stepId())}>
       <div class="cb-foot">
         <span class="cb-foot__hint cb-muted">
           <Show
@@ -111,14 +190,16 @@ function Footer(): JSX.Element {
 export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   startResultIndex();
   const panel = (): Component | undefined =>
-    stepId() === 'analyze_overview'
+    PROJECT_PANELS[stepId()] ??
+    (stepId() === 'analyze_overview'
       ? AnalyzeOverview
-      : (props.steps.find((s) => s.id === stepId()) ?? props.steps[0]).panel;
-  // The Project library is a start screen of its own: no sidebar, no Next.
-  const library = () => stepId() === 'data' && nothingLoaded() && entry() === 'start';
+      : (props.steps.find((s) => s.id === stepId()) ?? props.steps[0]).panel);
+  // Steps are greyed while a project page is open with nothing loaded; with a session open they
+  // stay reachable, and so does the page the user is on if its files were all removed.
+  const locked = () => nothingLoaded() && isProjectPage(stepId());
   return (
     <DashboardShell header={<Header />}>
-      <div class="cb-app" classList={{ 'cb-app--folded': folded(), 'cb-app--library': library() }}>
+      <div class="cb-app" classList={{ 'cb-app--folded': folded() }}>
         <nav class="cb-sidebar" aria-label="Steps">
           <div class="cb-side__top">
             <button
@@ -132,6 +213,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
               {folded() ? 'Expand' : 'Collapse'}
             </button>
           </div>
+          <ProjectsRow />
           <For each={props.steps}>
             {(s) => (
               <SideItem
@@ -142,6 +224,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
                     ? analysisSummary(ANALYSES.map((a) => statusOfItem(a.id)))
                     : undefined
                 }
+                disabled={locked() ? 'Open a project first' : undefined}
                 on={s.id === stepId() || (s.id === 'analyze' && stepId() === 'analyze_overview')}
                 onClick={() => goToStep(s.id)}
               />
@@ -150,9 +233,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
         </nav>
         <div class="cb-side-main">
           <div class="cb-body">{panel()?.({})}</div>
-          <Show when={!library()}>
-            <Footer />
-          </Show>
+          <Footer />
         </div>
       </div>
     </DashboardShell>
