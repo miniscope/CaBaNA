@@ -23,6 +23,7 @@ import './styles/results-hub.css';
 import './styles/experimental-setup.css';
 import './styles/data-setup.css';
 import './styles/parts.css';
+import './styles/projects.css';
 
 // Per-app localStorage key for tutorial progress. Bump the suffix when a
 // tutorial change should reset everyone's progress.
@@ -44,14 +45,13 @@ void Promise.all([
 
 // Dev only: load an example on start so a restart doesn't need the Load step.
 // ?example=<id> picks one (default simulated_3chamber), ?example=none skips it,
-// ?step=analyze opens that step.
+// ?step=analyze opens that step (default: Data setup).
 if (import.meta.env.DEV) {
   const q = new URLSearchParams(location.search);
   const id = q.get('example') ?? 'simulated_3chamber';
   if (id !== 'none')
     void import('./lib/store.ts').then(async (s) => {
       await s.loadExample(id);
-      const step = q.get('step');
-      if (step) s.goToStep(step);
+      s.goToStep(q.get('step') ?? 'data');
     });
 }

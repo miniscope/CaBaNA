@@ -32,3 +32,33 @@ describe('recent sessions', () => {
     expect(list[2].task).toBeUndefined();
   });
 });
+
+describe('project pages and renaming', () => {
+  it('knows which pages are not workflow steps', async () => {
+    const { isProjectPage } = await import('../lib/store.ts');
+    for (const id of ['welcome', 'new', 'library', 'about']) expect(isProjectPage(id)).toBe(true);
+    for (const id of ['data', 'viz', 'analyze', 'results']) expect(isProjectPage(id)).toBe(false);
+  });
+
+  it('opens on Welcome and closing a session returns there', async () => {
+    const { closeSession, goToStep, stepId } = await import('../lib/store.ts');
+    expect(stepId()).toBe('welcome');
+    goToStep('data');
+    closeSession();
+    expect(stepId()).toBe('welcome');
+  });
+
+  it('keeps the saved settings under the new name', async () => {
+    // The list is read from the browser when the module loads, so it is seeded first.
+    localStorage.setItem(
+      'cabana.settings-by-dataset',
+      JSON.stringify([ds('old', at(1, 8)), ds('new', at(2, 8))]),
+    );
+    const { renameSaved, savedDatasets } = await import('../lib/settings-template.ts');
+    const { setSessionName } = await import('../lib/store.ts');
+    setSessionName('other');
+    renameSaved('old', 'new');
+    expect(savedDatasets().map((d) => d.name)).toEqual(['new']);
+    expect(savedDatasets()[0].savedAt).toBe(at(1, 8));
+  });
+});
