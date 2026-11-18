@@ -277,7 +277,7 @@ export function EntryPopup(): JSX.Element {
     return s && s.id !== 'config' && isLoaded(s.id) ? s : undefined;
   };
   return (
-    <Show when={popupOpen() && entry() !== 'start'}>
+    <Show when={popupOpen() && entry() !== 'start' && entry() !== 'config'}>
       <Modal
         label={title(entry(), slot())}
         title={title(entry(), slot())}
