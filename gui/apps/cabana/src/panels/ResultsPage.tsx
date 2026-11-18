@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onMount, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, onMount, onCleanup, Show, type JSX } from 'solid-js';
 import { PlotEditorEntry } from './results/PlotEditor.tsx';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { bridgeReady } from '../lib/bridge-status.ts';
@@ -17,10 +17,16 @@ import { AnalysisHistory } from './results/AnalysisHistory.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import type { Match } from './results/RunBanner.tsx';
 import { ResultsHub } from './results/ResultsHub.tsx';
+import { RunsView } from './results/RunsView.tsx';
 import { ResultsExplorer } from './results/ResultsExplorer.tsx';
 import { PREVIEW_TEXT } from '../lib/preview.ts';
 
-type Tab = 'explore' | 'history';
+type Tab = 'runs' | 'cards' | 'history';
+const TABS: [Tab, string][] = [
+  ['runs', 'Saved runs'],
+  ['cards', 'Analysis cards'],
+  ['history', 'Analysis history'],
+];
 
 /**
  * Results: the Hub (a card per analysis, and the history of every run) and, once a card or a run
@@ -28,7 +34,7 @@ type Tab = 'explore' | 'history';
  */
 export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Element {
   let root!: HTMLDivElement;
-  const [tab, setTab] = createSignal<Tab>('explore');
+  const [tab, setTab] = createSignal<Tab>('runs');
   const [matches, setMatches] = createSignal<Partial<Record<AnalysisId, Match>>>({});
 
   onMount(() => onCleanup(fitToWindow(root)));
@@ -69,6 +75,12 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
       ? matches()[card.analysis]
       : undefined;
 
+  // The table's status: only the run the comparison was made against has a match.
+  const matchOfRun = (r: RunRecord) =>
+    runOutcome(r.analysis as AnalysisId).result?.run_id === r.run_id
+      ? matches()[r.analysis as AnalysisId]
+      : undefined;
+
   const afterDelete = (r: RunRecord) => {
     const id = r.analysis as AnalysisId;
     if (openedRun(id) === r.run_id) openRunOf(id, undefined);
@@ -93,38 +105,36 @@ export function ResultsPage(props: { plotEditor?: JSX.Element } = {}): JSX.Eleme
                 <h2>Results</h2>
                 <InfoTip label="About saved results">
                   <p>
-                    Each card counts the saved runs of one analysis and opens its latest result in
-                    the Explorer. Opening a result never changes the current settings.
+                    Every saved run, with the settings and data version that produced it. Opening a
+                    result never changes the current settings.
                   </p>
                   <p>
-                    Preliminary means a Quick preview: {PREVIEW_TEXT}. Each result shows the count
-                    it ran. Settings changed means the setup differs from the one the result was
-                    made with. They are independent.
+                    Current means the run matches the settings and inputs now. Needs rerun means
+                    they changed since. Preliminary means a Quick preview: {PREVIEW_TEXT}. Each
+                    result shows the count it ran.
                   </p>
                 </InfoTip>
               </div>
               <div class="cb-seg" role="tablist" aria-label="Results views">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab() === 'explore'}
-                  classList={{ 'cb-seg__on': tab() === 'explore' }}
-                  onClick={() => setTab('explore')}
-                >
-                  Explore results
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab() === 'history'}
-                  classList={{ 'cb-seg__on': tab() === 'history' }}
-                  onClick={() => setTab('history')}
-                >
-                  Analysis history
-                </button>
+                <For each={TABS}>
+                  {([id, label]) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={tab() === id}
+                      classList={{ 'cb-seg__on': tab() === id }}
+                      onClick={() => setTab(id)}
+                    >
+                      {label}
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
-            <Show when={tab() === 'explore'}>
+            <Show when={tab() === 'runs' && !empty()}>
+              <RunsView records={records()} matchOf={matchOfRun} onDeleted={afterDelete} />
+            </Show>
+            <Show when={tab() === 'cards' || (tab() === 'runs' && empty())}>
               <Show when={empty()}>
                 <p class="cb-res__empty" role="status">
                   No results yet. Set up and run an analysis.{' '}
