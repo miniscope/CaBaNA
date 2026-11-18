@@ -14,6 +14,7 @@ import {
 } from './bridge-client.ts';
 import { bridgeState, hasCapability } from './bridge-status.ts';
 import { HashedSettings, SETTINGS_VERSION, settingsDiff, settingsHash } from './settings-hash.ts';
+import { saveNow } from './autosave.ts';
 import { configFileKeys, uploadSession } from './spec/session.ts';
 import type { BuiltSpec } from './spec/population.ts';
 import { buildSessionConfig } from './session-config.ts';
@@ -164,6 +165,8 @@ export async function runAnalysis(
   try {
     const run = build(scope);
     if (run.spec.problems.length) throw new BridgeError(run.spec.problems.join(' '), 0);
+    // With a project open its files are written first, so the run's frozen copies are current.
+    await saveNow();
     const uploaded = await uploadSession();
     if (uploaded.problems.length) throw new BridgeError(uploaded.problems.join(' '), 0);
     setActive({ id, phase: 'validating', fraction: 0, message: 'Checking the pipeline' });

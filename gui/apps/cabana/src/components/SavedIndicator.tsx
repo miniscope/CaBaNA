@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { Popover } from '../panels/Popover.tsx';
-import { clockText, SAVE_STATES, saveStatus, saveText } from '../lib/save-status.ts';
+import { clockText, SAVE_STATES, saveNote, saveStatus, saveText } from '../lib/save-status.ts';
 
 /** The save state as a short line in the header; click for what was saved, when and where. */
 export function SavedIndicator(): JSX.Element {
@@ -26,6 +26,9 @@ export function SavedIndicator(): JSX.Element {
       <Show when={open() && anchor()}>
         <Popover anchor={anchor()!} width={430} label="Save status" onClose={() => setOpen(false)}>
           <div class="cb-saved__title">{line().text}</div>
+          <Show when={saveNote(saveStatus())}>
+            {(note) => <div class="cb-saved__sub">{note()}</div>}
+          </Show>
           <Show when={saved()}>
             {(s) => (
               <>

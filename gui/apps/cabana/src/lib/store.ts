@@ -262,6 +262,12 @@ export function rejectCells(cells: number[], reason?: string): void {
     added.map((c) => `cell:${c}`),
   );
 }
+/** Put back the cells a saved project had rejected, without logging a change. */
+export function restoreRejected(cells: number[], reasons: Record<number, string> = {}): void {
+  setRejected(new Set(cells));
+  setRejectReasons(reasons);
+  setPending(new Set<number>());
+}
 export function restoreCell(c: number): void {
   if (rejected().has(c))
     logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`, [`cell:${c}`]);

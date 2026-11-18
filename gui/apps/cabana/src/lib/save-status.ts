@@ -11,6 +11,10 @@ export type SaveStatus =
   | { kind: 'saved'; at: Date; dir: string; files: SavedFile[] }
   | { kind: 'saving' }
   | { kind: 'engine-off' }
+  /** The engine is on but no project is open (an example, or files not saved to a project yet). */
+  | { kind: 'no-project' }
+  /** The engine refused a write. */
+  | { kind: 'error'; message: string }
   /** Manual saving mode with edits not yet written. */
   | { kind: 'unsaved' };
 
@@ -32,9 +36,21 @@ export function saveText(status: SaveStatus): { text: string; tone: SaveTone } {
       return { text: 'Saving…', tone: 'neutral' };
     case 'engine-off':
       return { text: 'Not saved: engine off', tone: 'flag' };
+    case 'no-project':
+      return { text: 'Not saved: no project open', tone: 'flag' };
+    case 'error':
+      return { text: 'Not saved: engine error', tone: 'flag' };
     case 'unsaved':
       return { text: 'Unsaved changes · Save project', tone: 'accent' };
   }
+}
+
+/** More than the indicator's words, for the readings that are not in the list below. */
+export function saveNote(status: SaveStatus): string | undefined {
+  if (status.kind === 'no-project')
+    return 'Example data and files loaded without a project are not saved. Create a project with + New Project.';
+  if (status.kind === 'error') return status.message;
+  return undefined;
 }
 
 /** The four readings of the indicator, explained in its popover. */
