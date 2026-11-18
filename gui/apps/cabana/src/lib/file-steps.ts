@@ -23,19 +23,17 @@ export const STEP_TEXT: Record<SectionId, StepText> = {
   },
   arena: {
     short: 'Set arena size and zones',
-    intro: 'Outline the arena, set its real size, and draw zones. Saved to the experiment config.',
+    intro: "Outline the arena, set its real size, and draw zones. Saved to the experiment config.",
     more: "Spatial analyses stay blocked until the arena's real size or a known distance is set. Zones become the zone epochs the analyses use; the time in each zone updates as zones are drawn or moved.",
   },
   qc: {
     short: 'Check data quality',
-    intro:
-      'Computed checks for this file, each against its limit. Passing a check and reviewing it are separate.',
+    intro: 'Computed checks for this file, each against its limit. Passing a check and reviewing it are separate.',
     more: 'A failed check does not block analysis; it stays listed here so it can be reviewed or corrected. Selecting a flagged item highlights the frames or cells involved. Limits can be changed under Limits.',
   },
   prep: {
     short: 'Process before analysis',
-    intro:
-      'Optional steps applied to this file before every analysis. Previews update as settings change; there is nothing to apply.',
+    intro: 'Optional steps applied to this file before every analysis. Previews update as settings change; there is nothing to apply.',
     more: 'Each step lists the analyses that use it. Runs keep the settings they used, so results made before a change are marked out of date.',
   },
 };
@@ -83,8 +81,6 @@ export function stepState(f: StepFacts): { state: StepState; text: string } {
     case 'prep':
       if (f.role === 'reference') return { state: 'unused', text: 'Not used for reference data' };
       if (f.skipped) return { state: 'skipped', text: 'Skipped' };
-      return f.visited
-        ? { state: 'viewed', text: 'Viewed' }
-        : { state: 'todo', text: 'Not opened' };
+      return f.visited ? { state: 'viewed', text: 'Viewed' } : { state: 'todo', text: 'Not opened' };
   }
 }

@@ -8,7 +8,11 @@ import {
   type WorkerPool,
 } from '@calab/compute';
 import type { AurocInput, AurocMinShift, AurocResult } from './auroc.ts';
-import type { AurocWorkerInbound, AurocWorkerOutbound, ShiftDraw } from '../workers/auroc-types.ts';
+import type {
+  AurocWorkerInbound,
+  AurocWorkerOutbound,
+  ShiftDraw,
+} from '../workers/auroc-types.ts';
 
 type Fields<T> = T extends { type: string; jobId: number } ? Omit<T, 'type' | 'jobId'> : never;
 export type AurocPoolJob = BaseJob &
@@ -46,9 +50,7 @@ const router: MessageRouter<AurocPoolJob, AurocWorkerOutbound> = {
     };
     const { kind, jobId, input: _in, ...rest } = job as Record<string, unknown> & typeof job;
     // Callbacks stay on this side; only data goes to the worker.
-    const data = Object.fromEntries(
-      Object.entries(rest).filter(([, v]) => typeof v !== 'function'),
-    );
+    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => typeof v !== 'function'));
     const msg = { ...data, type: `${kind}-job`, jobId, input };
     return [msg, [input.neural.buffer, input.behaviors.buffer, input.mask.buffer]];
   },

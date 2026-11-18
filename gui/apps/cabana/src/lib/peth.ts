@@ -202,12 +202,7 @@ interface Weights {
  * on frames (windows that overlap add up). null when there are fewer than `minEvents` onsets.
  * Sparse here, where the framework keeps one dense column per behavior.
  */
-function onsetWeights(
-  onsets: Int32Array,
-  p: PethParams,
-  g: PethGeometry,
-  n: number,
-): Weights | null {
+function onsetWeights(onsets: Int32Array, p: PethParams, g: PethGeometry, n: number): Weights | null {
   if (onsets.length < p.minEvents) return null;
   const dense = new Float64Array(n);
   const hit: number[] = [];
@@ -301,7 +296,7 @@ function erfc(x: number): number {
       term *= (2 * x * x) / (2 * k + 1);
       sum += term;
     }
-    return 1 - (2 / Math.sqrt(Math.PI)) * Math.exp(-x * x) * sum;
+    return 1 - ((2 / Math.sqrt(Math.PI)) * Math.exp(-x * x) * sum);
   }
   let t = x;
   for (let k = 300; k >= 1; k--) t = x + k / 2 / t;
@@ -347,7 +342,7 @@ export function wilcoxonSignedRank(d: ArrayLike<number>): number {
   const order = nz.map((_, i) => i).sort((a, b) => Math.abs(nz[a]) - Math.abs(nz[b]));
   const rank2 = new Array<number>(m);
   let tieTerm = 0;
-  for (let i = 0; i < m;) {
+  for (let i = 0; i < m; ) {
     let j = i;
     while (j + 1 < m && Math.abs(nz[order[j + 1]]) === Math.abs(nz[order[i]])) j++;
     for (let k = i; k <= j; k++) rank2[order[k]] = i + j + 2; // 2 * mean of ranks i+1 .. j+1
@@ -654,8 +649,7 @@ export function analyzePeth(
   const pAdj = new Float64Array(observed.length);
   for (let c = 0; c < m.cells; c++) {
     const draws = shiftedPethCell(m, c, onsets, p, shifts);
-    const column = (b: number) =>
-      Float64Array.from({ length: shifts.length }, (_, i) => draws[i * nb + b]);
+    const column = (b: number) => Float64Array.from({ length: shifts.length }, (_, i) => draws[i * nb + b]);
     for (let b = 0; b < nb; b++) pRaw[c * nb + b] = pTwoSided(observed[c * nb + b], column(b));
     const sl = (a: Float64Array) => a.subarray(c * nb, (c + 1) * nb);
     if (correction !== 'max_stat') pAdj.set(sl(pRaw), c * nb);
@@ -666,12 +660,7 @@ export function analyzePeth(
           cols.length > 1
             ? maxStatAdjust(
                 sub ? cols.map((b) => observed[c * nb + b]) : sl(observed),
-                sub
-                  ? Float64Array.from(
-                      { length: shifts.length * cols.length },
-                      (_, k) => draws[Math.floor(k / cols.length) * nb + cols[k % cols.length]],
-                    )
-                  : draws,
+                sub ? Float64Array.from({ length: shifts.length * cols.length }, (_, k) => draws[Math.floor(k / cols.length) * nb + cols[k % cols.length]]) : draws,
                 sub ? cols.map((b) => pRaw[c * nb + b]) : sl(pRaw),
               )
             : [pRaw[c * nb + cols[0]]];

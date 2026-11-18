@@ -82,15 +82,7 @@ export function pethCurvesCsv(o: PethOutcome): string {
       const k = curveOf(o, c, b);
       k.mean.forEach((m, i) =>
         rows.push(
-          [
-            id + 1,
-            JSON.stringify(label),
-            o.curves.timeS[i],
-            v(m),
-            v(k.sem[i]),
-            v(k.lo?.[i] ?? NaN),
-            v(k.hi?.[i] ?? NaN),
-          ].join(','),
+          [id + 1, JSON.stringify(label), o.curves.timeS[i], v(m), v(k.sem[i]), v(k.lo?.[i] ?? NaN), v(k.hi?.[i] ?? NaN)].join(','),
         ),
       );
     }),
