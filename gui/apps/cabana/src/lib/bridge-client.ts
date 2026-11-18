@@ -179,6 +179,8 @@ async function call(
   return res;
 }
 const getJson = async <T>(path: string) => (await call('GET', path)).json() as Promise<T>;
+/** The raw request and the JSON GET, for the project calls in projects-client.ts. */
+export { call as bridgeCall, getJson as bridgeJson };
 
 /** SHA-256 of a file's bytes, hex. */
 export async function sha256(buffer: ArrayBuffer): Promise<string> {
