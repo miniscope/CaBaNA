@@ -6,7 +6,7 @@ import { rowReason } from './analyze-view.ts';
 import type { AnalysisItem, Status } from './readiness.ts';
 
 /** One line each, for the list; the longer text is in each analysis's own help. */
-const BRIEF: Record<AnalysisItem, string> = {
+export const BRIEF: Record<AnalysisItem, string> = {
   place: 'spatial tuning',
   auroc: 'behavior selectivity',
   peth: 'neural data around onsets',
