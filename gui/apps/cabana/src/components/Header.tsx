@@ -4,6 +4,7 @@ import pkg from '../../package.json';
 import {
   clearAll,
   deconvolved,
+  goToStep,
   experiment,
   experimentId,
   samplingRate,
@@ -13,6 +14,7 @@ import {
   traceMatrix,
 } from '../lib/store.ts';
 import { headerLine, type SessionFacts } from '../lib/header-line.ts';
+import { nothingLoaded } from '../lib/data-setup-view.ts';
 
 /** What is known about the open session; undefined while no neural data is loaded. */
 function facts(): SessionFacts | undefined {
@@ -29,6 +31,16 @@ function facts(): SessionFacts | undefined {
   };
 }
 
+/** Close the session, after asking, and go to the Project library. */
+function changeData(): void {
+  const ok = window.confirm(
+    'Close this session? Loaded files are cleared from this window; original files are not changed.',
+  );
+  if (!ok) return;
+  clearAll();
+  goToStep('data');
+}
+
 export function Header(): JSX.Element {
   return (
     <CompactHeader
@@ -36,8 +48,8 @@ export function Header(): JSX.Element {
       version={`CaLab v${pkg.version}`}
       info={<span class="cb-hd-line">{headerLine(facts())}</span>}
       actions={
-        <Show when={facts()}>
-          <button type="button" class="btn-secondary btn-small cb-hd-btn" onClick={clearAll}>
+        <Show when={!nothingLoaded()}>
+          <button type="button" class="btn-secondary btn-small cb-hd-btn" onClick={changeData}>
             Change data
           </button>
         </Show>

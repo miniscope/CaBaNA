@@ -188,3 +188,12 @@
   background: var(--chrome);
   padding: var(--space-md) 10px;
 }
+
+/* The Project library has no sidebar. */
+.cb-app.cb-app--library,
+.cb-app.cb-app--folded.cb-app--library {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cb-app--library .cb-sidebar {
+  display: none;
+}

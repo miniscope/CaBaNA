@@ -6,6 +6,7 @@ import { ANALYSES, analysisId, setAnalysisId } from '../lib/analyses.ts';
 import { ITEM_LABEL, statusDetail, type ItemId } from '../lib/readiness.ts';
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
+import { entry, nothingLoaded } from '../lib/data-setup-view.ts';
 import { goToStep, stepId } from '../lib/store.ts';
 import { AnalyzeOverview } from '../panels/AnalyzeOverview.tsx';
 import type { Step } from './types.ts';
@@ -104,9 +105,11 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
     stepId() === 'analyze_overview'
       ? AnalyzeOverview
       : (props.steps.find((s) => s.id === stepId()) ?? props.steps[0]).panel;
+  // The Project library is a start screen of its own: no sidebar, no Next.
+  const library = () => stepId() === 'data' && nothingLoaded() && entry() === 'start';
   return (
     <DashboardShell header={<Header />}>
-      <div class="cb-app" classList={{ 'cb-app--folded': folded() }}>
+      <div class="cb-app" classList={{ 'cb-app--folded': folded(), 'cb-app--library': library() }}>
         <nav class="cb-sidebar" aria-label="Steps">
           <div class="cb-side__top">
             <button
@@ -151,7 +154,9 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
         </nav>
         <div class="cb-side-main">
           <div class="cb-body">{panel()?.({})}</div>
-          <Footer />
+          <Show when={!library()}>
+            <Footer />
+          </Show>
         </div>
       </div>
     </DashboardShell>
