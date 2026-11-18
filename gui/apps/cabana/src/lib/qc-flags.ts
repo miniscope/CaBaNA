@@ -54,21 +54,50 @@ export function flagLines(
   };
 }
 
-/** Footprint flags: one per overlapping pair, then any other check that did not pass. */
+/** Flags that are a list of items (pairs, segments), then every other check that did not pass. */
+export function itemFlagLines(
+  items: { title: string; detail: string }[],
+  checks: Check[],
+): { flags: FlagLine[]; passed: string } {
+  const rest = flagLines([], checks);
+  return {
+    flags: [...items, ...rest.flags].map((x, i) => ({
+      n: i + 1,
+      title: x.title,
+      detail: x.detail,
+    })),
+    passed: rest.passed,
+  };
+}
+
+/** Footprint flags: one per overlapping pair. The overlap check itself is those pairs, so it is not repeated. */
 export function pairFlagLines(
   pairs: { a: number; b: number; note: string }[],
   checks: Check[],
 ): { flags: FlagLine[]; passed: string } {
-  const rest = flagLines(
-    [],
+  return itemFlagLines(
+    pairs.map((p) => ({ title: `Cells ${p.a + 1} and ${p.b + 1} overlap`, detail: p.note })),
     checks.filter((c) => c.id !== 'fp-overlap' || c.status === 'pass'),
   );
-  const items = [
-    ...pairs.map((p) => ({ title: `Cells ${p.a + 1} and ${p.b + 1} overlap`, detail: p.note })),
-    ...rest.flags,
-  ];
-  return {
-    flags: items.map((x, i) => ({ n: i + 1, title: x.title, detail: x.detail })),
-    passed: rest.passed,
-  };
+}
+
+export const clock = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+
+/** A position segment as a flag: "Jump at 2:14.3", "80 cm/s over 3 steps". */
+export function segmentLine(s: {
+  kind: 'jump' | 'lost';
+  start: number;
+  stop: number;
+  n: number;
+  peak?: number;
+}): { title: string; detail: string } {
+  return s.kind === 'jump'
+    ? {
+        title: `Jump at ${clock(s.start)}`,
+        detail: `${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${s.n} steps` : ''}`,
+      }
+    : {
+        title: `Lost for ${(s.stop - s.start).toFixed(1)} s at ${clock(s.start)}`,
+        detail: `${s.n} frames`,
+      };
 }

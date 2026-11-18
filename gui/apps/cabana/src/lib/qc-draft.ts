@@ -127,3 +127,100 @@ export function commitPrep(
 ): void {
   for (const k of modifiedKeys(applied, d, keys)) set(k, draftValue(applied, d, k));
 }
+
+// ---- Position jump choices (Position QC)
+
+export type JumpChoice = 'interpolate' | 'keep';
+
+/** Draft choice per jump (by its key); a key left out stays as applied. */
+export interface JumpDraft {
+  choices: Readonly<Record<string, JumpChoice | undefined>>;
+  /** Show the data with no corrections: every choice cleared. */
+  restoreOriginal: boolean;
+}
+
+export const startJumpDraft = (): JumpDraft => ({ choices: {}, restoreOriginal: false });
+
+export function jumpDraftChoice(
+  d: JumpDraft,
+  key: string,
+  applied: JumpChoice | undefined,
+): JumpChoice | undefined {
+  if (d.restoreOriginal) return undefined;
+  return key in d.choices ? d.choices[key] : applied;
+}
+
+/** Choosing while Restore original data is ticked starts from nothing chosen. */
+export function setJumpChoice(
+  d: JumpDraft,
+  keys: string[],
+  key: string,
+  choice: JumpChoice | undefined,
+): JumpDraft {
+  const base = d.restoreOriginal ? Object.fromEntries(keys.map((k) => [k, undefined])) : d.choices;
+  return { choices: { ...base, [key]: choice }, restoreOriginal: false };
+}
+
+/** The jumps whose draft choice differs from the applied one. */
+export function jumpChanges(
+  d: JumpDraft,
+  jumps: { key: string; applied: JumpChoice | undefined }[],
+): { key: string; to: JumpChoice | undefined }[] {
+  return jumps.flatMap((j) => {
+    const to = jumpDraftChoice(d, j.key, j.applied);
+    return to === j.applied ? [] : [{ key: j.key, to }];
+  });
+}
+
+// ---- Annotation fixes (Behavior QC)
+
+export interface AnnotationDraft {
+  mergeGapS: number;
+  minBoutS: number;
+  merge: boolean;
+  drop: boolean;
+  /** Show the annotations as loaded: fixes applied earlier are undone on Apply. */
+  restoreOriginal: boolean;
+}
+
+export const startAnnotationDraft = (limits: {
+  mergeGapS: number;
+  minBoutS: number;
+}): AnnotationDraft => ({ ...limits, merge: false, drop: false, restoreOriginal: false });
+
+type FixCounts = { merge: number; drop: number };
+
+/** What Apply changes does, in order: undo the earlier fixes (Restore original data), then each ticked fix that would change something. */
+export function annotationPlan(
+  d: AnnotationDraft,
+  counts: FixCounts,
+  hasEarlierFixes: boolean,
+): { undo: boolean; fixes: { kind: 'merge' | 'drop'; limit: number }[] } {
+  return {
+    undo: d.restoreOriginal && hasEarlierFixes,
+    fixes: [
+      ...(d.merge && counts.merge > 0 ? [{ kind: 'merge' as const, limit: d.mergeGapS }] : []),
+      ...(d.drop && counts.drop > 0 ? [{ kind: 'drop' as const, limit: d.minBoutS }] : []),
+    ],
+  };
+}
+
+export function pendingAnnotations(
+  d: AnnotationDraft,
+  counts: FixCounts,
+  hasEarlierFixes: boolean,
+): number {
+  const plan = annotationPlan(d, counts, hasEarlierFixes);
+  return plan.fixes.length + (plan.undo ? 1 : 0);
+}
+
+/** Put imported values into the draft; the other settings keep what the draft shows now. */
+export function importPrepValues(
+  applied: PrepValues,
+  d: PrepDraft,
+  keys: readonly PrepKey[],
+  values: Partial<PrepValues>,
+): PrepDraft {
+  const now = Object.fromEntries(keys.map((k) => [k, draftValue(applied, d, k)]));
+  return { values: { ...now, ...values }, resetToDefaults: false };
+}
