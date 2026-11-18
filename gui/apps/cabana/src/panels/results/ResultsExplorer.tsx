@@ -30,7 +30,7 @@ import { RunBadges, type Match } from './RunBanner.tsx';
 type Section = 'overview' | 'plots' | 'tables' | 'statistics' | 'summary' | 'export';
 
 /** Show one plot of a run on its analysis page. Opening never changes a setting. */
-function openPlot(record: RunRecord, plot: PlotEntry): void {
+export function openPlot(record: RunRecord, plot: PlotEntry): void {
   const analysis = record.analysis as AnalysisId;
   requestPlot(analysis, plot.view);
   if (analysis === 'population') {
@@ -51,7 +51,7 @@ const Row = (p: { k: string; children: JSX.Element }) => (
   </tr>
 );
 
-function OverviewPane(props: {
+export function OverviewPane(props: {
   record: RunRecord;
   data?: ExplorerData;
   match?: Match;
