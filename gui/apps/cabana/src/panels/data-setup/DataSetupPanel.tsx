@@ -1,5 +1,7 @@
 // Data setup: load the files, then open each one to look at it, check it and set what applies to
 // it alone. Files are matched to data types by name; dropping anywhere on the page adds them.
+// The page lists one row per data type (SetupRows.tsx); a row's View opens the file in a pop-up.
+// With nothing loaded the page is the Project library.
 
 import { createEffect, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import {
@@ -32,46 +34,41 @@ import { ApplySettings, ExamplePicker, fileList } from '../LoadPanel.tsx';
 import { fitToWindow } from '../QcPanel.tsx';
 import { StatusIcon } from '../QcParts.tsx';
 import { EntryPopup } from './EntryView.tsx';
-import { FileList } from './FileList.tsx';
 import { ProjectLibrary } from './ProjectLibrary.tsx';
+import { SetupRows } from './SetupRows.tsx';
 
 const loadedIds = () =>
   SLOTS.filter((s) => loaded[s.id]?.summary && loaded[s.id]!.size).map((s) => s.id);
 
-/** Files loaded and reviewed, required files missing, and files with no data type. */
+/** One line in small caps: files loaded and reviewed, required files missing, originals unchanged. */
 function Status(): JSX.Element {
   const n = () => loadedIds().length;
   const done = () => loadedIds().filter((id) => reviewed(id)).length;
   return (
-    <div class="cb-ds-status" role="status">
+    <div class="cb-ds-strip sc" role="status">
       <span>
-        <Show when={n()} fallback={<span class="cb-muted">No files loaded</span>}>
-          {n()} {n() === 1 ? 'file' : 'files'} loaded{' '}
-          <span class="cb-muted">
-            · {done()} of {n()} reviewed
-          </span>
-        </Show>
+        {n()} {n() === 1 ? 'file' : 'files'} loaded
       </span>
-      <span>
-        <Show
-          when={missingRequired().length}
-          fallback={<span class="cb-muted">No required files missing</span>}
-        >
-          <span class="cb-warn">
-            Required, not loaded:{' '}
-            {missingRequired()
-              .map((s) => s.label)
-              .join(', ')}
-          </span>
-        </Show>
-        <Show when={unrecognized().length}>
-          {' · '}
-          <button class="cb-linkbtn" onClick={() => openEntry(`file:${unrecognized()[0].name}`)}>
-            {unrecognized().length} {unrecognized().length === 1 ? 'file has' : 'files have'} no
-            data type
-          </button>
-        </Show>
-      </span>
+      <Show when={n()}>
+        <span>
+          {done()} of {n()} reviewed
+        </span>
+      </Show>
+      <Show when={missingRequired().length} fallback={<span>All required inputs loaded</span>}>
+        <span class="cb-ds-tone--fail">
+          Required, not loaded:{' '}
+          {missingRequired()
+            .map((s) => s.label)
+            .join(', ')}
+        </span>
+      </Show>
+      <Show when={unrecognized().length}>
+        <span class="cb-ds-tone--warn">
+          {unrecognized().length} {unrecognized().length === 1 ? 'file has' : 'files have'} no data
+          type
+        </span>
+      </Show>
+      <span>Original files unchanged</span>
     </div>
   );
 }
@@ -116,17 +113,19 @@ export function DataSetupPanel(): JSX.Element {
       }}
     >
       <Show when={!(nothingLoaded() && entry() === 'start')} fallback={<ProjectLibrary />}>
-        {/* Title, load toolbar and status share one row. */}
+        {/* Title with the load actions on the right, then the status strip. */}
         <div class="cb-ds-top cb-load__bar">
           <h2>Data setup</h2>
           <InfoTip label="About Data setup">
-            Load your files, then open each one on the left: an overview of the whole file, its
-            quality checks, and anything that applies to that file alone. Settings that describe the
-            experiment are in Experiment config and are saved to config.yaml. Only missing required
-            files stop you from continuing. Files can also be dropped anywhere on the page; each is
-            matched to a data type by its name.
+            One row per data type, matched to your files by name. View opens a file: an overview of
+            the whole file, its quality checks, and anything that applies to that file alone.
+            Settings that describe the experiment are in the experimental setup and are saved to
+            config.yaml. Only missing required files stop you from continuing. Files can also be
+            dropped anywhere on the page.
           </InfoTip>
-          <label class="btn-primary btn-small cb-file">
+          <span class="cb-spacer" />
+          <span class="cb-muted cb-ds-top__hint">or drop files anywhere</span>
+          <label class="btn-secondary btn-small cb-file">
             Select files
             <input type="file" hidden multiple onChange={(e) => void addFiles(fileList(e))} />
           </label>
@@ -143,15 +142,13 @@ export function DataSetupPanel(): JSX.Element {
           </label>
           <ExamplePicker />
           <ApplySettings onApplied={setAppliedNote} />
-          <span class="cb-muted cb-ds-top__hint">or drop files anywhere</span>
           <Show when={loadedIds().length || unrecognized().length}>
             <button class="btn-secondary btn-small" onClick={clearAll}>
               Clear all
             </button>
           </Show>
-          <span class="cb-spacer" />
-          <Status />
         </div>
+        <Status />
         <Show when={appliedNote()}>
           <p class="cb-load__applied" role="status">
             <StatusIcon status="pass" /> {appliedNote()}{' '}
@@ -174,12 +171,9 @@ export function DataSetupPanel(): JSX.Element {
             <ConflictReview />
           </div>
         </Show>
-        <div
-          class="cb-gs-body cb-ds-body-grid"
-          style={{ display: reviewingConflicts() ? 'none' : undefined }}
-        >
-          <FileList />
-        </div>
+        <Show when={!reviewingConflicts()}>
+          <SetupRows />
+        </Show>
       </Show>
       <EntryPopup />
     </div>
