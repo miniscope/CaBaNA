@@ -1,0 +1,240 @@
+/* View data pop-up of the Data setup page (panels/data-setup/ViewData.tsx): plot on the left with
+   numbered QC markers, the flags and passed checks on the right. */
+.cb-modal__body:has(> .cb-vw) {
+  padding: 0;
+}
+.cb-vw {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+.cb-vw-plot {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  overflow: auto;
+}
+.cb-vw-plot > * {
+  flex: 1;
+  min-height: 0;
+}
+.cb-vw-facts {
+  font: 12.5px var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cb-vw-foot {
+  font-size: 13px;
+}
+.cb-vw-seg {
+  display: inline-flex;
+  margin-right: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.cb-vw-seg button {
+  padding: 4px 10px;
+  border: 0;
+  border-left: 1px solid var(--border-default);
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cb-vw-seg button:first-child {
+  border-left: 0;
+}
+.cb-vw-seg .cb-vw-seg--on {
+  background: var(--text-primary);
+  color: #fff;
+}
+
+/* A numbered amber marker: the same number is in the flags list. */
+.cb-qcnum {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--warn, #e09800);
+  color: #fff;
+  font: 600 10px/1 system-ui;
+}
+.cb-ds-heat__tick {
+  position: absolute;
+  left: -10px;
+  width: 8px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--warn, #e09800);
+  pointer-events: none;
+}
+.cb-ds-heat__num {
+  position: absolute;
+  left: -32px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.cb-vw-neural {
+  grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+}
+.cb-vw-stack {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cb-vw-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cb-vw-fill > * {
+  flex: 1;
+  min-height: 0;
+}
+.cb-vw-strip {
+  flex: none !important;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.cb-vw-strip__bar {
+  position: relative;
+  height: 18px;
+  margin-top: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.cb-vw-strip__span {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  background: var(--warn, #e09800);
+  opacity: 0.8;
+}
+.cb-vw-strip__num {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+.cb-vw-strip__axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Footprints */
+.cb-vw-fpbox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+}
+.cb-vw-fp {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 100%;
+}
+.cb-vw-fp .cb-footprints {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+.cb-vw-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.cb-vw-ring {
+  fill: none;
+  stroke: #00bcd4;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+.cb-vw-badge {
+  fill: var(--warn, #e09800);
+}
+.cb-vw-badge__n {
+  fill: #fff;
+  font-weight: 600;
+}
+.cb-vw-fpbox > .cb-muted {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Right column */
+.cb-vw-key {
+  min-height: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border-left: 1px solid var(--border-subtle);
+}
+.cb-vw-key__none {
+  margin: 4px 0;
+  color: var(--success);
+}
+.cb-vw-key__passed {
+  margin-top: 14px;
+}
+.cb-vw-flags,
+.cb-vw-passed {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cb-vw-flags li {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+}
+.cb-vw-flags li:first-child {
+  border-top: 0;
+}
+.cb-vw-flags__sub {
+  font-size: 11.5px;
+}
+.cb-vw-passed li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+}
+.cb-vw-passed li:first-child {
+  border-top: 0;
+}
+.cb-vw-passed__mk {
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cb-vw-passed__val {
+  grid-column: 2 / 4;
+  font: 11px var(--font-mono);
+  color: var(--text-secondary);
+}
+.cb-vw-arena {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
