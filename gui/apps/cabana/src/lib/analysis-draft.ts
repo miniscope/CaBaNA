@@ -4,6 +4,7 @@
 // choices that depend on the loaded data (behavior and label selections) alone.
 
 import { reconcile } from 'solid-js/store';
+import { applySettings, type SavedDataset } from './settings-template.ts';
 import type { AnalysisItem } from './readiness.ts';
 import { arena, setArena } from './arena.ts';
 import { aurocSettings, DEFAULT_AUROC_SETTINGS, setAurocSettings } from './auroc-run.ts';
@@ -107,3 +108,19 @@ export const resetSettings = (id: AnalysisItem): void => HANDLES[id].reset();
 
 export const settingsChanged = (id: AnalysisItem, snapshot: string): boolean =>
   snapshotSettings(id) !== snapshot;
+
+// The entries of another dataset's saved "analyses" settings that belong to each analysis.
+const SAVED_KEYS: Record<AnalysisItem, string[]> = {
+  place: ['place', 'binCm', 'minOccupancy'],
+  auroc: ['auroc'],
+  peth: ['peth'],
+  population: ['population'],
+  decoding: ['positionDecoding', 'behaviorDecoding', 'decodeTarget'],
+};
+
+/** Copy only this analysis's settings out of another dataset's saved settings. */
+export function applyAnalysisFrom(saved: SavedDataset['settings'], id: AnalysisItem): void {
+  const all = (saved.analyses ?? {}) as Record<string, unknown>;
+  const own = Object.fromEntries(Object.entries(all).filter(([k]) => SAVED_KEYS[id].includes(k)));
+  applySettings({ analyses: own }, ['analyses']);
+}
