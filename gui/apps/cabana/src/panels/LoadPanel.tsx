@@ -214,9 +214,9 @@ export function ExamplePicker(): JSX.Element {
   );
 }
 
-const savedWhen = (iso: string) =>
+export const savedWhen = (iso: string) =>
   new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-const listed = (items: string[]) =>
+export const listed = (items: string[]) =>
   items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 
 /** Copy chosen groups of settings from another dataset whose settings this browser kept. */

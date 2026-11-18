@@ -30,6 +30,8 @@ export function Modal(props: {
   confirmClose?: () => string | undefined;
   /** A drawer along the right edge instead of a window in the middle. */
   side?: boolean;
+  /** Name and tooltip of the ×, e.g. "Close. Changes are applied as you type". */
+  closeLabel?: string;
   /** Files dropped anywhere on the window. */
   onDropFiles?: (files: File[]) => void;
   children: JSX.Element;
@@ -116,7 +118,7 @@ export function Modal(props: {
             {props.head}
             <span class="cb-spacer" />
             {props.actions}
-            <CloseX ref={(el) => (close = el)} onClick={requestClose} />
+            <CloseX ref={(el) => (close = el)} label={props.closeLabel} onClick={requestClose} />
           </div>
           <Show when={props.bar}>
             <div class="cb-modal__bar">{props.bar}</div>

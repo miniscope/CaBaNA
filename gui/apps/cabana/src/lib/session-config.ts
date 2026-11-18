@@ -17,6 +17,7 @@ import { analysisKind, NEURAL_LAYERS } from './analysis-data.ts';
 import { arenaProblem, configReport } from './config-import.ts';
 import { regionNoticeProblem } from './region-notice.ts';
 import { backgroundMeta } from './spatial-state.ts';
+import { withoutAnimalDetails } from './config-template.ts';
 import { META_FIELDS, flipY, restoreKept, type CmZone } from './config-read.ts';
 import { placeSettings } from './place-run.ts';
 import { prep } from './preprocess.ts';
@@ -286,9 +287,9 @@ export function buildSessionConfig(omit: Section[] = []): Obj {
   return cfg;
 }
 
-/** The session config as YAML. Lists of numbers are written on one line. */
-export function sessionYaml(): string {
-  const doc = new Document(exportedConfig());
+/** A config as YAML. Lists of numbers are written on one line. */
+function toYaml(config: Obj): string {
+  const doc = new Document(config);
   visit(doc, {
     Seq(_, node) {
       if (!node.items.some(isMap)) node.flow = true;
@@ -297,6 +298,12 @@ export function sessionYaml(): string {
   doc.commentBefore = HEADER;
   return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
+
+/** The session config as YAML. */
+export const sessionYaml = (): string => toYaml(exportedConfig());
+
+/** The session config as a template: without the animal's details (see config-template.ts). */
+export const templateYaml = (): string => toYaml(withoutAnimalDetails(exportedConfig()));
 
 /** The Preprocess page's values as the input of `commonSteps`. */
 export function commonInput(): CommonInput {
@@ -346,9 +353,12 @@ export function preprocessYaml(): string {
   return out.join('\n') + '\n';
 }
 
-/** Save the session config as config.yaml. */
-export function downloadConfig(): void {
-  const url = URL.createObjectURL(new Blob([sessionYaml()], { type: 'text/yaml' }));
-  Object.assign(document.createElement('a'), { href: url, download: 'config.yaml' }).click();
+/** Save text as a YAML file with the given name. */
+export function downloadYaml(yaml: string, name: string): void {
+  const url = URL.createObjectURL(new Blob([yaml], { type: 'text/yaml' }));
+  Object.assign(document.createElement('a'), { href: url, download: name }).click();
   URL.revokeObjectURL(url);
 }
+
+/** Save the session config as config.yaml. */
+export const downloadConfig = (): void => downloadYaml(sessionYaml(), 'config.yaml');
