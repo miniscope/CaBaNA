@@ -1,44 +1,22 @@
 import { createEffect, createMemo, For, on, Show, untrack, type JSX } from 'solid-js';
 import type uPlot from 'uplot';
 import { TracePanel } from '@calab/ui/chart';
-import { annotationStats, type Epoch } from '../lib/behavior.ts';
+import type { Epoch } from '../lib/behavior.ts';
 import { clockProgress, timingChecks, type PositionQc } from '../lib/qc.ts';
 import { positionSegments, type Segment } from '../lib/qc-segments.ts';
 import {
   alignmentResults,
-  annotationFixCounts,
-  annotationLog,
   annotationResults,
   cameraClock,
-  editAnnotations,
   frameTimes,
   maxSpeed,
   positionResult,
-  sessionDuration,
   timingResults,
-  tol,
-  undoAnnotationEdits,
 } from '../lib/store.ts';
 import { positionTransform } from '../lib/arena.ts';
 import { picked, posRange, setPicked, setPosRange, showFlagged, showPath } from '../lib/qc-view.ts';
-import type { Category } from './QcPanel.tsx';
-import {
-  annotationMetrics,
-  AnnotationCorrection,
-  AnnotationFlagged,
-  AnnotationPlot,
-  flaggedOf,
-} from './BehaviorQcAnnotations.tsx';
-import {
-  PositionActions,
-  PositionCorrection,
-  PositionFlagged,
-  positionMetrics,
-} from './BehaviorQcPositionRail.tsx';
-import { PositionPlot } from './BehaviorQcPosition.tsx';
+import type { Category, PlotTest } from './QcPanel.tsx';
 import { TimingCorrection, TimingPlot, timingMetrics } from './BehaviorQcTiming.tsx';
-
-export { behaviorSettings } from './BehaviorQcSettings.tsx';
 
 export const PALETTE = ['#2171b5', '#e09800', '#2e7d32', '#8e44ad', '#16a085', '#c0392b'];
 
@@ -388,121 +366,22 @@ export function Ethogram(props: {
   );
 }
 
-export function StatsTable(props: { epochs: Epoch[] }): JSX.Element {
-  const rows = () =>
-    annotationStats(
-      props.epochs,
-      sessionDuration() ?? Math.max(...props.epochs.map((e) => e.stop)),
-    );
-  const f = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : 'n/a');
-  return (
-    <table class="cb-stats">
-      <thead>
-        <tr>
-          <th>Label</th>
-          <th>Epochs</th>
-          <th>Mean length (s)</th>
-          <th>Mean gap to next (s)</th>
-          <th>Share of session</th>
-        </tr>
-      </thead>
-      <tbody>
-        <For each={rows()}>
-          {(r) => (
-            <tr>
-              <td>{r.label}</td>
-              <td>{r.n}</td>
-              <td>
-                {f(r.meanLen)} ± {f(r.sdLen)}
-              </td>
-              <td>{f(r.meanGap)}</td>
-              <td>
-                <span class="cb-bar" style={{ width: `${Math.min(r.pctSession, 100) * 0.6}px` }} />
-                {f(r.pctSession, 1)}%
-              </td>
-            </tr>
-          )}
-        </For>
-      </tbody>
-    </table>
-  );
-}
-
-/** Optional fixes for annotations: merge bouts that are really one, and remove bouts too short to use. */
-export function AnnotationFixes(): JSX.Element {
-  return (
-    <div class="cb-fix">
-      <div class="cb-controls">
-        <button class="btn-secondary btn-small" onClick={() => editAnnotations('merge')}>
-          Merge bouts closer than {tol.mergeGapS} s ({annotationFixCounts().merge})
-        </button>
-        <button class="btn-secondary btn-small" onClick={() => editAnnotations('drop')}>
-          Remove bouts under {tol.minBoutS} s ({annotationFixCounts().drop})
-        </button>
-      </div>
-      <Show when={annotationLog().length}>
-        <ul class="cb-muted">
-          <For each={annotationLog()}>{(m) => <li>{m}</li>}</For>
-        </ul>
-        <button class="cb-link" onClick={undoAnnotationEdits}>
-          Undo annotation fixes
-        </button>
-      </Show>
-      <div class="cb-muted">
-        These apply to every annotation file and use the pass/fail limits under QC settings. The
-        annotation files themselves are not changed.
-      </div>
-    </div>
-  );
-}
-
 export const fileOf = (id: string) => annotationResults().find((a) => a.id === id);
 
-export function behaviorCategories(): Category[] {
+/** Epochs of a file with an error or a note. */
+export const flaggedOf = (id: string) =>
+  (fileOf(id)?.epochs ?? []).filter((e) => e.flags.length || e.notes.length);
+
+/** Every behavior test with its checks: timing, position and one per annotation file. */
+export function behaviorTests(): Category[] {
   const files = annotationResults();
   if (!positionResult() && !files.length && !timing().length) return [];
   return [
-    {
-      id: 'timing',
-      name: 'Timing and alignment',
-      description: 'Dropped frames, frame-time jitter and whether the clocks line up',
-      checks: timing(),
-      flagged: timing().filter((c) => c.status !== 'pass').length,
-      flaggedWord: 'checks',
-      tabs: [
-        { id: 'clock', label: 'Clock' },
-        { id: 'recordings', label: 'Recordings' },
-      ],
-      plot: (tab) => <TimingPlot tab={tab} />,
-      metrics: timingMetrics,
-      correction: TimingCorrection,
-      correctionHint: 'Enter a clock offset in Experiment config',
-    },
-    {
-      id: 'position',
-      name: 'Position tracking',
-      description: 'Lost frames, lost stretches and implausible jumps',
-      checks: posOk()?.checks ?? [],
-      flagged: segments().length,
-      flaggedWord: 'segments',
-      section: 'position',
-      tabs: [
-        { id: 'trajectory', label: 'Trajectory' },
-        { id: 'speed', label: 'Speed' },
-        { id: 'timeline', label: 'Timeline' },
-      ],
-      plot: (tab) => <PositionPlot tab={tab} />,
-      metrics: positionMetrics,
-      flaggedList: PositionFlagged,
-      actions: PositionActions,
-      correction: PositionCorrection,
-      correctionHint: 'Fill gaps and smooth in Preprocess',
-    },
+    { id: 'timing', name: 'Timing and alignment', checks: timing() },
+    { id: 'position', name: 'Position tracking', checks: posOk()?.checks ?? [] },
     ...files.map((a): Category => ({
       id: a.id,
       name: a.name.replace(/\.[^.]+$/, ''),
-      group: 'Annotations',
-      description: 'Epoch errors, short bouts and bouts of one label close together',
       checks: a.error
         ? [
             {
@@ -514,18 +393,24 @@ export function behaviorCategories(): Category[] {
             },
           ]
         : a.checks,
-      flagged: flaggedOf(a.id).length,
-      flaggedWord: 'epochs',
-      section: 'annotations' as const,
-      tabs: [
-        { id: 'epochs', label: 'Epochs' },
-        { id: 'stats', label: 'Per-label stats' },
-      ],
-      plot: (tab) => <AnnotationPlot id={a.id} tab={tab} />,
-      metrics: () => annotationMetrics(a.id),
-      flaggedList: () => <AnnotationFlagged id={a.id} />,
-      correction: () => <AnnotationCorrection id={a.id} />,
-      correctionHint: 'Merge close bouts or remove short ones',
     })),
   ];
+}
+
+/** The timing check with its plots, for the Data setup Timestamp alignment pop-up. */
+export function timingTest(): PlotTest | undefined {
+  if (!timing().length) return undefined;
+  return {
+    id: 'timing',
+    name: 'Timing and alignment',
+    checks: timing(),
+    tabs: [
+      { id: 'clock', label: 'Clock' },
+      { id: 'recordings', label: 'Recordings' },
+    ],
+    plot: (tab) => <TimingPlot tab={tab} />,
+    metrics: timingMetrics,
+    correction: TimingCorrection,
+    correctionHint: 'Enter a clock offset in Experiment config',
+  };
 }
