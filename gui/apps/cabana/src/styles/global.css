@@ -3258,9 +3258,13 @@ button[aria-expanded='true'] > .cb-help {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: space-between;
   padding-top: 6px;
   border-top: 1px solid var(--border-subtle);
   font-size: 12.5px;
+}
+.cb-inchk__foot .cb-link {
+  white-space: nowrap;
 }
 /* Four boxes: footprints over arena on the left; navigator and neural data over behavior on the right. */
 .cb-viz__grid {
@@ -3481,6 +3485,15 @@ button[aria-expanded='true'] > .cb-help {
 .cb-trks__readout {
   flex: none;
   min-height: 18px;
+}
+/* The time axis (and readout) stay in view when the rows scroll inside their box. */
+.cb-trks > .cb-trk--axis,
+.cb-trks__foot {
+  flex: none;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--bg-primary);
 }
 .cb-trackgroup {
   display: flex;

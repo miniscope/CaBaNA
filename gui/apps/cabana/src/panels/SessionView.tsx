@@ -504,10 +504,13 @@ export function BehaviorRows(): JSX.Element {
           draw={(ctx, H) => drawSeries(ctx, H, pos()!.t, pos()!.speed, win(), '#2e7d32')}
         />
       </Show>
-      <Axis />
-      <div class="cb-muted cb-trks__readout">
-        {readout() ??
-          'Move the mouse over a plot to read the time, position and behavior at that moment.'}
+      {/* Stays at the bottom of the box when the rows scroll. */}
+      <div class="cb-trks__foot">
+        <Axis />
+        <div class="cb-muted cb-trks__readout">
+          {readout() ??
+            'Move the mouse over a plot to read the time, position and behavior at that moment.'}
+        </div>
       </div>
     </div>
   );
