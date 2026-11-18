@@ -42,6 +42,7 @@ import {
   type FrameLabelMapping,
 } from './frame-labels.ts';
 import { buildRegistry, resolveRole, type LabelInput, type LabelRole } from './labels.ts';
+import { cellsText, clearHistory, logChange } from './changes-log.ts';
 
 export interface LoadedInfo {
   name: string;
@@ -250,10 +251,14 @@ export { rejected, pending };
 
 /** Cells the user marked to reject. Nothing is removed yet: QC leaves them out and later steps skip them. */
 export function rejectCells(cells: number[]): void {
+  const added = [...new Set(cells)].filter((c) => !rejected().has(c));
   setRejected((r) => new Set<number>([...r, ...cells]));
   setPending(new Set<number>());
+  if (added.length) logChange('apply', 'correction', `Rejected ${cellsText(added).toLowerCase()}`);
 }
 export function restoreCell(c: number): void {
+  if (rejected().has(c))
+    logChange('undo', 'correction', `Restored ${cellsText([c]).toLowerCase()}`);
   setRejected((r) => new Set<number>([...r].filter((x) => x !== c)));
 }
 export function togglePending(c: number): void {
@@ -287,6 +292,7 @@ export function clearAll(): void {
   setExampleMedia(undefined);
   setRejected(new Set<number>());
   setPending(new Set<number>());
+  clearHistory();
   setAnnotationFixed({ merge: false, drop: false });
   for (const k of ['position', 'annotations', 'cells', 'decon'] as const) setProceed(k, false);
   setLabelRoles(reconcile({}));
@@ -681,15 +687,16 @@ export function editAnnotations(kind: 'merge' | 'drop'): void {
   }
   setAnnotationEdits(next);
   setAnnotationFixed((f) => ({ ...f, [kind]: true }));
-  setAnnotationLog((l) => [
-    ...l,
+  const text =
     kind === 'merge'
       ? `Merged ${n} pairs of bouts that were less than ${tol.mergeGapS} s apart.`
-      : `Removed ${n} bouts shorter than ${tol.minBoutS} s.`,
-  ]);
+      : `Removed ${n} bouts shorter than ${tol.minBoutS} s.`;
+  setAnnotationLog((l) => [...l, text]);
+  logChange('apply', 'correction', text);
 }
 
 export function undoAnnotationEdits(): void {
+  if (annotationLog().length) logChange('undo', 'correction', 'Undid the annotation fixes');
   setAnnotationEdits({});
   setAnnotationLog([]);
   setAnnotationFixed({ merge: false, drop: false });

@@ -8,6 +8,7 @@
 import { createMemo, createRoot } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import type { Segment } from './qc-segments.ts';
+import { logChange } from './changes-log.ts';
 import { onClear, positionFrames } from './store.ts';
 
 export type Choice = 'interpolate' | 'keep';
@@ -39,8 +40,21 @@ export function choiceOf(s: Segment): Choice | undefined {
 
 /** Set (or with `undefined`, clear) the choice for every frame of a jump. */
 export function setChoice(s: Segment, c: Choice | undefined): void {
+  const before = choiceOf(s);
   for (const f of framesOf(s)) setChoices(f, c as Choice);
+  if (before === c) return;
+  const at = `position jump at ${clock(s.start)}`;
+  const n = jumpRows(s).length;
+  const frames = `${n} frame${n === 1 ? '' : 's'}`;
+  if (before === 'interpolate') logChange('undo', 'correction', `Put back ${frames} of the ${at}`);
+  else if (before === 'keep' && !c)
+    logChange('undo', 'correction', `Cleared the review of the ${at}`);
+  if (c === 'interpolate') logChange('apply', 'correction', `Left out ${frames} of the ${at}`);
+  else if (c === 'keep') logChange('apply', 'correction', `Reviewed the ${at}: kept as real`);
 }
+
+/** Seconds as m:ss.s, for the history. */
+export const clock = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 
 const sortedWith = (c: Choice) =>
   Object.entries(choices)

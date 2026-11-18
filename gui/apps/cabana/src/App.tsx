@@ -6,6 +6,8 @@ import { VizPanel } from './panels/VizPanel.tsx';
 import { AnalyzePanel } from './panels/AnalyzePanel.tsx';
 import { ResultsPage } from './panels/ResultsPage.tsx';
 import { PlotEditor } from './panels/results/PlotEditor.tsx';
+// Preprocessing changes are logged for the Changes history from the start of the session.
+import './lib/prep-log.ts';
 
 const STEPS: Step[] = [
   { id: 'data', label: 'Data setup', panel: DataSetupPanel },
