@@ -112,10 +112,6 @@ export function headlineOf(analysis: AnalysisId, data: ExplorerData): string | u
   return p ? `${p.below} of ${p.n} ${what} below alpha` : `${s.n} ${what}`;
 }
 
-/** Why the storage actions are unavailable until the engine saves projects and has the endpoints. */
-export const STORAGE_NEEDS = 'Needs saved projects (engine)';
-export const DELETE_OUTPUTS_NEEDS = 'Needs the engine to delete outputs';
-
 /** What deleting a run removes, in words for the confirmation. `others` counts the analysis's other runs with results. */
 export function deleteText(label: string, when: string, others: number): string[] {
   return [

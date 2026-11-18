@@ -17,6 +17,8 @@ import {
 } from '../lib/run-settings-view.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
 import { formatWhen } from '../lib/results-overview.ts';
+import { openProject } from '../lib/open-project.ts';
+import { openConfigFile } from '../lib/project-dialogs.ts';
 import { loadRunSettings } from './analysis-run-settings.ts';
 
 /** Copy the run's settings into the current ones and open Configure on them. Returns an error text. */
@@ -49,6 +51,14 @@ export function AnalysisRunSettings(props: {
         <ActionsMenu
           items={[
             { kind: 'action', label: 'Use these settings', onSelect: () => applyRunSettings(r) },
+            // With a project open the run's frozen copies of the yaml files can be read.
+            ...(openProject() && r.engine === 'framework'
+              ? (['analysis.yaml', 'processing.yaml', 'experiment.yaml'] as const).map((name) => ({
+                  kind: 'action' as const,
+                  label: `View frozen ${name}`,
+                  onSelect: () => openConfigFile(name, r),
+                }))
+              : []),
           ]}
         />
       }

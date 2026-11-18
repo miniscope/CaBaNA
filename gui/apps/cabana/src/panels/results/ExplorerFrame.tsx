@@ -21,10 +21,11 @@ import { plotsAvailable, plotsOf, summarySentences } from '../../lib/results-exp
 import { matchOfRecord } from '../../lib/results-match.ts';
 import { closeExplorer, openExplorer, type ExplorerTarget } from '../../lib/results-nav.ts';
 import { analysisLabel, formatWhen, hasResults } from '../../lib/results-overview.ts';
-import { DELETE_OUTPUTS_NEEDS, reasonText } from '../../lib/results-table.ts';
+import { reasonText } from '../../lib/results-table.ts';
 import { active, type AnalysisId } from '../../lib/runs.ts';
 import { AnalysisRunSettings } from '../AnalysisRunSettings.tsx';
 import { InfoTip } from '../InfoTip.tsx';
+import { DeleteOutputs, deleteOutputsNeeds } from './DeleteOutputs.tsx';
 import { DeleteRun } from './DeleteRun.tsx';
 import type { ExplorerParts } from './explorer-parts.ts';
 import { StatisticsPane, SummaryPane, TablesPane } from './ExplorerPanes.tsx';
@@ -145,7 +146,7 @@ export function ExplorerFrame(props: {
   );
   // With no main plot to draw from the saved tables, the card opens on Statistics.
   const shown = () => (view() === 'main' && !parts() && data() ? 'statistics' : view());
-  const [dialog, setDialog] = createSignal<'settings' | 'details' | 'delete'>();
+  const [dialog, setDialog] = createSignal<'settings' | 'details' | 'delete' | 'outputs'>();
 
   const plots = () => {
     const r = record();
@@ -196,8 +197,8 @@ export function ExplorerFrame(props: {
     {
       kind: 'action',
       label: 'Delete outputs (keep record)',
-      disabled: DELETE_OUTPUTS_NEEDS,
-      onSelect: () => undefined,
+      disabled: deleteOutputsNeeds(bridgeReady()),
+      onSelect: () => setDialog('outputs'),
     },
     {
       kind: 'action',
@@ -459,6 +460,9 @@ export function ExplorerFrame(props: {
                 plots={plots().length}
                 onClose={() => setDialog(undefined)}
               />
+            </Show>
+            <Show when={dialog() === 'outputs'}>
+              <DeleteOutputs record={rec()} onClose={() => setDialog(undefined)} />
             </Show>
             <Show when={dialog() === 'delete'}>
               <DeleteRun

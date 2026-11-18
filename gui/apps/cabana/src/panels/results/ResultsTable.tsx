@@ -14,18 +14,14 @@ import {
   goToAnalysis,
   hasResults,
 } from '../../lib/results-overview.ts';
-import {
-  DELETE_OUTPUTS_NEEDS,
-  headlineOf,
-  STORAGE_NEEDS,
-  tableCounts,
-  tableRows,
-  type TableRow,
-} from '../../lib/results-table.ts';
+import { headlineOf, tableCounts, tableRows, type TableRow } from '../../lib/results-table.ts';
 import { active, type AnalysisId } from '../../lib/runs.ts';
 import { goToStep } from '../../lib/store.ts';
 import { PREVIEW_TEXT } from '../../lib/preview.ts';
 import { InfoTip } from '../InfoTip.tsx';
+import { openProject } from '../../lib/open-project.ts';
+import { openProjectSettings } from '../../lib/project-dialogs.ts';
+import { DeleteOutputs, deleteOutputsNeeds } from './DeleteOutputs.tsx';
 import { DeleteRun } from './DeleteRun.tsx';
 import { savedData } from './run-data.ts';
 
@@ -123,6 +119,7 @@ function Result(props: { row: TableRow }): JSX.Element {
 function RowActions(props: {
   row: TableRow;
   onDelete: (r: RunRecord) => void;
+  onDeleteOutputs: (r: RunRecord) => void;
   onError: (message: string) => void;
 }): JSX.Element {
   const items = (): MenuItem[] => {
@@ -151,8 +148,8 @@ function RowActions(props: {
       {
         kind: 'action',
         label: 'Delete outputs (keep record)',
-        disabled: DELETE_OUTPUTS_NEEDS,
-        onSelect: () => undefined,
+        disabled: deleteOutputsNeeds(bridgeReady()),
+        onSelect: () => props.onDeleteOutputs(rec),
       },
       {
         kind: 'action',
@@ -181,6 +178,7 @@ export function ResultsTable(props: {
   onError: (message: string) => void;
 }): JSX.Element {
   const [deleting, setDeleting] = createSignal<RunRecord>();
+  const [clearing, setClearing] = createSignal<RunRecord>();
   const rows = () => tableRows(props.records, props.matchOf);
   const counts = () => tableCounts(props.records, props.matchOf);
   const tiles = (): [string, number][] => [
@@ -212,8 +210,8 @@ export function ResultsTable(props: {
             {
               kind: 'action',
               label: 'Manage stored outputs',
-              disabled: STORAGE_NEEDS,
-              onSelect: () => undefined,
+              disabled: openProject() ? undefined : 'Open or create a project first',
+              onSelect: () => openProjectSettings('storage'),
             },
           ]}
         />
@@ -264,7 +262,12 @@ export function ResultsTable(props: {
                     <td>{row.runs || ''}</td>
                     <td class="cb-rx__act" onClick={(e) => e.stopPropagation()}>
                       <Show when={row.record}>
-                        <RowActions row={row} onDelete={setDeleting} onError={props.onError} />
+                        <RowActions
+                          row={row}
+                          onDelete={setDeleting}
+                          onDeleteOutputs={setClearing}
+                          onError={props.onError}
+                        />
                       </Show>
                     </td>
                   </tr>
@@ -278,6 +281,9 @@ export function ResultsTable(props: {
           explore it.
         </p>
       </div>
+      <Show when={clearing()}>
+        {(r) => <DeleteOutputs record={r()} onClose={() => setClearing(undefined)} />}
+      </Show>
       <Show when={deleting()}>
         {(r) => (
           <DeleteRun

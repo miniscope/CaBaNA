@@ -6,7 +6,11 @@ import { createSignal, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Modal } from '../../components/Modal.tsx';
 import { closeEntry } from '../../lib/data-setup-view.ts';
+import { openProject } from '../../lib/open-project.ts';
 import { pickFile } from '../../lib/pick-file.ts';
+import { openConfigFile } from '../../lib/project-dialogs.ts';
+import { tidyPath } from '../../lib/project-session.ts';
+import { saveStatus, saveText } from '../../lib/save-status.ts';
 import { addFiles, loaded } from '../../lib/store.ts';
 import { ApplyFrom } from './ApplyFrom.tsx';
 import { ConfigView, setAsYaml } from './ConfigView.tsx';
@@ -15,7 +19,16 @@ import { ExportCopy } from './ExportCopy.tsx';
 type Dialog = 'apply' | 'export';
 
 /** The file the setup is kept in: the loaded config, else the project's experiment.yaml. */
-const fileName = () => (loaded.config?.size ? loaded.config.name : 'experiment.yaml');
+const fileName = () =>
+  openProject() || !loaded.config?.size ? 'experiment.yaml' : loaded.config.name;
+
+/** The file line under the title: file, real save state and, with a project open, its folder. */
+function fileLine(): string {
+  const { text } = saveText(saveStatus());
+  const state = text.charAt(0).toLowerCase() + text.slice(1);
+  const folder = openProject() ? ` · ${tidyPath(openProject()!.path)}/` : '';
+  return `${fileName()} · ${state}${folder}`;
+}
 
 export function ExperimentalSetup(props: {
   /** Called with the sentence describing settings applied from another project. */
@@ -31,15 +44,26 @@ export function ExperimentalSetup(props: {
       <Modal
         label="Experimental setup"
         title="Experimental setup"
-        head={<span class="cb-muted cb-vw-facts">{fileName()} · not saved: engine off</span>}
+        head={<span class="cb-muted cb-vw-facts">{fileLine()}</span>}
         width={900}
         height={560}
-        closeLabel="Close. Changes are applied as you type"
+        closeLabel={
+          openProject()
+            ? openProject()!.save_mode === 'manual'
+              ? 'Close. Changes are saved with Save project'
+              : 'Close. Changes are saved automatically'
+            : 'Close. Changes are applied as you type'
+        }
         onClose={close}
         actions={
           <ActionsMenu
             items={[
-              { kind: 'action', label: 'View as YAML', onSelect: () => setAsYaml(true) },
+              {
+                kind: 'action',
+                label: 'View as YAML',
+                onSelect: () =>
+                  openProject() ? openConfigFile('experiment.yaml') : setAsYaml(true),
+              },
               {
                 kind: 'action',
                 label: 'Apply settings from another project…',
