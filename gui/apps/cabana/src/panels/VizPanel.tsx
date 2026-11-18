@@ -16,7 +16,6 @@ import { arenaShow, trajMode } from '../lib/viz-display.ts';
 import { BOX_TITLE, type VizBox } from '../lib/viz-pills.ts';
 import { ArenaEditor } from './ArenaEditor.tsx';
 import { ChangesDrawer, changesSummary, openChanges } from './ChangesDrawer.tsx';
-import { EntryPopup } from './data-setup/EntryView.tsx';
 import { FootprintViewer } from './FootprintViewer.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
@@ -377,7 +376,6 @@ export function VizPanel(): JSX.Element {
       <Show when={arenaEditor()}>
         <ArenaEditor onClose={() => setArenaEditor(false)} />
       </Show>
-      <EntryPopup />
       <QcPopups />
       <ChangesDrawer />
       <RevertChanges />

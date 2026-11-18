@@ -16,6 +16,7 @@ import { TargetSchematic } from './Schematics.tsx';
 import { binsOf } from './logic.ts';
 import { StatesChart } from './StatesChart.tsx';
 import { openData } from '../../lib/data-setup-view.ts';
+import { openPrepPopup } from '../../lib/qc-popup-view.ts';
 
 const TARGETS: { id: PopulationTarget; label: string; text: string }[] = [
   {
@@ -72,7 +73,7 @@ function DataSummary(): JSX.Element {
           <dd>
             deconvolved events,{' '}
             {prep.eventSigmaS ? `smoothed with σ ${prep.eventSigmaS} s` : 'not smoothed'} (
-            <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
+            <button class="cb-link" onClick={() => openPrepPopup('neural-prep')}>
               Preprocess
             </button>
             )

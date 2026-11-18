@@ -27,7 +27,6 @@ import { RoleInfo, RoleTagButton } from './AnalysisRole.tsx';
 import { ConfigView } from './ConfigView.tsx';
 import { DataTable, hasTable } from './DataTable.tsx';
 import { FileArena } from './FileArena.tsx';
-import { FilePrep } from './FilePrep.tsx';
 import { FileQc } from './FileQc.tsx';
 import { GetStarted, Unassigned } from './GetStarted.tsx';
 import { MATRIX, NeuralFileOverview } from './NeuralOverview.tsx';
@@ -91,14 +90,8 @@ function Overview(props: { slot: SlotId }): JSX.Element {
 function Section(props: { slot: SlotId; section: SectionId }): JSX.Element {
   return (
     <Switch fallback={<Overview slot={props.slot} />}>
-      <Match when={props.section === 'qc'}>
-        <FileQc id={props.slot} />
-      </Match>
       <Match when={props.section === 'arena'}>
         <FileArena />
-      </Match>
-      <Match when={props.section === 'prep'}>
-        <FilePrep slot={props.slot} />
       </Match>
     </Switch>
   );

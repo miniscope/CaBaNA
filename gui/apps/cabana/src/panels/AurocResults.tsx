@@ -55,7 +55,7 @@ import { fitToWindow } from './QcPanel.tsx';
 import { RunDetailsBody } from './results/RunDetails.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
-import { openData } from '../lib/data-setup-view.ts';
+import { openPrepPopup } from '../lib/qc-popup-view.ts';
 
 type View = 'inspector' | 'heatmap' | 'summary';
 const VIEWS: [View, string][] = [
@@ -1177,7 +1177,7 @@ function RunDetails(props: { out: AurocOutcome; onClose: () => void }): JSX.Elem
             k="Excluded: below minimum speed"
             v={o().excluded.minSpeed !== undefined ? o().excluded.slow.toLocaleString() : '—'}
           />
-          <button class="cb-link" onClick={() => openData('position', 'prep')}>
+          <button class="cb-link" onClick={() => openPrepPopup('position-prep')}>
             Edit frame selection in Position, Preprocess
           </button>
         </section>

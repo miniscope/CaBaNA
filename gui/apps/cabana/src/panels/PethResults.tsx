@@ -36,7 +36,7 @@ import { type Ctx } from './PethShared.tsx';
 import { SummaryView } from './PethSummary.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PopButton } from './QcParts.tsx';
-import { openData } from '../lib/data-setup-view.ts';
+import { openPrepPopup } from '../lib/qc-popup-view.ts';
 
 type View = 'population' | 'inspector' | 'summary';
 const VIEWS: [View, string][] = [
@@ -190,7 +190,7 @@ function RunDetails(props: { out: PethOutcome; onClose: () => void }): JSX.Eleme
           <KV k="Frames in recording" v={o().input.frames.toLocaleString()} />
           <KV k="Sampling rate" v={`${fmt(o().input.fs)} Hz`} />
           <KV k="Frames used" v="All (no frame selection)" />
-          <button class="cb-link" onClick={() => openData('neural_deconvolved', 'prep')}>
+          <button class="cb-link" onClick={() => openPrepPopup('neural-prep')}>
             Edit smoothing in Deconvolved events, Preprocess
           </button>
         </section>

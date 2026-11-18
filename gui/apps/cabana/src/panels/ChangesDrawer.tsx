@@ -7,11 +7,11 @@ import { Modal } from '../components/Modal.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
 import { history, lastApplied, type LogEvent } from '../lib/changes-log.ts';
 import { buildChanges, changeCounts, type ChangeEntry } from '../lib/changes.ts';
-import { openEntry } from '../lib/data-setup-view.ts';
+import { openPrepPopup, prepPopupFor } from '../lib/qc-popup-view.ts';
 import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
 import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { STEPS, type StepId } from '../lib/prep-deps.ts';
-import { fs, gapSummary, setPrepStep } from '../lib/prep-view.ts';
+import { fs, gapSummary } from '../lib/prep-view.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
@@ -125,8 +125,8 @@ function act(e: ChangeEntry): void {
   }
   setChangesOpen(false);
   if (a.edit === 'analysis') return goToAnalysis(a.analysis);
-  setPrepStep(a.step);
-  openEntry(a.slot, 'prep');
+  const popup = prepPopupFor(a.step);
+  if (popup) openPrepPopup(popup);
 }
 
 /**
