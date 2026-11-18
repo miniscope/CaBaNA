@@ -180,6 +180,10 @@
   background: var(--success-bg);
   color: var(--success);
 }
+.cb-pill--fail {
+  background: var(--error-bg);
+  color: var(--error);
+}
 .cb-pill--prep {
   background: var(--prep-bg);
   color: var(--prep);

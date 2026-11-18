@@ -26,38 +26,3 @@
   margin-right: 5px;
   border-radius: 2px;
 }
-.cb-ovl__all {
-  display: flex;
-  gap: var(--space-sm);
-}
-.cb-ovl__intensity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-}
-.cb-ovl__intensity label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.cb-ovl__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.cb-ovl__row .cb-trackopt {
-  min-width: 0;
-  flex: 1;
-}
-.cb-ovl__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cb-ovl__note {
-  margin: 8px 0 0;
-  font-size: 11px;
-}

@@ -135,15 +135,6 @@
 .cb-lbl-roles {
   margin-top: 8px;
 }
-.cb-lbl-roles__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.cb-lbl-roles__head h4 {
-  margin: 0;
-  font-size: 14px;
-}
 .cb-lbl-table--roles .cb-lbl-name {
   max-width: 170px;
 }

@@ -244,10 +244,6 @@
   background: var(--bg-secondary);
   text-align: center;
 }
-.cb-np__drop--over {
-  border-color: var(--accent);
-  background: var(--accent-muted);
-}
 .cb-np__droptitle {
   margin: 0;
   font-size: 17px;
