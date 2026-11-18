@@ -91,7 +91,7 @@ function ProjectsRow(): JSX.Element {
   const [menu, setMenu] = createSignal(false);
   const onPage = () => isProjectPage(stepId());
   const shown = () => onPage() || menu();
-  const status = () => (nothingLoaded() ? 'No project open' : sessionName() || 'Open session');
+  const status = () => (nothingLoaded() ? 'No project open' : sessionName() || 'Untitled project');
   return (
     <>
       <div class="cb-side cb-side--proj" classList={{ 'cb-side--on': onPage() }}>

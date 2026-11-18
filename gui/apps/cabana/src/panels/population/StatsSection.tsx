@@ -12,6 +12,7 @@ import { AdvancedSeed } from '../parts.tsx';
 import { stateCount } from './data.ts';
 import { Field, Num, Select } from './fields.tsx';
 import { maxStatNote, statsTable, type StatStatus } from './setup-logic.ts';
+import { Pill } from '../../components/Pill.tsx';
 
 const STATUS: Record<StatStatus, string> = {
   corrected: 'Corrected',
@@ -98,12 +99,9 @@ export function StatsSection(): JSX.Element {
                       </Show>
                     </td>
                     <td>
-                      <span
-                        class="cb-pill"
-                        classList={{ 'cb-pill--good': r.status === 'corrected' }}
-                      >
+                      <Pill tone={r.status === 'corrected' ? 'ok' : 'neutral'}>
                         {STATUS[r.status]}
-                      </span>
+                      </Pill>
                     </td>
                   </tr>
                 )}

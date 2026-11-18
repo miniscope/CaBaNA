@@ -11,6 +11,7 @@ import { InfoTip } from '../InfoTip.tsx';
 import { readiness } from './data.ts';
 import { Field, Num, Select } from './fields.tsx';
 import { MethodSchematic } from './Schematics.tsx';
+import { Pill } from '../../components/Pill.tsx';
 
 export const METHOD_NAME: Record<PopulationMethod, string> = {
   similarity: 'Population vector (PV) similarity',
@@ -43,8 +44,8 @@ function MethodCard(props: {
         <InfoTip label={`About ${METHOD_NAME[props.id].toLowerCase()}`}>{props.tip}</InfoTip>
         <Show when={s.methods[props.id]}>
           <span class="cb-pn-method__state">
-            <Show when={ready().ready} fallback={<span class="cb-pill cb-pill--bad">Blocked</span>}>
-              <span class="cb-pill cb-pill--good">Ready</span>
+            <Show when={ready().ready} fallback={<Pill tone="fail">Blocked</Pill>}>
+              <Pill tone="ok">Ready</Pill>
             </Show>
           </span>
         </Show>

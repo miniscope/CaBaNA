@@ -3,10 +3,8 @@
 
 import {
   createContext,
-  createEffect,
   createSignal,
   For,
-  on,
   onCleanup,
   onMount,
   Show,
@@ -20,16 +18,10 @@ import { Portal } from 'solid-js/web';
 import { Popover } from './Popover.tsx';
 import type { Check, Status } from '../lib/qc.ts';
 import { DEFAULT_TOL, proceed, setProceed, setTol, tol, type Section } from '../lib/store.ts';
-import {
-  listPage,
-  openFold,
-  reviewed,
-  setListPage,
-  setOpenFold,
-  setReviewed,
-} from '../lib/qc-view.ts';
+import { openFold, reviewed, setOpenFold, setReviewed } from '../lib/qc-view.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { HelpMark } from '../components/HelpMark.tsx';
+import { CloseX } from '../components/CloseX.tsx';
 
 export type Shown = Status | 'reviewed' | 'none';
 const ICON: Record<Shown, string> = { pass: '✓', warn: '!', fail: '✕', reviewed: '✓', none: '–' };
@@ -102,17 +94,12 @@ export function PopButton(props: {
         >
           <div class="cb-pop__head">
             <strong>{props.title}</strong>
-            <button
-              type="button"
-              class="cb-ib"
-              aria-label="Close"
+            <CloseX
               onClick={() => {
                 setOpen(false);
                 btn.focus();
               }}
-            >
-              Close
-            </button>
+            />
           </div>
           {untrack(() => {
             const body = props.children;
@@ -290,15 +277,7 @@ function Overlay(props: {
           <div class="cb-plot__head">
             <h3>{props.title}</h3>
             {props.head}
-            <button
-              ref={close}
-              type="button"
-              class="cb-ib"
-              aria-label="Close"
-              onClick={props.onClose}
-            >
-              Close
-            </button>
+            <CloseX ref={(el) => (close = el)} onClick={props.onClose} />
           </div>
           <div class="cb-plot__body" ref={measure}>
             <Show when={size().h > 20}>{untrack(() => props.children(size))}</Show>
@@ -407,126 +386,6 @@ export function Findings(props: { checks: Check[] }): JSX.Element {
         </ul>
       </Show>
     </RailBox>
-  );
-}
-
-/**
- * A list shown a page at a time, with the selected item highlighted. As many rows as fit in the
- * space left in the column are shown per page (`rowH` is the height of one row).
- */
-export function PagedList<T>(props: {
-  id: string;
-  items: T[];
-  rowH?: number;
-  selected?: number;
-  onSelect?: (i: number) => void;
-  empty: string;
-  children: (item: T, i: number) => JSX.Element;
-  /** Controls beside the row (a checkbox before, buttons after), outside the row's own button. */
-  before?: (item: T, i: number) => JSX.Element;
-  after?: (item: T, i: number) => JSX.Element;
-}): JSX.Element {
-  const [size, measure] = createSize();
-  // Rows are measured once drawn; `rowH` is the guess before that.
-  const [rowH, setRowH] = createSignal(props.rowH ?? 30);
-  let list: HTMLUListElement | undefined;
-  const per = () => Math.max(2, Math.floor((size().h - 36) / rowH()));
-  const pages = () => Math.max(1, Math.ceil(props.items.length / per()));
-  const page = () => Math.min(listPage[props.id] ?? 0, pages() - 1);
-  const shown = () => props.items.slice(page() * per(), (page() + 1) * per());
-  const go = (p: number) => setListPage(props.id, Math.max(0, Math.min(pages() - 1, p)));
-  createEffect(() => {
-    shown();
-    const h = list?.firstElementChild?.getBoundingClientRect().height;
-    if (h) setRowH(Math.max(h, 20));
-  });
-  // Turn to the page of the selected item when the selection changes.
-  createEffect(
-    on(
-      () => props.selected,
-      (i) => i !== undefined && i >= 0 && setListPage(props.id, Math.floor(i / untrack(per))),
-    ),
-  );
-  return (
-    <div class="cb-paged" ref={measure}>
-      <Show when={props.items.length} fallback={<div class="cb-muted">{props.empty}</div>}>
-        <ul class="cb-list" ref={list}>
-          <For each={shown()}>
-            {(it, k) => {
-              const i = () => page() * per() + k();
-              return (
-                <li>
-                  {props.before?.(it, i())}
-                  <button
-                    type="button"
-                    class="cb-list__item"
-                    classList={{ 'cb-list__item--on': props.selected === i() }}
-                    aria-current={props.selected === i()}
-                    onClick={() => props.onSelect?.(i())}
-                  >
-                    {props.children(it, i())}
-                  </button>
-                  {props.after?.(it, i())}
-                </li>
-              );
-            }}
-          </For>
-        </ul>
-        <Show when={pages() > 1}>
-          <div class="cb-pager">
-            <span class="cb-muted">
-              {page() * per() + 1}–{Math.min(props.items.length, (page() + 1) * per())} of{' '}
-              {props.items.length}
-            </span>
-            <button
-              type="button"
-              class="cb-ib"
-              aria-label="Previous page"
-              onClick={() => go(page() - 1)}
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              class="cb-ib"
-              aria-label="Next page"
-              onClick={() => go(page() + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </Show>
-      </Show>
-    </div>
-  );
-}
-
-/** Previous and next buttons that step through a list. */
-export function StepButtons(props: {
-  n: number;
-  i: number;
-  go: (i: number) => void;
-  what: string;
-}) {
-  return (
-    <span class="cb-steps-btns">
-      <button
-        type="button"
-        class="btn-secondary btn-small"
-        disabled={props.i <= 0}
-        onClick={() => props.go(props.i - 1)}
-      >
-        Previous {props.what}
-      </button>
-      <button
-        type="button"
-        class="btn-secondary btn-small"
-        disabled={props.i >= props.n - 1}
-        onClick={() => props.go(props.i + 1)}
-      >
-        Next {props.what}
-      </button>
-    </span>
   );
 }
 
@@ -668,27 +527,6 @@ export const TOL_INFO: Record<
 
 export type TolKey = keyof typeof tol;
 
-/** The numbers that decide pass or fail for a category, edited in a popover. */
-export function Limits(props: { keys: TolKey[] }): JSX.Element {
-  const changed = () => props.keys.some((k) => tol[k] !== DEFAULT_TOL[k]);
-  return (
-    <div class="cb-limits-row">
-      <span>
-        Pass/fail limits <span class="cb-muted">{changed() ? '(changed)' : '(defaults)'}</span>
-      </span>
-      <PopButton
-        label="Edit pass/fail limits"
-        title="Pass/fail limits"
-        width={400}
-        class="cb-link"
-        button="Edit limits"
-      >
-        <LimitsForm keys={props.keys} />
-      </PopButton>
-    </div>
-  );
-}
-
 function LimitsForm(props: { keys: TolKey[] }): JSX.Element {
   const [draft, setDraft] = createStore<Partial<Record<TolKey, number>>>(
     untrack(() => Object.fromEntries(props.keys.map((k) => [k, tol[k]]))),
@@ -779,28 +617,6 @@ export function QcSettingsBody(props: { groups: SettingsGroup[] }): JSX.Element 
           </section>
         )}
       </For>
-    </div>
-  );
-}
-
-/** Title row of a category: its name and result. */
-export function CategoryHead(props: {
-  title: string;
-  checks: Check[];
-  flagged?: string;
-  children?: JSX.Element;
-}): JSX.Element {
-  const s = () => worst(props.checks);
-  const word = () =>
-    ({ pass: 'Passed', warn: 'Passed, with notes', fail: 'Failed', none: 'Not checked' })[s()];
-  return (
-    <div class="cb-cat-head">
-      <h2>{props.title}</h2>
-      <span class={`cb-chip-status cb-chip-status--${s()}`}>
-        {word()}
-        <Show when={props.flagged}> · {props.flagged}</Show>
-      </span>
-      {props.children}
     </div>
   );
 }

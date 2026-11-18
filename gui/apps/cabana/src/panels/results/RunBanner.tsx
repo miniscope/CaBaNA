@@ -2,6 +2,7 @@ import { For, Show, type JSX } from 'solid-js';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { placePopover } from '../parts.tsx';
 import { preliminaryText } from '../../lib/preview.ts';
+import { Pill } from '../../components/Pill.tsx';
 
 export interface Match {
   matches: boolean;
@@ -24,34 +25,31 @@ export function RunBadges(props: {
   return (
     <span class="cb-rb-badges">
       <Show when={r().scope === 'preview'}>
-        <span class="cb-badge cb-badge--warn" title="Quick preview with reduced shuffles">
+        <Pill tone="flag" title="Quick preview with reduced shuffles">
           {preliminaryText(r())}
-        </span>
+        </Pill>
       </Show>
       <Show when={r().scope === 'full' && r().status === 'ok'}>
-        <span class="cb-badge">Full analysis</span>
+        <Pill>Full analysis</Pill>
       </Show>
       <Show when={r().status === 'partial'}>
-        <span class="cb-badge cb-badge--warn">Partial: some analyses failed</span>
+        <Pill tone="flag">Partial: some analyses failed</Pill>
       </Show>
       <Show when={r().status === 'cancelled'}>
-        <span class="cb-badge cb-badge--warn">Cancelled: partial results</span>
+        <Pill tone="flag">Cancelled: partial results</Pill>
       </Show>
       <Show when={r().status === 'failed'}>
-        <span class="cb-badge cb-badge--bad">Failed</span>
+        <Pill tone="fail">Failed</Pill>
       </Show>
       <Show when={r().status === 'ok' || r().status === 'partial' ? props.match : undefined}>
         {(m) => (
-          <span
-            class="cb-badge"
-            classList={{ 'cb-badge--ok': m().matches, 'cb-badge--warn': !m().matches }}
-          >
+          <Pill tone={m().matches ? 'ok' : 'flag'}>
             {m().matches ? 'Matches current settings' : 'Settings changed since this run'}
-          </span>
+          </Pill>
         )}
       </Show>
       <Show when={props.saved}>
-        <span class="cb-badge">Saved result</span>
+        <Pill>Saved result</Pill>
       </Show>
     </span>
   );
@@ -71,12 +69,9 @@ export function RunBanner(props: {
         <span class="cb-muted">{when(props.record.created_utc)}</span>
         <RunBadges record={props.record} match={props.match} saved={props.saved} />
         <Show when={props.offline}>
-          <span
-            class="cb-badge"
-            title="The Python engine is not running; values come from the copy saved in this browser"
-          >
+          <Pill title="The Python engine is not running; values come from the copy saved in this browser">
             Viewing the saved copy
-          </span>
+          </Pill>
         </Show>
         <Show when={props.match && !props.match.matches && props.match.diff.length}>
           <details class="cb-rb__diff cb-notepop" onToggle={placePopover}>

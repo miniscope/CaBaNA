@@ -38,6 +38,7 @@ import { compareToLatest, history, latest, setLatest } from '../lib/runs.ts';
 import { DecodingResults } from './DecodingResults.tsx';
 import { BackToCards } from './AnalysisBack.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 /** Copy the settings of a saved run into the setup (an explicit action; viewing never does it). */
 function loadSettingsOf(rec: RunRecord): void {
@@ -150,7 +151,7 @@ function BrowserResults(props: { run: BrowserDecodingRun; onBack: () => void }):
         </div>
         <div class="cb-controls">
           <Show when={browserOutdated()}>
-            <span class="cb-badge cb-badge--warn">Results are outdated</span>
+            <Pill tone="flag">Results are outdated</Pill>
           </Show>
           <button type="button" class="btn-secondary" onClick={() => props.onBack()}>
             Edit setup

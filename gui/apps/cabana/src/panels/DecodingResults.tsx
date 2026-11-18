@@ -54,6 +54,7 @@ import type { EngineId } from './decoding/engines.ts';
 import { PlotFrame } from './results/PlotFrame.tsx';
 import { RunBanner, type Match } from './results/RunBanner.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 /** A record's engine name as the two engines the page distinguishes. */
 const engineOf = (e?: string): EngineId | undefined =>
@@ -316,7 +317,7 @@ export function PositionResults(props: {
                     onSet={setExploratory}
                   />
                   <Show when={exploratory()}>
-                    <span class="cb-badge cb-badge--warn">Exploratory: uncorrected</span>
+                    <Pill tone="flag">Exploratory: uncorrected</Pill>
                   </Show>
                   <span class="cb-muted cb-dec-hover">
                     <Show when={hover()} fallback="Point at a bin for its values.">

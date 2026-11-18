@@ -20,6 +20,7 @@ import { PethTimeline } from './PethTimeline.tsx';
 import { PethWindow } from './PethWindow.tsx';
 import { ALPHA, type PethSetupState } from './PethSetupState.ts';
 import { createSize, PopButton } from './QcParts.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 const D = DEFAULT_PETH_SETTINGS;
 
@@ -206,7 +207,7 @@ function EventSummary(props: { s: PethSetupState }): JSX.Element {
           when={s().readyBehaviors().length}
           fallback={<span class="cb-warn">No behavior is ready to run.</span>}
         >
-          <span class="cb-pill cb-pill--good">Ready</span> {s().readyBehaviors().length} behavior
+          <Pill tone="ok">Ready</Pill> {s().readyBehaviors().length} behavior
           {s().readyBehaviors().length === 1 ? '' : 's'} will be tested
         </Show>
         <Show when={s().notEvaluated().length}>
@@ -333,7 +334,7 @@ export function EventsSection(props: { s: PethSetupState }): JSX.Element {
                               when={s().chosen(i())}
                               fallback={<span>Left out of the run</span>}
                             >
-                              <span class="cb-pill cb-pill--good">Ready</span>
+                              <Pill tone="ok">Ready</Pill>
                             </Show>
                           </Show>
                         </Show>

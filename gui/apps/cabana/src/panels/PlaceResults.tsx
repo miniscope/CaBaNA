@@ -44,6 +44,7 @@ import { fitToWindow } from './QcPanel.tsx';
 import { ExportMenu } from './results/ExportMenu.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 // Outcome names short enough for the summary bar; the full names are in each segment's title.
 const SHORT = {
@@ -231,7 +232,7 @@ export function PlaceResults(props: {
           <i class="cb-dot cb-dot--ok" /> Run complete · {rows().length} cells analyzed
         </span>
         <Show when={props.changes.length}>
-          <span class="cb-pill cb-pill--warn">Settings differ from this run</span>
+          <Pill tone="flag">Settings differ from this run</Pill>
         </Show>
         <span class="cb-resbar__sp" />
         <button
@@ -253,9 +254,7 @@ export function PlaceResults(props: {
         fallback={
           <div class="cb-rb">
             <div class="cb-rb__row">
-              <span class="cb-badge" title={BROWSER_ENGINE_TEXT}>
-                Browser engine
-              </span>
+              <Pill title={BROWSER_ENGINE_TEXT}>Browser engine</Pill>
               <span class="cb-muted">Made in this browser session; not saved as a run.</span>
             </div>
           </div>

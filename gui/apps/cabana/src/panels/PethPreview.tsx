@@ -10,6 +10,7 @@ import { Fit, HowTo } from './AurocResults.tsx';
 import { CurvePlot } from './PethPlots.tsx';
 import { colorOf, Dot } from './PethShared.tsx';
 import type { PethSetupState } from './PethSetupState.ts';
+import { Pill } from '../components/Pill.tsx';
 
 const axisLabel = (a: Align) => `Time from bout ${a} (s)`;
 
@@ -30,7 +31,7 @@ export function PethPreview(props: { s: PethSetupState }): JSX.Element {
     <section class="cb-plot cb-pe-preview">
       <div class="cb-plot__head">
         <h4>PETH preview</h4>
-        <span class="cb-badge cb-badge--warn">Preview: no significance test</span>
+        <Pill tone="flag">Preview: no significance test</Pill>
         <HowTo title="PETH preview">
           <p>
             Mean of each behavior's included bouts, averaged over all cells, from the loaded data

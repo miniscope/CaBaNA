@@ -11,6 +11,7 @@ import {
 import { InfoTip } from './InfoTip.tsx';
 import { Field } from './AurocSetupFields.tsx';
 import { behaviorColor } from './AurocPanel.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 interface RowCounts {
   n: AurocData['info'][number];
@@ -211,11 +212,9 @@ export function AurocConditionsSection(props: {
                           >
                             <Show
                               when={c()!.enough}
-                              fallback={
-                                <span class="cb-pill cb-pill--warn">Insufficient data</span>
-                              }
+                              fallback={<Pill tone="flag">Insufficient data</Pill>}
                             >
-                              <span class="cb-pill cb-pill--good">OK</span>
+                              <Pill tone="ok">OK</Pill>
                             </Show>
                           </Show>
                         </td>

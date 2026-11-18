@@ -1,6 +1,6 @@
 import { Show, type JSX } from 'solid-js';
 
-export type PillTone = 'flag' | 'ok' | 'prep' | 'corr' | 'neutral';
+export type PillTone = 'flag' | 'ok' | 'fail' | 'prep' | 'corr' | 'neutral';
 
 /** A small status label. Always carries words: color alone never says the status. */
 export function Pill(props: {

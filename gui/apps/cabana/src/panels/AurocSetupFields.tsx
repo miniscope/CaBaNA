@@ -4,6 +4,7 @@ import { MIN_FRAMES } from '../lib/auroc.ts';
 import { COMPARISON_TYPES } from '../lib/auroc-setup.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { AurocScale } from './AurocPanel.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 /** What auROC measures and how it is tested, shown from the How it works button. */
 export function AurocMethodText(): JSX.Element {
@@ -93,7 +94,7 @@ export function AurocTypeSection(): JSX.Element {
               <b>{t.title}</b>
               <span>{t.blurb}</span>
               <Show when={t.unavailable}>
-                <span class="cb-badge cb-badge--warn">Not available yet</span>
+                <Pill tone="flag">Not available yet</Pill>
                 <span class="cb-muted">{t.unavailable}</span>
               </Show>
             </button>

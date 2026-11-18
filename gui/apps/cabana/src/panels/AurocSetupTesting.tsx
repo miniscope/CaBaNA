@@ -11,6 +11,7 @@ import {
 import { engineFor } from '../lib/engine.ts';
 import { Field } from './AurocSetupFields.tsx';
 import { NumInput } from './AurocPanel.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 export function AurocTestingSection(props: {
   ok: () => AurocData;
@@ -127,7 +128,7 @@ export function AurocTestingSection(props: {
                 }
               >
                 <Show when={autoShift()} fallback={<span class="cb-muted">Calculating…</span>}>
-                  <span class="cb-pill">{autoShift()!.minShiftS} s</span>
+                  <Pill>{autoShift()!.minShiftS} s</Pill>
                 </Show>
               </Show>
             </Show>

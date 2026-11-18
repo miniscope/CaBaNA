@@ -4,6 +4,7 @@ import { num, type ResultsCtx } from './place-ctx.ts';
 import { Outcome, TestStats } from './PlaceInspector.tsx';
 import { HowToRead } from './parts.tsx';
 import { RateMap } from './RateMap.tsx';
+import { CloseX } from '../components/CloseX.tsx';
 
 /** The selected cell beside the gallery: both tests, the two half-session maps, and folded details. */
 export function PlaceCellPanel(props: {
@@ -51,13 +52,7 @@ export function PlaceCellPanel(props: {
             >
               Next
             </button>
-            <button
-              class="btn-secondary btn-small"
-              aria-label="Close cell panel"
-              onClick={() => props.onClose()}
-            >
-              Close
-            </button>
+            <CloseX label="Close cell panel" onClick={() => props.onClose()} />
           </span>
         </div>
         <Show when={c().position() < 0}>

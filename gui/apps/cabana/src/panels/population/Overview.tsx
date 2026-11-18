@@ -8,6 +8,7 @@ import type { ResultSource } from '../../lib/results-load.ts';
 import { METHOD_NAME } from './MethodsSection.tsx';
 import { lineOf } from './overview-lines.ts';
 import { recorded } from './shared.tsx';
+import { Pill } from '../../components/Pill.tsx';
 
 function OverviewCard(props: {
   src: ResultSource;
@@ -25,7 +26,7 @@ function OverviewCard(props: {
       <Show when={!line.loading} fallback={<span class="cb-muted">Loading the saved values</span>}>
         <span>{line.error ? String(line.error) : (line()?.text ?? 'No result saved')}</span>
         <Show when={line()}>
-          <span class="cb-badge">{line()!.tested ? 'Tested against a null' : 'Descriptive'}</span>
+          <Pill>{line()!.tested ? 'Tested against a null' : 'Descriptive'}</Pill>
         </Show>
       </Show>
       <button class="cb-link" onClick={props.onOpen}>

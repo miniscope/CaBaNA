@@ -180,7 +180,7 @@ describe('opening a result', () => {
 
 describe('badges', () => {
   const texts = (r: RunRecord, match?: { matches: boolean; diff: string[] }) =>
-    [...(RunBadges({ record: r, match }) as HTMLElement).querySelectorAll('.cb-badge')].map(
+    [...(RunBadges({ record: r, match }) as HTMLElement).querySelectorAll('.cb-pill')].map(
       (e) => e.textContent,
     );
   it('Preliminary and settings-changed are separate badges, whichever the other is', () => {

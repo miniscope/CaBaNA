@@ -50,6 +50,7 @@ import {
   type AurocSetupView,
 } from './AurocSetupReview.tsx';
 import { AurocResults } from './AurocResults.tsx';
+import { CloseX } from '../components/CloseX.tsx';
 
 const PALETTE = ['#1f77b4', '#2ca02c', '#8c6d3f', '#c9a227', '#9467bd', '#d62728', '#17becf'];
 export const behaviorColor = (i: number) => PALETTE[i % PALETTE.length];
@@ -125,15 +126,7 @@ function Modal(props: {
         >
           <div class="cb-plot__head">
             <h3>{props.title}</h3>
-            <button
-              ref={close}
-              type="button"
-              class="cb-ib cb-as-close"
-              aria-label="Close"
-              onClick={props.onClose}
-            >
-              Close
-            </button>
+            <CloseX ref={(el) => (close = el)} onClick={props.onClose} />
           </div>
           {props.children}
         </div>

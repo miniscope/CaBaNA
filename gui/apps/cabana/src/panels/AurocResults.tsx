@@ -56,6 +56,8 @@ import { RunDetailsBody } from './results/RunDetails.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
 import { openPrepPopup } from '../lib/qc-popup-view.ts';
+import { CloseX } from '../components/CloseX.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 type View = 'inspector' | 'heatmap' | 'summary';
 const VIEWS: [View, string][] = [
@@ -179,15 +181,7 @@ export function Modal(props: {
         >
           <div class="cb-plot__head">
             <h3>{props.title}</h3>
-            <button
-              ref={close}
-              type="button"
-              class="cb-ib"
-              aria-label="Close"
-              onClick={props.onClose}
-            >
-              Close
-            </button>
+            <CloseX ref={(el) => (close = el)} onClick={props.onClose} />
           </div>
           <div class="cb-ar-modal__body">{props.children}</div>
         </div>
@@ -700,9 +694,7 @@ function RunState(props: { out: AurocOutcome; onEdit: () => void }): JSX.Element
       fallback={
         <div class="cb-rb">
           <div class="cb-rb__row">
-            <span class="cb-badge" title={BROWSER_ENGINE_TEXT}>
-              Browser engine
-            </span>
+            <Pill title={BROWSER_ENGINE_TEXT}>Browser engine</Pill>
             <span class="cb-muted">Made in this browser session; not saved as a run.</span>
             <span class="cb-rb__side">{actions()}</span>
           </div>

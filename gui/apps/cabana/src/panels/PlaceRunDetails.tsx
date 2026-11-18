@@ -5,6 +5,8 @@ import { engineText } from '../lib/engine.ts';
 import type { PlaceOutcome } from '../lib/place-run.ts';
 import type { SigmaChoice } from '../lib/placecells.ts';
 import { RunDetailsBody } from './results/RunDetails.tsx';
+import { CloseX } from '../components/CloseX.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 const num = (v: number, d = 2) => (Number.isNaN(v) ? '–' : v.toFixed(d));
 const bins = (n: number) => `${n} bin${n === 1 ? '' : 's'}`;
@@ -114,14 +116,11 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
     >
       <div class="cb-drawer__head">
         <h3>Run details</h3>
-        <button
-          ref={close}
-          class="cb-link"
-          aria-label="Close run details"
+        <CloseX
+          ref={(el) => (close = el)}
+          label="Close run details"
           onClick={() => props.onClose()}
-        >
-          Close
-        </button>
+        />
       </div>
       <p class="cb-muted">
         Settings and automatic parameter choices. Use Edit settings to change them.
@@ -166,10 +165,10 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
       <section>
         <h4>
           Smoothing{' '}
-          <span class="cb-pill">
+          <Pill>
             {o().sigmaChoice ? 'Selected' : 'Set manually'}: {bins(o().sigma)} (
             {num(o().sigma * g().bin, 1)} cm)
-          </span>
+          </Pill>
         </h4>
         <Show
           when={o().sigmaChoice}
@@ -186,9 +185,11 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
               <SigmaPlot c={c()} />
               <HowToRead>
                 <p>
-                  Each point is a smoothing width and its held-out score: maps built on part of the session are used to predict the
-                  rest, and higher is better. {c().se.some((v) => v > 0) ? 'Bars show ± 1 standard error. ' : ''}The width kept is the smallest one within one standard
-                  error of the best, so no p-value is used to choose it.
+                  Each point is a smoothing width and its held-out score: maps built on part of the
+                  session are used to predict the rest, and higher is better.{' '}
+                  {c().se.some((v) => v > 0) ? 'Bars show ± 1 standard error. ' : ''}The width kept
+                  is the smallest one within one standard error of the best, so no p-value is used
+                  to choose it.
                 </p>
               </HowToRead>
               <div class="cb-legend">
@@ -246,9 +247,9 @@ export function PlaceRunDetails(props: { out: PlaceOutcome; onClose: () => void 
       <section>
         <h4>
           Minimum circular shift{' '}
-          <span class="cb-pill">
+          <Pill>
             {o().timescale ? 'Selected' : 'Set manually'}: {num(o().minShiftS, 1)} s
-          </span>
+          </Pill>
         </h4>
         <Show
           when={o().timescale}

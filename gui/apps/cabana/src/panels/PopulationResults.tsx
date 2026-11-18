@@ -35,6 +35,7 @@ import { Unavailable } from './results/FrameworkNotice.tsx';
 import { RunDetails } from './results/RunDetails.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
+import { Pill } from '../components/Pill.tsx';
 
 export const VIEWS: Record<PopulationMethod, (p: ViewProps) => JSX.Element> = {
   similarity: PvSimilarity,
@@ -142,7 +143,7 @@ export function PopulationResults(props: { onSetup: () => void }): JSX.Element {
                   }}
                 />
                 <Show when={src()?.offline()}>
-                  <span class="cb-badge">Viewing the saved copy</span>
+                  <Pill>Viewing the saved copy</Pill>
                 </Show>
               </Show>
               <Switch>
