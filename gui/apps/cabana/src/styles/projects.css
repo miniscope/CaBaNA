@@ -158,3 +158,119 @@
   padding-left: 20px;
 }
 
+/* ---- New Project ---- */
+.cb-np__drop {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+.cb-np__drop--over {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+.cb-np__droptitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+.cb-np__dropnote {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+}
+.cb-np__actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.cb-np__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cb-np__head > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.cb-np__folder {
+  font-size: 15px;
+  font-weight: 600;
+}
+.cb-np__meta {
+  font-size: 12.5px;
+}
+.cb-np__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 2px;
+  font-size: 13.6px;
+}
+.cb-np__row > span:first-child {
+  width: 96px;
+}
+.cb-np__row input {
+  width: 420px;
+  max-width: 100%;
+  height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  font: inherit;
+}
+.cb-np__path {
+  font: 12px var(--font-mono);
+}
+.cb-np__table {
+  flex: 1;
+  min-height: 0;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+}
+.cb-np__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cb-np__table th {
+  position: sticky;
+  top: 0;
+  padding: 4px 10px;
+  background: var(--bg-primary);
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-secondary);
+}
+.cb-np__table td {
+  padding: 3px 10px;
+}
+.cb-np__table th:nth-child(3),
+.cb-np__table td:nth-child(3) {
+  text-align: right;
+}
+.cb-np__table td:first-child {
+  font: 12.5px var(--font-mono);
+}
+.cb-np__unused td {
+  color: var(--text-tertiary);
+}
+.cb-np__note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.cb-np__missing {
+  color: var(--flag);
+  font-weight: 500;
+}
+
