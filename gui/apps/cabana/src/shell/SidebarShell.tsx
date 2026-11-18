@@ -8,6 +8,7 @@ import { ITEM_LABEL, statusDetail, type ItemId, type NextStep } from '../lib/rea
 import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts';
 import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
+import { READOUT_HINT, readout } from '../lib/viz-tracks.ts';
 import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { About } from '../panels/projects/About.tsx';
 import { NewSession } from '../panels/projects/NewSession.tsx';
@@ -160,18 +161,20 @@ function Footer(): JSX.Element {
     <Show when={stepId() !== 'results' && !isProjectPage(stepId())}>
       <div class="cb-foot">
         <span class="cb-foot__hint cb-muted">
-          <Show
-            when={next().blocked}
-            fallback={
-              <Show when={optionalHint()}>
-                Optional:{' '}
-                <button type="button" class="cb-link" onClick={() => goToStep('viz')}>
-                  Data visualization
-                </button>
-              </Show>
-            }
-          >
-            {next().blocked}
+          <Show when={stepId() !== 'viz'} fallback={readout() ?? READOUT_HINT}>
+            <Show
+              when={next().blocked}
+              fallback={
+                <Show when={optionalHint()}>
+                  Optional:{' '}
+                  <button type="button" class="cb-link" onClick={() => goToStep('viz')}>
+                    Data visualization
+                  </button>
+                </Show>
+              }
+            >
+              {next().blocked}
+            </Show>
           </Show>
         </span>
         <button

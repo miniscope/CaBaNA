@@ -1,4 +1,5 @@
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { Pill } from '../components/Pill.tsx';
 import {
   cell,
   deconvolved,
@@ -10,20 +11,25 @@ import {
   selectCell,
 } from '../lib/store.ts';
 import { setWinLen, setWinStartClamped, WINDOW_CHOICES, win, winLen } from '../lib/viz.ts';
-import { heat, pos, rows, openTracks, SOURCE_LABEL, tracksAnchor } from '../lib/viz-tracks.ts';
+import { heat, pos, rows, SOURCE_LABEL } from '../lib/viz-tracks.ts';
+import { arenaShow, trajMode } from '../lib/viz-display.ts';
+import { BOX_TITLE, type VizBox } from '../lib/viz-pills.ts';
+import { ArenaEditor } from './ArenaEditor.tsx';
+import { ChangesDrawer, changesSummary, openChanges } from './ChangesDrawer.tsx';
+import { EntryPopup } from './data-setup/EntryView.tsx';
 import { FootprintViewer } from './FootprintViewer.tsx';
+import { InfoTip } from './InfoTip.tsx';
+import { flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { PlotCard } from './QcParts.tsx';
-import { ChecksRow, InputsPop, PARTS, Parts, REVIEW } from './VizChecks.tsx';
-import { ChangesDrawer } from './ChangesDrawer.tsx';
-import { EntryPopup } from './data-setup/EntryView.tsx';
-import { InfoTip } from './InfoTip.tsx';
+import { RevertChanges } from './RevertChanges.tsx';
 import { arena, pxPerCm } from '../lib/arena.ts';
 import { BehaviorRows, NeuralRows } from './SessionView.tsx';
 import { SessionNavigator } from './SessionNavigator.tsx';
 import { placed, Trajectory } from './Trajectory.tsx';
+import { boxPills, pillTarget } from './VizChecks.tsx';
 import { HELP } from './VizHelp.tsx';
-import { DisplayMenu, TracksMenu } from './VizMenus.tsx';
+import { BoxActions } from './VizMenus.tsx';
 
 const nCells = () =>
   (rawTrace() ?? denoisedTrace() ?? deconvolved())?.cells ?? footprints()?.cells ?? 0;
@@ -58,30 +64,45 @@ function CellBar(): JSX.Element {
   );
 }
 
-const [overlaysAnchor, setOverlaysAnchor] = createSignal<HTMLElement>();
-const [inputsAnchor, setInputsAnchor] = createSignal<HTMLElement>();
-
+/** Window length as segments on wide screens, a list on narrow ones (see viz.css), then Earlier and Later. */
 const WindowControls = (): JSX.Element => {
   const half = () => (win()[1] - win()[0]) / 2;
   return (
     <>
-      <label class="cb-plot__tool">
-        Window
-        <select value={String(winLen())} onChange={(e) => setWinLen(+e.currentTarget.value)}>
-          <For each={WINDOW_CHOICES}>
-            {(w) => (
-              <option value={String(w.s)} selected={w.s === winLen()}>
-                {w.label}
-              </option>
-            )}
-          </For>
-          <Show when={!WINDOW_CHOICES.some((w) => w.s === winLen())}>
-            <option value={String(winLen())} selected>
-              {Math.round(winLen())} s (custom)
+      <span class="cb-plot__tool">Window</span>
+      <div class="cb-seg cb-viz__winseg" role="group" aria-label="Window length">
+        <For each={WINDOW_CHOICES}>
+          {(w) => (
+            <button
+              type="button"
+              classList={{ 'cb-seg__on': w.s === winLen() }}
+              aria-pressed={w.s === winLen()}
+              onClick={() => setWinLen(w.s)}
+            >
+              {w.label}
+            </button>
+          )}
+        </For>
+      </div>
+      <select
+        class="cb-viz__winsel"
+        aria-label="Window length"
+        value={String(winLen())}
+        onChange={(e) => setWinLen(+e.currentTarget.value)}
+      >
+        <For each={WINDOW_CHOICES}>
+          {(w) => (
+            <option value={String(w.s)} selected={w.s === winLen()}>
+              {w.label}
             </option>
-          </Show>
-        </select>
-      </label>
+          )}
+        </For>
+        <Show when={!WINDOW_CHOICES.some((w) => w.s === winLen())}>
+          <option value={String(winLen())} selected>
+            {Math.round(winLen())} s (custom)
+          </option>
+        </Show>
+      </select>
       <button class="btn-secondary btn-small" onClick={() => setWinStartClamped(win()[0] - half())}>
         Earlier
       </button>
@@ -92,15 +113,9 @@ const WindowControls = (): JSX.Element => {
   );
 };
 
-/** Path or time in bin; kept while other pages are visited. */
-const [trajMode, setTrajMode] = createSignal<'path' | 'time'>('path');
-
 /** One line under each box title: what it shows, in counts. */
-const footprintSummary = (): JSX.Element => (
-  <>
-    {nCells()} cells · <Parts parts={PARTS.cells()} />
-  </>
-);
+const footprintSummary = () =>
+  `${nCells()} cells · ${flaggedCells().length} flagged in Neural data · click a cell to select it`;
 const neuralSummary = () =>
   heat()
     ? `heat map: ${SOURCE_LABEL[heat()!]}, 5th to 99.5th percentile per cell · cell ${cell() + 1} below`
@@ -121,19 +136,20 @@ const behaviorSummary = () => {
     .join(' · ');
 };
 
-/** A box's review button; disabled with the reason when the file it opens is not loaded. */
-function ReviewButton(props: { kind: keyof typeof REVIEW; label: string }): JSX.Element {
-  const open = () => REVIEW[props.kind]();
+/** The pills of a box; each opens that box's QC or Preprocess pop-up. */
+function Pills(props: { box: VizBox }): JSX.Element {
   return (
-    <button
-      type="button"
-      class="btn-secondary btn-small"
-      disabled={!open()}
-      title={open() ? undefined : 'The file this review opens is not loaded.'}
-      onClick={() => open()?.()}
-    >
-      {props.label}
-    </button>
+    <For each={boxPills(props.box)}>
+      {(p) => (
+        <Pill
+          tone={p.tone}
+          onClick={pillTarget(props.box, p)}
+          title={`Open ${p.kind === 'prep' ? 'Preprocess' : 'QC'} for ${BOX_TITLE[props.box]}`}
+        >
+          {p.text}
+        </Pill>
+      )}
+    </For>
   );
 }
 
@@ -146,15 +162,17 @@ const NEURAL_HELP = (
     </p>
     <p>
       Below: the selected cell's raw, denoised and deconvolved signals over the same window. Each
-      row has its own help marker. Display chooses the heat map's signal and the shaded behaviors.
+      row has a checkbox to show or hide it and its own help marker. Actions, Display settings
+      chooses the heat map's signal and the shaded behaviors.
     </p>
   </>
 );
 const BEHAVIOR_HELP = (
   <p>
     Behavior labels, zones, time markers, frame labels, position and speed on the same time axis as
-    the neural data. Hover over any plot to place the dashed cursor on all of them; the line under
-    the plots reads out the time, position and behavior there. Tracks chooses the rows.
+    the neural data. Hover over any plot to place the dashed cursor on all of them; the line at the
+    bottom of the page reads out the time, position and behavior there. The checkboxes show or hide
+    a row.
   </p>
 );
 
@@ -166,6 +184,11 @@ export function VizPanel(): JSX.Element {
     footprints() ||
     positionResult() ||
     annotationResults().length;
+  const [arenaEditor, setArenaEditor] = createSignal(false);
+  const marks = {
+    flagged: createMemo(() => new Set(flaggedCells().map((x) => x.c))),
+    overlapping: createMemo(() => new Set(overlapPairs().flatMap((p) => [p.a, p.b]))),
+  };
   let root!: HTMLDivElement;
   onMount(() => onCleanup(fitToWindow(root)));
   return (
@@ -175,8 +198,9 @@ export function VizPanel(): JSX.Element {
         <InfoTip label="About Data visualization">
           The loaded data on one shared time window. Selecting a cell (footprints, heat map row or
           the cell field), moving the window (navigator or Earlier and Later) and hovering a time
-          plot update every plot. The checks row sums up the quality checks; each chip and Review
-          button opens that file's checks and corrections, the same as in Data setup.
+          plot update every plot. The pills in each box sum up its quality checks, corrections and
+          preprocessing; each opens that file's checks, the same as in Data setup. Actions on each
+          box hold its display settings and change history.
         </InfoTip>
         <span class="cb-spacer" />
         <Show when={anything()}>
@@ -184,23 +208,34 @@ export function VizPanel(): JSX.Element {
             <CellBar />
           </Show>
           <WindowControls />
+          <button
+            type="button"
+            class="btn-secondary btn-small cb-viz__hist"
+            aria-haspopup="dialog"
+            title={
+              changesSummary().reruns
+                ? `${changesSummary().reruns} saved result(s) need a rerun`
+                : 'Corrections and preprocessing applied in this session'
+            }
+            onClick={() => openChanges()}
+          >
+            Change history · {changesSummary().applied}
+          </button>
         </Show>
       </div>
       <Show
         when={anything()}
         fallback={<div class="cb-empty">Load neural or behavior data to see it here.</div>}
       >
-        <ChecksRow
-          inputsOpen={!!inputsAnchor()}
-          onInputs={(el) => setInputsAnchor((a) => (a === el ? undefined : el))}
-        />
         <div class="cb-viz__grid">
           <PlotCard
             title="Footprints"
             help={HELP.footprints.text}
             box
+            expandInMenu
             summary={footprintSummary()}
-            actions={<ReviewButton kind="footprints" label="Review cells" />}
+            pills={<Pills box="footprints" />}
+            actions={(expand) => <BoxActions box="footprints" expand={expand} />}
           >
             {(size) => (
               <Show
@@ -210,13 +245,27 @@ export function VizPanel(): JSX.Element {
                 <div class="cb-fpcard">
                   <div
                     style={{
-                      width: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
-                      height: `${Math.max(0, Math.min(size().w, size().h - 22))}px`,
+                      width: `${Math.max(0, Math.min(size().w - 120, size().h - 4))}px`,
+                      height: `${Math.max(0, Math.min(size().w - 120, size().h - 4))}px`,
                     }}
                   >
-                    <FootprintViewer />
+                    <FootprintViewer marks={marks} />
                   </div>
-                  <div class="cb-muted">Click a cell to select it. White = selected.</div>
+                  <div class="cb-fpcard__key">
+                    <div>
+                      <span class="cb-ring cb-ring--flag" />
+                      Flagged ({flaggedCells().length})
+                    </div>
+                    <div>
+                      <span class="cb-ring cb-ring--pair" />
+                      Overlap ({overlapPairs().length}{' '}
+                      {overlapPairs().length === 1 ? 'pair' : 'pairs'})
+                    </div>
+                    <div>
+                      <span class="cb-ring cb-ring--sel" />
+                      Selected: cell {cell() + 1}
+                    </div>
+                  </div>
                 </div>
               </Show>
             )}
@@ -229,25 +278,10 @@ export function VizPanel(): JSX.Element {
               title="Neural data"
               help={NEURAL_HELP}
               box
+              expandInMenu
               summary={neuralSummary()}
-              actions={
-                <>
-                  <button
-                    type="button"
-                    class="btn-secondary btn-small"
-                    aria-haspopup="dialog"
-                    aria-expanded={!!overlaysAnchor()}
-                    onClick={(e) =>
-                      setOverlaysAnchor((a) =>
-                        a === e.currentTarget ? undefined : e.currentTarget,
-                      )
-                    }
-                  >
-                    Display
-                  </button>
-                  <ReviewButton kind="neural" label="Review cells" />
-                </>
-              }
+              pills={<Pills box="neural" />}
+              actions={(expand) => <BoxActions box="neural" expand={expand} side="left" />}
             >
               {() => (
                 <div class="cb-fill">
@@ -260,13 +294,25 @@ export function VizPanel(): JSX.Element {
             title="Arena"
             help={HELP.trajectory.text}
             box
-            summary={arenaSummaryLine()}
-            actions={
-              <>
-                <ReviewButton kind="arena" label="Edit arena" />
-                <ReviewButton kind="position" label="Review position" />
-              </>
+            expandInMenu
+            summary={
+              <span class="cb-viz__sub">
+                <Pills box="arena" />
+                <span>{arenaSummaryLine()}</span>
+              </span>
             }
+            actions={(expand) => (
+              <>
+                <button
+                  type="button"
+                  class="btn-accent btn-small"
+                  onClick={() => setArenaEditor(true)}
+                >
+                  Open arena editor
+                </button>
+                <BoxActions box="arena" expand={expand} up />
+              </>
+            )}
           >
             {() => (
               <div class="cb-fill cb-viz__arena">
@@ -282,16 +328,6 @@ export function VizPanel(): JSX.Element {
                     <Trajectory bare linked mode={trajMode()} />
                   </div>
                   <div class="cb-plot__legend cb-viz__key">
-                    <Show when={placed()}>
-                      <select
-                        aria-label="Trajectory view"
-                        value={trajMode()}
-                        onChange={(e) => setTrajMode(e.currentTarget.value as 'path' | 'time')}
-                      >
-                        <option value="path">Path</option>
-                        <option value="time">Time in bin</option>
-                      </select>
-                    </Show>
                     <Show
                       when={trajMode() === 'path' || !placed()}
                       fallback={
@@ -302,12 +338,18 @@ export function VizPanel(): JSX.Element {
                         </>
                       }
                     >
-                      <span class="cb-key cb-key--gray" />
-                      Full session
-                      <span class="cb-key cb-key--blue" />
-                      Selected window
-                      <span class="cb-key cb-key--dot" />
-                      Cursor
+                      <Show when={arenaShow.full}>
+                        <span class="cb-key cb-key--gray" />
+                        Full session
+                      </Show>
+                      <Show when={arenaShow.window}>
+                        <span class="cb-key cb-key--blue" />
+                        Selected window
+                      </Show>
+                      <Show when={arenaShow.cursor}>
+                        <span class="cb-key cb-key--dot" />
+                        Cursor
+                      </Show>
                     </Show>
                   </div>
                 </Show>
@@ -318,21 +360,10 @@ export function VizPanel(): JSX.Element {
             title="Behavior and position"
             help={BEHAVIOR_HELP}
             box
+            expandInMenu
             summary={behaviorSummary()}
-            actions={
-              <>
-                <button
-                  type="button"
-                  class="btn-secondary btn-small"
-                  aria-haspopup="dialog"
-                  aria-expanded={!!tracksAnchor()}
-                  onClick={(e) => openTracks(e.currentTarget)}
-                >
-                  Tracks
-                </button>
-                <ReviewButton kind="behavior" label="Review behavior" />
-              </>
-            }
+            pills={<Pills box="behavior" />}
+            actions={(expand) => <BoxActions box="behavior" expand={expand} side="left" up />}
           >
             {() => (
               <div class="cb-fill">
@@ -342,15 +373,12 @@ export function VizPanel(): JSX.Element {
           </PlotCard>
         </div>
       </Show>
-      <Show when={overlaysAnchor()}>
-        {(a) => <DisplayMenu anchor={a()} onClose={() => setOverlaysAnchor()} />}
-      </Show>
-      <Show when={tracksAnchor()}>{(a) => <TracksMenu anchor={a()} />}</Show>
-      <Show when={inputsAnchor()}>
-        {(a) => <InputsPop anchor={a()} onClose={() => setInputsAnchor()} />}
+      <Show when={arenaEditor()}>
+        <ArenaEditor onClose={() => setArenaEditor(false)} />
       </Show>
       <EntryPopup />
       <ChangesDrawer />
+      <RevertChanges />
     </div>
   );
 }
