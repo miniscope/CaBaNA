@@ -129,7 +129,7 @@ const POS_VIEWS: [PosView, string][] = [
   ['errors', 'Error distribution'],
 ];
 
-function PositionResults(props: {
+export function PositionResults(props: {
   config: string[];
   v: PositionDecodingView;
   record?: RunRecord;
@@ -484,7 +484,7 @@ function PositionResults(props: {
 
 type BehView = 'scores' | 'confusion';
 
-function BehaviorResults(props: {
+export function BehaviorResults(props: {
   config: string[];
   v: BehaviorDecodingView;
   record?: RunRecord;

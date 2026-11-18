@@ -36,14 +36,14 @@ import { RunDetails } from './results/RunDetails.tsx';
 import { RunBanner } from './results/RunBanner.tsx';
 import { SavedRunBar } from './results/SavedRunBar.tsx';
 
-const VIEWS: Record<PopulationMethod, (p: ViewProps) => JSX.Element> = {
+export const VIEWS: Record<PopulationMethod, (p: ViewProps) => JSX.Element> = {
   similarity: PvSimilarity,
   stability: PvStability,
   separation: StateSeparation,
   dimensionality: Dimensionality,
   pairwise: PairwiseCorr,
 };
-const NAV_LABEL: Record<PopulationMethod, string> = {
+export const NAV_LABEL: Record<PopulationMethod, string> = {
   similarity: 'Population vector similarity',
   stability: 'Population vector stability',
   separation: 'State separation',

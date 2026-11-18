@@ -30,6 +30,10 @@ import type { ExplorerParts } from './explorer-parts.ts';
 import { StatisticsPane, SummaryPane, TablesPane } from './ExplorerPanes.tsx';
 import { pethParts } from './PethExplorer.tsx';
 import { aurocParts, placeParts } from './TableExplorers.tsx';
+import { decodingParts, populationParts } from './FrameworkExplorers.tsx';
+import type { ExplorerData } from '../../lib/explorer-data.ts';
+import { loadFrameworkExtra } from '../../lib/results-framework.ts';
+import { aurocModel, placeCells } from '../../lib/results-saved.ts';
 import { openPlotEditor } from './PlotEditor.tsx';
 import { OverviewPane, openPlot } from './RunFacts.tsx';
 import { RunDetailsBody } from './RunDetails.tsx';
@@ -100,13 +104,35 @@ export function ExplorerFrame(props: {
     },
     ({ r }) => matchOfRecord(r, runs()[0]?.run_id === r.run_id).catch(() => undefined),
   );
+  // A framework run's arrays: the auROC grid, place-cell values and maps, and what Decoding and
+  // Population read their views from.
+  const [extra] = createResource(
+    () => {
+      const r = record();
+      return r && hasResults(r) && r.engine === 'framework' ? { r, up: bridgeReady() } : undefined;
+    },
+    ({ r }) => loadFrameworkExtra(r).catch(() => undefined),
+  );
+  const table = (d: ExplorerData, name: string) => d.tables.find((t) => t.name === name);
   const parts = createMemo((): ExplorerParts | undefined => {
-    const [r, d] = [record(), data()];
+    const [r, d, x] = [record(), data(), extra()];
     if (!r || !d) return undefined;
-    if (analysis() === 'peth') return pethParts(r, d);
-    if (analysis() === 'auroc') return aurocParts(d);
-    if (analysis() === 'place') return placeParts(d);
-    return undefined; // decoding and population: no main plot can be drawn from the saved tables
+    switch (analysis()) {
+      case 'peth':
+        return pethParts(r, d);
+      case 'auroc':
+        return aurocParts(x?.auroc ?? aurocModel(table(d, 'auroc.csv')), d);
+      case 'place':
+        return placeParts(
+          x?.place?.cells ?? placeCells(table(d, 'place_cells.csv')),
+          x?.place?.maps,
+          d,
+        );
+      case 'decoding':
+        return x && r.engine === 'framework' ? decodingParts(r, x, d) : undefined;
+      case 'population':
+        return x && r.engine === 'framework' ? populationParts(r, x, d) : undefined;
+    }
   });
 
   const [view, setView] = createSignal<View>('main');

@@ -5,19 +5,18 @@ import type { ExplorerData } from '../../lib/explorer-data.ts';
 import { aurocColor } from '../../lib/auroc-view.ts';
 import { OVERALL, type Overall } from '../../lib/place-outcome.ts';
 import {
-  aurocModel,
   aurocOrder,
   outcomeCounts,
-  placeCells,
   responseCounts,
   type AurocModel,
   type PlaceCell,
 } from '../../lib/results-saved.ts';
+import type { PlaceMaps } from '../../lib/results-framework.ts';
+import { RateMap } from '../RateMap.tsx';
 import { HowTo, Fit } from '../AurocResults.tsx';
 import { Canvas, niceTicks, ORANGE, put } from '../PethPlots.tsx';
 import type { ExplorerParts } from './explorer-parts.ts';
 
-const table = (data: ExplorerData, name: string) => data.tables.find((t) => t.name === name);
 const alphaText = (data: ExplorerData) =>
   data.summary.settings.alpha !== undefined ? ` (α ${data.summary.settings.alpha})` : '';
 
@@ -84,8 +83,10 @@ function ResponseTiles(props: { excited: number; inhibited: number; notSignifica
   );
 }
 
-export function aurocParts(data: ExplorerData): ExplorerParts | undefined {
-  const m = aurocModel(table(data, 'auroc.csv'));
+export function aurocParts(
+  m: AurocModel | undefined,
+  data: ExplorerData,
+): ExplorerParts | undefined {
   if (!m?.behaviors.length) return undefined;
   const [sortBy, setSortBy] = createSignal(0);
   const hasTest = m.response.some((row) => row.some((v) => v !== ''));
@@ -180,6 +181,77 @@ export function aurocParts(data: ExplorerData): ExplorerParts | undefined {
 
 // ---------------------------------------------------------------- Place cells
 
+const PER_PAGE = 24;
+
+/** The saved rate maps, highest spatial information first, a page at a time. */
+function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps }): JSX.Element {
+  const [page, setPage] = createSignal(0);
+  const order = createMemo(() =>
+    props.cells
+      .map((c, i) => ({ c, i }))
+      .sort((a, b) =>
+        Number.isNaN(a.c.information)
+          ? 1
+          : Number.isNaN(b.c.information)
+            ? -1
+            : b.c.information - a.c.information,
+      ),
+  );
+  const pages = () => Math.max(1, Math.ceil(order().length / PER_PAGE));
+  const shown = () => order().slice(page() * PER_PAGE, (page() + 1) * PER_PAGE);
+  const mapOf = (i: number) =>
+    props.maps.values.subarray(i * props.maps.nStates, (i + 1) * props.maps.nStates);
+  return (
+    <div class="cb-rx__gallery">
+      <div class="cb-rx__gridmaps">
+        <For each={shown()}>
+          {({ c, i }) => {
+            const v = mapOf(i);
+            return (
+              <figure class="cb-rx__map">
+                <RateMap
+                  values={v}
+                  max={Math.max(0, ...Array.from(v).filter(Number.isFinite))}
+                  nx={props.maps.nx}
+                  ny={props.maps.ny}
+                  open={Array.from(v, Number.isFinite)}
+                  bin={1}
+                  arenaCm={[props.maps.nx, props.maps.ny]}
+                  size={110}
+                />
+                <figcaption>
+                  Cell {c.cell} · {OVERALL[c.outcome ?? 'cannot'].label}
+                </figcaption>
+              </figure>
+            );
+          }}
+        </For>
+      </div>
+      <div class="cb-rx__pager">
+        <button
+          type="button"
+          class="btn-secondary btn-small"
+          disabled={page() === 0}
+          onClick={() => setPage(page() - 1)}
+        >
+          Previous
+        </button>
+        <span class="cb-muted">
+          Page {page() + 1} of {pages()}
+        </span>
+        <button
+          type="button"
+          class="btn-secondary btn-small"
+          disabled={page() + 1 >= pages()}
+          onClick={() => setPage(page() + 1)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const OUTCOME_COLOR: Record<Overall, string> = {
   both: ORANGE,
   info: '#2171b5',
@@ -230,18 +302,34 @@ function Scatter(props: { cells: PlaceCell[]; w: number; h: number }): JSX.Eleme
   );
 }
 
-export function placeParts(data: ExplorerData): ExplorerParts | undefined {
-  const cells = placeCells(table(data, 'place_cells.csv'));
+export function placeParts(
+  cells: PlaceCell[] | undefined,
+  maps: PlaceMaps | undefined,
+  data: ExplorerData,
+): ExplorerParts | undefined {
   if (!cells?.length) return undefined;
+  const [plot, setPlot] = createSignal(0);
+  const gallery = () => !!maps && plot() === 0;
   const counts = outcomeCounts(cells);
   const both = cells
     .filter((c) => c.outcome === 'both')
     .sort((a, b) => b.information - a.information);
   return {
-    title: () => 'Spatial information and stability',
+    title: () => (gallery() ? 'Rate maps' : 'Spatial information and stability'),
     tested: true,
-    mainLabel: 'Information and stability per cell',
-    subtitle: () => 'One point per cell, colored by the outcome of the two tests.',
+    mainLabel: maps ? 'Rate maps' : 'Information and stability per cell',
+    switcher: maps
+      ? {
+          label: 'Plot',
+          options: ['Rate maps', 'Information and stability'],
+          index: plot,
+          set: setPlot,
+        }
+      : undefined,
+    subtitle: () =>
+      gallery()
+        ? 'One map per cell, highest spatial information first; each map is scaled to its own peak. Gray: too little time in the bin.'
+        : 'One point per cell, colored by the outcome of the two tests.',
     help: () => (
       <HowTo title="Information and stability">
         <p>
@@ -253,20 +341,28 @@ export function placeParts(data: ExplorerData): ExplorerParts | undefined {
       </HowTo>
     ),
     main: () => (
-      <div class="cb-rx__plots">
-        <div class="cb-rx__heat">
-          <Fit>{(w, h) => <Scatter cells={cells} w={w} h={h} />}</Fit>
-        </div>
-        <ul class="cb-rx__legend">
-          <For each={Object.keys(OVERALL) as Overall[]}>
-            {(k) => (
-              <li>
-                <span class="cb-dot" style={{ background: OUTCOME_COLOR[k] }} /> {OVERALL[k].label}
-              </li>
-            )}
-          </For>
-        </ul>
-      </div>
+      <Show
+        when={gallery()}
+        fallback={
+          <div class="cb-rx__plots">
+            <div class="cb-rx__heat">
+              <Fit>{(w, h) => <Scatter cells={cells} w={w} h={h} />}</Fit>
+            </div>
+            <ul class="cb-rx__legend">
+              <For each={Object.keys(OVERALL) as Overall[]}>
+                {(k) => (
+                  <li>
+                    <span class="cb-dot" style={{ background: OUTCOME_COLOR[k] }} />{' '}
+                    {OVERALL[k].label}
+                  </li>
+                )}
+              </For>
+            </ul>
+          </div>
+        }
+      >
+        <MapGallery cells={cells} maps={maps!} />
+      </Show>
     ),
     summary: () => (
       <>

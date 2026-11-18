@@ -476,3 +476,33 @@
   display: flex;
   justify-content: space-between;
 }
+.cb-rx__embed {
+  min-height: 0;
+  overflow: auto;
+}
+.cb-rx__embed.cb-dec-results {
+  height: auto;
+}
+.cb-rx__gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.cb-rx__gridmaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow: auto;
+}
+.cb-rx__map {
+  margin: 0;
+  font-size: 11.5px;
+  max-width: 120px;
+}
+.cb-rx__pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
