@@ -10,20 +10,24 @@ import { buildChanges, changeCounts, type ChangeEntry } from '../lib/changes.ts'
 import { openEntry } from '../lib/data-setup-view.ts';
 import { choiceOf, jumpRows, setChoice } from '../lib/position-corrections.ts';
 import { DEFAULT_PREP, prep } from '../lib/preprocess.ts';
-import { gapSummary, setPrepStep } from '../lib/prep-view.ts';
+import { fs, gapSummary, setPrepStep } from '../lib/prep-view.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
+import { upstreamItems } from '../lib/upstream.ts';
 import {
   annotationLog,
   goToStep,
   loaded,
+  alignmentResults,
   rejected,
   rejectReasons,
   restoreCell,
+  timingResults,
   undoAnnotationEdits,
 } from '../lib/store.ts';
 import { segments } from './BehaviorQc.tsx';
+import { footprintCheckList } from './NeuralQcShared.tsx';
 import { UTabs } from './VizMenus.tsx';
 
 export const [changesOpen, setChangesOpen] = createSignal(false);
@@ -217,7 +221,54 @@ function History(): JSX.Element {
   );
 }
 
-type Tab = 'applied' | 'history';
+/** Findings no correction here can repair, from the existing QC results. */
+export const upstream = createRoot(() =>
+  createMemo(() => {
+    const overlap = footprintCheckList().find((c) => c.id === 'fp-overlap');
+    const long = isLoaded('position') ? gapSummary().long : undefined;
+    return upstreamItems({
+      timing: timingResults().map((r) => ({
+        name: r.name,
+        nDropped: r.nDropped,
+        droppedFraction: r.droppedFraction,
+        gaps: r.gapStart.length,
+      })),
+      alignment: alignmentResults(),
+      longGaps: long && { ...long, fillLimitS: prep.fillGapS, fps: fs() },
+      overlap: overlap && { status: overlap.status, pairs: overlap.pairs?.length ?? 0 },
+    });
+  }),
+);
+
+function Upstream(): JSX.Element {
+  return (
+    <>
+      <p class="cb-muted cb-chg__intro">
+        Problems in the files themselves, found by the checks. Corrections here cannot repair them;
+        they are listed so they can be passed on to whoever exports, tracks or extracts the data.
+      </p>
+      <Show when={upstream().length} fallback={<p class="cb-muted">No upstream problems found.</p>}>
+        <ul class="cb-chg__list">
+          <For each={upstream()}>
+            {(u) => (
+              <li class="cb-chg">
+                <span class="cb-chg__kind cb-chg__kind--flag">{u.source}</span>
+                <div class="cb-chg__text">
+                  <span>
+                    <b>{u.what}</b> · <span class="cb-muted">{u.detail}</span>
+                  </span>
+                  <span class="cb-chg__meta">Fix: {u.fixWhere}</span>
+                </div>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </>
+  );
+}
+
+type Tab = 'applied' | 'history' | 'upstream';
 
 export function ChangesDrawer(): JSX.Element {
   const [tab, setTab] = createSignal<Tab>('applied');
@@ -235,12 +286,19 @@ export function ChangesDrawer(): JSX.Element {
           tabs={[
             { id: 'applied', label: `Applied ${changes().length}` },
             { id: 'history', label: `History ${history().length}` },
+            { id: 'upstream', label: `Upstream ${upstream().length}` },
           ]}
           value={tab()}
           onPick={setTab}
         />
-        <Show when={tab() === 'applied'} fallback={<History />}>
+        <Show when={tab() === 'applied'}>
           <Applied />
+        </Show>
+        <Show when={tab() === 'history'}>
+          <History />
+        </Show>
+        <Show when={tab() === 'upstream'}>
+          <Upstream />
         </Show>
       </Modal>
     </Show>

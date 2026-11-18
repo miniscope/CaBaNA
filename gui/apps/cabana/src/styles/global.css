@@ -3198,6 +3198,10 @@ button[aria-expanded='true'] > .cb-help {
   background: var(--bg-secondary);
   font-size: 12.5px;
 }
+.cb-chg__intro {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
 .cb-chg__group {
   margin-top: 10px;
 }
