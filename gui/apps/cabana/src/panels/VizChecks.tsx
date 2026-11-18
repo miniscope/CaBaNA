@@ -1,6 +1,6 @@
-// Where each box's review opens, and the pills in each box's title row. Every review opens the
-// same file pop-up Data setup uses, at the file's QC or Preprocess step: corrections are made in
-// one place.
+// Where each box's review opens, and the pills in each box's title row. Neural data and
+// Footprints open their own QC and Preprocess pop-ups; the other boxes still open the file pop-up
+// Data setup uses, at the file's QC or Preprocess step.
 
 import { analysisSlot } from '../lib/analysis-data.ts';
 import { kernelChecks } from '../lib/decon-state.ts';
@@ -21,6 +21,7 @@ import { changes } from './ChangesDrawer.tsx';
 import { flaggedOf } from './BehaviorQcAnnotations.tsx';
 import { posOk, segments } from './BehaviorQc.tsx';
 import { pickTest } from './data-setup/FileQc.tsx';
+import { setQcPopup, type QcPopupId } from '../lib/qc-popup-view.ts';
 import { cellChecks, flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
@@ -32,17 +33,17 @@ function openQc(slot: SlotId, test?: string): void {
   openEntry(slot, 'qc');
 }
 
+const openPopup = (id: QcPopupId) => () => setQcPopup(id);
+
 /** What each box's Review QC opens. Unavailable when the file it needs is not loaded. */
 export const REVIEW: Record<VizBox | 'position', () => (() => void) | undefined> = {
-  footprints: () => {
-    if (isLoaded('footprints')) return () => openQc('footprints');
-    const s = analysisSlot();
-    return s ? () => openQc(s, 'cells') : undefined;
-  },
-  neural: () => {
-    const s = analysisSlot();
-    return s ? () => openQc(s, s === 'neural_deconvolved' ? 'decon' : 'cells') : undefined;
-  },
+  footprints: () =>
+    isLoaded('footprints')
+      ? openPopup('footprints-qc')
+      : analysisSlot()
+        ? openPopup('neural-qc')
+        : undefined,
+  neural: () => (analysisSlot() ? openPopup('neural-qc') : undefined),
   position: () => (isLoaded('position') ? () => openQc('position') : undefined),
   arena: () => (isLoaded('position') ? () => openQc('position') : undefined),
   behavior: () => {
@@ -53,10 +54,7 @@ export const REVIEW: Record<VizBox | 'position', () => (() => void) | undefined>
 
 /** What each box's Preprocess opens: the file's Preprocess step. */
 export const PREPROCESS: Record<Exclude<VizBox, 'footprints'>, () => (() => void) | undefined> = {
-  neural: () => {
-    const s = analysisSlot();
-    return s ? () => openEntry(s, 'prep') : undefined;
-  },
+  neural: () => (analysisSlot() ? openPopup('neural-prep') : undefined),
   arena: () => (isLoaded('position') ? () => openEntry('position', 'prep') : undefined),
   behavior: () => {
     const s = behaviorSlot() ?? (isLoaded('position') ? 'position' : undefined);

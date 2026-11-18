@@ -28,6 +28,7 @@ import { BehaviorRows, NeuralRows } from './SessionView.tsx';
 import { SessionNavigator } from './SessionNavigator.tsx';
 import { placed, Trajectory } from './Trajectory.tsx';
 import { boxPills, pillTarget } from './VizChecks.tsx';
+import { QcPopups } from './QcPopups.tsx';
 import { HELP } from './VizHelp.tsx';
 import { BoxActions } from './VizMenus.tsx';
 
@@ -377,6 +378,7 @@ export function VizPanel(): JSX.Element {
         <ArenaEditor onClose={() => setArenaEditor(false)} />
       </Show>
       <EntryPopup />
+      <QcPopups />
       <ChangesDrawer />
       <RevertChanges />
     </div>

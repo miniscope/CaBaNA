@@ -43,7 +43,7 @@ export function scoreCells(
   return snr.map((s, c) => {
     const notes: string[] = [];
     const snrLevel: Level = s < 3 ? 'bad' : s < 5 ? 'warn' : 'good';
-    if (snrLevel !== 'good') notes.push('noisy');
+    if (snrLevel !== 'good') notes.push('low SNR');
     const corrLevel: Level = corr[c] > 0.8 ? 'bad' : corr[c] > 0.6 ? 'warn' : 'good';
     if (corrLevel !== 'good') notes.push('correlated with a neighbor');
     const f = frac ? frac[c] : NaN;
@@ -103,7 +103,7 @@ export function cellChecks(
       value: `median ${med(scores.map((s) => s.snr)).toFixed(1)}`,
       limit: `${count('snrLevel', 'bad')} of ${n} below 3`,
       detail: `Median ${med(scores.map((s) => s.snr)).toFixed(1)}. ${count('snrLevel', 'bad')} of ${n} cells (${pct(count('snrLevel', 'bad')).toFixed(1)}%) are below 3 (${allowed}); ${count('snrLevel', 'warn')} more are between 3 and 5.`,
-      fix: 'Reject the noisy cells below, or re-run source extraction with stricter acceptance criteria.',
+      fix: 'Reject the low SNR cells below, or re-run source extraction with stricter acceptance criteria.',
     },
     {
       id: 'corr',
