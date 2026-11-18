@@ -2,7 +2,7 @@
 // groups and what each leaves out come from settings-template.ts; geometry, clock alignment and
 // label selections are never copied. Sources today are the settings this browser kept per session.
 
-import { createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { Modal } from '../../components/Modal.tsx';
 import {
@@ -11,6 +11,8 @@ import {
   TEMPLATE_GROUPS,
   type GroupId,
 } from '../../lib/settings-template.ts';
+import { projectsOn } from '../../lib/project-session.ts';
+import { projectDatasets } from '../../lib/project-sources.ts';
 import { sessionName } from '../../lib/store.ts';
 import { listed, savedWhen } from '../LoadPanel.tsx';
 
@@ -26,7 +28,11 @@ export function ApplyFrom(props: {
     qc: true,
     analyses: true,
   });
-  const chosen = () => savedDatasets().find((d) => d.name === name()) ?? savedDatasets()[0];
+  // With the engine on the sources are the other projects on disk; otherwise the settings this
+  // browser kept for earlier sessions.
+  const [onDisk] = createResource(() => (projectsOn() ? true : undefined), projectDatasets);
+  const sources = () => (projectsOn() ? (onDisk() ?? []) : savedDatasets());
+  const chosen = () => sources().find((d) => d.name === name()) ?? sources()[0];
   const picked = () => TEMPLATE_GROUPS.filter((g) => include[g.id]);
   const apply = () => {
     const d = chosen();
@@ -65,18 +71,22 @@ export function ApplyFrom(props: {
           fallback={<p class="cb-muted">Load a dataset first. Settings are applied to it.</p>}
         >
           <Show
-            when={savedDatasets().length}
+            when={sources().length}
             fallback={
               <p class="cb-muted">
-                No other project's settings are saved in this browser yet. To use a config file
-                instead, choose Load a config file in the Actions menu.
+                {projectsOn()
+                  ? onDisk.loading
+                    ? 'Reading the other projects…'
+                    : 'There is no other project to take settings from yet.'
+                  : "No other project's settings are saved in this browser yet."}{' '}
+                To use a config file instead, choose Load a config file in the Actions menu.
               </p>
             }
           >
             <label class="cb-dlg__from">
               From
               <select value={chosen()?.name} onChange={(e) => setName(e.currentTarget.value)}>
-                <For each={savedDatasets()}>
+                <For each={sources()}>
                   {(d) => (
                     <option value={d.name}>
                       {d.name} · saved {savedWhen(d.savedAt)}
@@ -106,8 +116,8 @@ export function ApplyFrom(props: {
             <p class="cb-dlg__never">
               <b>Never copied:</b> arena outline and scale, zone positions, reference picture, clock
               offset and scale, label selections, QC review marks and rejected cells. They belong to
-              one recording; draw or check them in this project. Settings are kept in this browser
-              only.
+              one recording; draw or check them in this project.
+              {projectsOn() ? '' : ' Settings are kept in this browser only.'}
             </p>
           </Show>
         </Show>

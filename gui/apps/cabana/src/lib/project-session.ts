@@ -5,7 +5,7 @@
 
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { parse } from 'yaml';
-import { beginAutosave, endAutosave, saveEverything } from './autosave.ts';
+import { beginAutosave, endAutosave, saveEverything, updateAutosaveProject } from './autosave.ts';
 import { bridgeReady } from './bridge-status.ts';
 import { setAppliedNote } from './data-setup-view.ts';
 import {
@@ -15,8 +15,15 @@ import {
   setDataFiles,
   setOpenProject,
 } from './open-project.ts';
-import { applyAnalysis, applyProcessing } from './project-state.ts';
-import { chosenPaths, projects, type DataFile, type ProjectSummary } from './projects-client.ts';
+import { processingFromData, type ProcessingState } from './project-files.ts';
+import { applyAnalysis, applyProcessing, captureProcessing } from './project-state.ts';
+import {
+  chosenPaths,
+  projects,
+  type DataFile,
+  type FileName,
+  type ProjectSummary,
+} from './projects-client.ts';
 import { setSaveStatus } from './save-status.ts';
 import type { SlotId } from './slots.ts';
 import { addFiles, clearAll, goToStep, onClear, setSessionName } from './store.ts';
@@ -198,3 +205,55 @@ export async function forgetSlot(slot: SlotId): Promise<void> {
 
 /** The default "Saved to" line, with the home folder written as ~. */
 export const tidyPath = (p: string): string => p.replace(/^\/Users\/[^/]+/, '~');
+
+// ---- Other projects as sources, and edits of project.yaml
+
+/** The projects other than the open one, newest first (reads the list again). */
+export async function listOtherProjects(): Promise<ProjectSummary[]> {
+  await refreshLibrary();
+  const open = openProject()?.id;
+  return (library()?.projects ?? []).filter((p) => p.id !== open && p.readable);
+}
+
+/** A file of another project (or this one), parsed; undefined when it is missing or not valid. */
+export async function readProjectYaml(id: string, name: FileName): Promise<unknown> {
+  try {
+    const f = await projects.readFile(id, name);
+    return f.valid ? readYaml(f.text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The preprocessing settings in another project's processing.yaml (the `preprocess:` section read
+ * into the store's own names), for Import preprocessing settings. QC decisions are not returned.
+ * Settings the file lacks keep the current values.
+ */
+export async function readPreprocessOf(
+  id: string,
+): Promise<Pick<ProcessingState, 'prep' | 'decon'> | undefined> {
+  const raw = await readProjectYaml(id, 'processing.yaml');
+  if (!raw) return undefined;
+  const { prep, decon } = processingFromData(raw, captureProcessing());
+  return { prep, decon };
+}
+
+/** Change fields of the open project's project.yaml (save mode, retention, copy data). */
+export async function updateProjectYaml(
+  patch: Partial<Pick<ProjectSummary, 'save_mode' | 'retention' | 'copy_data'>>,
+): Promise<void> {
+  const project = openProject();
+  if (!project) return;
+  const file = await projects.readFile(project.id, 'project.yaml');
+  const data = { ...(readYaml(file.text) as object), ...patch };
+  await projects.writeFile(
+    project.id,
+    'project.yaml',
+    { data },
+    `Project setting changed: ${Object.keys(patch).join(', ')}`,
+  );
+  const now = (await projects.current()) ?? { ...project, ...patch };
+  setOpenProject(now);
+  updateAutosaveProject(now);
+}

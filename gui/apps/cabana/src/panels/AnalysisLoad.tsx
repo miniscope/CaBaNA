@@ -3,7 +3,7 @@
 // available yet). Loaded settings open in Configure settings to check, and Discard there puts the
 // earlier ones back.
 
-import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import { createMemo, createResource, createSignal, For, Show, type JSX } from 'solid-js';
 import { Modal } from '../components/Modal.tsx';
 import { Pill } from '../components/Pill.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
@@ -13,6 +13,8 @@ import type { RunRecord } from '../lib/bridge-client.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
 import { formatWhen } from '../lib/results-overview.ts';
 import { runRows } from '../lib/results-runs.ts';
+import { projectsOn } from '../lib/project-session.ts';
+import { projectDatasets } from '../lib/project-sources.ts';
 import { savedDatasets } from '../lib/settings-template.ts';
 import { loadRunSettings } from './analysis-run-settings.ts';
 
@@ -68,7 +70,9 @@ export function AnalysisLoad(props: {
   const runs = createMemo(() =>
     runRows(props.records, () => undefined, id).filter((r) => r.record.status !== 'failed'),
   );
-  const datasets = () => savedDatasets();
+  // Other projects on disk when the engine is on, else the settings this browser kept.
+  const [onDisk] = createResource(() => (projectsOn() ? true : undefined), projectDatasets);
+  const datasets = () => (projectsOn() ? (onDisk() ?? []) : savedDatasets());
   const [source, setSource] = createSignal<Source>(runs().length ? 'run' : 'project');
   const [runId, setRunId] = createSignal<string>();
   const [dataset, setDataset] = createSignal<string>();
@@ -132,13 +136,19 @@ export function AnalysisLoad(props: {
           chosen={source()}
           onPick={setSource}
           title="From another project"
-          detail={`Copy ${label} settings saved with another dataset in this browser. Nothing else is copied.`}
+          detail={`Copy ${label} settings saved with another project${projectsOn() ? '' : ' in this browser'}. Nothing else is copied.`}
           disabled={
-            datasets().length ? undefined : "No other dataset's settings are saved in this browser."
+            datasets().length
+              ? undefined
+              : projectsOn()
+                ? onDisk.loading
+                  ? 'Reading the other projects…'
+                  : 'There is no other project yet.'
+                : "No other dataset's settings are saved in this browser."
           }
         >
           <select
-            aria-label="Dataset"
+            aria-label="Project"
             value={chosenSet()?.name}
             onChange={(e) => setDataset(e.currentTarget.value)}
           >
