@@ -113,6 +113,7 @@
 .cb-ac__foot {
   display: flex;
   align-items: center;
+  gap: 8px;
   margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
@@ -516,7 +517,7 @@
 .cb-toast {
   position: fixed;
   left: 50%;
-  bottom: 20px;
+  top: 14px;
   transform: translateX(-50%);
   z-index: 70;
   display: flex;

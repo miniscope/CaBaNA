@@ -1,4 +1,4 @@
-// One short message at the bottom of the window that goes away on its own, for something that
+// One short message at the top of the window that goes away on its own, for something that
 // happened without the user asking at that moment (a run finished). Shown by components/Toast.tsx.
 
 import { createSignal } from 'solid-js';

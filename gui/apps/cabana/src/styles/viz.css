@@ -22,6 +22,8 @@
   border-radius: var(--radius-md);
   color: #fff;
   font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 12px;
   cursor: pointer;
 }
 /* Window length: segments on wide screens, a list on narrow ones. */
@@ -34,10 +36,15 @@
   }
   .cb-viz__winsel {
     display: inline-block;
+    padding: 4px 6px;
+    font-size: 12.5px;
   }
 }
 .cb-viz__hist {
   margin-left: 6px;
+}
+.cb-viz__bar .cb-seg {
+  grid-auto-columns: auto;
 }
 .cb-viz__bar .cb-seg button {
   padding: 3px 10px;

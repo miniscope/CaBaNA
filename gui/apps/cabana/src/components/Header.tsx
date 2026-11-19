@@ -180,7 +180,11 @@ export function Header(): JSX.Element {
         title="CaBaNA"
         version={`CaLab v${pkg.version}`}
         onBrandClick={() => goToStep('welcome')}
-        info={<span class="cb-hd-line">{headerLine(facts())}</span>}
+        info={
+          <span class="cb-hd-line">
+            {nothingLoaded() ? 'No project open' : headerLine(facts())}
+          </span>
+        }
         actions={
           <Show when={!nothingLoaded()}>
             <SavedIndicator />
