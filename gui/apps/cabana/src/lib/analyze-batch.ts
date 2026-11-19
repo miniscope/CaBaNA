@@ -30,7 +30,7 @@ export function clearFinished(): void {
   if (!batchActive()) setRowStates({});
 }
 
-// Place cells and auROC take the Quick preview option on the framework engine; PETH and the
+// Place cells and auROC take the Preview option on the framework engine; PETH and the
 // framework-only analyses go through their own functions.
 const frameworkOutcome = (rec: RunRecord | undefined): StepOutcome => {
   if (!rec) return { kind: 'failed', message: lastError()?.message ?? 'The run did not start.' };
@@ -50,16 +50,20 @@ function browserOutcome(status: { kind: string; message?: string }, changed: boo
   return !changed && cancelRequested ? { kind: 'cancelled' } : { kind: 'ok' };
 }
 
-async function execute(id: AnalysisItem, preview: boolean): Promise<StepOutcome> {
+async function execute(
+  id: AnalysisItem,
+  preview: boolean,
+  shuffles?: number,
+): Promise<StepOutcome> {
   switch (id) {
     case 'place': {
       const before = placeOutcome();
-      await runPlaceCells({ preview });
+      await runPlaceCells({ preview, shuffles });
       return browserOutcome(placeStatus(), placeOutcome() !== before);
     }
     case 'auroc': {
       const before = aurocOutcome();
-      await runAuroc({ preview });
+      await runAuroc({ preview, shuffles });
       return browserOutcome(aurocStatus(), aurocOutcome() !== before);
     }
     case 'peth': {
@@ -68,13 +72,15 @@ async function execute(id: AnalysisItem, preview: boolean): Promise<StepOutcome>
       return browserOutcome(pethStatus(), pethOutcome() !== before);
     }
     default:
-      return frameworkOutcome(await runAnalysis(id, preview ? 'preview' : 'full'));
+      return frameworkOutcome(await runAnalysis(id, preview ? 'preview' : 'full', { shuffles }));
   }
 }
 
 export interface StartOptions {
-  /** Quick preview (50 shuffles, saved as Preliminary): framework engine only, PETH ignores it. */
+  /** A Preview run, saved as such: framework engine only, PETH ignores it. */
   preview?: boolean;
+  /** The shuffle count of a preview (default 50; never more than the full analysis's). */
+  shuffles?: number;
   /** One analysis started by its own Run button: a complete one may run again. */
   rerun?: boolean;
 }
@@ -95,7 +101,7 @@ export async function startBatch(ids: AnalysisItem[], options: StartOptions = {}
           otherRunActive: !!active(),
         });
       },
-      execute: (id) => execute(id, !!options.preview),
+      execute: (id) => execute(id, !!options.preview, options.shuffles),
       cancelRequested: () => cancelRequested,
       onState: (id, state) => setRowStates((all) => ({ ...all, [id]: state })),
     });

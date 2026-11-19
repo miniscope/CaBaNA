@@ -2,6 +2,7 @@ import { createResource, createSignal, Show, type JSX } from 'solid-js';
 import { bridge, type RunRecord } from '../../lib/bridge-client.ts';
 import { bridgeReady } from '../../lib/bridge-status.ts';
 import { download } from '../../lib/export-figure.ts';
+import { executedShuffles } from '../../lib/preview.ts';
 import { analysisLabel, unavailableReason } from '../../lib/results-overview.ts';
 import { active, blockers, refreshHistory, runAnalysis, type AnalysisId } from '../../lib/runs.ts';
 import { Popover } from '../Popover.tsx';
@@ -47,7 +48,10 @@ export function ResultActions(props: {
   };
   const rerun = () => {
     close();
-    void runAnalysis(id(), r().scope);
+    // A preview reruns at the shuffle count it used.
+    void runAnalysis(id(), r().scope, {
+      shuffles: r().scope === 'preview' ? executedShuffles(r()) : undefined,
+    });
   };
   const exportBundle = () =>
     attempt(async () => {

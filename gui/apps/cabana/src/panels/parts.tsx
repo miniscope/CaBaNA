@@ -119,12 +119,17 @@ export function SpeedFilterField(): JSX.Element {
 
 /**
  * Why the shuffle test cannot mark anything significant at this shuffle count and alpha, for the
- * full run and, when offered, the Quick preview. Nothing when both can. Observed values are still
+ * full run and, when offered, the preview at `chosen` shuffles. Nothing when both can. Observed values are still
  * computed, so the run is not blocked.
  */
-export function ShuffleReach(props: { shuffles: number; alpha: number; preview?: boolean }) {
+export function ShuffleReach(props: {
+  shuffles: number;
+  alpha: number;
+  preview?: boolean;
+  chosen?: number;
+}) {
   return (
-    <For each={shuffleReachIssues(props.shuffles, props.alpha, props.preview ?? true)}>
+    <For each={shuffleReachIssues(props.shuffles, props.alpha, props.preview ?? true, props.chosen)}>
       {(text) => <span class="cb-pe-warn">{text}</span>}
     </For>
   );

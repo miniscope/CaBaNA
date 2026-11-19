@@ -17,10 +17,15 @@ export function shuffleReachIssue(n: number, alpha: number, run = 'The run'): st
   );
 }
 
-/** The issues for the full run and the Quick preview of a test set to `full` shuffles. */
-export function shuffleReachIssues(full: number, alpha: number, preview = true): string[] {
+/** The issues for the full run and the preview (at `chosen` shuffles) of a test set to `full` shuffles. */
+export function shuffleReachIssues(
+  full: number,
+  alpha: number,
+  preview = true,
+  chosen?: number,
+): string[] {
   const out = [shuffleReachIssue(full, alpha)];
-  const p = shufflesFor('preview', full);
-  if (preview && p !== full) out.push(shuffleReachIssue(p, alpha, 'Quick preview'));
+  const p = shufflesFor('preview', full, chosen);
+  if (preview && p !== full) out.push(shuffleReachIssue(p, alpha, 'The preview'));
   return out.filter((s): s is string => !!s);
 }

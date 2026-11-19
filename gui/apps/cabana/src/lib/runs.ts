@@ -20,6 +20,7 @@ import type { BuiltSpec } from './spec/population.ts';
 import { buildSessionConfig } from './session-config.ts';
 import { rejected, slotFile } from './store.ts';
 import { runDeps, type Uses } from './run-deps.ts';
+import { executedShuffles } from './preview.ts';
 import { prep } from './preprocess.ts';
 import type { CapabilityName } from './bridge-client.ts';
 
@@ -35,7 +36,8 @@ export interface FrameworkRun {
   /** What the run reads beyond its settings, for "Needs rerun". */
   uses: Uses;
 }
-type Builder = (scope: 'full' | 'preview') => FrameworkRun;
+/** `shuffles`: the count a preview was asked for (a full run ignores it). */
+type Builder = (scope: 'full' | 'preview', shuffles?: number) => FrameworkRun;
 const builders: Partial<Record<AnalysisId, Builder>> = {};
 export const registerFrameworkAnalysis = (id: AnalysisId, build: Builder) =>
   void (builders[id] = build);
@@ -97,9 +99,9 @@ async function hashedSettings(run: FrameworkRun): Promise<HashedSettings> {
 }
 
 /** What a run of `id` would save as its settings now, the same object a started run records. */
-export function settingsOf(id: AnalysisId, scope: 'full' | 'preview' = 'full') {
+export function settingsOf(id: AnalysisId, scope: 'full' | 'preview' = 'full', shuffles?: number) {
   const build = builders[id];
-  return build ? hashedSettings(build(scope)) : undefined;
+  return build ? hashedSettings(build(scope, shuffles)) : undefined;
 }
 
 /** The settings of one run of `id` compared with the current ones. */
@@ -109,7 +111,10 @@ export async function compareToRecord(
 ): Promise<{ matches: boolean; diff: string[] } | undefined> {
   const build = builders[id];
   if (!build) return undefined;
-  const current = await hashedSettings(build(rec.scope));
+  // A preview is compared at the shuffle count it ran with, so a chosen count still matches.
+  const current = await hashedSettings(
+    build(rec.scope, rec.scope === 'preview' ? executedShuffles(rec) : undefined),
+  );
   const matches = (await settingsHash(current)) === rec.gui.settings_sha256;
   return { matches, diff: matches ? [] : settingsDiff(rec.gui.settings, current) };
 }
@@ -155,7 +160,7 @@ let cancelRequested = false;
 export async function runAnalysis(
   id: AnalysisId,
   scope: 'full' | 'preview' = 'full',
-  groupId?: string,
+  options: { shuffles?: number; groupId?: string } = {},
 ): Promise<RunRecord | undefined> {
   const build = builders[id];
   if (!build || active()) return undefined;
@@ -163,7 +168,7 @@ export async function runAnalysis(
   setLastError(undefined);
   setActive({ id, phase: 'preparing', fraction: 0, message: 'Uploading inputs' });
   try {
-    const run = build(scope);
+    const run = build(scope, options.shuffles);
     if (run.spec.problems.length) throw new BridgeError(run.spec.problems.join(' '), 0);
     // With a project open its files are written first, so the run's frozen copies are current.
     await saveNow();
@@ -195,7 +200,7 @@ export async function runAnalysis(
       settings_sha256: await settingsHash(settings),
       scope,
       engine: 'framework',
-      group_id: groupId,
+      group_id: options.groupId,
     });
     setActive({ id, runId, phase: 'queued', fraction: 0, message: 'Queued' });
     return await follow(id, runId);

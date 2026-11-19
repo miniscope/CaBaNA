@@ -315,8 +315,10 @@ function join(parts: PlaceResult[], nStates: number): PlaceResult {
 // ---- the framework engine ---------------------------------------------------------------------
 
 export interface PlaceRunOptions {
-  /** Up to 50 shuffles (`PREVIEW_SHUFFLES`), saved as Preliminary. Framework engine only. */
+  /** Saved as a Preview run: 50 shuffles unless `shuffles` says otherwise. Framework engine only. */
   preview?: boolean;
+  /** The shuffle count of a preview (never more than the full analysis's). */
+  shuffles?: number;
   /** Set only by "Run in browser engine": the framework is never replaced silently. */
   engine?: EngineId;
 }
@@ -410,7 +412,7 @@ export function loadPlaceSettings(record: RunRecord): void {
   if (typeof binCm === 'number') setBinCm(binCm);
 }
 
-async function runPlaceFramework(scope: 'full' | 'preview'): Promise<void> {
+async function runPlaceFramework(scope: 'full' | 'preview', shuffles?: number): Promise<void> {
   if (!frameworkReady()) {
     setPlaceStatus({
       kind: 'error',
@@ -436,7 +438,7 @@ async function runPlaceFramework(scope: 'full' | 'preview'): Promise<void> {
   frameworkRunning = true;
   setPlaceStatus({ kind: 'running', step: 'Uploading inputs', done: 0, total: 1 });
   try {
-    const record = await runAnalysis('place', scope);
+    const record = await runAnalysis('place', scope, { shuffles });
     if (!record) {
       setPlaceStatus({ kind: 'error', message: lastError()?.message ?? 'The run did not start.' });
     } else if (record.status === 'cancelled') {
@@ -462,7 +464,7 @@ async function runPlaceFramework(scope: 'full' | 'preview'): Promise<void> {
 export async function runPlaceCells(options: PlaceRunOptions = {}): Promise<void> {
   const engine = options.engine ?? engineFor('place');
   if (engine === 'browser') return runPlaceCellsBrowser();
-  return runPlaceFramework(options.preview ? 'preview' : 'full');
+  return runPlaceFramework(options.preview ? 'preview' : 'full', options.shuffles);
 }
 
 // A saved framework run is shown without recomputing: the opened run, else the latest, unless a

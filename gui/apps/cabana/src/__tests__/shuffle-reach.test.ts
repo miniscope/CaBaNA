@@ -12,16 +12,17 @@ describe('shuffle count against alpha', () => {
       expect(1 / n).toBeGreaterThanOrEqual(a);
     }
   });
-  it('flags 19 shuffles at 0.05 and the old Preliminary minimum of 10', () => {
+  it('flags 19 shuffles at 0.05 and the preview minimum of 10', () => {
     expect(shuffleReachIssue(19, 0.05)).toMatch(/1\/20 = 0.050/);
     expect(shuffleReachIssue(10, 0.05)).toMatch(/at least 20 shuffles/);
     expect(shuffleReachIssue(20, 0.05)).toBeUndefined();
   });
-  it('checks the Quick preview at its executed count', () => {
+  it('checks the preview at its chosen count', () => {
     // full run of 1000 reaches 0.01; the 50-shuffle preview cannot
     const issues = shuffleReachIssues(1000, 0.01);
     expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatch(/^Quick preview uses 50 shuffles/);
+    expect(issues[0]).toMatch(/^The preview uses 50 shuffles/);
+    expect(shuffleReachIssues(1000, 0.01, true, 80)[0]).toMatch(/^The preview uses 80 shuffles/);
     expect(shuffleReachIssues(1000, 0.05)).toEqual([]);
   });
 });

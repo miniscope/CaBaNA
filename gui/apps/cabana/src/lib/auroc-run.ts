@@ -568,8 +568,10 @@ export function estimateMinShift(input: AurocInput): void {
 // ---- the framework engine ---------------------------------------------------------------------
 
 export interface AurocRunOptions {
-  /** Up to 50 shuffles (`PREVIEW_SHUFFLES`), saved as Preliminary. Framework engine only. */
+  /** Saved as a Preview run: 50 shuffles unless `shuffles` says otherwise. Framework engine only. */
   preview?: boolean;
+  /** The shuffle count of a preview (never more than the full analysis's). */
+  shuffles?: number;
   /** Set only by "Run in browser engine": the framework is never replaced silently. */
   engine?: EngineId;
 }
@@ -700,7 +702,7 @@ export function loadAurocSettings(record: RunRecord): void {
 const failureText = (rec: RunRecord) =>
   rec.errors[0]?.message?.split('\n').filter(Boolean).at(-1) ?? 'The run failed.';
 
-async function runAurocFramework(scope: 'full' | 'preview'): Promise<void> {
+async function runAurocFramework(scope: 'full' | 'preview', shuffles?: number): Promise<void> {
   if (!frameworkReady()) {
     setAurocStatus({
       kind: 'error',
@@ -723,7 +725,7 @@ async function runAurocFramework(scope: 'full' | 'preview'): Promise<void> {
   frameworkRunning = true;
   setAurocStatus({ kind: 'running', step: 'Uploading inputs', done: 0, total: 1 });
   try {
-    const record = await runAnalysis('auroc', scope);
+    const record = await runAnalysis('auroc', scope, { shuffles });
     if (!record) {
       setAurocStatus({ kind: 'error', message: lastError()?.message ?? 'The run did not start.' });
     } else if (record.status === 'cancelled') {
@@ -750,7 +752,7 @@ export async function runAuroc(options: AurocRunOptions = {}): Promise<void> {
   if (aurocSettingIssues(aurocSettings).length) return;
   const engine = options.engine ?? engineFor('auroc');
   if (engine === 'browser') return runAurocBrowser();
-  return runAurocFramework(options.preview ? 'preview' : 'full');
+  return runAurocFramework(options.preview ? 'preview' : 'full', options.shuffles);
 }
 
 // A saved framework run is shown without recomputing: the opened run, else the latest, unless a

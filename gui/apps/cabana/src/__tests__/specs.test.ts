@@ -73,12 +73,19 @@ describe('population spec', () => {
     await snap('population-position', built);
     expect((built.pipeline.analyses as { masks: string[] }[])[0].masks).toEqual(['speed']);
   });
-  it('quick preview uses at most 50 shuffles, never more than the full analysis', () => {
+  it('a preview uses 50 shuffles by default, or the chosen count, never more than the full analysis', () => {
     const n = (shuffles: number) =>
       (populationPipeline({ ...DEFAULT_POPULATION, shuffles: shufflesFor('preview', shuffles) }, ctx(social))
         .pipeline.analyses as { shuffle: { n_shuffles: number } }[])[0].shuffle.n_shuffles;
     expect(n(200)).toBe(50);
     expect(n(20)).toBe(20);
+    const chosen = (full: number, c: number) =>
+      (populationPipeline(
+        { ...DEFAULT_POPULATION, shuffles: shufflesFor('preview', full, c) },
+        ctx(social),
+      ).pipeline.analyses as { shuffle: { n_shuffles: number } }[])[0].shuffle.n_shuffles;
+    expect(chosen(1000, 100)).toBe(100);
+    expect(chosen(60, 100)).toBe(60);
   });
 });
 

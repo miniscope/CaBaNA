@@ -80,13 +80,13 @@ const AUROC_PREP_NO_POSITION = ['eventSigmaS', 'labelPadS'];
 const chosenOr = (chosen: string[], all: string[]) => (chosen.length ? chosen : all);
 
 export function registerAnalyses(): void {
-  registerFrameworkAnalysis('place', (scope): FrameworkRun => {
+  registerFrameworkAnalysis('place', (scope, chosen): FrameworkRun => {
     const ctx = populationContext();
-    // Minimum time per bin is shared with the arena settings, as in the browser engine. A quick
-    // preview uses the preview shuffle count.
+    // Minimum time per bin is shared with the arena settings, as in the browser engine. A preview
+    // uses the chosen shuffle count (default 50).
     const settings = {
       ...placeSettings,
-      nShuffles: shufflesFor(scope, placeSettings.nShuffles),
+      nShuffles: shufflesFor(scope, placeSettings.nShuffles, chosen),
       minOccS: arena.minOccupancy,
       binCm: effectiveBin(),
     };
@@ -102,11 +102,11 @@ export function registerAnalyses(): void {
       uses: PLACE_USES,
     };
   });
-  registerFrameworkAnalysis('auroc', (scope): FrameworkRun => {
+  registerFrameworkAnalysis('auroc', (scope, chosen): FrameworkRun => {
     const ctx = populationContext();
     const settings = {
       ...aurocSettings,
-      nShuffles: shufflesFor(scope, aurocSettings.nShuffles),
+      nShuffles: shufflesFor(scope, aurocSettings.nShuffles, chosen),
       unselected: [...aurocSettings.unselected],
       match: { ...aurocSettings.match },
     };
@@ -128,12 +128,12 @@ export function registerAnalyses(): void {
       uses,
     };
   });
-  registerFrameworkAnalysis('population', (scope): FrameworkRun => {
-    // The executed shuffle count is saved, so a Preliminary record says how many ran.
+  registerFrameworkAnalysis('population', (scope, chosen): FrameworkRun => {
+    // The executed shuffle count is saved, so a Preview record says how many ran.
     const settings = {
       ...populationSettings,
       labels: [...populationSettings.labels],
-      shuffles: shufflesFor(scope, populationSettings.shuffles),
+      shuffles: shufflesFor(scope, populationSettings.shuffles, chosen),
     };
     const ctx = populationContext();
     const position = settings.target === 'position';
@@ -152,10 +152,10 @@ export function registerAnalyses(): void {
       },
     };
   });
-  registerFrameworkAnalysis('decoding', (scope): FrameworkRun => {
+  registerFrameworkAnalysis('decoding', (scope, chosen): FrameworkRun => {
     const ctx = populationContext();
     if (decodeTarget.type === 'position') {
-      const s = { ...positionDecoding, shuffles: shufflesFor(scope, positionDecoding.shuffles) };
+      const s = { ...positionDecoding, shuffles: shufflesFor(scope, positionDecoding.shuffles, chosen) };
       return {
         spec: positionDecodingPipeline(s, ctx),
         settings: { type: 'position', ...s },
@@ -166,7 +166,7 @@ export function registerAnalyses(): void {
     const s = {
       ...behaviorDecoding,
       labels: [...behaviorDecoding.labels],
-      shuffles: shufflesFor(scope, behaviorDecoding.shuffles),
+      shuffles: shufflesFor(scope, behaviorDecoding.shuffles, chosen),
     };
     return {
       spec: behaviorDecodingPipeline(s, ctx),
