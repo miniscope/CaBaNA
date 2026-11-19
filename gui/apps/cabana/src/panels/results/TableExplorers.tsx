@@ -15,7 +15,7 @@ import type { PlaceMaps } from '../../lib/results-framework.ts';
 import { RateMap } from '../RateMap.tsx';
 import { HowTo, Fit } from '../AurocResults.tsx';
 import { Canvas, niceTicks, ORANGE, put } from '../PethPlots.tsx';
-import type { ExplorerParts } from './explorer-parts.ts';
+import type { ExplorerParts, PlotType } from './explorer-parts.ts';
 
 const alphaText = (data: ExplorerData) =>
   data.summary.settings.alpha !== undefined ? ` (α ${data.summary.settings.alpha})` : '';
@@ -91,32 +91,41 @@ export function aurocParts(
   const [sortBy, setSortBy] = createSignal(0);
   const hasTest = m.response.some((row) => row.some((v) => v !== ''));
   return {
-    title: () => 'Population auROC',
-    tested: hasTest,
-    mainLabel: 'Population auROC heat map',
-    switcher: { label: 'Sort by', options: m.behaviors, index: sortBy, set: setSortBy },
-    subtitle: () =>
-      `Each row is a cell, sorted by its auROC for ${m.behaviors[sortBy()]} (highest first); each column is a behavior.`,
-    help: () => (
-      <HowTo title="Population auROC">
-        <p>
-          One row per cell and one column per behavior. Color is the auROC of that cell for that
-          behavior: 0.5 is no discrimination, orange is above 0.5, purple below. Gray cells were not
-          evaluated. The scale runs from 0 to 1 for every cell.
-        </p>
-        <p>
-          Rows are sorted by the auROC for the behavior chosen at the right. Significance comes from
-          the saved shuffle test and is listed in the Summary, not drawn here.
-        </p>
-      </HowTo>
-    ),
-    main: () => (
-      <div class="cb-rx__plots">
-        <div class="cb-rx__heat">
-          <Fit>{(w, h) => <AurocHeat m={m} sortBy={sortBy()} w={w} h={h} />}</Fit>
-        </div>
-      </div>
-    ),
+    headline: () => {
+      const n = responseCounts(m);
+      return hasTest
+        ? `${n.excited + n.inhibited} of ${n.evaluated} cell-behavior pairs significant`
+        : undefined;
+    },
+    plots: [
+      {
+        id: 'heatmap',
+        label: 'Population auROC heat map',
+        switcher: { label: 'Sort by', options: m.behaviors, index: sortBy, set: setSortBy },
+        subtitle: () =>
+          `Each row is a cell, sorted by its auROC for ${m.behaviors[sortBy()]} (highest first); each column is a behavior.`,
+        help: () => (
+          <HowTo title="Population auROC">
+            <p>
+              One row per cell and one column per behavior. Color is the auROC of that cell for that
+              behavior: 0.5 is no discrimination, orange is above 0.5, purple below. Gray cells were
+              not evaluated. The scale runs from 0 to 1 for every cell.
+            </p>
+            <p>
+              Rows are sorted by the auROC for the behavior chosen at the right. Significance comes
+              from the saved shuffle test and is listed in the Summary, not drawn here.
+            </p>
+          </HowTo>
+        ),
+        main: () => (
+          <div class="cb-rx__plots">
+            <div class="cb-rx__heat">
+              <Fit>{(w, h) => <AurocHeat m={m} sortBy={sortBy()} w={w} h={h} />}</Fit>
+            </div>
+          </div>
+        ),
+      },
+    ],
     summary: () => {
       const all = () => responseCounts(m);
       const mine = () => responseCounts(m, sortBy());
@@ -183,8 +192,9 @@ export function aurocParts(
 
 const PER_PAGE = 24;
 
-/** The saved rate maps, highest spatial information first, a page at a time. */
-function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps }): JSX.Element {
+/** The saved rate maps, highest spatial information first, a page at a time (one page, no pager, when `perPage` is set). */
+function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps; perPage?: number }): JSX.Element {
+  const size = () => props.perPage ?? PER_PAGE;
   const [page, setPage] = createSignal(0);
   const order = createMemo(() =>
     props.cells
@@ -197,8 +207,8 @@ function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps }): JSX.Element
             : b.c.information - a.c.information,
       ),
   );
-  const pages = () => Math.max(1, Math.ceil(order().length / PER_PAGE));
-  const shown = () => order().slice(page() * PER_PAGE, (page() + 1) * PER_PAGE);
+  const pages = () => Math.max(1, Math.ceil(order().length / size()));
+  const shown = () => order().slice(page() * size(), (page() + 1) * size());
   const mapOf = (i: number) =>
     props.maps.values.subarray(i * props.maps.nStates, (i + 1) * props.maps.nStates);
   return (
@@ -217,7 +227,7 @@ function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps }): JSX.Element
                   open={Array.from(v, Number.isFinite)}
                   bin={1}
                   arenaCm={[props.maps.nx, props.maps.ny]}
-                  size={110}
+                  size={150}
                 />
                 <figcaption>
                   Cell {c.cell} · {OVERALL[c.outcome ?? 'cannot'].label}
@@ -227,27 +237,29 @@ function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps }): JSX.Element
           }}
         </For>
       </div>
-      <div class="cb-rx__pager">
-        <button
-          type="button"
-          class="btn-secondary btn-small"
-          disabled={page() === 0}
-          onClick={() => setPage(page() - 1)}
-        >
-          Previous
-        </button>
-        <span class="cb-muted">
-          Page {page() + 1} of {pages()}
-        </span>
-        <button
-          type="button"
-          class="btn-secondary btn-small"
-          disabled={page() + 1 >= pages()}
-          onClick={() => setPage(page() + 1)}
-        >
-          Next
-        </button>
-      </div>
+      <Show when={!props.perPage}>
+        <div class="cb-rx__pager">
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            disabled={page() === 0}
+            onClick={() => setPage(page() - 1)}
+          >
+            Previous
+          </button>
+          <span class="cb-muted">
+            Page {page() + 1} of {pages()}
+          </span>
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            disabled={page() + 1 >= pages()}
+            onClick={() => setPage(page() + 1)}
+          >
+            Next
+          </button>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -308,62 +320,61 @@ export function placeParts(
   data: ExplorerData,
 ): ExplorerParts | undefined {
   if (!cells?.length) return undefined;
-  const [plot, setPlot] = createSignal(0);
-  const gallery = () => !!maps && plot() === 0;
   const counts = outcomeCounts(cells);
   const both = cells
     .filter((c) => c.outcome === 'both')
     .sort((a, b) => b.information - a.information);
-  return {
-    title: () => (gallery() ? 'Rate maps' : 'Spatial information and stability'),
-    tested: true,
-    mainLabel: maps ? 'Rate maps' : 'Information and stability per cell',
-    switcher: maps
-      ? {
-          label: 'Plot',
-          options: ['Rate maps', 'Information and stability'],
-          index: plot,
-          set: setPlot,
-        }
-      : undefined,
-    subtitle: () =>
-      gallery()
-        ? 'One map per cell, highest spatial information first; each map is scaled to its own peak. Gray: too little time in the bin.'
-        : 'One point per cell, colored by the outcome of the two tests.',
+  const scatter: PlotType = {
+    id: 'scatter',
+    label: 'Information and stability',
+    subtitle: () => 'One point per cell, colored by the outcome of the two tests.',
     help: () => (
       <HowTo title="Information and stability">
         <p>
           Each point is one cell. Horizontal: spatial information (bits/event). Vertical: spatial
           stability, the split-half correlation of its rate map. Color is the saved outcome of the
-          two shuffle tests. The rate maps themselves are not stored with the saved tables; open
-          them from the View menu (Rate maps).
+          two shuffle tests.
         </p>
       </HowTo>
     ),
     main: () => (
-      <Show
-        when={gallery()}
-        fallback={
-          <div class="cb-rx__plots">
-            <div class="cb-rx__heat">
-              <Fit>{(w, h) => <Scatter cells={cells} w={w} h={h} />}</Fit>
-            </div>
-            <ul class="cb-rx__legend">
-              <For each={Object.keys(OVERALL) as Overall[]}>
-                {(k) => (
-                  <li>
-                    <span class="cb-dot" style={{ background: OUTCOME_COLOR[k] }} />{' '}
-                    {OVERALL[k].label}
-                  </li>
-                )}
-              </For>
-            </ul>
-          </div>
-        }
-      >
-        <MapGallery cells={cells} maps={maps!} />
-      </Show>
+      <div class="cb-rx__plots">
+        <div class="cb-rx__heat">
+          <Fit>{(w, h) => <Scatter cells={cells} w={w} h={h} />}</Fit>
+        </div>
+        <ul class="cb-rx__legend">
+          <For each={Object.keys(OVERALL) as Overall[]}>
+            {(k) => (
+              <li>
+                <span class="cb-dot" style={{ background: OUTCOME_COLOR[k] }} /> {OVERALL[k].label}
+              </li>
+            )}
+          </For>
+        </ul>
+      </div>
     ),
+  };
+  const gallery: PlotType | undefined = maps && {
+    id: 'maps',
+    label: 'Rate maps',
+    subtitle: () =>
+      'One map per cell, highest spatial information first; each map is scaled to its own peak. Gray: too little time in the bin.',
+    help: () => (
+      <HowTo title="Rate maps">
+        <p>
+          One map per cell, in the arena's grid. Color is the cell's event rate in each bin, scaled
+          to the peak of that cell's own map. Gray bins had too little time spent in them. Cells are
+          ordered by their saved spatial information, highest first.
+        </p>
+      </HowTo>
+    ),
+    main: () => <MapGallery cells={cells} maps={maps} />,
+    overview: () => <MapGallery cells={cells} maps={maps} perPage={12} />,
+  };
+  return {
+    headline: () =>
+      `${counts.both} of ${cells.length - counts.cannot} cells pass both place-cell tests`,
+    plots: gallery ? [gallery, scatter] : [scatter],
     summary: () => (
       <>
         <p class="cb-rx__p">

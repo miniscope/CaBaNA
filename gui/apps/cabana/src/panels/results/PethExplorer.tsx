@@ -224,40 +224,43 @@ export function pethParts(record: RunRecord, data: ExplorerData): ExplorerParts 
   const [behavior, setBehavior] = createSignal(0);
   const first = () => model.behaviors[behavior()];
   return {
-    title: () => `Population PETH · ${first().label}`,
-    tested: model.hasTest,
-    mainLabel: 'Population heat map and mean curve',
-    switcher: {
-      label: 'Behavior',
-      options: model.behaviors.map((b) => b.label),
-      index: behavior,
-      set: setBehavior,
-    },
-    subtitle: () =>
-      'Each row is a cell, sorted by response (largest response minus baseline first). Orange: above baseline, purple: below.',
-    help: () => (
-      <HowTo title="Population PETH">
-        <p>
-          The heat map has one row per cell and one column per time bin around the aligned frame
-          (dashed line). Color is the cell's mean response across bouts
-          {model.baselineSubtracted ? ", relative to each window's baseline mean" : ''} (a.u.):
-          orange above, purple below. One color scale is shared by all cells of the behavior,
-          clipped at ±{heatLimit(first())}; larger values share the end colors. Gray cells have no
-          value.
-        </p>
-        <p>
-          Rows are sorted by the response (mean response minus mean baseline), largest first. The
-          curve under the heat map is the mean over all cells with a value, on the same time axis;
-          the shaded bands mark the baseline and response intervals the run used.
-        </p>
-        <p>
-          Drawn from the saved result: changing the plot never changes the analysis. Significance
-          comes from the saved shuffle test, not from the colors.
-        </p>
-      </HowTo>
-    ),
-    main: () => <PethMain model={model} behavior={behavior()} />,
+    plots: [
+      {
+        id: 'heatmap',
+        label: 'Heat map and mean curve',
+        switcher: {
+          label: 'Behavior',
+          options: model.behaviors.map((b) => b.label),
+          index: behavior,
+          set: setBehavior,
+        },
+        subtitle: () =>
+          'Each row is a cell, sorted by response (largest response minus baseline first). Orange: above baseline, purple: below.',
+        help: () => (
+          <HowTo title="Population PETH">
+            <p>
+              The heat map has one row per cell and one column per time bin around the aligned frame
+              (dashed line). Color is the cell's mean response across bouts
+              {model.baselineSubtracted ? ", relative to each window's baseline mean" : ''} (a.u.):
+              orange above, purple below. One color scale is shared by all cells of the behavior,
+              clipped at ±{heatLimit(first())}; larger values share the end colors. Gray cells have
+              no value.
+            </p>
+            <p>
+              Rows are sorted by the response (mean response minus mean baseline), largest first.
+              The curve under the heat map is the mean over all cells with a value, on the same time
+              axis; the shaded bands mark the baseline and response intervals the run used.
+            </p>
+            <p>
+              Drawn from the saved result: changing the plot never changes the analysis.
+              Significance comes from the saved shuffle test, not from the colors.
+            </p>
+          </HowTo>
+        ),
+        main: () => <PethMain model={model} behavior={behavior()} />,
+        editSpec: () => pethMeanSpec(model, behavior(), record),
+      },
+    ],
     summary: () => <Summary model={model} behavior={behavior()} data={data} />,
-    editSpec: () => pethMeanSpec(model, behavior(), record),
   };
 }

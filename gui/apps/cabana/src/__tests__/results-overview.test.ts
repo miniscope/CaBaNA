@@ -7,13 +7,12 @@ import { pethSettings } from '../lib/peth-run.ts';
 import { placeSettings } from '../lib/place-run.ts';
 import { populationSettings } from '../lib/population-settings.ts';
 import { decodeTarget } from '../lib/decoding-settings.ts';
-import { openedRun } from '../lib/results-nav.ts';
+import { closeExplorer, explorerTarget, openExplorer } from '../lib/results-nav.ts';
 import {
   frameworkNote,
   historyRecords,
   listedRecords,
   openness,
-  openResult,
   overviewRows,
   pageOf,
   targetOf,
@@ -160,7 +159,7 @@ describe('cached-records fallback', () => {
 });
 
 describe('opening a result', () => {
-  it('shows the run on its page and leaves every settings store unchanged', () => {
+  it('opens the run in the Results window and leaves every settings store and the page unchanged', () => {
     const snap = () =>
       JSON.stringify([
         placeSettings,
@@ -170,11 +169,14 @@ describe('opening a result', () => {
         decodeTarget,
       ]);
     const before = snap();
-    openResult('peth', 'old-run');
-    expect(openedRun('peth')).toBe('old-run');
-    expect(analysisId()).toBe('peth');
-    expect(stepId()).toBe('analyze');
+    const [page, step] = [analysisId(), stepId()];
+    openExplorer('peth', 'old-run');
+    expect(explorerTarget()).toEqual({ analysis: 'peth', runId: 'old-run' });
+    expect(analysisId()).toBe(page);
+    expect(stepId()).toBe(step);
     expect(snap()).toBe(before);
+    closeExplorer();
+    expect(explorerTarget()).toBeUndefined();
   });
 });
 
@@ -198,9 +200,6 @@ describe('badges', () => {
       'Preview · 50 shuffles',
       'Older settings',
     ]);
-    expect(texts(full, { matches: false, diff: ['x'] })).toEqual([
-      'Full analysis',
-      'Needs rerun',
-    ]);
+    expect(texts(full, { matches: false, diff: ['x'] })).toEqual(['Full analysis', 'Needs rerun']);
   });
 });

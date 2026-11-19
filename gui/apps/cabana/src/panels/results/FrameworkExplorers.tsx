@@ -1,14 +1,15 @@
 // Explorer parts for Decoding and Population: the existing result views, read from the run's saved
 // arrays, as the main plot.
 
-import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, For, onCleanup, Show, type JSX } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { hasCapability } from '../../lib/bridge-status.ts';
 import { loadBehaviorDecoding, loadPositionDecoding } from '../../lib/decoding-results.ts';
 import type { ExplorerData } from '../../lib/explorer-data.ts';
 import type { FrameworkExtra } from '../../lib/results-framework.ts';
-import { summarySentences } from '../../lib/results-explorer.ts';
+import { plotsOf, summarySentences } from '../../lib/results-explorer.ts';
+import { clearPlotRequest, requestPlot } from '../../lib/results-nav.ts';
 import { POPULATION_RESULT } from '../../lib/population-results.ts';
 import type { PopulationMethod } from '../../lib/population-settings.ts';
 import { analysisDetails } from '../decoding/review.ts';
@@ -22,7 +23,16 @@ const summary = (r: RunRecord, data: ExplorerData) => () => (
   </For>
 );
 
-function DecodingMain(props: { record: RunRecord; extra: FrameworkExtra }): JSX.Element {
+/** The decoding results, opened on one of their views (position or behavior). */
+function DecodingMain(props: {
+  record: RunRecord;
+  extra: FrameworkExtra;
+  view: string;
+}): JSX.Element {
+  // The views read this request when they mount; one this run does not have is dropped on leaving.
+  // eslint-disable-next-line solid/reactivity
+  requestPlot('decoding', props.view);
+  onCleanup(clearPlotRequest);
   const [loaded] = createResource(async () => {
     const has = hasCapability('decoding_overall_test');
     const { src, manifest } = props.extra;
@@ -69,12 +79,19 @@ export function decodingParts(
   extra: FrameworkExtra,
   data: ExplorerData,
 ): ExplorerParts {
+  const logistic =
+    (record.gui.settings as { analysis?: { decoder?: string } })?.analysis?.decoder === 'logistic';
+  const views = plotsOf('decoding', data.resultNames, data.target).filter(
+    // The timeline needs the Bayes decoder's per-frame posterior.
+    (p) => !(p.id === 'timeline' && logistic),
+  );
   return {
-    title: () => 'Decoded vs actual',
-    tested: true,
-    mainLabel: 'Decoding results',
-    help: () => undefined,
-    main: () => <DecodingMain record={record} extra={extra} />,
+    coversPlots: true,
+    plots: views.map((p) => ({
+      id: p.id,
+      label: p.title,
+      main: () => <DecodingMain record={record} extra={extra} view={p.view} />,
+    })),
     summary: summary(record, data),
   };
 }
@@ -88,28 +105,17 @@ export function populationParts(
     extra.manifest.results.some((r) => r.name === POPULATION_RESULT[m]),
   );
   if (!methods.length) return undefined;
-  const [method, setMethod] = createSignal(0);
   return {
-    title: () => NAV_LABEL[methods[method()]],
-    tested: true,
-    mainLabel: 'Population analyses',
-    switcher: {
-      label: 'Analysis',
-      options: methods.map((m) => NAV_LABEL[m]),
-      index: method,
-      set: setMethod,
-    },
-    help: () => undefined,
-    main: () => (
-      <div class="cb-rx__embed">
-        <Dynamic
-          component={VIEWS[methods[method()]]}
-          src={extra.src}
-          manifest={extra.manifest}
-          record={record}
-        />
-      </div>
-    ),
+    coversPlots: true,
+    plots: methods.map((m) => ({
+      id: m,
+      label: NAV_LABEL[m],
+      main: () => (
+        <div class="cb-rx__embed">
+          <Dynamic component={VIEWS[m]} src={extra.src} manifest={extra.manifest} record={record} />
+        </div>
+      ),
+    })),
     summary: summary(record, data),
   };
 }

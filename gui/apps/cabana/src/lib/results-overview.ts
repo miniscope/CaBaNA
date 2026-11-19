@@ -2,9 +2,8 @@
 // it can be opened, and the history list. No display code; nothing here changes a setting.
 
 import type { RunRecord } from './bridge-client.ts';
-import { ANALYSES, selectAnalysis, setAnalysisId } from './analyses.ts';
+import { ANALYSES, selectAnalysis } from './analyses.ts';
 import { openAnalysisWindow } from './analysis-window.ts';
-import { openRunOf } from './results-nav.ts';
 import { goToStep } from './store.ts';
 import type { AnalysisId } from './runs.ts';
 export const NEWER_VERSION_TEXT = 'Saved by a newer framework or GUI; update to open.';
@@ -124,13 +123,6 @@ export function unavailableReason(engineReady: boolean, blockers: string[] = [])
 export const listedRecords = (engineReady: boolean, live: RunRecord[], cached: RunRecord[]) =>
   engineReady ? live : cached;
 
-/** Show a saved result on its analysis page. Only changes which run the page shows. */
-export function openResult(analysis: AnalysisId, runId: string): void {
-  openRunOf(analysis, runId);
-  setAnalysisId(analysis);
-  goToStep('analyze');
-}
-
 /** Open an analysis's Configure settings window over the Analysis cards. */
 export function goToAnalysis(analysis: AnalysisId): void {
   selectAnalysis(analysis);
@@ -147,7 +139,13 @@ export function shortWhen(utc: string | null): string {
   if (!utc) return '';
   const d = new Date(utc);
   const year = d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
-  return d.toLocaleString([], { month: 'short', day: 'numeric', year, hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year,
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 export const formatWhen = (utc: string | null) =>

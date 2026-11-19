@@ -31,6 +31,8 @@ const [plotRequest, setPlotRequest] = createSignal<
 export const requestPlot = (analysis: AnalysisId, view: string): void => {
   setPlotRequest({ analysis, view });
 };
+/** Drop a request nobody took (a view the page does not have for this run). */
+export const clearPlotRequest = (): void => setPlotRequest(undefined);
 export function takePlotRequest(
   analysis: AnalysisId,
   known: readonly string[],
