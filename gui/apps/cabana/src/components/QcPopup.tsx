@@ -149,7 +149,7 @@ export function QcPopup(props: {
 
 /** The flags box: numbered flags and the line of what passed. */
 export function FlagsBox(props: {
-  flags: { n: number; title: string; detail: string }[];
+  flags: { n: number; title: string; detail: string; link?: { text: string; run: () => void } }[];
   passed: string;
 }): JSX.Element {
   return (
@@ -162,6 +162,11 @@ export function FlagsBox(props: {
               <span>{f.title}</span>
               <Show when={f.detail}>
                 <span class="cb-muted">{f.detail}</span>
+              </Show>
+              <Show when={f.link}>
+                <button type="button" class="cb-linkbtn" onClick={() => f.link!.run()}>
+                  {f.link!.text}
+                </button>
               </Show>
             </div>
           )}

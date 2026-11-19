@@ -8,7 +8,6 @@ import {
   conflictSummary,
   oneSourceText,
   pageSlice,
-  setReviewingConflicts,
   shortName,
   showLabel,
 } from '../lib/label-view.ts';
@@ -23,6 +22,7 @@ import {
   resetFrameRoles,
   setFrameRole,
 } from '../lib/store.ts';
+import { openConflictReview } from '../lib/label-flags.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { LabelPager, useRowsFit } from './LabelPager.tsx';
 
@@ -183,7 +183,7 @@ export function FrameLabelMapping(): JSX.Element {
             >
               <p class="cb-error cb-lbl-conflict">
                 <span>{conflicts()}</span>
-                <button class="btn-secondary btn-small" onClick={() => setReviewingConflicts(true)}>
+                <button class="btn-secondary btn-small" onClick={openConflictReview}>
                   Review conflicts
                 </button>
               </p>

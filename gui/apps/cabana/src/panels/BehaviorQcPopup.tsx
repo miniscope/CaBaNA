@@ -12,12 +12,15 @@ import {
   startAnnotationDraft,
   type AnnotationDraft,
 } from '../lib/qc-draft.ts';
+import { labelDataFlags, openConflictReview } from '../lib/label-flags.ts';
 import { itemFlagLines } from '../lib/qc-flags.ts';
+import { openEntry } from '../lib/data-setup-view.ts';
 import { closeQcPopup, markPopupReviewed } from '../lib/qc-popup-view.ts';
 import {
   annotationLog,
   annotationResults,
   editAnnotations,
+  goToStep,
   sessionDuration,
   setTol,
   tol,
@@ -28,6 +31,13 @@ import { flaggedOf, ticks } from './BehaviorQc.tsx';
 import { colorOf } from '../lib/viz-tracks.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
+
+/** The time-marker file on Data setup, where the markers outside the recording are counted. */
+const openMarkers = () => {
+  closeQcPopup();
+  goToStep('load');
+  openEntry('time_markers');
+};
 
 const LABEL_W = 150;
 const ROW = 22;
@@ -140,7 +150,18 @@ export function BehaviorQcPopup(): JSX.Element {
     const checks = all.flatMap((a) =>
       a.error ? [] : a.checks.map((c) => (many ? { ...c, title: `${c.title} (${a.name})` } : c)),
     );
-    return itemFlagLines(items, checks);
+    const r = itemFlagLines(items, checks);
+    // Label-file findings follow the annotation flags, with the page that shows them.
+    const labels = labelDataFlags().map((f, i) => ({
+      n: r.flags.length + i + 1,
+      title: f.title,
+      detail: f.detail,
+      link:
+        f.action === 'conflicts'
+          ? { text: 'Review conflicts', run: openConflictReview }
+          : { text: 'Open time markers', run: openMarkers },
+    }));
+    return { flags: [...r.flags, ...labels], passed: r.passed };
   });
   const checkCount = () => annotationResults().reduce((n, a) => n + a.checks.length, 0);
 

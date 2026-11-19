@@ -11,7 +11,13 @@ import {
 } from '../lib/qc-markers.ts';
 import type { Check } from '../lib/qc.ts';
 import { cardActions, cardStatus, rowDescription } from '../lib/setup-rows.ts';
-import { alignmentText, arenaText, durationText, rateText } from '../lib/setup-summary.ts';
+import {
+  alignmentText,
+  arenaText,
+  clockText,
+  durationText,
+  rateText,
+} from '../lib/setup-summary.ts';
 
 const csv = (name: string, text: string) => describeFile(name, new Uint8Array(), text);
 const reason = (r: ReturnType<typeof checkFormat>) => (r.ok ? '' : r.reason);
@@ -220,5 +226,13 @@ describe('export a copy', () => {
       metadata: { species: 'mouse', file: 'keep' },
     });
     expect(cfg.name).toBe('M24');
+  });
+});
+
+describe('camera clock correction text', () => {
+  it('says nothing without an offset or scale, and names what is set otherwise', () => {
+    expect(clockText(0, 1)).toBeUndefined();
+    expect(clockText(0.35, 1.0004)).toBe('offset 0.35 s, scale 1.0004 (set in Experiment config)');
+    expect(clockText(0, 0.9996)).toContain('scale 0.9996');
   });
 });

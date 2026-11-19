@@ -5,7 +5,7 @@ import { analysisSlot } from '../lib/analysis-data.ts';
 import { kernelChecks } from '../lib/decon-state.ts';
 import { choiceOf } from '../lib/position-corrections.ts';
 import type { SlotId } from '../lib/slots.ts';
-import { annotationResults, footprints, loaded, traceMatrix } from '../lib/store.ts';
+import { annotationResults, footprints, goToStep, loaded, traceMatrix } from '../lib/store.ts';
 import {
   correctionPill,
   forBox,
@@ -15,13 +15,20 @@ import {
   type VizBox,
 } from '../lib/viz-pills.ts';
 import { behaviorSlot } from '../lib/viz-reviewed.ts';
+import { labelDataFlags, openConflictReview } from '../lib/label-flags.ts';
 import { changes } from './ChangesDrawer.tsx';
 import { flaggedOf, posOk, segments } from './BehaviorQc.tsx';
+import { openEntry } from '../lib/data-setup-view.ts';
 import { setQcPopup, type QcPopupId } from '../lib/qc-popup-view.ts';
 import { cellChecks, flaggedCells, overlapPairs } from './NeuralQcShared.tsx';
 
 const isLoaded = (id: SlotId) => !!loaded[id]?.summary && !!loaded[id]!.size;
 const fails = (c: { status: string }[]) => c.filter((x) => x.status === 'fail').length;
+
+const openMarkersPage = () => {
+  goToStep('load');
+  openEntry('time_markers');
+};
 
 const openPopup = (id: QcPopupId) => () => setQcPopup(id);
 
@@ -73,12 +80,15 @@ function qcOf(box: VizBox): BoxPill | undefined {
     }
     case 'behavior': {
       const files = annotationResults();
-      if (!files.length) return undefined;
+      const labels = labelDataFlags().length;
+      if (!files.length && !labels) return undefined;
       return qcPill({
-        flagged: files.reduce(
-          (n, a) => n + (a.error ? 1 : fails(a.checks)) + flaggedOf(a.id).length + a.pairs.length,
-          0,
-        ),
+        flagged:
+          labels +
+          files.reduce(
+            (n, a) => n + (a.error ? 1 : fails(a.checks)) + flaggedOf(a.id).length + a.pairs.length,
+            0,
+          ),
       });
     }
   }
@@ -98,5 +108,9 @@ export function boxPills(box: VizBox): BoxPill[] {
 /** What a pill opens: the box's QC or Preprocess pop-up. */
 export function pillTarget(box: VizBox, pill: BoxPill): (() => void) | undefined {
   if (pill.kind === 'prep') return box === 'footprints' ? undefined : PREPROCESS[box]();
-  return REVIEW[box]();
+  const review = REVIEW[box]();
+  // Without annotation files the box's flags are label findings; their page is on Data setup.
+  if (!review && box === 'behavior' && labelDataFlags().length)
+    return labelDataFlags()[0].action === 'conflicts' ? openConflictReview : openMarkersPage;
+  return review;
 }

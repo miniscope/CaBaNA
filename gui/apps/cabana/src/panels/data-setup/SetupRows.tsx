@@ -27,7 +27,13 @@ import {
   rowDescription,
   type RowFacts,
 } from '../../lib/setup-rows.ts';
-import { alignmentText, arenaText, durationText, rateText } from '../../lib/setup-summary.ts';
+import {
+  alignmentText,
+  arenaText,
+  clockText,
+  durationText,
+  rateText,
+} from '../../lib/setup-summary.ts';
 import { SLOTS, type SlotId } from '../../lib/slots.ts';
 import {
   addFiles,
@@ -41,6 +47,7 @@ import {
   removeFile,
   samplingRate,
   sessionDuration,
+  source,
   traceMatrix,
 } from '../../lib/store.ts';
 import { behaviorTests } from '../BehaviorQc.tsx';
@@ -199,6 +206,7 @@ function Card(props: { title: string; ids: SlotId[]; children: JSX.Element }): J
 export function SummaryCard(): JSX.Element {
   const timing = () => behaviorTests().find((c) => c.id === 'timing')?.checks ?? [];
   const alignment = () => alignmentText(timing().map((c) => c.status));
+  const clock = () => clockText(source.clockOffsetS, source.clockScale);
   const cells = () => (traceMatrix() ?? deconvolved())?.cells;
   const zones = () => arena.zones.filter((z) => z.kind === 'zone').length;
   const items = (): [string, JSX.Element][] => [
@@ -221,6 +229,7 @@ export function SummaryCard(): JSX.Element {
         </button>
       </Show>,
     ],
+    ...(clock() ? ([['Camera clock', clock()]] as [string, JSX.Element][]) : []),
   ];
   return (
     <section class="cb-sp-sum" aria-label="Experimental summary">

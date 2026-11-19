@@ -31,3 +31,14 @@ export function alignmentText(statuses: string[]): { text: string; tone: Tone } 
   if (n('warn')) return { text: word(n('warn'), 'flagged'), tone: 'warn' };
   return { text: word(n('pass'), 'passed'), tone: 'ok' };
 }
+
+/**
+ * The camera-to-neural clock correction from the config, or nothing when there is none. Clock
+ * drift is not detected by any check; it is only corrected by this offset and scale.
+ */
+export function clockText(offsetS: number, scale: number): string | undefined {
+  const parts = [offsetS ? `offset ${offsetS} s` : '', scale !== 1 ? `scale ${scale}` : ''].filter(
+    Boolean,
+  );
+  return parts.length ? `${parts.join(', ')} (set in Experiment config)` : undefined;
+}
