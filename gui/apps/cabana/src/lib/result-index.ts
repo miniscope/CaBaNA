@@ -7,6 +7,7 @@ import { createEffect, createMemo, createRoot, createSignal, on } from 'solid-js
 import type { RunRecord } from './bridge-client.ts';
 import { bridgeReady } from './bridge-status.ts';
 import { browserRecords, loadBrowserRecords, syncBrowserRecords } from './browser-records.ts';
+import { openProject } from './open-project.ts';
 import { hasResults } from './results-overview.ts';
 import { cachedRecords, cacheRecords } from './results-store.ts';
 import { history, latest, refreshHistory, type AnalysisId } from './runs.ts';
@@ -44,6 +45,14 @@ export function startResultIndex(): void {
           () => setLive(false),
         );
     });
+    // Another project has other runs: read them when one is opened.
+    createEffect(
+      on(
+        () => openProject()?.id,
+        () => bridgeReady() && void refreshHistory().catch(() => undefined),
+        { defer: true },
+      ),
+    );
     // Each list the engine returns is kept for when it stops.
     createEffect(
       on(history, (records) => {

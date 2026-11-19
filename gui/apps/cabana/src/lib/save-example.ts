@@ -4,6 +4,7 @@
 
 import { bridge } from './bridge-client.ts';
 import { beginAutosave, saveEverything } from './autosave.ts';
+import { resendBrowserRecords } from './browser-records.ts';
 import { exampleRuns } from './example-session.ts';
 import { setDataFiles, setOpenProject } from './open-project.ts';
 import { projects } from './projects-client.ts';
@@ -49,7 +50,12 @@ export async function saveExampleAsProject(
     // Runs made with no project open move in before the project opens; the engine refuses the
     // open while one is still active.
     await refreshHistory();
-    const runIds = exampleRuns().map((r) => r.run_id);
+    // Browser-engine runs have no session folder in the workspace, which the engine's move needs;
+    // they are sent to the project again once it is open.
+    const runs = exampleRuns();
+    const isBrowser = (r: (typeof runs)[number]) => r.engine === 'browser-ts';
+    const runIds = runs.filter((r) => !isBrowser(r)).map((r) => r.run_id);
+    const browserIds = runs.filter(isBrowser).map((r) => r.run_id);
     if (runIds.length) {
       progress(`Moving ${runIds.length} run${runIds.length === 1 ? '' : 's'} into the project…`);
       runsMoved = true;
@@ -62,6 +68,7 @@ export async function saveExampleAsProject(
     setSessionName(project.name);
     beginAutosave(project, new Map([['project.yaml', new Date(project.modified)]]));
     await saveEverything('Saved from example data');
+    await resendBrowserRecords(browserIds);
     await refreshHistory();
   } catch (e) {
     if (id && !runsMoved) await projects.remove(id).catch(() => undefined);

@@ -94,6 +94,12 @@ export async function forgetBrowserRecord(runId: string): Promise<void> {
     await save(kept().filter((k) => k.record.run_id !== runId));
 }
 
+/** Send the given kept records to the project that is open now, even if sent to the engine's workspace before. */
+export async function resendBrowserRecords(runIds: string[]): Promise<void> {
+  await save(kept().map((k) => (runIds.includes(k.record.run_id) ? { ...k, synced: false } : k)));
+  await syncBrowserRecords();
+}
+
 /** Copy kept records the project does not have yet. Never throws. */
 export async function syncBrowserRecords(): Promise<void> {
   let inProject: Set<string>;
