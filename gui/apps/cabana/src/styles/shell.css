@@ -128,7 +128,7 @@
 .cb-modal-bg {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 45; /* above the expanded plot view (.cb-overlay, 40) that can open it */
   display: flex;
   align-items: center;
   justify-content: center;

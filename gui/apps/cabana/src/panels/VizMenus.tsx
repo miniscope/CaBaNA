@@ -168,8 +168,8 @@ const DISPLAY: Record<VizBox, () => MenuItem[]> = {
   behavior: behaviorDisplay,
 };
 
-/** The menu items of one box. */
-export function boxMenu(box: VizBox, expand: () => void): MenuItem[] {
+/** The menu items of one box; "Expand view" is left out inside the expanded view itself. */
+export function boxMenu(box: VizBox, expand?: () => void): MenuItem[] {
   const qc = REVIEW[box]();
   const prep = box === 'footprints' ? undefined : PREPROCESS[box]();
   const applied = forBox(changes(), box).length;
@@ -198,16 +198,17 @@ export function boxMenu(box: VizBox, expand: () => void): MenuItem[] {
       disabled: applied ? undefined : 'Nothing applied to this data.',
       onSelect: () => setRevertBox(box),
     },
-    { kind: 'separator' },
-    { kind: 'action', label: 'Expand view', onSelect: expand },
   );
+  if (expand)
+    items.push({ kind: 'separator' }, { kind: 'action', label: 'Expand view', onSelect: expand });
   return items;
 }
 
 /** The Actions button of a box. The second panel opens to the left at the right edge, and upward at the bottom. */
 export function BoxActions(props: {
   box: VizBox;
-  expand: () => void;
+  /** Left out in the expanded view, where the menu has no "Expand view". */
+  expand?: () => void;
   side?: 'left';
   up?: boolean;
 }): JSX.Element {

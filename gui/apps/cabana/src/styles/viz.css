@@ -139,3 +139,35 @@
   background: var(--correction-bg);
   font-size: 12.5px;
 }
+
+/* Expanded view: the box's controls and Actions sit in the head next to the ×, on one row. */
+.cb-overlay__box > .cb-plot__head {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+.cb-overlay__box > .cb-plot__head > .cb-plot__acts {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.cb-overlay__box .cb-cellbar {
+  margin: 0;
+}
+.cb-overlay__box .cb-seg button {
+  padding: 3px 10px;
+  font-size: 12.5px;
+}
+.cb-overlay__box .cb-viz__winseg {
+  grid-auto-columns: auto;
+}
+.cb-overlay__box .cb-viz__winsel {
+  max-width: 150px;
+}
+.cb-overlay__box > .cb-plot__sum {
+  padding-bottom: 4px;
+}
+.cb-overlay__box .cb-viz__winsel {
+  font-size: 12.5px;
+  padding: 3px 6px;
+  border-radius: var(--radius-md);
+}

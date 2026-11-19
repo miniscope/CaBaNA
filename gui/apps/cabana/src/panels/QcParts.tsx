@@ -166,6 +166,9 @@ export function PlotCard(props: {
   /** Given the expand function, so an Actions menu can hold "Expand view" and no Expand button is shown. */
   actions?: JSX.Element | ((expand: () => void) => JSX.Element);
   expandInMenu?: boolean;
+  /** Cell and window controls, and the Actions menu, for the head of the expanded view. */
+  bigControls?: JSX.Element;
+  bigActions?: JSX.Element;
   class?: string;
   /** Opens help elsewhere (a side panel) instead of the popover; the expanded view keeps the popover. */
   onHelp?: () => void;
@@ -237,9 +240,17 @@ export function PlotCard(props: {
             setBig(false);
             expand?.focus();
           }}
+          summary={box ? props.summary : undefined}
+          controls={
+            <>
+              {props.bigControls}
+              {props.bigActions}
+            </>
+          }
           head={
             <>
               <HowTo title={props.title}>{props.help}</HowTo>
+              <Show when={box}>{props.pills}</Show>
               {props.tools}
               {props.bigTools}
               <Show when={props.legend}>
@@ -255,16 +266,28 @@ export function PlotCard(props: {
   );
 }
 
-/** A large view over the page. Escape or the close button closes it. */
+/**
+ * A large view over the page. Escape or the close button closes it, unless a menu or a window
+ * opened from it is on top: then Escape closes only that.
+ */
 function Overlay(props: {
   title: string;
   head: JSX.Element;
+  /** Under the head row. */
+  summary?: JSX.Element;
+  /** Right side of the head, before the ×. */
+  controls?: JSX.Element;
   onClose: () => void;
   children: (size: Accessor<{ w: number; h: number }>) => JSX.Element;
 }): JSX.Element {
   const [size, measure] = createSize();
   let close!: HTMLButtonElement;
-  const key = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
+  let box!: HTMLDivElement;
+  const key = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.cb-menu')) return;
+    const open = document.querySelectorAll('[aria-modal="true"]');
+    if (open[open.length - 1] === box) props.onClose();
+  };
   onMount(() => {
     close.focus();
     document.addEventListener('keydown', key);
@@ -273,12 +296,22 @@ function Overlay(props: {
   return (
     <Portal>
       <div class="cb-overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-        <div class="cb-overlay__box" role="dialog" aria-modal="true" aria-label={props.title}>
+        <div
+          ref={box}
+          class="cb-overlay__box"
+          role="dialog"
+          aria-modal="true"
+          aria-label={props.title}
+        >
           <div class="cb-plot__head">
             <h3>{props.title}</h3>
             {props.head}
+            <span class="cb-plot__acts">{props.controls}</span>
             <CloseX ref={(el) => (close = el)} onClick={props.onClose} />
           </div>
+          <Show when={props.summary}>
+            <div class="cb-plot__sum">{props.summary}</div>
+          </Show>
           <div class="cb-plot__body" ref={measure}>
             <Show when={size().h > 20}>{untrack(() => props.children(size))}</Show>
           </div>
