@@ -18,9 +18,7 @@
 .cb-res__off{margin:0;font-size:13px;color:#92400e}.cb-res__empty{margin:0;font-size:13px}
 .cb-ov{list-style:none;margin:0;padding:0;border:1px solid var(--border-default,#cbd5e1);border-radius:8px;background:#fff}
 .cb-ro{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px}.cb-ro__err{font-size:12px;color:#991b1b;max-width:220px}
-.cb-ra__btn{min-width:32px}
-.cb-xm__item--danger>span:first-child{color:#991b1b}
-.cb-xm__confirm{display:flex;flex-direction:column;gap:6px;padding:6px 12px;font-size:12px}.cb-xm__confirm-btns{display:flex;gap:8px}.cb-btn-danger{background:#b91c1c;border-color:#b91c1c}.cb-btn-danger-outline{color:#b91c1c;border-color:#b91c1c}
+.cb-btn-danger{background:#b91c1c;border-color:#b91c1c}.cb-btn-danger-outline{color:#b91c1c;border-color:#b91c1c}
 .cb-hist{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1}
 .cb-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
