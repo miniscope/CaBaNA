@@ -9,6 +9,7 @@ import { aurocChanges } from './auroc-view.ts';
 import { browserOutcomeInMemory } from './live-outcome.ts';
 import { pethChanges, pethSettingChanges } from './peth-view.ts';
 import { placeChanges } from './place-ui.ts';
+import { readableChanges } from './change-words.ts';
 import { compareToRecord, type AnalysisId } from './runs.ts';
 
 export interface Match {
@@ -39,7 +40,9 @@ export function browserMatch(analysis: AnalysisId): Match | undefined {
 export function matchOfRecord(r: RunRecord, newest: boolean): Promise<Match | undefined> {
   if (r.engine === 'framework')
     return bridgeReady()
-      ? compareToRecord(r.analysis as AnalysisId, r)
+      ? compareToRecord(r.analysis as AnalysisId, r).then((m) =>
+          m && { ...m, diff: readableChanges(m.diff, r.analysis as AnalysisId) },
+        )
       : Promise.resolve(undefined);
   return Promise.resolve(newest ? browserMatch(r.analysis as AnalysisId) : undefined);
 }

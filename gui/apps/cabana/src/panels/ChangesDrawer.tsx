@@ -13,6 +13,7 @@ import { DEFAULT_PREP, prep, setPrep } from '../lib/preprocess.ts';
 import { STEPS, type StepId } from '../lib/prep-deps.ts';
 import { fs, gapSummary } from '../lib/prep-view.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
+import { analysesNeedingRerun } from '../lib/rerun-needed.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
 import { upstreamItems } from '../lib/upstream.ts';
@@ -99,7 +100,10 @@ const shownHistory = () =>
     : history();
 
 /** Analyses whose newest saved result no longer matches the current data and settings. */
-export const needRerun = () => ANALYSES.filter((a) => statusOfItem(a.id).kind === 'outdated');
+export const needRerun = () =>
+  ANALYSES.filter(
+    (a) => statusOfItem(a.id).kind === 'outdated' || analysesNeedingRerun().includes(a.id),
+  );
 
 export const when = (ms: number | undefined) =>
   ms === undefined
@@ -206,16 +210,6 @@ function Applied(): JSX.Element {
           Corrections and settings are applied to the data in this window.
         </span>
       </div>
-      <Group
-        title="Corrections"
-        entries={of('correction')}
-        empty="No corrections: no cells rejected, no position frames left out, no annotation fixes."
-      />
-      <Group
-        title="Preprocessing"
-        entries={of('prep')}
-        empty="All preprocessing settings are at their defaults."
-      />
       <Show when={needRerun().length}>
         <div class="cb-chg__rerun">
           <div class="cb-chg__rerun-head">
@@ -244,6 +238,16 @@ function Applied(): JSX.Element {
           </p>
         </div>
       </Show>
+      <Group
+        title="Corrections"
+        entries={of('correction')}
+        empty="No corrections: no cells rejected, no position frames left out, no annotation fixes."
+      />
+      <Group
+        title="Preprocessing"
+        entries={of('prep')}
+        empty="All preprocessing settings are at their defaults."
+      />
     </>
   );
 }

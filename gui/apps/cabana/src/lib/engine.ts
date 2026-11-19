@@ -103,7 +103,7 @@ export function startRunTracking(): void {
   });
 }
 
-const PREP_LABELS: Record<string, string> = {
+export const PREP_LABELS: Record<string, string> = {
   eventSigmaS: 'event smoothing',
   labelPadS: 'behavior label padding',
   fillGapS: 'position gap filling',
@@ -114,7 +114,7 @@ const PREP_LABELS: Record<string, string> = {
   minSpeed: 'minimum speed',
 };
 
-const PIPELINE_WORD = 'framework pipeline steps';
+export const PIPELINE_WORD = 'framework pipeline steps';
 
 /** Words for the lines of a settings diff (`analysis.alpha: 0.05 -> 0.01`), each setting once. */
 export function describeChanges(diff: string[], labels: Record<string, string>): string[] {
