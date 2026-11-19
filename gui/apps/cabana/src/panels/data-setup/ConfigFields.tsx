@@ -118,7 +118,7 @@ export function Spatial(): JSX.Element {
       required
       action={
         <button type="button" class="cb-sp-accent" onClick={openArenaEditor}>
-          ✎ Open arena editor
+          ✎ Edit arena
         </button>
       }
       why="Turns positions into centimeters and defines the zones. Place cells, speed in cm/s, zone epochs and position decoding depend on it. Type the arena size here, or draw the outline, a known distance and the zones in the arena editor. Written to arena in config.yaml."

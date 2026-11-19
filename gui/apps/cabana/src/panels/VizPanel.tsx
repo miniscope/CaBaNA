@@ -242,7 +242,7 @@ export function VizPanel(): JSX.Element {
                   class="btn-accent btn-small"
                   onClick={() => setArenaEditor(true)}
                 >
-                  <span aria-hidden="true">✎</span> Open arena editor
+                  <span aria-hidden="true">✎</span> Edit arena
                 </button>
                 <BoxActions box="arena" expand={expand} up />
               </>

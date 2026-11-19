@@ -23,6 +23,7 @@
   color: #fff;
   font: inherit;
   font-size: 0.85rem;
+  line-height: normal; /* `font: inherit` brings in 1.5; match the other buttons' height. */
   padding: 5px 12px;
   cursor: pointer;
 }
