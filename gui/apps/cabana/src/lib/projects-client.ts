@@ -1,6 +1,6 @@
 // Typed calls for the engine's Projects endpoints (gui/bridge/README.md, "Projects").
 
-import { bridgeCall, bridgeJson } from './bridge-client.ts';
+import { bridgeCall, bridgeJson, type RunRecord } from './bridge-client.ts';
 import type { SlotId } from './slots.ts';
 
 export type FileName = 'project.yaml' | 'experiment.yaml' | 'processing.yaml' | 'analysis.yaml';
@@ -152,6 +152,17 @@ export const projects = {
   scan: (paths: string[]) => postJson<{ files: ScannedFile[] }>('/scan', { paths }),
   registerData: async (id: string, slot: SlotId, path: string) =>
     (await (await post(`/projects/${id}/data`, { slot, path })).json()) as DataEntry,
+  /** Copy a file the engine already holds (uploaded by hash) into the project's data folder. */
+  dataFromInput: async (id: string, slot: SlotId, sha: string, name: string) =>
+    (await (
+      await post(`/projects/${id}/data/from-input`, { slot, sha, name })
+    ).json()) as DataEntry,
+  /** Move runs made with no project open into the project; call before opening it. */
+  adoptRuns: (id: string, runIds: string[]) =>
+    postJson<{ adopted: RunRecord[]; skipped: { run_id: string; reason: string }[] }>(
+      `/projects/${id}/runs/adopt`,
+      { run_ids: runIds },
+    ),
   removeData: (id: string, slot: SlotId) => bridgeCall('DELETE', `/projects/${id}/data/${slot}`),
   listData: async (id: string) =>
     (await bridgeJson<{ files: DataFile[] }>(`/projects/${id}/data`)).files,

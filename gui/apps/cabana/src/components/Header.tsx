@@ -23,9 +23,17 @@ import { projects } from '../lib/projects-client.ts';
 import { hasUnsaved, saveNow, updateAutosaveProject } from '../lib/autosave.ts';
 import { openProjectSettings, setExportOpen } from '../lib/project-dialogs.ts';
 import { projectsOn } from '../lib/project-session.ts';
+import {
+  guardExample,
+  hasExampleWork,
+  isExample,
+  saveDialog,
+  setSaveDialog,
+} from '../lib/example-session.ts';
 import { sizeText } from '../lib/project-view.ts';
 import { ProjectWindows } from '../panels/projects/ProjectWindows.tsx';
 import type { MenuItem } from '../lib/actions-menu.ts';
+import { SaveExample } from '../panels/projects/SaveExample.tsx';
 import {
   ClearSessionDialog,
   DeleteProjectDialog,
@@ -51,15 +59,36 @@ function facts(): SessionFacts | undefined {
 
 const NEEDS_ENGINE = 'Needs saved projects (engine)';
 const NEEDS_PROJECT = 'Open or create a project first';
+const NEEDS_SAVE = 'Save the example as a project first (Manage project → Save as project…)';
 type Dialog = 'rename' | 'clear' | 'delete';
 
 export function Header(): JSX.Element {
   const [dialog, setDialog] = createSignal<Dialog>();
   const projectName = () => sessionName() || 'this session';
   // Actions on the project folder need the engine and an open project.
-  const needs = () => (openProject() ? undefined : projectsOn() ? NEEDS_PROJECT : NEEDS_ENGINE);
+  const needs = () =>
+    openProject()
+      ? undefined
+      : isExample()
+        ? projectsOn()
+          ? NEEDS_SAVE
+          : NEEDS_ENGINE
+        : projectsOn()
+          ? NEEDS_PROJECT
+          : NEEDS_ENGINE;
   const fail = (e: unknown) => showMessage('Project action failed', errorText(e));
   const items = (): MenuItem[] => [
+    ...(isExample()
+      ? ([
+          {
+            kind: 'action',
+            label: 'Save as project…',
+            disabled: projectsOn() ? undefined : NEEDS_ENGINE,
+            onSelect: () => setSaveDialog({}),
+          },
+          { kind: 'separator' },
+        ] as MenuItem[])
+      : []),
     ...(openProject()?.save_mode === 'manual'
       ? ([
           {
@@ -71,17 +100,25 @@ export function Header(): JSX.Element {
           { kind: 'separator' },
         ] as MenuItem[])
       : []),
-    { kind: 'action', label: 'Rename project', onSelect: () => setDialog('rename') },
+    {
+      kind: 'action',
+      label: 'Rename project',
+      disabled: isExample() ? needs() : undefined,
+      tipOnly: true,
+      onSelect: () => setDialog('rename'),
+    },
     {
       kind: 'action',
       label: 'Project settings',
       disabled: needs(),
+      tipOnly: true,
       onSelect: () => openProjectSettings(),
     },
     {
       kind: 'action',
       label: 'Duplicate project',
       disabled: needs(),
+      tipOnly: true,
       onSelect: () =>
         void projects
           .duplicate(openProject()!.id)
@@ -92,21 +129,28 @@ export function Header(): JSX.Element {
       kind: 'action',
       label: 'Export portable project…',
       disabled: needs(),
+      tipOnly: true,
       onSelect: () => setExportOpen(true),
     },
-    { kind: 'action', label: 'Open project library', onSelect: () => goToStep('library') },
+    {
+      kind: 'action',
+      label: 'Open project library',
+      onSelect: () => guardExample(() => goToStep('library')),
+    },
     { kind: 'separator' },
     {
       kind: 'action',
       label: 'Clear session data…',
       danger: true,
-      onSelect: () => setDialog('clear'),
+      // The discard warning already asks, so it replaces the second question.
+      onSelect: () => (hasExampleWork() ? guardExample(closeSession) : setDialog('clear')),
     },
     {
       kind: 'action',
       label: 'Delete project…',
       danger: true,
       disabled: needs(),
+      tipOnly: true,
       onSelect: () => setDialog('delete'),
     },
   ];
@@ -172,6 +216,9 @@ export function Header(): JSX.Element {
         )}
       </Show>
       <ProjectWindows />
+      <Show when={saveDialog()}>
+        {(d) => <SaveExample onSaved={d().after} onClose={() => setSaveDialog(undefined)} />}
+      </Show>
       <Show when={dialog() === 'clear'}>
         <ClearSessionDialog
           name={projectName()}
