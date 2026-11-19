@@ -9,7 +9,7 @@ import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts
 import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { READOUT_HINT, readout } from '../lib/viz-tracks.ts';
-import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
+import { exampleMedia, goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { About } from '../panels/projects/About.tsx';
 import { NewSession } from '../panels/projects/NewSession.tsx';
 import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
@@ -84,30 +84,34 @@ const PAGES = [
 ];
 
 /**
- * The first sidebar row. On a project page it is highlighted with its menu open; inside a session
- * it is collapsed and a click toggles the menu.
+ * The first sidebar row. Its menu is closed until clicked, on every page; choosing an item closes
+ * it. The line under it says what is open.
  */
 function ProjectsRow(): JSX.Element {
   const [menu, setMenu] = createSignal(false);
   const onPage = () => isProjectPage(stepId());
-  const shown = () => onPage() || menu();
-  const status = () => (nothingLoaded() ? 'No project open' : sessionName() || 'Untitled project');
+  const status = () =>
+    nothingLoaded()
+      ? 'No project open'
+      : exampleMedia()
+        ? 'Example data · Unsaved'
+        : sessionName() || 'Untitled project';
   return (
     <>
       <div class="cb-side cb-side--proj" classList={{ 'cb-side--on': onPage() }}>
         <button
           type="button"
           class="cb-side__go"
-          aria-expanded={shown()}
+          aria-expanded={menu()}
           aria-label={`Projects: ${status()}`}
           title={folded() ? 'Projects' : undefined}
-          onClick={() => !onPage() && setMenu(!menu())}
+          onClick={() => setMenu(!menu())}
         >
           <span class="cb-side__name">
             {short('Projects')}
             <Show when={!folded()}>
               <span class="cb-side__caret" aria-hidden="true">
-                {shown() ? '▾' : '▸'}
+                {menu() ? '▾' : '▸'}
               </span>
             </Show>
           </span>
@@ -116,7 +120,7 @@ function ProjectsRow(): JSX.Element {
           </Show>
         </button>
       </div>
-      <Show when={shown()}>
+      <Show when={menu()}>
         <div class="cb-side__menu" role="menu" aria-label="Projects">
           <For each={PAGES}>
             {(p) => (
