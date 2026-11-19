@@ -52,7 +52,10 @@ describe('analysis cards', () => {
       'Last run Nov 17, 9:01 PM · saved',
     );
     expect(lastRunLine({ status: 'ok', scope: 'preview' }, 'x')).toBe(
-      'Last run x · saved, Preview',
+      'Last run x · Preview · saved',
+    );
+    expect(lastRunLine({ status: 'ok', scope: 'full' }, 'x', 'needs rerun')).toBe(
+      'Last run x · needs rerun',
     );
     expect(lastRunLine({ status: 'failed', scope: 'full' }, 'x')).toBe('Last run x · failed');
   });

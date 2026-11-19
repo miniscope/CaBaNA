@@ -1,10 +1,9 @@
 // The Analysis page: one card per analysis with its data, readiness and last run, a toggle for Run
-// selected, an Actions menu (Configure settings, Preview, Previous results, Load configuration) and
-// a Run button. Running goes through the existing batch (lib/analyze-batch.ts); nothing here
+// selected, an Actions menu (Configure settings, Preview, Load configuration), View results and a
+// Run button. Running goes through the existing batch (lib/analyze-batch.ts); nothing here
 // changes what an analysis computes.
 
 import {
-  createEffect,
   createMemo,
   createSignal,
   For,
@@ -17,7 +16,16 @@ import {
 } from 'solid-js';
 import { ActionsMenu } from '../components/ActionsMenu.tsx';
 import { Pill } from '../components/Pill.tsx';
+import { Toast } from '../components/Toast.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
+import {
+  BROWSER_ENGINE_NOTE,
+  browserEngineBlock,
+  runOnBrowserEngine,
+  supportsBrowserEngine,
+} from '../lib/browser-engine-run.ts';
+import { confirmAction } from '../lib/confirm.ts';
+import type { MenuItem } from '../lib/actions-menu.ts';
 import { dataChips, lastRunLine, readinessLine } from '../lib/analysis-cards.ts';
 import { ANALYSIS_INFO, blockedReason, rowReason } from '../lib/analyze-view.ts';
 import {
@@ -30,24 +38,27 @@ import {
 } from '../lib/analyze-batch.ts';
 import { aurocStatus, watchAurocRuns } from '../lib/auroc-run.ts';
 import { queueOrder } from '../lib/batch-run.ts';
-import { bridgeReady, bridgeState, connectBridge, START_COMMAND } from '../lib/bridge-status.ts';
+import { bridgeState, connectBridge, START_COMMAND } from '../lib/bridge-status.ts';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { pethStatus } from '../lib/peth-run.ts';
 import { placeStatus, watchPlaceRuns } from '../lib/place-run.ts';
 import { snapshot, statusOfItem } from '../lib/readiness-snapshot.ts';
 import type { AnalysisItem, Status } from '../lib/readiness.ts';
-import { formatWhen, listedRecords } from '../lib/results-overview.ts';
-import { cachedRecords } from '../lib/results-store.ts';
-import { active, history, refreshHistory } from '../lib/runs.ts';
+import { shortWhen } from '../lib/results-overview.ts';
+import { active } from '../lib/runs.ts';
+import { resultIndex } from '../lib/result-index.ts';
 import { analysisWindow, openAnalysisWindow, setAnalysisWindow } from '../lib/analysis-window.ts';
 import { openItem } from '../components/Requirements.tsx';
 import { forgetBrowserRecord } from '../lib/browser-records.ts';
 import { openedRun, openRunOf } from '../lib/results-nav.ts';
+import { isNewestOfType, settingsStatus } from '../lib/results-runs.ts';
+import { newestMatches } from '../lib/run-match.ts';
 import { AnalysisConfigure } from './AnalysisConfigure.tsx';
 import { AnalysisLoad } from './AnalysisLoad.tsx';
 import { AnalysisPrevious } from './AnalysisPrevious.tsx';
 import { AnalysisPreview } from './AnalysisPreview.tsx';
 import { fitToWindow } from './QcPanel.tsx';
+import { ViewResultsMenu } from './ViewResultsMenu.tsx';
 
 const label = (id: AnalysisItem) => ANALYSES.find((a) => a.id === id)!.label;
 
@@ -111,29 +122,45 @@ function EngineBanner(): JSX.Element {
 }
 
 export function AnalysisCards(): JSX.Element {
-  const [saved, setSaved] = createSignal<RunRecord[]>([]);
-  const [listLoaded, setListLoaded] = createSignal(false);
-
   onMount(() => {
     clearFinished();
     // These two start with their own pages; the cards need the same live status.
     watchPlaceRuns();
     watchAurocRuns();
-    void cachedRecords().then(setSaved);
   });
-  createEffect(() => {
-    if (bridgeReady())
-      void refreshHistory().then(
-        () => setListLoaded(true),
-        () => setListLoaded(false),
-      );
-    else setListLoaded(false);
-  });
-  const records = () => listedRecords(bridgeReady() && listLoaded(), history(), saved());
+  // The one list of saved runs, also used by the sidebar and the Results page.
+  const records = resultIndex;
   const lastRun = (id: AnalysisItem) =>
     records()
       .filter((r) => r.analysis === id)
       .sort((a, b) => b.created_utc.localeCompare(a.created_utc))[0];
+
+  /** The run's settings status in words, for the last-run line. */
+  const settingsWords = (r: RunRecord) =>
+    settingsStatus(
+      r,
+      isNewestOfType(r, records()),
+      newestMatches(r.analysis as AnalysisItem)().get(r.run_id),
+    ).text.toLowerCase();
+
+  /** "Run in browser engine…" for the analyses that have one, after a confirmation. */
+  const browserEngineItem = (id: AnalysisItem): MenuItem[] =>
+    supportsBrowserEngine(id)
+      ? [
+          {
+            kind: 'action',
+            label: 'Run in browser engine…',
+            disabled: browserEngineBlock(id),
+            onSelect: () =>
+              confirmAction({
+                title: `Run ${label(id)} in the browser engine?`,
+                message: BROWSER_ENGINE_NOTE,
+                confirmLabel: 'Run in browser engine',
+                onConfirm: () => void runOnBrowserEngine(id),
+              }),
+          },
+        ]
+      : [];
 
   const status = (id: AnalysisItem) => statusOfItem(id);
   /** Why Run selected skips this analysis, or undefined when it would run it. */
@@ -201,7 +228,7 @@ export function AnalysisCards(): JSX.Element {
   const afterDelete = (r: RunRecord) => {
     const id = r.analysis as AnalysisItem;
     if (openedRun(id) === r.run_id) openRunOf(id, undefined);
-    void forgetBrowserRecord(r.run_id).then(() => cachedRecords().then(setSaved));
+    void forgetBrowserRecord(r.run_id);
   };
   const closeWindow = () => setAnalysisWindow(undefined);
 
@@ -301,13 +328,14 @@ export function AnalysisCards(): JSX.Element {
                   <span class="cb-muted cb-ac__last">
                     {lastRunLine(
                       rec(),
-                      rec() ? formatWhen(rec()!.finished_utc ?? rec()!.created_utc) : '',
+                      rec() ? shortWhen(rec()!.finished_utc ?? rec()!.created_utc) : '',
+                      rec() ? settingsWords(rec()!) : undefined,
                     )}
                   </span>
                 </div>
                 <div class="cb-ac__foot">
                   <ActionsMenu
-                    items={[
+                    items={() => [
                       {
                         kind: 'action',
                         label: 'Configure settings',
@@ -320,16 +348,13 @@ export function AnalysisCards(): JSX.Element {
                       },
                       {
                         kind: 'action',
-                        label: 'Previous results',
-                        onSelect: () => openAnalysisWindow(id, 'previous'),
-                      },
-                      {
-                        kind: 'action',
                         label: 'Load configuration',
                         onSelect: () => openAnalysisWindow(id, 'load'),
                       },
+                      ...browserEngineItem(id),
                     ]}
                   />
+                  <ViewResultsMenu analysis={id} />
                   <span class="cb-spacer" />
                   <button
                     type="button"
@@ -352,6 +377,8 @@ export function AnalysisCards(): JSX.Element {
           </p>
         </div>
       </div>
+
+      <Toast />
 
       <Show when={analysisWindow()}>
         {(w) => (

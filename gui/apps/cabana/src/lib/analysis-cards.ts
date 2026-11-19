@@ -60,17 +60,21 @@ export function readinessLine(s: Status): ReadinessLine {
   }
 }
 
-/** "Last run Nov 17, 9:01 PM · saved", or "No runs yet". `when` is the formatted time. */
+/**
+ * "Last run Nov 17, 9:01 PM · current", or "No runs yet". `when` is the formatted time and
+ * `settings` the run's settings status in words ("current", "needs rerun", "older settings").
+ */
 export function lastRunLine(
   record: { status: string; scope: string } | undefined,
   when: string,
+  settings = 'saved',
 ): string {
   if (!record) return 'No runs yet';
   const state =
     record.status === 'ok'
       ? record.scope === 'preview'
-        ? 'saved, Preview'
-        : 'saved'
+        ? `Preview · ${settings}`
+        : settings
       : record.status === 'partial'
         ? 'partial result'
         : record.status;

@@ -13,6 +13,7 @@ import type { RunRecord } from './bridge-client.ts';
 import { statusOfItem } from './readiness-snapshot.ts';
 import type { AnalysisItem } from './readiness.ts';
 import { failureMessage } from './results-overview.ts';
+import { announceFinished, newestResultId } from './run-finished.ts';
 import { active, cancelRun, lastError, runAnalysis } from './runs.ts';
 
 /** The analyses in list order: the order a batch runs them. */
@@ -91,6 +92,8 @@ export async function startBatch(ids: AnalysisItem[], options: StartOptions = {}
   cancelRequested = false;
   setRowStates({});
   setBatchActive(true);
+  // The last analysis of a full-analysis batch to finish; its Results window opens at the end.
+  let finished: { id: AnalysisItem; before: string | undefined } | undefined;
   try {
     await runBatch<AnalysisItem>({
       ids,
@@ -101,13 +104,20 @@ export async function startBatch(ids: AnalysisItem[], options: StartOptions = {}
           otherRunActive: !!active(),
         });
       },
-      execute: (id) => execute(id, !!options.preview, options.shuffles),
+      execute: async (id) => {
+        const before = newestResultId(id);
+        const outcome = await execute(id, !!options.preview, options.shuffles);
+        // A Preview has its own window; only a full analysis opens Results.
+        if (outcome.kind === 'ok' && !options.preview) finished = { id, before };
+        return outcome;
+      },
       cancelRequested: () => cancelRequested,
       onState: (id, state) => setRowStates((all) => ({ ...all, [id]: state })),
     });
   } finally {
     setBatchActive(false);
   }
+  if (finished && !cancelRequested) void announceFinished(finished.id, finished.before);
 }
 
 /** Stop the running analysis and skip the rest. */
