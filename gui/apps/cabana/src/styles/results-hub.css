@@ -15,5 +15,3 @@
 .cb-ex__t td{padding:4px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 .cb-ex__t td.cb-ex__num{text-align:right;font-variant-numeric:tabular-nums}
 .cb-ex__sum{display:flex;flex-direction:column;gap:6px;font-size:13px}
-.cb-ex__exports{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.cb-ex__exports .cb-ex__why{font-size:11px;color:#64748b}

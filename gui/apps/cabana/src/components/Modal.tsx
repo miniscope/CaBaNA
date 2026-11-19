@@ -22,6 +22,8 @@ export function Modal(props: {
   /** Window size in px; never larger than 92% of the viewport. Default: nearly the whole page. A width without a height sizes to the content. */
   width?: number;
   height?: number;
+  /** A window that fills the page, leaving this many px (total, both sides) on each axis. */
+  inset?: { x: number; y: number };
   /** In the title row, just before the ×: an Actions menu or a status. */
   actions?: JSX.Element;
   /** A bar along the bottom of the window. */
@@ -99,14 +101,21 @@ export function Modal(props: {
           style={
             props.side
               ? undefined
-              : {
-                  ...(props.width ? { width: `min(${props.width}px, 92vw)` } : {}),
-                  ...(props.height
-                    ? { height: `min(${props.height}px, 92vh)` }
-                    : props.width
-                      ? { height: 'auto', 'max-height': '92vh' } // a dialog with a width only fits its content
-                      : {}),
-                }
+              : props.inset
+                ? {
+                    width: `calc(100vw - ${props.inset.x}px)`,
+                    height: `calc(100vh - ${props.inset.y}px)`,
+                    'max-width': 'none',
+                    'max-height': 'none',
+                  }
+                : {
+                    ...(props.width ? { width: `min(${props.width}px, 92vw)` } : {}),
+                    ...(props.height
+                      ? { height: `min(${props.height}px, 92vh)` }
+                      : props.width
+                        ? { height: 'auto', 'max-height': '92vh' } // a dialog with a width only fits its content
+                        : {}),
+                  }
           }
           onKeyDown={trap}
           onDragOver={(e) => {

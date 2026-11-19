@@ -1,13 +1,8 @@
-import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, For, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Pill, RunTypePill } from '../../components/Pill.tsx';
-import type { MenuItem } from '../../lib/actions-menu.ts';
-import { openAnalysisWindow } from '../../lib/analysis-window.ts';
 import { type RunRecord } from '../../lib/bridge-client.ts';
-import { bridgeReady } from '../../lib/bridge-status.ts';
-import { exportItems } from '../../lib/results-export.ts';
 import type { Match } from '../../lib/results-match.ts';
-import { openExplorer } from '../../lib/results-nav.ts';
 import {
   failureMessage,
   formatWhen,
@@ -15,21 +10,13 @@ import {
   hasResults,
 } from '../../lib/results-overview.ts';
 import { headlineOf, tableCounts, tableRows, type TableRow } from '../../lib/results-table.ts';
-import { active, type AnalysisId } from '../../lib/runs.ts';
-import { goToStep } from '../../lib/store.ts';
+import type { AnalysisId } from '../../lib/runs.ts';
 import { PREVIEW_TEXT } from '../../lib/preview.ts';
 import { InfoTip } from '../InfoTip.tsx';
+import { ViewResultsMenu } from '../ViewResultsMenu.tsx';
 import { openProject } from '../../lib/open-project.ts';
-import { openProjectSettings } from '../../lib/project-dialogs.ts';
-import { DeleteOutputs, deleteOutputsNeeds } from './DeleteOutputs.tsx';
-import { DeleteRun } from './DeleteRun.tsx';
+import { openProjectSettings, setExportOpen } from '../../lib/project-dialogs.ts';
 import { savedData } from './run-data.ts';
-
-/** Open an analysis's own window over the Analysis page. */
-function editAnalysis(id: AnalysisId, kind: 'configure' | 'previous') {
-  goToStep('analyze');
-  openAnalysisWindow(id, kind);
-}
 
 function Status(props: { row: TableRow }): JSX.Element {
   const r = () => props.row.record;
@@ -38,13 +25,6 @@ function Status(props: { row: TableRow }): JSX.Element {
       <Show when={r()} fallback={<span class="cb-muted">No runs yet</span>}>
         {(rec) => (
           <>
-            <Show when={props.row.type}>
-              {(t) => (
-                <>
-                  <RunTypePill type={t()} />{' '}
-                </>
-              )}
-            </Show>
             <Show when={props.row.status === 'needs_rerun'}>
               <Pill tone="corr">Needs rerun</Pill>
             </Show>
@@ -120,69 +100,14 @@ function Result(props: { row: TableRow }): JSX.Element {
   );
 }
 
-function RowActions(props: {
-  row: TableRow;
-  onDelete: (r: RunRecord) => void;
-  onDeleteOutputs: (r: RunRecord) => void;
-  onError: (message: string) => void;
-}): JSX.Element {
-  const items = (): MenuItem[] => {
-    const rec = props.row.record!;
-    const id = props.row.analysis;
-    const running = active()?.id === id || props.row.status === 'running';
-    return [
-      {
-        kind: 'action',
-        label: 'Explore results',
-        disabled: hasResults(rec) ? undefined : 'This run produced no results.',
-        onSelect: () => openExplorer(id, rec.run_id),
-      },
-      { kind: 'action', label: 'View previous runs', onSelect: () => editAnalysis(id, 'previous') },
-      {
-        kind: 'action',
-        label: 'Edit analysis settings',
-        onSelect: () => editAnalysis(id, 'configure'),
-      },
-      {
-        kind: 'category',
-        label: 'Export results',
-        items: exportItems(rec, () => savedData(rec), props.onError),
-      },
-      { kind: 'separator' },
-      {
-        kind: 'action',
-        label: 'Delete outputs (keep record)',
-        disabled: deleteOutputsNeeds(bridgeReady()),
-        onSelect: () => props.onDeleteOutputs(rec),
-      },
-      {
-        kind: 'action',
-        label: 'Delete run',
-        danger: true,
-        disabled: running
-          ? 'Wait for the run to finish.'
-          : bridgeReady()
-            ? undefined
-            : 'Needs the Python engine.',
-        onSelect: () => props.onDelete(rec),
-      },
-    ];
-  };
-  return <ActionsMenu items={items} class="btn-secondary btn-small" />;
-}
-
 /**
- * Results overview: counts, then one table with a row per analysis. A row opens that analysis's
- * explorer; its Actions menu holds the rest (previous runs, settings, export, delete).
+ * Results overview: counts, then one table with a row per analysis. View results opens that
+ * analysis's Results window on its latest run, or on an earlier one from the menu.
  */
 export function ResultsTable(props: {
   records: RunRecord[];
   matchOf: (r: RunRecord) => Match | undefined;
-  onDeleted: (r: RunRecord) => void;
-  onError: (message: string) => void;
 }): JSX.Element {
-  const [deleting, setDeleting] = createSignal<RunRecord>();
-  const [clearing, setClearing] = createSignal<RunRecord>();
   const rows = () => tableRows(props.records, props.matchOf);
   const counts = () => tableCounts(props.records, props.matchOf);
   const tiles = (): [string, number][] => [
@@ -191,9 +116,7 @@ export function ResultsTable(props: {
     ['Need rerun', counts().needRerun],
     ['Previews', counts().previews],
   ];
-  const explore = (row: TableRow) => {
-    if (row.record && hasResults(row.record)) openExplorer(row.analysis, row.record.run_id);
-  };
+  const needsProject = () => (openProject() ? undefined : 'Open or create a project first');
   return (
     <>
       <div class="cb-rx__title">
@@ -215,8 +138,15 @@ export function ResultsTable(props: {
             {
               kind: 'action',
               label: 'Manage stored outputs',
-              disabled: openProject() ? undefined : 'Open or create a project first',
+              disabled: needsProject(),
               onSelect: () => openProjectSettings('storage'),
+            },
+            {
+              kind: 'action',
+              label: 'Export all results…',
+              sub: 'With the portable project export',
+              disabled: needsProject(),
+              onSelect: () => setExportOpen(true),
             },
           ]}
         />
@@ -236,7 +166,8 @@ export function ResultsTable(props: {
               <tr>
                 <th>Analysis</th>
                 <th>Latest run</th>
-                <th>Status</th>
+                <th>Type</th>
+                <th>Settings</th>
                 <th>Result</th>
                 <th>Runs</th>
                 <th />
@@ -245,11 +176,7 @@ export function ResultsTable(props: {
             <tbody>
               <For each={rows()}>
                 {(row) => (
-                  <tr
-                    data-analysis={row.analysis}
-                    classList={{ 'cb-rx__row--open': !!row.record && hasResults(row.record) }}
-                    onClick={() => explore(row)}
-                  >
+                  <tr data-analysis={row.analysis}>
                     <td class="cb-rx__name">{row.label}</td>
                     <td>
                       {row.record ? (
@@ -259,21 +186,17 @@ export function ResultsTable(props: {
                       )}
                     </td>
                     <td>
+                      <Show when={row.type}>{(t) => <RunTypePill type={t()} />}</Show>
+                    </td>
+                    <td>
                       <Status row={row} />
                     </td>
                     <td>
                       <Result row={row} />
                     </td>
                     <td>{row.runs || ''}</td>
-                    <td class="cb-rx__act" onClick={(e) => e.stopPropagation()}>
-                      <Show when={row.record}>
-                        <RowActions
-                          row={row}
-                          onDelete={setDeleting}
-                          onDeleteOutputs={setClearing}
-                          onError={props.onError}
-                        />
-                      </Show>
+                    <td class="cb-rx__act">
+                      <ViewResultsMenu analysis={row.analysis} />
                     </td>
                   </tr>
                 )}
@@ -282,23 +205,10 @@ export function ResultsTable(props: {
           </table>
         </div>
         <p class="cb-muted cb-rx__note">
-          A rerun keeps the old result; both stay listed until one is deleted. Click a row to
-          explore it.
+          A rerun keeps the old result; both stay listed until one is deleted. View results opens
+          the results window; export and delete are in its Actions menu.
         </p>
       </div>
-      <Show when={clearing()}>
-        {(r) => <DeleteOutputs record={r()} onClose={() => setClearing(undefined)} />}
-      </Show>
-      <Show when={deleting()}>
-        {(r) => (
-          <DeleteRun
-            record={r()}
-            records={props.records}
-            onDeleted={props.onDeleted}
-            onClose={() => setDeleting(undefined)}
-          />
-        )}
-      </Show>
     </>
   );
 }

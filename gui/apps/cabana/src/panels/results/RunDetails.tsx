@@ -35,8 +35,7 @@ export function RunDetailsBody(props: { record: RunRecord; pipeline?: string }):
             </Row>
           </Show>
           <Row k="Run">
-            {r().run_id} · {r().status} ·{' '}
-            {runType(r()).text}
+            {r().run_id} · {r().status} · {runType(r()).text}
           </Row>
           <Row k="Seed">{r().seeds?.base ?? 'not set'}</Row>
           <Row k="Inputs">

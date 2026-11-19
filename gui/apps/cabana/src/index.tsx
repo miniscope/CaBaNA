@@ -19,6 +19,7 @@ import './styles/auroc-setup.css';
 import './styles/peth.css';
 import './styles/decoding-guided.css';
 import './styles/results-hub.css';
+import './styles/results-window.css';
 import './styles/experimental-setup.css';
 import './styles/data-setup.css';
 import './styles/parts.css';

@@ -14,13 +14,13 @@ import { STEPS, type StepId } from '../lib/prep-deps.ts';
 import { fs, gapSummary } from '../lib/prep-view.ts';
 import { statusOfItem } from '../lib/readiness-snapshot.ts';
 import { analysesNeedingRerun } from '../lib/rerun-needed.ts';
+import { openExplorer } from '../lib/results-nav.ts';
 import { goToAnalysis } from '../lib/results-overview.ts';
 import { SLOTS, type SlotId } from '../lib/slots.ts';
 import { upstreamItems } from '../lib/upstream.ts';
 import { BOX_TITLE, forBox, type VizBox } from '../lib/viz-pills.ts';
 import {
   annotationLog,
-  goToStep,
   loaded,
   alignmentResults,
   rejected,
@@ -218,16 +218,20 @@ function Applied(): JSX.Element {
               rerun
             </span>
             <span class="cb-spacer" />
-            <button
-              type="button"
-              class="btn-secondary btn-small"
-              onClick={() => {
-                setChangesOpen(false);
-                goToStep('results');
-              }}
-            >
-              Open Results
-            </button>
+            <For each={needRerun()}>
+              {(a) => (
+                <button
+                  type="button"
+                  class="btn-secondary btn-small"
+                  onClick={() => {
+                    setChangesOpen(false);
+                    openExplorer(a.id);
+                  }}
+                >
+                  View {a.label} results
+                </button>
+              )}
+            </For>
           </div>
           <p class="cb-muted">
             {needRerun()

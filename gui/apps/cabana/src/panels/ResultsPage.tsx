@@ -1,28 +1,24 @@
 import { createEffect, createSignal, onMount, onCleanup, Show, type JSX } from 'solid-js';
 import { bridgeReady } from '../lib/bridge-status.ts';
-import { forgetBrowserRecord } from '../lib/browser-records.ts';
 import { resultIndex, runOutcome } from '../lib/result-index.ts';
 import { matchOfRecord, type Match } from '../lib/results-match.ts';
-import { explorerTarget, openedRun, openRunOf } from '../lib/results-nav.ts';
 import { ANALYSIS_IDS, hasResults } from '../lib/results-overview.ts';
 import { prefetchRun } from '../lib/results-store.ts';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import type { AnalysisId } from '../lib/runs.ts';
 import { fitToWindow } from './QcPanel.tsx';
-import { ExplorerFrame } from './results/ExplorerFrame.tsx';
 import { Unavailable } from './results/FrameworkNotice.tsx';
 import { ResultsTable } from './results/ResultsTable.tsx';
 
 /**
- * Results: the overview table (one row per analysis) and, once a row or a run is opened, that
- * analysis's explorer. Opening a result never changes the current settings.
+ * Results: the overview table, one row per analysis. View results opens the Results window
+ * (mounted once for the app). Opening a result never changes the current settings.
  */
 export function ResultsPage(): JSX.Element {
   let root!: HTMLDivElement;
   const [matches, setMatches] = createSignal<
     Partial<Record<AnalysisId, { runId: string; match?: Match }>>
   >({});
-  const [notice, setNotice] = createSignal('');
 
   onMount(() => onCleanup(fitToWindow(root)));
 
@@ -60,12 +56,6 @@ export function ResultsPage(): JSX.Element {
     return m?.runId === r.run_id ? m.match : undefined;
   };
 
-  const afterDelete = (r: RunRecord) => {
-    const id = r.analysis as AnalysisId;
-    if (openedRun(id) === r.run_id) openRunOf(id, undefined);
-    void forgetBrowserRecord(r.run_id);
-  };
-
   return (
     <div class="cb-place cb-res" ref={root}>
       <Show when={!bridgeReady()}>
@@ -74,34 +64,7 @@ export function ResultsPage(): JSX.Element {
         </p>
         <Unavailable engineOff />
       </Show>
-      <Show when={notice()}>
-        <p class="cb-res__off" role="alert">
-          {notice()}{' '}
-          <button type="button" class="cb-link" onClick={() => setNotice('')}>
-            Dismiss
-          </button>
-        </p>
-      </Show>
-      <Show
-        when={explorerTarget()}
-        fallback={
-          <ResultsTable
-            records={records()}
-            matchOf={matchOf}
-            onDeleted={afterDelete}
-            onError={setNotice}
-          />
-        }
-      >
-        {(target) => (
-          <ExplorerFrame
-            target={target()}
-            records={records()}
-            onDeleted={afterDelete}
-            onError={setNotice}
-          />
-        )}
-      </Show>
+      <ResultsTable records={records()} matchOf={matchOf} />
     </div>
   );
 }
