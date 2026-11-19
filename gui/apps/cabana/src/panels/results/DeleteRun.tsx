@@ -1,9 +1,11 @@
-import { createSignal, For, Show, type JSX } from 'solid-js';
+import { createResource, createSignal, Show, type JSX } from 'solid-js';
 import { Modal } from '../../components/Modal.tsx';
 import { bridge, type RunRecord } from '../../lib/bridge-client.ts';
 import { analysisLabel, formatWhen, hasResults } from '../../lib/results-overview.ts';
 import { deleteText } from '../../lib/results-table.ts';
+import { sizeText } from '../../lib/project-view.ts';
 import { refreshHistory } from '../../lib/runs.ts';
+import { runBytes } from '../../lib/run-size.ts';
 
 /** Asks before deleting one saved run, naming what goes and that a rerun is needed for a result. */
 export function DeleteRun(props: {
@@ -19,6 +21,7 @@ export function DeleteRun(props: {
   // eslint-disable-next-line solid/reactivity
   const r = props.record;
   const label = analysisLabel(r.analysis);
+  const [bytes] = createResource(() => runBytes(r));
   const others = () =>
     props.records.filter((x) => x.analysis === r.analysis && x.run_id !== r.run_id && hasResults(x))
       .length;
@@ -39,13 +42,13 @@ export function DeleteRun(props: {
     <Modal
       label="Delete run"
       title="Delete this run?"
-      width={460}
+      width={480}
       onClose={props.onClose}
       footer={
         <>
           <span class="cb-spacer" />
           <button type="button" class="btn-secondary" onClick={props.onClose}>
-            Keep run
+            Cancel
           </button>
           <button
             type="button"
@@ -58,9 +61,14 @@ export function DeleteRun(props: {
         </>
       }
     >
-      <For each={deleteText(label, formatWhen(r.created_utc), others())}>
-        {(line) => <p class="cb-rx__p">{line}</p>}
-      </For>
+      <p class="cb-rx__p">
+        {deleteText(
+          label,
+          formatWhen(r.created_utc),
+          others(),
+          bytes() === undefined ? undefined : sizeText(bytes()!),
+        ).join(' ')}
+      </p>
       <Show when={error()}>
         <p class="cb-ro__err" role="alert">
           {error()}

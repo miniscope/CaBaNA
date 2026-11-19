@@ -65,8 +65,10 @@ export function ConfigViewer(): JSX.Element {
   const project = openProject()!;
   const frozen = !!target.run;
   const [version, setVersion] = createSignal(0);
-  const [comparing, setComparing] = createSignal(!!target.run);
-  const [runId, setRunId] = createSignal<string | undefined>(target.run?.run_id);
+  const [comparing, setComparing] = createSignal(!!(target.run ?? target.compare));
+  const [runId, setRunId] = createSignal<string | undefined>(
+    (target.run ?? target.compare)?.run_id,
+  );
   const [message, setMessage] = createSignal('');
   const [file] = createResource(version, () => projects.readFile(project.id, target.name));
   const runs = () =>

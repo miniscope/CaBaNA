@@ -455,6 +455,19 @@ export interface SummaryInput {
 
 const ENGINE_TEXT = { framework: 'Python framework', 'browser-ts': 'browser engine' } as const;
 
+/** The shuffle test as saved, in words ("circular shift null, 1000 shuffles, alpha 0.05"); undefined when nothing was saved. */
+export function shuffleTestText(t: TestSettings): string | undefined {
+  const parts = [
+    t.nullMethod && `${t.nullMethod} null`,
+    t.shuffles !== undefined && `${t.shuffles} shuffles`,
+    t.alpha !== undefined && `alpha ${t.alpha}`,
+    t.correction && `correction: ${t.correction}`,
+    t.tail && `${t.tail} tail`,
+    t.seed != null && `seed ${t.seed}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : undefined;
+}
+
 /** Sentences stating the saved numbers. No interpretation, no comparison with other runs. */
 export function summarySentences(i: SummaryInput): string[] {
   const r = i.record;
@@ -479,15 +492,7 @@ export function summarySentences(i: SummaryInput): string[] {
     out.push(
       `${i.categories.title}: ${i.categories.counts.map(([k, n]) => `${k} ${n}`).join(', ')}.`,
     );
-  const t = i.settings;
-  const test = [
-    t.nullMethod && `${t.nullMethod} null`,
-    t.shuffles !== undefined && `${t.shuffles} shuffles`,
-    t.alpha !== undefined && `alpha ${t.alpha}`,
-    t.correction && `correction: ${t.correction}`,
-    t.tail && `${t.tail} tail`,
-    t.seed != null && `seed ${t.seed}`,
-  ].filter(Boolean);
-  if (test.length) out.push(`Shuffle test: ${test.join(', ')}.`);
+  const test = shuffleTestText(i.settings);
+  if (test) out.push(`Shuffle test: ${test}.`);
   return out;
 }

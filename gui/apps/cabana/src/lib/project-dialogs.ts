@@ -16,8 +16,12 @@ export const openProjectSettings = (section: SettingsSection = 'general') =>
 export interface ViewerTarget {
   name: FileName;
   run?: RunRecord;
+  /** Open on the comparison of the file as it is now with this run. */
+  compare?: RunRecord;
 }
 export const [configViewer, setConfigViewer] = createSignal<ViewerTarget>();
 export const openConfigFile = (name: FileName, run?: RunRecord) => setConfigViewer({ name, run });
+export const openConfigCompare = (name: FileName, compare: RunRecord) =>
+  setConfigViewer({ name, compare });
 
 export const [exportOpen, setExportOpen] = createSignal(false);

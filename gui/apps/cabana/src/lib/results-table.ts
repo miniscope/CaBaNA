@@ -117,11 +117,19 @@ export function headlineOf(analysis: AnalysisId, data: ExplorerData): string | u
 }
 
 /** What deleting a run removes, in words for the confirmation. `others` counts the analysis's other runs with results. */
-export function deleteText(label: string, when: string, others: number): string[] {
+export function deleteText(label: string, when: string, others: number, size?: string): string[] {
   return [
-    `This removes the ${label} run of ${when}: its record, the settings it used and its result files. It cannot be undone.`,
+    `Removes ${label}, ${when} completely: the run record, its settings and all outputs${size ? ` (${size})` : ''}.`,
     others
-      ? `The ${others} other ${label} ${others === 1 ? 'run stays' : 'runs stay'} listed.`
-      : `This is the only ${label} run with results; ${label} needs a rerun to have a result again.`,
+      ? "Other runs and the project's current settings are not affected. This cannot be undone."
+      : `This is the only ${label} run with results; the project's current settings are not affected. This cannot be undone.`,
+  ];
+}
+
+/** What deleting only a run's outputs removes and keeps, in words for the confirmation. */
+export function deleteOutputsText(label: string, when: string, size?: string): string[] {
+  return [
+    `Removes the result files, tables and figures of ${label}, ${when}${size ? ` (${size})` : ''}.`,
+    'Kept: the run record, its settings and history, so it stays listed and can be run again with the same settings. Its results cannot be viewed until then.',
   ];
 }

@@ -76,8 +76,10 @@ describe('reason and delete text', () => {
     expect(reasonText([])).toMatch(/changed since this run/);
   });
   it('says a rerun is needed when the last run goes', () => {
-    expect(deleteText('PETH', 'Nov 17', 0).join(' ')).toMatch(/needs a rerun/);
-    expect(deleteText('PETH', 'Nov 17', 2).join(' ')).toMatch(/2 other PETH runs stay/);
+    expect(deleteText('PETH', 'Nov 17', 0).join(' ')).toMatch(/only PETH run with results/);
+    expect(deleteText('PETH', 'Nov 17', 2, '18.2 MB').join(' ')).toMatch(
+      /Removes PETH, Nov 17 completely.*all outputs \(18.2 MB\).*Other runs.*cannot be undone/,
+    );
   });
 });
 
