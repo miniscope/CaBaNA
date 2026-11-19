@@ -319,7 +319,7 @@ export function AnalysisCards(): JSX.Element {
                   <span class="cb-muted cb-ac__last">
                     {lastRunLine(
                       rec(),
-                      rec() ? shortWhen(rec()!.finished_utc ?? rec()!.created_utc) : '',
+                      rec() ? shortWhen(rec()!.created_utc) : '',
                       rec() ? settingsWords(rec()!) : undefined,
                     )}
                   </span>

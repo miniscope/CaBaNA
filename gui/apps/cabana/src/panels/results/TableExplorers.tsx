@@ -227,7 +227,7 @@ function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps; perPage?: numb
                   open={Array.from(v, Number.isFinite)}
                   bin={1}
                   arenaCm={[props.maps.nx, props.maps.ny]}
-                  size={150}
+                  size={220}
                 />
                 <figcaption>
                   Cell {c.cell} · {OVERALL[c.outcome ?? 'cannot'].label}
@@ -243,20 +243,23 @@ function MapGallery(props: { cells: PlaceCell[]; maps: PlaceMaps; perPage?: numb
             type="button"
             class="btn-secondary btn-small"
             disabled={page() === 0}
+            aria-label="Previous page"
             onClick={() => setPage(page() - 1)}
           >
-            Previous
+            ‹
           </button>
           <span class="cb-muted">
-            Page {page() + 1} of {pages()}
+            {page() * size() + 1}–{Math.min(order().length, (page() + 1) * size())} of{' '}
+            {order().length}
           </span>
           <button
             type="button"
             class="btn-secondary btn-small"
             disabled={page() + 1 >= pages()}
+            aria-label="Next page"
             onClick={() => setPage(page() + 1)}
           >
-            Next
+            ›
           </button>
         </div>
       </Show>

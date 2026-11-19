@@ -6,6 +6,7 @@ import { Modal } from '../../components/Modal.tsx';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { openPlotEditor } from './PlotEditor.tsx';
 import { PagePlot } from './PagePlot.tsx';
+import { PlotTypeSelect } from './PlotTypeSelect.tsx';
 import type { PlotChoice } from './plot-choice.ts';
 
 /** The drop-down, controls and plot of the current choice. `expanded` is the large window's copy. */
@@ -20,37 +21,20 @@ function PlotBody(props: {
   expanded: boolean;
   onExpand: () => void;
 }): JSX.Element {
-  const views = () => props.choices.filter((c) => c.view);
-  const pages = () => props.choices.filter((c) => c.page);
   const view = () => props.current?.view;
-  const blocked = () => pages().find((c) => c.disabled)?.disabled;
+  const blocked = () => props.choices.find((c) => c.page && c.disabled)?.disabled;
   return (
     <>
       <div class="cb-wv__bar">
         <label class="cb-wv__lab" for={props.expanded ? 'cb-plot-type-x' : 'cb-plot-type'}>
           Plot type
         </label>
-        <select
+        <PlotTypeSelect
           id={props.expanded ? 'cb-plot-type-x' : 'cb-plot-type'}
-          class="cb-rx__pick cb-wv__pick"
-          value={props.current?.id ?? ''}
-          disabled={!props.choices.length}
-          onChange={(e) => props.onPick(e.currentTarget.value)}
-        >
-          <For each={views()}>{(c) => <option value={c.id}>{c.label}</option>}</For>
-          <Show when={pages().length}>
-            <optgroup label="More plots of this analysis">
-              <For each={pages()}>
-                {(c) => (
-                  <option value={c.id} disabled={!!c.disabled} title={c.disabled}>
-                    {c.label}
-                    {c.disabled ? ' (not available)' : ''}
-                  </option>
-                )}
-              </For>
-            </optgroup>
-          </Show>
-        </select>
+          choices={props.choices}
+          current={props.current}
+          onPick={props.onPick}
+        />
         <Show when={view()?.help}>{(h) => h()()}</Show>
         <Show when={view()?.switcher}>
           {(s) => (

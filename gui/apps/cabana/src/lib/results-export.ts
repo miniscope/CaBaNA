@@ -81,8 +81,8 @@ export function exportItems(
     {
       kind: 'action',
       label: 'Figures…',
-      sub: 'The plot shown, as SVG, PNG or CSV',
       disabled: figures.disabled,
+      tipOnly: true,
       onSelect: figures.run,
     },
     ...(data && !data.tables.length
@@ -91,7 +91,6 @@ export function exportItems(
           {
             kind: 'action' as const,
             label: 'Tables (CSV)…',
-            sub: 'One file per saved table',
             onSelect: attempt(async () => {
               const d = await load();
               if (!d.tables.length) throw new Error(d.tablesNote ?? 'This run saved no tables.');
@@ -106,7 +105,6 @@ export function exportItems(
           {
             kind: 'action' as const,
             label: 'Statistics…',
-            sub: 'The statistics table and the summary text',
             onSelect: attempt(async () => {
               const d = await load();
               if (!d.stats.length) throw new Error(d.statsNote ?? 'This run saved no statistics.');
@@ -122,7 +120,7 @@ export function exportItems(
     {
       kind: 'action',
       label: 'All results (.zip)…',
-      sub: 'Settings, pipeline and results',
+      tipOnly: true,
       disabled:
         r.engine !== 'framework'
           ? 'Only runs made by the Python engine have a bundle.'

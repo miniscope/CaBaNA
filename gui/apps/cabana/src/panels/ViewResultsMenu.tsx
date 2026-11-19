@@ -55,7 +55,7 @@ function Row(props: {
             ·
           </span>
         </Show>
-        <span>{shortWhen(props.record.finished_utc ?? props.record.created_utc)}</span>
+        <span>{shortWhen(props.record.created_utc)}</span>
         <span class="cb-vr__pill">{props.settings}</span>
       </span>
       <span class="cb-menu__sub">

@@ -214,9 +214,44 @@
   font-size: 13px;
   font-weight: 600;
 }
-.cb-wv__pick {
+/* Plot type drop-down (PlotTypeSelect.tsx) */
+.cb-pt__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   min-width: 230px;
   max-width: 320px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+.cb-pt__btn:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.cb-pt__value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cb-pt__list {
+  position: fixed;
+  z-index: 60;
+  min-width: 260px;
+  max-width: min(420px, 90vw);
+  max-height: 50vh;
+  overflow: auto;
+}
+.cb-pt__row {
+  white-space: normal;
+}
+.cb-pt__why {
+  padding-left: 18px;
 }
 .cb-wv__sw {
   display: inline-flex;
@@ -255,6 +290,17 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+/* The result in one line, set apart from the counts under it. */
+.cb-wsum__body > .cb-rx__p:first-child {
+  margin: 4px 0 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  background: var(--accent-bg, #eaf1fb);
+  font-weight: 600;
+}
+.cb-win .cb-link {
+  font-size: 13px;
 }
 .cb-ri {
   flex: none;
@@ -386,13 +432,11 @@
   text-overflow: ellipsis;
   font-size: 12px;
 }
-.cb-wt__filter {
+/* Compact like the buttons beside it; the global field rule is more specific than a class. */
+.cb-wt__table input.cb-wt__filter[type='search']:not([disabled]) {
   width: 200px;
-  font: inherit;
   font-size: 13px;
   padding: 4px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
 }
 
 /* Statistics */
