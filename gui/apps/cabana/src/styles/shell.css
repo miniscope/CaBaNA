@@ -50,23 +50,6 @@
 .cb-side--on .cb-side__status {
   color: #c8c8c8;
 }
-.cb-side__top {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: var(--space-xs);
-}
-.cb-side__top .cb-side__fold {
-  margin: 0;
-}
-.cb-app--folded .cb-side__top {
-  justify-content: center;
-}
-.cb-app--folded .cb-side__go {
-  align-items: center;
-  padding-left: 0;
-  padding-right: 0;
-}
 .cb-st {
   font-size: 11px;
 }

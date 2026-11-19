@@ -2402,19 +2402,6 @@ button[aria-expanded='true'] > .cb-help {
   }
 }
 
-/* Sidebar that folds to icons. */
-.cb-app.cb-app--folded {
-  grid-template-columns: 52px minmax(0, 1fr);
-}
-.cb-side__fold {
-  display: block;
-  margin: 0 0 var(--space-xs) auto;
-  min-width: 28px;
-}
-.cb-app--folded .cb-side__fold {
-  margin: 0 auto var(--space-xs);
-}
-
 /* Preprocess */
 .cb-prep {
   display: flex;

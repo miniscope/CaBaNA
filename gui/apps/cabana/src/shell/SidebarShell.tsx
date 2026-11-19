@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type Component, type JSX } from 'solid-js';
+import { createSignal, For, onCleanup, Show, type Component, type JSX } from 'solid-js';
 import { DashboardShell } from '@calab/ui';
 import { Header } from '../components/Header.tsx';
 import { openItem } from '../components/Requirements.tsx';
@@ -16,27 +16,6 @@ import { NewSession } from '../panels/projects/NewSession.tsx';
 import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
 import { Welcome } from '../panels/projects/Welcome.tsx';
 import type { Step } from './types.ts';
-
-const FOLD_KEY = 'cabana-sidebar-folded';
-const [folded, setFolded] = createSignal(
-  (() => {
-    try {
-      return localStorage.getItem(FOLD_KEY) === '1';
-    } catch {
-      return false;
-    }
-  })(),
-);
-const toggleFold = () => {
-  setFolded(!folded());
-  try {
-    localStorage.setItem(FOLD_KEY, folded() ? '1' : '0');
-  } catch {
-    // The choice just is not remembered.
-  }
-};
-/** What a step button shows: its label, or its first letter when the sidebar is folded. */
-const short = (label: string) => (folded() ? label.charAt(0) : label);
 
 /** One sidebar row: the page name with its current status in words underneath. */
 function SideItem(props: {
@@ -65,13 +44,11 @@ function SideItem(props: {
         aria-disabled={props.disabled ? 'true' : undefined}
         aria-label={st() ? `${props.label}: ${st()!.text}` : props.label}
         aria-current={props.on ? 'page' : undefined}
-        title={
-          folded() ? props.label : props.item ? statusDetail(statusOfItem(props.item)) : st()?.text
-        }
+        title={props.item ? statusDetail(statusOfItem(props.item)) : st()?.text}
         onClick={() => !props.disabled && props.onClick()}
       >
-        <span class="cb-side__name">{short(props.label)}</span>
-        <Show when={st() && !folded()}>
+        <span class="cb-side__name">{props.label}</span>
+        <Show when={st()}>
           <span class="cb-side__status">{st()!.text}</span>
         </Show>
       </button>
@@ -80,16 +57,30 @@ function SideItem(props: {
 }
 
 const PAGES = [
-  { id: 'new', label: '+ New Project', short: '+' },
-  { id: 'library', label: 'Project Library', short: 'L' },
+  { id: 'new', label: '+ New Project' },
+  { id: 'library', label: 'Project Library' },
 ];
+/** How long the Projects menu stays after the pointer leaves it, so a slight overshoot is forgiven. */
+const MENU_CLOSE_MS = 300;
 
 /**
- * The first sidebar row. Its menu is closed until clicked, on every page; choosing an item closes
- * it. The line under it says what is open.
+ * The first sidebar row. Its menu opens on hover (or a click, for touch and keyboard) and floats
+ * over the rows below; it closes shortly after the pointer leaves, on Escape, or when focus moves
+ * away. The line under the row says what is open.
  */
 function ProjectsRow(): JSX.Element {
   const [menu, setMenu] = createSignal(false);
+  let timer: number | undefined;
+  let wrap!: HTMLDivElement;
+  const show = () => {
+    clearTimeout(timer);
+    setMenu(true);
+  };
+  const hide = () => {
+    clearTimeout(timer);
+    setMenu(false);
+  };
+  onCleanup(() => clearTimeout(timer));
   const onPage = () => isProjectPage(stepId());
   const status = () =>
     nothingLoaded()
@@ -99,48 +90,55 @@ function ProjectsRow(): JSX.Element {
         : sessionName() || 'Untitled project';
   return (
     <>
-      <div class="cb-side cb-side--proj" classList={{ 'cb-side--on': onPage() }}>
-        <button
-          type="button"
-          class="cb-side__go"
-          aria-expanded={menu()}
-          aria-label={`Projects: ${status()}`}
-          title={folded() ? 'Projects' : undefined}
-          onClick={() => setMenu(!menu())}
-        >
-          <span class="cb-side__name">
-            {short('Projects')}
-            <Show when={!folded()}>
+      <div
+        ref={wrap}
+        class="cb-side__projwrap"
+        onPointerEnter={show}
+        onPointerLeave={() => {
+          clearTimeout(timer);
+          timer = window.setTimeout(() => setMenu(false), MENU_CLOSE_MS);
+        }}
+        onFocusOut={(e) => !wrap.contains(e.relatedTarget as Node | null) && hide()}
+        onKeyDown={(e) => e.key === 'Escape' && hide()}
+      >
+        <div class="cb-side cb-side--proj" classList={{ 'cb-side--on': onPage() }}>
+          <button
+            type="button"
+            class="cb-side__go"
+            aria-haspopup="menu"
+            aria-expanded={menu()}
+            aria-label={`Projects: ${status()}`}
+            onClick={() => (menu() ? hide() : show())}
+          >
+            <span class="cb-side__name">
+              Projects
               <span class="cb-side__caret" aria-hidden="true">
                 {menu() ? '▾' : '▸'}
               </span>
-            </Show>
-          </span>
-          <Show when={!folded()}>
+            </span>
             <span class="cb-side__status">{status()}</span>
-          </Show>
-        </button>
-      </div>
-      <Show when={menu()}>
-        <div class="cb-side__menu" role="menu" aria-label="Projects">
-          <For each={PAGES}>
-            {(p) => (
-              <button
-                type="button"
-                role="menuitem"
-                classList={{ 'cb-side__menu--on': stepId() === p.id }}
-                title={folded() ? p.label : undefined}
-                onClick={() => {
-                  setMenu(false);
-                  guardExample(() => goToStep(p.id));
-                }}
-              >
-                {folded() ? p.short : p.label}
-              </button>
-            )}
-          </For>
+          </button>
         </div>
-      </Show>
+        <Show when={menu()}>
+          <div class="cb-side__menu" role="menu" aria-label="Projects">
+            <For each={PAGES}>
+              {(p) => (
+                <button
+                  type="button"
+                  role="menuitem"
+                  classList={{ 'cb-side__menu--on': stepId() === p.id }}
+                  onClick={() => {
+                    hide();
+                    guardExample(() => goToStep(p.id));
+                  }}
+                >
+                  {p.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
       <div class="cb-side__rule" />
     </>
   );
@@ -206,20 +204,8 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   const locked = () => nothingLoaded() && isProjectPage(stepId());
   return (
     <DashboardShell header={<Header />}>
-      <div class="cb-app" classList={{ 'cb-app--folded': folded() }}>
+      <div class="cb-app">
         <nav class="cb-sidebar" aria-label="Steps">
-          <div class="cb-side__top">
-            <button
-              type="button"
-              class="cb-ib cb-side__fold"
-              aria-label={folded() ? 'Expand the sidebar' : 'Collapse the sidebar'}
-              title={folded() ? 'Expand the sidebar' : 'Collapse the sidebar'}
-              aria-expanded={!folded()}
-              onClick={toggleFold}
-            >
-              {folded() ? 'Expand' : 'Collapse'}
-            </button>
-          </div>
           <ProjectsRow />
           <For each={props.steps}>
             {(s) => (

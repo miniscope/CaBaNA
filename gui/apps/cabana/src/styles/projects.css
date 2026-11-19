@@ -10,10 +10,19 @@
   margin-top: 4px;
   font-size: 12px;
 }
+.cb-side__projwrap {
+  position: relative;
+}
+/* Floats over the rows below, so opening it on hover does not shift the sidebar. */
 .cb-side__menu {
+  position: absolute;
+  top: 100%;
+  left: 6px;
+  right: 0;
+  z-index: 20;
   display: flex;
   flex-direction: column;
-  margin: 2px 0 6px 6px;
+  margin-top: 2px;
   padding: 4px;
   background: var(--bg-primary);
   border: 1px solid var(--border-default);
@@ -49,14 +58,6 @@
 }
 .cb-side--off .cb-side__go:hover {
   background: none;
-}
-.cb-app--folded .cb-side__menu {
-  margin-left: 0;
-}
-.cb-app--folded .cb-side__menu button {
-  text-align: center;
-  padding-left: 0;
-  padding-right: 0;
 }
 
 /* ---- Header logo as a button ---- */
