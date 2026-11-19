@@ -7,6 +7,7 @@ import { bridge, type RunRecord } from '../../lib/bridge-client.ts';
 import { bridgeReady } from '../../lib/bridge-status.ts';
 import type { ExplorerData } from '../../lib/explorer-data.ts';
 import { openProject } from '../../lib/open-project.ts';
+import { projects } from '../../lib/projects-client.ts';
 import { sizeText } from '../../lib/project-view.ts';
 import { analysisLabel, formatWhen } from '../../lib/results-overview.ts';
 import { infoSections, keyRows } from '../../lib/run-info.ts';
@@ -91,8 +92,18 @@ export function RunInfoWindow(props: {
     (id) => bridge.runFile(id, r().pipeline_file!).catch(() => undefined),
   );
   const [file, setFile] = createSignal(false);
+  // Frozen settings exist only for runs made with a project open; ask for one of them.
+  const [frozen] = createResource(
+    () => (bridgeReady() && openProject() && r().engine === 'framework' ? r().run_id : undefined),
+    (id) =>
+      projects
+        .runConfig(id, 'analysis.yaml')
+        .then(() => true)
+        .catch(() => false),
+  );
   const sections = () =>
     infoSections(r(), {
+      frozen: openProject() ? frozen() : false,
       status: props.status,
       started: formatWhen(r().created_utc),
       bytes: bytes(),

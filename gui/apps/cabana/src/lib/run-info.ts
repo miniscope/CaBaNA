@@ -178,6 +178,8 @@ export interface InfoContext {
   sizeText: (bytes: number) => string;
   tables?: number;
   figures?: number;
+  /** The run has frozen settings files (made with a project open); undefined while unknown. */
+  frozen?: boolean;
 }
 
 const FROZEN = 'experiment, processing, analysis (frozen with the run)';
@@ -229,7 +231,15 @@ export function infoSections(r: RunRecord, c: InfoContext): InfoSection[] {
           : { k: 'Size', v: c.sizeText(c.bytes) },
         ...row('Tables', c.tables === undefined ? undefined : String(c.tables)),
         ...row('Figures', c.figures === undefined ? undefined : String(c.figures)),
-        { k: 'Settings files', v: framework ? FROZEN : 'settings kept in the run record' },
+        {
+          k: 'Settings files',
+          v:
+            framework && c.frozen
+              ? FROZEN
+              : framework && c.frozen === false
+                ? 'none: made with no project open; settings kept in the run record'
+                : 'settings kept in the run record',
+        },
         { k: 'Folder', v: framework || r.files?.length ? `runs/${r.run_id}/` : '—' },
       ],
     },
