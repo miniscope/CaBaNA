@@ -22,10 +22,11 @@ from . import pipeline_prep as prep
 from . import serialize
 from . import dialogs, project_archive, storage
 from .project_data import ProjectData
+from .runs_adopt import adopt_runs
 from .project_files import ProjectFiles, merge_exclude_frames
 from .projects import PROJECT_ID, Conflict, NotSupported, Projects
 from .runner import Refused, Runner
-from .store import BadRequest, Project, check_id
+from .store import SHA_RE, BadRequest, Project, check_id
 
 PREFIX = "/api/cabana/v1"
 JSON_LIMIT = 10 * 1024 * 1024
@@ -520,6 +521,27 @@ def data_post(h: Handler, q: dict, pid: str) -> None:
     h._json(ProjectData(h.app.projects.folder_of(pid)).add(body.get("slot", ""), body.get("path", "")), 201)
 
 
+def data_from_input(h: Handler, q: dict, pid: str) -> None:
+    """Copies an uploaded input (PUT /inputs/<sha>) into the project as a slot's data file."""
+    body = h._body_json()
+    slot, sha, name = body.get("slot"), body.get("sha"), body.get("name")
+    if not all(isinstance(v, str) for v in (slot, sha, name)) or not SHA_RE.match(sha):
+        raise BadRequest("slot, sha and name are required")
+    folder = h.app.projects.folder_of(pid)
+    source = h.project.input_file(sha) or h.app.workspace.input_file(sha)
+    if source is None:
+        raise FileNotFoundError(f"input {sha[:12]}")
+    h._json(ProjectData(folder).add_copy(slot, source, sha, name), 201)
+
+
+def runs_adopt(h: Handler, q: dict, pid: str) -> None:
+    """Moves runs made with no project open (workspace runs/) into the project."""
+    ids = h._body_json().get("run_ids")
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        raise BadRequest("run_ids must be a list of run ids")
+    h._json(adopt_runs(h.app.workspace, h.app.projects.folder_of(pid), ids))
+
+
 def data_delete(h: Handler, q: dict, pid: str, slot: str) -> None:
     ProjectData(h.app.projects.folder_of(pid)).remove(slot)
     h._send(204)
@@ -588,6 +610,8 @@ ROUTES: list[Route] = [
     ("POST", r"/scan", scan),
     ("POST", rf"/projects/{PROJECT_ID}/data", data_post),
     ("GET", rf"/projects/{PROJECT_ID}/data", data_get),
+    ("POST", rf"/projects/{PROJECT_ID}/data/from-input", data_from_input),
+    ("POST", rf"/projects/{PROJECT_ID}/runs/adopt", runs_adopt),
     ("DELETE", rf"/projects/{PROJECT_ID}/data/([a-z_]+)", data_delete),
     ("GET", r"/files/([0-9a-f]{64})", registered_file),
     ("GET", rf"/projects/{PROJECT_ID}/history", history_get),

@@ -301,3 +301,34 @@ def test_unknown_project_and_missing_secret(pb):
 def test_yaml_error_names_the_line_with_the_mistake(text, line):
     data, error = project_files.parse_text(text)
     assert data is None and error["line"] == line
+
+
+def test_adopt_moves_workspace_runs_into_the_project(pb):
+    c, app, tmp = pb
+    info = create(c)
+    ws = app.workspace
+    sid = "a" * 24
+    (ws.sessions_dir / sid).mkdir()
+    (ws.sessions_dir / sid / "config.yaml").write_text("name: x\n")
+    (ws.sessions_dir / sid / "inputs.json").write_text("{}")
+    ids = ["20260101-000000-aaaaaa", "20260101-000001-bbbbbb", "20260101-000002-cccccc"]
+    for run_id, status in zip(ids, ("completed", "completed", "running")):
+        ws.write_run(run_id, {"run_id": run_id, "status": status, "session": {"session_id": sid}})
+    script = ws.run_dir(ids[0]) / "reproduce.sh"
+    script.write_text(f"cabana run p.yaml --session {ws.sessions_path_from_run}/{sid}\n")
+    (ws.run_dir(ids[0]) / "out").mkdir()
+    status, out = c.json("POST", f"/projects/{info['id']}/runs/adopt",
+                         {"run_ids": [ids[0], ids[2], "20260101-999999-zzzzzz", "bad id"]})
+    assert status == 200, out
+    assert [r["run_id"] for r in out["adopted"]] == [ids[0]]
+    assert {s["run_id"]: s["reason"] for s in out["skipped"]} == {
+        ids[2]: "still running", "20260101-999999-zzzzzz": "not found", "bad id": "bad id"}
+    folder = Path(info["path"])
+    assert (folder / "runs" / ids[0] / "run.json").exists() and (folder / "runs" / ids[0] / "out").is_dir()
+    assert not ws.run_dir(ids[0]).exists() and ws.run_dir(ids[1]).exists()
+    assert (folder / "processed" / "sessions" / sid / "config.yaml").exists()
+    assert "../../processed/sessions/" in (folder / "runs" / ids[0] / "reproduce.sh").read_text()
+    ws.write_run(ids[2], {"run_id": ids[2], "status": "completed", "session": {"session_id": sid}})  # opening is refused while one runs
+    assert c.json("POST", "/projects/open", {"id": info["id"]})[0] == 200
+    assert [r["run_id"] for r in c.json("GET", "/runs")[1]] == [ids[0]]
+    assert c.json("POST", f"/projects/{info['id']}/runs/adopt", {"run_ids": "x"})[0] == 400

@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .projects import SLOT_KINDS, Projects
+from .projects import SLOT_KINDS, Conflict, Projects
 from .store import BadRequest
 
 
@@ -46,6 +46,23 @@ class ProjectData:
             target.parent.mkdir(exist_ok=True)
             shutil.copy2(source, target)
             entry["copied"] = f"data/{target.name}"
+        self._save([e for e in self.entries() if e.get("slot") != slot] + [entry])
+        return entry
+
+    def add_copy(self, slot: str, source: Path, sha: str, name: str) -> dict[str, Any]:
+        """Stores a copy of an uploaded input as the slot's file (the project then owns its data)."""
+        if slot not in SLOT_KINDS:
+            raise BadRequest(f"unknown slot {slot!r}")
+        if not name or name != Path(name).name or name.startswith(".") or "\\" in name or "\0" in name:
+            raise BadRequest(f"bad file name {name!r}")
+        if sha256_file(source) != sha:
+            raise Conflict("the stored input does not match its hash")
+        target = self.folder / "data" / f"{slot}-{name}"
+        target.parent.mkdir(exist_ok=True)
+        shutil.copy2(source, target)
+        st = target.stat()
+        entry = {"slot": slot, "path": str(target), "size": st.st_size, "mtime": st.st_mtime,
+                 "sha256": sha, "copied": f"data/{target.name}"}
         self._save([e for e in self.entries() if e.get("slot") != slot] + [entry])
         return entry
 

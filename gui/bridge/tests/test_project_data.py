@@ -141,3 +141,39 @@ def test_dialog_builds_the_script_and_reads_the_answer(pb, monkeypatch):
     assert c.json("POST", "/dialog", {"kind": "bogus"})[0] == 400
     monkeypatch.setattr(dialogs.sys, "platform", "linux")
     assert c.json("POST", "/dialog", {"kind": "folder"})[0] == 501
+
+
+def put_input(c, data: bytes, name: str = "neural.npy") -> str:
+    digest = sha(data)
+    assert c.call("PUT", f"/inputs/{digest}?name={name}", raw=data)[0] in (201, 204)
+    return digest
+
+
+def test_from_input_copies_the_upload_into_the_project(opened):
+    c, app, tmp, info, data = opened
+    digest = put_input(c, b"example bytes")
+    path = f"/projects/{info['id']}/data/from-input"
+    status, entry = c.json("POST", path, {"slot": "neural_deconvolved", "sha": digest, "name": "neural.npy"})
+    assert status == 201, entry
+    copy = Path(info["path"]) / "data" / "neural_deconvolved-neural.npy"
+    assert copy.read_bytes() == b"example bytes" and entry["copied"] == "data/neural_deconvolved-neural.npy"
+    assert entry["sha256"] == digest and entry["size"] == 13 and entry["path"] == str(copy)
+    files = c.json("GET", f"/projects/{info['id']}/data")[1]["files"]
+    assert [(f["slot"], f["status"]) for f in files] == [("neural_deconvolved", "present")]
+
+
+def test_from_input_errors(opened):
+    c, app, tmp, info, data = opened
+    path = f"/projects/{info['id']}/data/from-input"
+    digest = put_input(c, b"example bytes")
+    body = {"slot": "neural_deconvolved", "sha": digest, "name": "n.npy"}
+    assert c.json("POST", path, {**body, "sha": sha(b"never uploaded")})[0] == 404
+    assert c.json("POST", "/projects/000000000000/data/from-input", body)[0] == 404
+    for name in ("../x.npy", "a/b.npy", "..", ".hidden", ""):
+        assert c.json("POST", path, {**body, "name": name})[0] == 400, name
+    assert c.json("POST", path, {**body, "slot": "nope"})[0] == 400
+    assert c.json("POST", path, {"slot": "position"})[0] == 400
+    # a stored file whose bytes no longer match its hash is a conflict
+    (app.project.inputs_dir / f"{digest}.npy").write_bytes(b"tampered")
+    assert c.json("POST", path, body)[0] == 409
+    assert not (Path(info["path"]) / "data").exists() or not list((Path(info["path"]) / "data").iterdir())

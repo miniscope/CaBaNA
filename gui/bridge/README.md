@@ -126,6 +126,8 @@ Data stays where it is. `slot` is one of the GUI's `SlotId` values (`neural_time
 | `POST /dialog` | `{kind: "folder" or "files" or "save", title?, default_name?}` | `{paths: [...]}` or `{cancelled: true}`. Native macOS dialog through `osascript`; the request waits for the user. 501 off macOS. |
 | `POST /scan` | `{paths: [...]}` | `{files: [{name, path, size, modified}]}`. A folder lists its files and the files of one level of subfolders (hidden files skipped); a file path lists itself. The GUI matches names to slots. |
 | `POST /projects/{id}/data` | `{slot, path}` | 201 entry. Reads the file once for its SHA-256. A slot registered again is replaced. |
+| `POST /projects/{id}/data/from-input` | `{slot, sha, name}` | 201 entry (`copied` set, plus size, mtime, SHA-256). Copies the input uploaded with `PUT /inputs/{sha}` to `data/<slot>-<name>`; `name` must be a plain file name. 404 when the input or project is missing, 409 when the bytes do not match `sha`, 400 for a bad slot, name or body. |
+| `POST /projects/{id}/runs/adopt` | `{run_ids}` | `{adopted: [run record], skipped: [{run_id, reason}]}`. Moves runs made with no project open (workspace `runs/<id>/`) into the project's `runs/`, with their session copied to `processed/sessions/` and `reproduce.sh` re-pointed. Skipped: `not found`, `bad id`, `still running`, `already in the project`. |
 | `DELETE /projects/{id}/data/{slot}` | | 204 |
 | `GET /projects/{id}/data` | | `{files: [entry + {name, status, last_seen_path}]}` |
 | `GET /files/{sha256}` | | The bytes of a file registered in the open project; 404 for anything else or when no project is open. |
