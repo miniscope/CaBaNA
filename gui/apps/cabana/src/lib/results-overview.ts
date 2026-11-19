@@ -142,5 +142,13 @@ export function goToAnalysis(analysis: AnalysisId): void {
 export const failureMessage = (r: RunRecord) =>
   r.errors.at(-1)?.message?.split('\n').filter(Boolean).at(-1) ?? 'The run failed.';
 
+/** "Nov 18, 9:11 PM": the year only when it is not this year. For run lists and menus. */
+export function shortWhen(utc: string | null): string {
+  if (!utc) return '';
+  const d = new Date(utc);
+  const year = d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
+  return d.toLocaleString([], { month: 'short', day: 'numeric', year, hour: 'numeric', minute: '2-digit' });
+}
+
 export const formatWhen = (utc: string | null) =>
   utc ? new Date(utc).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';

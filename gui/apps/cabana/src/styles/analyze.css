@@ -491,3 +491,50 @@
   margin: 0;
   font-size: 12px;
 }
+
+/* View results menu (panels/ViewResultsMenu.tsx): rows with a date, a status pill and a second line. */
+.cb-vr {
+  width: max-content;
+  max-width: min(440px, calc(100vw - 16px));
+}
+.cb-vr__row {
+  display: block;
+  white-space: normal;
+}
+.cb-vr__line {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.cb-vr__row .cb-menu__sub {
+  display: block;
+  margin-top: 2px;
+}
+.cb-vr__dot {
+  margin: 0 4px;
+  color: var(--text-tertiary);
+}
+.cb-vr__pill {
+  margin-left: 8px;
+}
+
+.cb-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 9px 14px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  font-size: 13.5px;
+}
+.cb-toast .cb-link {
+  color: inherit;
+  text-decoration: underline;
+}
