@@ -26,6 +26,7 @@ export interface PlotTest extends Category {
 /** Keep the workspace inside the window: its height runs from its top to the bottom of the window. */
 export function fitToWindow(el: HTMLElement): () => void {
   const fit = () => {
+    if (!el.isConnected) return; // the window closed before a pending refit ran
     const pad =
       parseFloat(getComputedStyle(el.closest('.cb-body') ?? el.parentElement!).paddingBottom) || 0;
     // The page body ends above the footer with Next, so measure to its bottom edge.

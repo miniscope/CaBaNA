@@ -72,7 +72,8 @@ export function PagePlot(props: {
           Reading the saved run.
         </p>
       </Show>
-      <Show when={page()}>{(p) => p().draw()}</Show>
+      {/* Reading a resource in its error state throws, so only read it when there is no error. */}
+      <Show when={!page.error && page()}>{(p) => p()!.draw()}</Show>
     </div>
   );
 }
