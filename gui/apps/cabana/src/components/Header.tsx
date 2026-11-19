@@ -210,9 +210,10 @@ export function Header(): JSX.Element {
             size={sizeText(p().size_bytes)}
             onClose={() => setDialog(undefined)}
             onConfirm={() => {
+              const id = p().id; // read before the window closes: a closed <Show> throws on read
               setDialog(undefined);
               void projects
-                .remove(p().id)
+                .remove(id)
                 .then(() => closeSession())
                 .catch(fail);
             }}
@@ -221,7 +222,11 @@ export function Header(): JSX.Element {
       </Show>
       <ProjectWindows />
       <Show when={saveDialog()}>
-        {(d) => <SaveExample onSaved={d().after} onClose={() => setSaveDialog(undefined)} />}
+        {(d) => {
+          // Read once: the window closes before onSaved runs, and a stale read of `d` would throw.
+          const after = d().after;
+          return <SaveExample onSaved={after} onClose={() => setSaveDialog(undefined)} />;
+        }}
       </Show>
       <Show when={dialog() === 'clear'}>
         <ClearSessionDialog

@@ -181,8 +181,9 @@ function AnalysisPrevious(props: {
                 }}
                 onCompare={() => openConfigCompare('analysis.yaml', d().record)}
                 onApply={() => {
+                  const record = d().record; // read before the window closes: a closed <Show> throws on read
                   setDialog(undefined);
-                  apply(d().record);
+                  apply(record);
                 }}
                 onClose={() => setDialog(undefined)}
               />

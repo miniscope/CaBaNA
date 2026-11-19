@@ -157,8 +157,9 @@ function DiskLibrary(props: { query: string }): JSX.Element {
             name={p().name}
             onClose={() => setRenaming(undefined)}
             onRename={(name) => {
+              const id = p().id; // read before the window closes: a closed <Show> throws on read
               setRenaming(undefined);
-              void attempt(() => projects.rename(p().id, name));
+              void attempt(() => projects.rename(id, name));
             }}
           />
         )}
@@ -170,8 +171,9 @@ function DiskLibrary(props: { query: string }): JSX.Element {
             size={formatBytes(p().size_bytes)}
             onClose={() => setDeleting(undefined)}
             onConfirm={() => {
+              const id = p().id; // read before the window closes: a closed <Show> throws on read
               setDeleting(undefined);
-              void attempt(() => projects.remove(p().id));
+              void attempt(() => projects.remove(id));
             }}
           />
         )}
