@@ -5,6 +5,7 @@ import type { MetricCard } from '../components/MetricCards.tsx';
 import { denomText, percentText } from './metrics.ts';
 import {
   pethCurves,
+  pethNullBand,
   type Align,
   type OnsetReport,
   type PethCurves,
@@ -18,6 +19,7 @@ import {
   type PethOutcome,
   type PethSettings,
 } from './peth-run.ts';
+import { drawShifts, makeRng } from './placecells.ts';
 import { hasTest, labelAt, latencyDirOf, latencyOf, summarize } from './peth-view.ts';
 
 /** Bouts of the given behaviors and how many each rule left out. */
@@ -243,6 +245,51 @@ export function columnMean(curves: PethCurves, cells: number, columns: number, c
       sem[i] = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1) / v.length);
   }
   return { mean, sem };
+}
+
+/**
+ * The band of the Preview window: for each tested column, the 2.5 and 97.5 percentiles of the
+ * mean-over-cells curve after shifting the neural data by each of `nShifts` draws (onsets fixed).
+ * The shifts are drawn as the full PETH draws its null band (`drawShifts`, the band seed and
+ * minimum shift) and `pethNullBand` does the shifting. The curve is linear in the neural data, so
+ * the mean over cells of the shifted curves is the shifted curve of the mean trace: one trace is
+ * shifted instead of every cell. Cells with a non-finite value are left out, as the run does.
+ * Display only: nothing is saved and no test is made.
+ */
+export function previewBand(
+  d: PethData,
+  cfg: Pick<PethSettings, 'params' | 'unselected' | 'align' | 'bandSeed' | 'bandMinShiftS' | 'latencyBins'>,
+  reports: AlignedReports,
+  nShifts: number,
+): { lo: Float64Array; hi: Float64Array }[] {
+  const plan = pethPlan(d, cfg, reports);
+  const skip = new Set(d.cellsMissing);
+  const trace = new Float64Array(d.frames);
+  let used = 0;
+  for (let c = 0; c < d.cells; c++) {
+    if (skip.has(c)) continue;
+    used++;
+    for (let i = 0; i < d.frames; i++) trace[i] += d.neural[c * d.frames + i];
+  }
+  for (let i = 0; i < d.frames; i++) trace[i] /= used || 1;
+  const { shifts } = drawShifts(
+    d.frames,
+    nShifts,
+    Math.round(cfg.bandMinShiftS * d.fs),
+    makeRng(cfg.bandSeed),
+  );
+  const band = pethNullBand(
+    { ...plan.input, neural: trace, cells: 1 },
+    plan.onsets,
+    cfg.params,
+    shifts,
+    cfg.latencyBins,
+  );
+  const bins = band.lo.length / plan.columns.length;
+  return plan.columns.map((_, j) => ({
+    lo: band.lo.subarray(j * bins, (j + 1) * bins),
+    hi: band.hi.subarray(j * bins, (j + 1) * bins),
+  }));
 }
 
 /**

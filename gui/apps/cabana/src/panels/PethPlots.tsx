@@ -159,6 +159,8 @@ export function CurvePlot(props: {
   baseline?: [number, number];
   response?: [number, number];
   band?: { lo: ArrayLike<number>; hi: ArrayLike<number> };
+  /** More grey bands, one per behavior (the Preview window's shifted-onset means). */
+  bands?: { lo: ArrayLike<number>; hi: ArrayLike<number> }[];
   latencyS?: number;
   yRange?: [number, number];
   yLabel?: string;
@@ -179,8 +181,8 @@ export function CurvePlot(props: {
         const e = s.sem?.[i];
         if (Number.isFinite(q)) v.push(q, ...(e !== undefined && Number.isFinite(e) ? [q - e, q + e] : []));
       });
-    if (props.band)
-      for (const a of [props.band.lo, props.band.hi]) for (const q of Array.from(a)) if (Number.isFinite(q)) v.push(q);
+    for (const b of [...(props.band ? [props.band] : []), ...(props.bands ?? [])])
+      for (const a of [b.lo, b.hi]) for (const q of Array.from(a)) if (Number.isFinite(q)) v.push(q);
     const [lo, hi] = [Math.min(...v), Math.max(...v)];
     const pad = (hi - lo) * 0.08 || 0.1;
     return [lo - pad, hi + pad];
@@ -222,6 +224,14 @@ export function CurvePlot(props: {
           />
         )}
       </Show>
+      <For each={props.bands ?? []}>
+        {(b) => (
+          <path
+            d={band(b.lo, b.hi, (i) => Number.isFinite(b.lo[i]) && Number.isFinite(b.hi[i]))}
+            fill="#8c959f40"
+          />
+        )}
+      </For>
       <line x1={m().l} x2={props.w - m().r} y1={y(0)} y2={y(0)} stroke="#d0d7de" />
       <line x1={x(0)} x2={x(0)} y1={m().t} y2={props.h - m().b} stroke="#222" stroke-dasharray="4 3" />
       <For each={props.series}>

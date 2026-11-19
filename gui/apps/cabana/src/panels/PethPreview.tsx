@@ -1,20 +1,25 @@
-// The Review-stage preview: mean curves over cells for each tested behavior, drawn from the loaded
-// data with the current settings. No shuffle test, no labels, no null band.
+// The Preview window's plot: mean curves over cells for each tested behavior, drawn from the loaded
+// data with the current settings. No shuffle test and no labels. After Run preview, a grey band
+// shows the spread of the shifted-onset means (`previewBand`). Nothing here is saved.
 
 import { createMemo, For, Show, type JSX } from 'solid-js';
 import { pethSettings } from '../lib/peth-run.ts';
-import { signalLabel, previewCurves } from '../lib/peth-setup.ts';
+import { previewCurves } from '../lib/peth-setup.ts';
 import { timeDomain } from '../lib/peth-view.ts';
 import type { Align } from '../lib/peth.ts';
-import { Fit, HowTo } from './AurocResults.tsx';
+import { Fit } from './AurocResults.tsx';
 import { CurvePlot } from './PethPlots.tsx';
 import { colorOf, Dot } from './PethShared.tsx';
 import type { PethSetupState } from './PethSetupState.ts';
-import { Pill } from '../components/Pill.tsx';
 
+type Column = ReturnType<typeof previewCurves>['columns'][number];
 const axisLabel = (a: Align) => `Time from bout ${a} (s)`;
 
-export function PethPreview(props: { s: PethSetupState }): JSX.Element {
+export function PethPreview(props: {
+  s: PethSetupState;
+  /** The band of each column from `previewBand` and how many shifted-onset means drew it. */
+  band?: { bands: { lo: ArrayLike<number>; hi: ArrayLike<number> }[]; shifts: number };
+}): JSX.Element {
   const s = () => props.s;
   const preview = createMemo(() => {
     const d = s().ok();
@@ -29,23 +34,6 @@ export function PethPreview(props: { s: PethSetupState }): JSX.Element {
   });
   return (
     <section class="cb-plot cb-pe-preview">
-      <div class="cb-plot__head">
-        <h4>PETH preview</h4>
-        <Pill tone="flag">Preview: no significance test</Pill>
-        <HowTo title="PETH preview">
-          <p>
-            Mean of each behavior's included bouts, averaged over all cells, from the loaded data
-            and the current settings. Shading is ± SEM across cells.{' '}
-            {signalLabel(s().p().baselineSubtract)}.
-          </p>
-          <p>
-            This preview has no shuffle test, null band or labels, so it cannot say which cells
-            respond. It shows whether the window, baseline and response intervals and the included
-            bouts look reasonable before the full analysis. PETH runs only in the browser, so there
-            is no shorter run with fewer shuffles.
-          </p>
-        </HowTo>
-      </div>
       <Show
         when={preview()}
         fallback={<div class="cb-muted">No preview until the settings can run: {s().issue()}</div>}
@@ -54,8 +42,10 @@ export function PethPreview(props: { s: PethSetupState }): JSX.Element {
           <div class="cb-pe-preview__plots">
             <For each={s().aligns()}>
               {(a) => {
-                const cols = () =>
-                  pv().columns.filter((c) => c.align === a && c.bouts >= s().p().minEvents);
+                const ok = (c: Column) =>
+                  c.align === a && c.bouts >= s().p().minEvents;
+                const cols = () => pv().columns.filter(ok);
+                const keep = (k: number) => ok(pv().columns[k]);
                 return (
                   <div class="cb-pe-preview__one">
                     <Show when={s().aligns().length > 1}>
@@ -77,6 +67,7 @@ export function PethPreview(props: { s: PethSetupState }): JSX.Element {
                               sem: c.sem,
                               color: colorOf(c.label),
                             }))}
+                            bands={props.band?.bands.filter((_, k) => keep(k))}
                             baseline={s().p().baselineS}
                             response={s().p().responseS}
                             yLabel={s().p().baselineSubtract ? 'Δ (a.u.)' : 'a.u.'}
@@ -93,6 +84,14 @@ export function PethPreview(props: { s: PethSetupState }): JSX.Element {
                           </span>
                         )}
                       </For>
+                      <Show when={props.band}>
+                        {(b) => (
+                          <span>
+                            <i class="cb-pe-legend__band" aria-hidden="true" />{' '}
+                            {b().shifts.toLocaleString()} shifted-onset means
+                          </span>
+                        )}
+                      </Show>
                     </div>
                   </div>
                 );
