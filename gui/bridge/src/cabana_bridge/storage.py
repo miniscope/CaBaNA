@@ -20,7 +20,7 @@ from .store import BadRequest, Project
 LARGE_DIRS = ("out", "figures", "reproduced")
 DONE = {"ok", "partial"}
 KEEP_COUNT = {"latest3": 3, "current": 1}
-DELETABLE = {"processed": "Processed intermediates", "previews": "Preliminary previews",
+DELETABLE = {"processed": "Processed intermediates", "previews": "Preview runs",
              "figures": "Figures", "old_runs": "Older runs' large files"}
 
 

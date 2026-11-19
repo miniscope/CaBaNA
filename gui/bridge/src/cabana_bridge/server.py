@@ -334,7 +334,7 @@ def bundle(h: Handler, q: dict, run_id: str) -> None:
         "Input files are not included. Name and SHA-256:\n" + inputs + "\n"
     )
     if rec.get("scope") == "preview":
-        readme += "\nPRELIMINARY: quick preview run with reduced shuffles.\n"
+        readme += "\nPREVIEW: a preview run with fewer shuffles, not for reporting.\n"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("run.json", json.dumps(rec, indent=2, default=str))
