@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePanel, stepFocus, type MenuItem } from '../lib/actions-menu.ts';
+import {
+  CLOSE_DELAY_MS,
+  hoverStep,
+  HOVER_START,
+  pendingDelay,
+  resolvePanel,
+  stepFocus,
+  type HoverEvent,
+  type HoverState,
+  type MenuItem,
+} from '../lib/actions-menu.ts';
 import { saveText } from '../lib/save-status.ts';
 import { clamp, formatValue, parseEntry } from '../lib/slider-number.ts';
 
@@ -48,6 +58,66 @@ describe('stepFocus', () => {
     expect(stepFocus(1, 3, 'End')).toBe(2);
     expect(stepFocus(1, 3, 'a')).toBeNull();
     expect(stepFocus(0, 0, 'ArrowDown')).toBeNull();
+  });
+});
+
+describe('hoverStep', () => {
+  const run = (events: HoverEvent[], from: HoverState = HOVER_START) =>
+    events.reduce(hoverStep, from);
+
+  it('opens at once when nothing is showing', () => {
+    expect(run([{ type: 'enter-category', label: 'A' }]).open).toBe('A');
+  });
+  it('closes only after the delay, and re-entering the submenu cancels it', () => {
+    const left = run([{ type: 'enter-category', label: 'A' }, { type: 'leave' }]);
+    expect(left.pending?.kind).toBe('close');
+    expect(pendingDelay(left)).toBe(CLOSE_DELAY_MS);
+    expect(hoverStep(left, { type: 'enter-submenu' }).pending).toBeNull();
+    expect(hoverStep(left, { type: 'timer-fired' }).open).toBeNull();
+  });
+  it('a plain action row also waits before closing', () => {
+    const s = run([{ type: 'enter-category', label: 'A' }, { type: 'enter-action' }]);
+    expect(s.open).toBe('A');
+    expect(s.pending?.kind).toBe('close');
+  });
+  it('switches to another category only after resting on it', () => {
+    const s = run([
+      { type: 'enter-category', label: 'A' },
+      { type: 'enter-category', label: 'B' },
+    ]);
+    expect(s.open).toBe('A');
+    expect(pendingDelay(s)).toBeLessThan(CLOSE_DELAY_MS);
+    expect(hoverStep(s, { type: 'timer-fired' }).open).toBe('B');
+    // Leaving B's row before the rest ends cancels the switch.
+    expect(hoverStep(s, { type: 'leave' }).pending?.kind).toBe('close');
+  });
+  it('returning to the open category cancels a pending switch', () => {
+    const s = run([
+      { type: 'enter-category', label: 'A' },
+      { type: 'enter-category', label: 'B' },
+      { type: 'enter-category', label: 'A' },
+    ]);
+    expect(s).toEqual({ open: 'A', pinned: false, pending: null });
+  });
+  it('a click pins: hover neither switches nor closes', () => {
+    const pinned = run([
+      { type: 'enter-category', label: 'A' },
+      { type: 'click-category', label: 'A' },
+    ]);
+    expect(pinned.pinned).toBe(true);
+    const after = run(
+      [{ type: 'enter-category', label: 'B' }, { type: 'enter-action' }, { type: 'leave' }],
+      pinned,
+    );
+    expect(after).toEqual(pinned);
+  });
+  it('clicking another category moves the pin; Escape clears everything', () => {
+    const s = run([
+      { type: 'click-category', label: 'A' },
+      { type: 'click-category', label: 'B' },
+    ]);
+    expect(s).toEqual({ open: 'B', pinned: true, pending: null });
+    expect(hoverStep(s, { type: 'escape' })).toEqual(HOVER_START);
   });
 });
 

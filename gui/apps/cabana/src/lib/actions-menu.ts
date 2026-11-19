@@ -1,6 +1,8 @@
 // Data and pure helpers behind components/ActionsMenu.tsx.
 // Rule: two panels at most. The menu itself is the first; a category item opens the second beside
 // it, and a category inside the second replaces its contents in place (with Back), never a third.
+// Hover timing lives here as a small reducer so it can be tested without a browser: the component
+// only turns `pending` into a real timer and sends `timer-fired` when it runs out.
 
 export type MenuItem =
   | {
@@ -68,4 +70,61 @@ export function stepFocus(index: number, count: number, key: string): number | n
   if (key === 'Home') return 0;
   if (key === 'End') return count - 1;
   return null;
+}
+
+/** Pointer rests on a different category row this long before the submenu switches to it. */
+export const SWITCH_DELAY_MS = 120;
+/** The submenu closes this long after the pointer has left both the parent row and the submenu. */
+export const CLOSE_DELAY_MS = 300;
+
+export interface HoverState {
+  /** Label of the menu's category row whose submenu is showing. */
+  open: string | null;
+  /** Opened by a click: stays until another category is clicked, Escape, or the menu closes. */
+  pinned: boolean;
+  /** What happens when the timer runs out; the component keeps at most one timer for it. */
+  pending: { kind: 'switch' | 'close'; label: string | null } | null;
+}
+
+export type HoverEvent =
+  | { type: 'enter-category'; label: string }
+  | { type: 'enter-action' }
+  | { type: 'leave' }
+  | { type: 'enter-submenu' }
+  | { type: 'click-category'; label: string }
+  | { type: 'timer-fired' }
+  | { type: 'escape' };
+
+export const HOVER_START: HoverState = { open: null, pinned: false, pending: null };
+
+export function pendingDelay(state: HoverState): number {
+  return state.pending?.kind === 'switch' ? SWITCH_DELAY_MS : CLOSE_DELAY_MS;
+}
+
+export function hoverStep(state: HoverState, event: HoverEvent): HoverState {
+  const idle = { ...state, pending: null };
+  const closeSoon = (): HoverState =>
+    state.pinned || state.open === null
+      ? idle
+      : { ...state, pending: { kind: 'close', label: null } };
+  switch (event.type) {
+    case 'enter-category':
+      if (state.pinned || state.open === event.label) return idle;
+      // Nothing showing yet: open at once. Otherwise wait for the pointer to rest.
+      if (state.open === null) return { ...idle, open: event.label };
+      return { ...state, pending: { kind: 'switch', label: event.label } };
+    case 'enter-action':
+    case 'leave':
+      return closeSoon();
+    case 'enter-submenu':
+      return idle;
+    case 'click-category':
+      return { open: event.label, pinned: true, pending: null };
+    case 'timer-fired':
+      if (state.pending?.kind === 'switch') return { ...idle, open: state.pending.label };
+      if (state.pending?.kind === 'close') return { ...idle, open: null };
+      return state;
+    case 'escape':
+      return HOVER_START;
+  }
 }

@@ -1,14 +1,24 @@
 // A button that opens a menu. Actions close it; option rows (one-of, many-of) leave it open so
-// view settings update live. A category item opens a second panel beside the menu; nothing opens
-// a third (see lib/actions-menu.ts).
+// view settings update live. Hovering a category row opens a second panel that touches the menu;
+// a click pins it open. The panel closes 300 ms after the pointer leaves both, and a bridge strip
+// (parts.css) keeps diagonal moves from closing it. A category inside the second panel replaces
+// its contents on click or → (never a third panel). Timing rules: hoverStep in lib/actions-menu.ts.
 
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { resolvePanel, stepFocus, type MenuItem, type MenuSource } from '../lib/actions-menu.ts';
+import {
+  HOVER_START,
+  hoverStep,
+  pendingDelay,
+  resolvePanel,
+  stepFocus,
+  type HoverEvent,
+  type MenuItem,
+  type MenuSource,
+} from '../lib/actions-menu.ts';
 
 const ROWS = '[role^="menuitem"]:not([aria-disabled="true"])';
-// Room the second panel needs beside the menu before it flips to the left.
-const SECOND_PANEL_ROOM = 232;
+const EDGE = 8;
 
 export function ActionsMenu(props: {
   items: MenuSource;
@@ -21,13 +31,31 @@ export function ActionsMenu(props: {
 }): JSX.Element {
   let button!: HTMLButtonElement;
   let menu: HTMLDivElement | undefined;
+  let secondPanel: HTMLDivElement | undefined;
+  let timer: number | undefined;
   const [open, setOpen] = createSignal(false);
   const [path, setPath] = createSignal<string[]>([]);
-  const [pos, setPos] = createSignal({ left: 0, top: 0, up: false, lt: false });
+  const [pos, setPos] = createSignal({ left: 0, top: 0, up: false });
+  // Second panel placement, measured after it renders: side, and a lift when it runs off the bottom.
+  const [side2, setSide2] = createSignal({ lt: false, top: -5 });
+  const [hover, setHover] = createSignal(HOVER_START);
   const items = () => (typeof props.items === 'function' ? props.items() : props.items);
   const second = createMemo(() => resolvePanel(items(), path()));
 
+  // Runs the reducer, then keeps the second panel's path and the single timer in step with it.
+  const send = (event: HoverEvent) => {
+    const next = hoverStep(hover(), event);
+    setHover(next);
+    clearTimeout(timer);
+    if (next.pending)
+      timer = window.setTimeout(() => send({ type: 'timer-fired' }), pendingDelay(next));
+    if (next.open !== path()[0]) setPath(next.open ? [next.open] : []);
+  };
+  onCleanup(() => clearTimeout(timer));
+
   const close = (returnFocus = true) => {
+    clearTimeout(timer);
+    setHover(HOVER_START);
     setOpen(false);
     setPath([]);
     if (returnFocus) button.focus();
@@ -43,9 +71,29 @@ export function ActionsMenu(props: {
       left,
       up,
       top: up ? Math.max(8, a.top - 4 - h) : a.bottom + 4,
-      lt: props.side ? props.side === 'left' : left + w + SECOND_PANEL_ROOM > innerWidth - 8,
+    });
+    placeSecond();
+  };
+  const placeSecond = () => {
+    if (!menu || !secondPanel) return;
+    const m = menu.getBoundingClientRect();
+    const w = secondPanel.offsetWidth;
+    const h = secondPanel.offsetHeight;
+    // Level with its category row, lifted when it would run off the bottom.
+    const owner = menu.querySelector<HTMLElement>(
+      `[data-category="${CSS.escape(second().owner ?? '')}"]`,
+    );
+    const top = (owner?.offsetTop ?? 0) - 5;
+    setSide2({
+      lt: props.side ? props.side === 'left' : m.right + w > innerWidth - EDGE,
+      top: Math.min(top, innerHeight - EDGE - (m.top + h)),
     });
   };
+  // The panel's size depends on its contents, so measure after each change of path.
+  createEffect(() => {
+    second();
+    requestAnimationFrame(placeSecond);
+  });
   const outside = (e: PointerEvent) => {
     const t = e.target as Node;
     if (!menu?.contains(t) && !button.contains(t)) close(false);
@@ -79,7 +127,10 @@ export function ActionsMenu(props: {
       e.preventDefault();
       e.stopPropagation();
       if (second().canGoBack) back();
-      else close();
+      else {
+        send({ type: 'escape' });
+        close();
+      }
       return;
     }
     const panel = (e.target as HTMLElement).closest('.cb-menu__panel');
@@ -96,7 +147,7 @@ export function ActionsMenu(props: {
       if (second().canGoBack) back();
       else {
         const owner = second().owner;
-        setPath([]);
+        send({ type: 'escape' });
         requestAnimationFrame(() =>
           menu?.querySelector<HTMLElement>(`[data-category="${CSS.escape(owner ?? '')}"]`)?.focus(),
         );
@@ -124,8 +175,18 @@ export function ActionsMenu(props: {
             aria-haspopup="menu"
             aria-expanded={second().items !== null && path()[level] === item.label}
             data-category={item.label}
-            onPointerEnter={() => level === 0 && path()[0] !== item.label && setPath([item.label])}
-            onClick={() => setPath(level === 0 ? [item.label] : [...path(), item.label])}
+            onPointerEnter={() =>
+              send(
+                level === 0
+                  ? { type: 'enter-category', label: item.label }
+                  : { type: 'enter-submenu' },
+              )
+            }
+            onPointerLeave={() => level === 0 && send({ type: 'leave' })}
+            onClick={() => {
+              if (level === 0) send({ type: 'click-category', label: item.label });
+              else setPath([...path(), item.label]);
+            }}
           >
             {item.label}
             <span class="cb-menu__caret" aria-hidden="true">
@@ -143,7 +204,7 @@ export function ActionsMenu(props: {
             classList={{ 'cb-menu__row--danger': item.danger }}
             aria-disabled={item.disabled ? 'true' : undefined}
             title={item.disabled}
-            onPointerEnter={() => level === 0 && path().length > 0 && setPath([])}
+            onPointerEnter={() => level === 0 && send({ type: 'enter-action' })}
             onClick={() => {
               if (item.disabled) return;
               if (!item.keepOpen) close();
@@ -226,8 +287,12 @@ export function ActionsMenu(props: {
             <Show when={second().items}>
               {(panelItems) => (
                 <div
+                  ref={secondPanel}
                   class="cb-menu__panel cb-menu__panel--second"
-                  classList={{ 'cb-menu__panel--lt': pos().lt, 'cb-menu__panel--up': pos().up }}
+                  classList={{ 'cb-menu__panel--lt': side2().lt, 'cb-menu__panel--up': pos().up }}
+                  style={pos().up ? undefined : { top: `${side2().top}px` }}
+                  onPointerEnter={() => send({ type: 'enter-submenu' })}
+                  onPointerLeave={() => send({ type: 'leave' })}
                   role="menu"
                   aria-label={second().title ?? second().owner ?? ''}
                 >
