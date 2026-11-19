@@ -17,7 +17,6 @@ import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Modal } from '../../components/Modal.tsx';
 import { RunTypePill, SettingsPill } from '../../components/Pill.tsx';
 import type { MenuItem } from '../../lib/actions-menu.ts';
-import { forgetBrowserRecord } from '../../lib/browser-records.ts';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { bridgeReady } from '../../lib/bridge-status.ts';
 import type { ExplorerData } from '../../lib/explorer-data.ts';
@@ -29,9 +28,7 @@ import { matchOfRecord } from '../../lib/results-match.ts';
 import {
   closeExplorer,
   explorerTarget,
-  openedRun,
   openExplorer,
-  openRunOf,
   type ExplorerTarget,
 } from '../../lib/results-nav.ts';
 import { analysisLabel, hasResults } from '../../lib/results-overview.ts';
@@ -39,12 +36,13 @@ import { aurocModel, placeCells } from '../../lib/results-saved.ts';
 import { isNewestOfType, settingsStatus } from '../../lib/results-runs.ts';
 import { reasonText } from '../../lib/results-table.ts';
 import { windowRuns, type WindowView } from '../../lib/results-window.ts';
-import { active, type AnalysisId } from '../../lib/runs.ts';
+import { active } from '../../lib/runs.ts';
 import { openConfigCompare } from '../../lib/project-dialogs.ts';
 import { goToStep } from '../../lib/store.ts';
 import { applyRunSettings } from '../AnalysisRunSettings.tsx';
-import { DeleteOutputs, deleteOutputsNeeds } from './DeleteOutputs.tsx';
+import { DeleteOutputs } from './DeleteOutputs.tsx';
 import { DeleteRun } from './DeleteRun.tsx';
+import { deleteItems, forgetDeletedRun } from './run-delete-items.ts';
 import type { ExplorerParts } from './explorer-parts.ts';
 import { StatisticsPane, TablesPane } from './ExplorerPanes.tsx';
 import { decodingParts, populationParts } from './FrameworkExplorers.tsx';
@@ -206,31 +204,11 @@ function ResultsWindow(props: { target: ExplorerTarget }): JSX.Element {
       label: 'Export',
       items: exportItems(rec, data(), () => savedData(rec), figures(), setError),
     },
-    { kind: 'separator' },
-    {
-      kind: 'action',
-      label: 'Delete outputs…',
-      danger: true,
-      disabled: deleteOutputsNeeds(bridgeReady()),
-      onSelect: () => setDialog('outputs'),
-    },
-    {
-      kind: 'action',
-      label: 'Delete run…',
-      danger: true,
-      disabled: running()
-        ? 'Wait for the run to finish.'
-        : bridgeReady()
-          ? undefined
-          : 'Needs the Python engine.',
-      onSelect: () => setDialog('delete'),
-    },
+    ...deleteItems(running(), () => setDialog('outputs'), () => setDialog('delete')),
   ];
 
   const afterDelete = (r: RunRecord) => {
-    if (openedRun(r.analysis as AnalysisId) === r.run_id)
-      openRunOf(r.analysis as AnalysisId, undefined);
-    void forgetBrowserRecord(r.run_id);
+    forgetDeletedRun(r);
     const next = runs().find((x) => x.run_id !== r.run_id);
     if (next) openExplorer(analysis(), next.run_id);
     else closeExplorer();

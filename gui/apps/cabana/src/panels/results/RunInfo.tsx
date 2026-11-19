@@ -76,7 +76,7 @@ export function RunInfoWindow(props: {
   record: RunRecord;
   data?: ExplorerData;
   status: RunStatusText;
-  figures: number;
+  figures?: number;
   onCompare: () => void;
   onApply: () => void;
   onClose: () => void;
