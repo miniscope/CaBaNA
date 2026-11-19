@@ -11,6 +11,11 @@ export interface Question {
   /** Red button for something that cannot be undone. */
   danger?: boolean;
   onConfirm?: () => void;
+  /**
+   * A third button, the main choice when the confirm button is the destructive one (it is then
+   * drawn as a red outline), such as Save as project… beside Discard.
+   */
+  alternative?: { label: string; onSelect: () => void };
 }
 
 export const [question, setQuestion] = createSignal<Question>();

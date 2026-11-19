@@ -22,8 +22,11 @@ export function ConfirmHost(): JSX.Element {
               </button>
               <button
                 type="button"
-                class="btn-primary"
-                classList={{ 'cb-btn-danger': q().danger }}
+                classList={{
+                  'btn-primary': !q().alternative,
+                  'btn-secondary cb-btn-danger-outline': !!q().alternative,
+                  'cb-btn-danger': q().danger && !q().alternative,
+                }}
                 onClick={() => {
                   const go = q().onConfirm!;
                   close();
@@ -32,6 +35,20 @@ export function ConfirmHost(): JSX.Element {
               >
                 {q().confirmLabel ?? 'Confirm'}
               </button>
+              <Show when={q().alternative}>
+                {(alt) => (
+                  <button
+                    type="button"
+                    class="btn-primary"
+                    onClick={() => {
+                      close();
+                      alt().onSelect();
+                    }}
+                  >
+                    {alt().label}
+                  </button>
+                )}
+              </Show>
             </Show>
           }
         >
