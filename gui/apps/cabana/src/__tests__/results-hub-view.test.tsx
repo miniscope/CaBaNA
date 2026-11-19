@@ -9,12 +9,8 @@ vi.mock('../panels/AurocResults.tsx', () => ({ HowTo: () => null }));
 import type { RunRecord } from '../lib/bridge-client.ts';
 import type { ExplorerData } from '../lib/explorer-data.ts';
 import { parseSavedCsv } from '../lib/results-explorer.ts';
-import {
-  ExportPane,
-  StatisticsPane,
-  SummaryPane,
-  TablesPane,
-} from '../panels/results/ExplorerPanes.tsx';
+import { exportItems } from '../lib/results-export.ts';
+import { StatisticsPane, TablesPane } from '../panels/results/ExplorerPanes.tsx';
 
 const record = (o: Partial<RunRecord>): RunRecord =>
   ({
@@ -78,22 +74,52 @@ describe('Explorer panes', () => {
     expect(firstColumn()).toEqual(['0.7', '0.5', '0.2']);
     expect(host.textContent).toContain('3 rows');
   });
-  it('states each statistic with n, unit, p counts and the saved test', () => {
-    const text = mount(() => StatisticsPane({ data })).textContent!;
-    expect(text).toContain('3 cell-behavior pairs');
-    expect(text).toContain('0.2 to 0.7');
-    expect(text).toContain('0 to 1 scale');
-    expect(text).toContain('2 of 3 below 0.05');
-    expect(text).toContain('circular shift');
-    expect(text).toContain('none saved'); // no adjusted p was saved
+  it('filters the rows of a table and lists the tables with their sizes', () => {
+    const host = mount(() => TablesPane({ data }));
+    expect(host.querySelector('nav')!.textContent).toContain('auroc.csv');
+    expect(host.querySelector('nav')!.textContent).toContain('3 rows');
+    const filter = host.querySelector('input[type="search"]') as HTMLInputElement;
+    filter.value = '0.2';
+    filter.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(host.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(host.textContent).toContain('1 row match the filter');
   });
-  it('writes the summary from the saved numbers and offers the exports', () => {
-    const r = record({});
-    const summary = mount(() => SummaryPane({ record: r, data })).textContent!;
-    expect(summary).toContain('browser-1');
-    expect(summary).toContain('Shuffle test: 100 shuffles, alpha 0.05');
-    const exports = mount(() => ExportPane({ record: r, data })).textContent!;
-    expect(exports).toContain('Download auroc.csv as CSV');
-    expect(exports).not.toContain('Export run bundle'); // browser-engine run: no bundle
+  it('gives one card per statistic with n, unit, p counts and the saved test', () => {
+    const text = mount(() => StatisticsPane({ record: record({}), data })).textContent!;
+    expect(text).toContain('2 of 3 cell-behavior pairs with p below 0.05');
+    expect(text).toContain('3 cell-behavior pairs · 0 to 1 scale · observed 0.2 to 0.7');
+    expect(text).toContain('circular shift null · 100 shuffles');
+  });
+  it('writes the methods from the saved numbers', () => {
+    const text = mount(() => StatisticsPane({ record: record({}), data })).textContent!;
+    expect(text).toContain('Methods');
+    expect(text).toContain('browser-1');
+    expect(text).toContain('Shuffle test: 100 shuffles, alpha 0.05');
+    expect(text).toContain('Copy as text');
+  });
+  it('lists the exports a run has, in the order of the Export menu', () => {
+    const items = (d: ExplorerData | undefined) =>
+      exportItems(
+        record({}),
+        d,
+        () => Promise.resolve(data),
+        { run: () => undefined },
+        () => undefined,
+      )
+        .filter((i) => i.kind === 'action')
+        .map((i) => (i as { label: string }).label);
+    expect(items(data)).toEqual([
+      'Figures…',
+      'Tables (CSV)…',
+      'Statistics…',
+      'All results (.zip)…',
+      'Settings (JSON)…',
+    ]);
+    // Only what the run saved is offered.
+    expect(items({ ...data, tables: [], stats: [] })).toEqual([
+      'Figures…',
+      'All results (.zip)…',
+      'Settings (JSON)…',
+    ]);
   });
 });
