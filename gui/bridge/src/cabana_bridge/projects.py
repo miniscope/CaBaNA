@@ -116,7 +116,9 @@ def summarize(folder: Path, meta: dict[str, Any]) -> dict[str, Any]:
         "created": meta.get("created"), "modified": meta.get("modified"),
         "kinds": kinds, "file_count": len(data),
         "size_bytes": folder_size(folder),
-        "missing_count": sum(1 for d in data if not Path(str(d.get("path", ""))).exists()),
+        # A file counts as missing only when neither the original nor the project's copy is there.
+        "missing_count": sum(1 for d in data if not Path(str(d.get("path", ""))).exists()
+                             and not (d.get("copied") and (folder / d["copied"]).exists())),
         "readable": True,
         "save_mode": meta.get("save_mode", "auto"), "retention": meta.get("retention", "every"),
         "copy_data": bool(meta.get("copy_data", False)),

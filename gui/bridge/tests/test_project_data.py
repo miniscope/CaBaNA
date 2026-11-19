@@ -177,3 +177,12 @@ def test_from_input_errors(opened):
     (app.project.inputs_dir / f"{digest}.npy").write_bytes(b"tampered")
     assert c.json("POST", path, body)[0] == 409
     assert not (Path(info["path"]) / "data").exists() or not list((Path(info["path"]) / "data").iterdir())
+
+
+def test_a_copied_file_is_not_missing_when_the_original_path_is_gone(tmp_path):
+    from cabana_bridge.projects import summarize
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "neural_raw-a.npy").write_bytes(b"x")
+    data = [{"slot": "neural_raw", "path": "/gone/a.npy", "copied": "data/neural_raw-a.npy"},
+            {"slot": "position", "path": "/gone/p.csv"}]
+    assert summarize(tmp_path, {"id": "abc", "data": data})["missing_count"] == 1
