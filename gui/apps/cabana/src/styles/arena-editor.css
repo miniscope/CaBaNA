@@ -297,6 +297,11 @@
   display: flex;
   gap: 6px;
 }
+/* Light buttons: the stage behind them is dark. Zoom out and Fit are no-ops at Fit, so they stay enabled. */
+.cb-ae-zoom button {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
 
 /* Windows under the toolbar: Set scale, Animal size, Video frame */
 .cb-ae-win {

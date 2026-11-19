@@ -393,14 +393,9 @@
 }
 .cb-app {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 168px minmax(0, 1fr);
   min-height: 0;
   height: 100%;
-}
-@media (max-width: 1360px) {
-  .cb-app {
-    grid-template-columns: 168px minmax(0, 1fr);
-  }
 }
 .cb-sidebar {
   border-right: 1px solid var(--border-subtle);

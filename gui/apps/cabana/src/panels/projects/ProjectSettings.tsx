@@ -44,7 +44,7 @@ const FILE_ROLE: Record<FileName, string> = {
 const Row = (props: { label: string; children: JSX.Element; action?: JSX.Element }) => (
   <div class="cb-ps__row">
     <span class="cb-muted">{props.label}</span>
-    <span>{props.children}</span>
+    <span class="cb-ps__val">{props.children}</span>
     {props.action}
   </div>
 );

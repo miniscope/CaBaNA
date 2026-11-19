@@ -95,6 +95,17 @@
   min-height: 0;
   overflow: auto;
 }
+/* A visible scrollbar tells the reader the list continues when the Other uploaded files card shortens the cards. */
+.cb-sp-card__rows::-webkit-scrollbar,
+.cb-sp-other__rows::-webkit-scrollbar {
+  width: 10px;
+}
+.cb-sp-card__rows::-webkit-scrollbar-thumb,
+.cb-sp-other__rows::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid var(--bg-primary);
+  border-radius: 5px;
+}
 
 /* Rows */
 .cb-sp-row {
@@ -154,7 +165,7 @@
 
 /* Other uploaded files */
 .cb-sp-other {
-  max-height: 34%;
+  max-height: 30%;
 }
 .cb-sp-other__hint {
   margin-left: 8px;

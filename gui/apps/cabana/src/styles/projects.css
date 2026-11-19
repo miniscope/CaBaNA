@@ -439,6 +439,15 @@
   border-top: 1px solid var(--border-subtle);
   font-size: 13.6px;
 }
+.cb-ps__val {
+  min-width: 0;
+  overflow-wrap: anywhere; /* a long folder path wraps instead of running under the buttons */
+}
+.cb-ps__val .cb-sp-mono {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .cb-ps__acts {
   display: flex;
   gap: 6px;

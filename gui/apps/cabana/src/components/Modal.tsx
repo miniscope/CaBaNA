@@ -19,7 +19,7 @@ export function Modal(props: {
   /** Under the title row, across the window. */
   bar?: JSX.Element;
   onClose: () => void;
-  /** Window size in px; never larger than 92% of the viewport. Default: nearly the whole page. */
+  /** Window size in px; never larger than 92% of the viewport. Default: nearly the whole page. A width without a height sizes to the content. */
   width?: number;
   height?: number;
   /** In the title row, just before the ×: an Actions menu or a status. */
@@ -101,7 +101,11 @@ export function Modal(props: {
               ? undefined
               : {
                   ...(props.width ? { width: `min(${props.width}px, 92vw)` } : {}),
-                  ...(props.height ? { height: `min(${props.height}px, 92vh)` } : {}),
+                  ...(props.height
+                    ? { height: `min(${props.height}px, 92vh)` }
+                    : props.width
+                      ? { height: 'auto', 'max-height': '92vh' } // a dialog with a width only fits its content
+                      : {}),
                 }
           }
           onKeyDown={trap}

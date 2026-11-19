@@ -336,14 +336,12 @@ export function ArenaEditor(props: { onClose: () => void }): JSX.Element {
             </button>
             <button
               class="btn-secondary btn-small"
-              disabled={ed.zoom() <= 1}
               onClick={() => ed.zoomBy(1 / 1.5)}
             >
               Zoom out
             </button>
             <button
               class="btn-secondary btn-small"
-              disabled={ed.zoom() === 1}
               onClick={() => ed.resetView()}
             >
               Fit
