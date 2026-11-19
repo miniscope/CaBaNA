@@ -314,9 +314,11 @@ function FileTable(): JSX.Element {
           when={scanned().length}
           fallback={
             <span class="cb-muted">
-              {projectsOn()
-                ? 'Not saved: example data is not kept as a project'
-                : 'Not saved: engine off · work is kept in this browser'}
+              {!projectsOn()
+                ? 'Not saved: engine off · work is kept in this browser'
+                : example()
+                  ? 'Not saved: example data is not kept as a project'
+                  : 'Not saved: files chosen this way have no location on disk. Use Choose folder or Choose files.'}
             </span>
           }
         >
@@ -417,7 +419,9 @@ export function NewSession(): JSX.Element {
         <div>
           <h2>New Project</h2>
           <p class="cb-muted cb-proj__sub">
-            Load your own data or an example. Files load when you continue.
+            {projectsOn()
+              ? 'Load your own data or an example. The project is saved to ~/CaBaNA Projects/<project name>/.'
+              : 'Load your own data or an example. The work is kept in this browser.'}
           </p>
         </div>
       </div>
