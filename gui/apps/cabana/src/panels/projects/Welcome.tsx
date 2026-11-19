@@ -1,6 +1,7 @@
 // The first page: what CaBaNA is, and where to start or continue a project.
 
 import type { JSX } from 'solid-js';
+import { guardExample } from '../../lib/example-session.ts';
 import { goToStep } from '../../lib/store.ts';
 
 export function Welcome(): JSX.Element {
@@ -22,12 +23,20 @@ export function Welcome(): JSX.Element {
       <div class="cb-welcome__start">
         <h3>Start a new project</h3>
         <p class="cb-muted">Load your data or try an example dataset.</p>
-        <button type="button" class="btn-primary cb-welcome__new" onClick={() => goToStep('new')}>
+        <button
+          type="button"
+          class="btn-primary cb-welcome__new"
+          onClick={() => guardExample(() => goToStep('new'))}
+        >
           + New Project
         </button>
       </div>
       <div class="cb-muted cb-welcome__open">Or open an existing project</div>
-      <button type="button" class="btn-secondary" onClick={() => goToStep('library')}>
+      <button
+        type="button"
+        class="btn-secondary"
+        onClick={() => guardExample(() => goToStep('library'))}
+      >
         Browse project library
       </button>
     </div>

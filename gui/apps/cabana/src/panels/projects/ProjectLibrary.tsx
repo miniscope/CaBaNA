@@ -5,6 +5,7 @@
 import { createSignal, For, onMount, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { setAppliedNote } from '../../lib/data-setup-view.ts';
+import { guardExample } from '../../lib/example-session.ts';
 import { formatBytes } from '../../lib/new-project.ts';
 import { savedWhen, recentSessions, type RecentSession } from '../../lib/project-library.ts';
 import {
@@ -70,10 +71,11 @@ function DiskLibrary(props: { query: string }): JSX.Element {
       setProblem(e instanceof Error ? e.message : String(e));
     }
   };
-  const open = (p: ProjectSummary) => attempt(() => openExisting({ id: p.id }));
+  const open = (p: ProjectSummary) =>
+    guardExample(() => void attempt(() => openExisting({ id: p.id })));
   const items = (p: ProjectSummary) =>
     [
-      { kind: 'action', label: 'Open', onSelect: () => void open(p) },
+      { kind: 'action', label: 'Open', onSelect: () => open(p) },
       { kind: 'action', label: 'Rename', onSelect: () => setRenaming(p) },
       {
         kind: 'action',
@@ -231,7 +233,7 @@ export function ProjectLibrary(): JSX.Element {
             type="button"
             class="btn-secondary"
             title="A project folder, a project.yaml or a .cabana.zip that is not in the list"
-            onClick={() => void openFromDialog().then(setOpenProblem)}
+            onClick={() => guardExample(() => void openFromDialog().then(setOpenProblem))}
           >
             Open from file…
           </button>

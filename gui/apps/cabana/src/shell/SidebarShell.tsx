@@ -9,7 +9,8 @@ import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts
 import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { READOUT_HINT, readout } from '../lib/viz-tracks.ts';
-import { exampleMedia, goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
+import { guardExample, isExample } from '../lib/example-session.ts';
+import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { About } from '../panels/projects/About.tsx';
 import { NewSession } from '../panels/projects/NewSession.tsx';
 import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
@@ -93,7 +94,7 @@ function ProjectsRow(): JSX.Element {
   const status = () =>
     nothingLoaded()
       ? 'No project open'
-      : exampleMedia()
+      : isExample()
         ? 'Example data · Unsaved'
         : sessionName() || 'Untitled project';
   return (
@@ -131,7 +132,7 @@ function ProjectsRow(): JSX.Element {
                 title={folded() ? p.label : undefined}
                 onClick={() => {
                   setMenu(false);
-                  goToStep(p.id);
+                  guardExample(() => goToStep(p.id));
                 }}
               >
                 {folded() ? p.short : p.label}

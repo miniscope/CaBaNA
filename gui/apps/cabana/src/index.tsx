@@ -54,8 +54,10 @@ if (import.meta.env.DEV) {
   const q = new URLSearchParams(location.search);
   const id = q.get('example') ?? 'simulated_3chamber';
   if (id !== 'none')
-    void import('./lib/store.ts').then(async (s) => {
-      await s.loadExample(id);
-      s.goToStep(q.get('step') ?? 'data');
-    });
+    void Promise.all([import('./lib/store.ts'), import('./lib/example-session.ts')]).then(
+      async ([s, ex]) => {
+        await ex.startExample(id, await s.fetchExample(id));
+        s.goToStep(q.get('step') ?? 'data');
+      },
+    );
 }

@@ -3,6 +3,7 @@
 
 import { createResource, createSignal, For, onMount, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
+import { guardExample, startExample } from '../../lib/example-session.ts';
 import { nothingLoaded } from '../../lib/data-setup-view.ts';
 import { placeFiles, previewPlacements } from '../../lib/file-match.ts';
 import {
@@ -28,7 +29,6 @@ import {
   EXAMPLES,
   fetchExample,
   goToStep,
-  loadFetchedExample,
   setSessionName,
 } from '../../lib/store.ts';
 import { InfoTip } from '../InfoTip.tsx';
@@ -116,7 +116,11 @@ async function chooseExample(id: string): Promise<void> {
 }
 
 /** Load the held files as the open session, named by the project name, and open Data setup. */
-async function next(): Promise<void> {
+function next(): void {
+  guardExample(() => void load());
+}
+
+async function load(): Promise<void> {
   const name = projectName().trim();
   setBusy(true);
   if (scanned().length) {
@@ -136,7 +140,7 @@ async function next(): Promise<void> {
     return;
   }
   const ex = example();
-  if (ex) await loadFetchedExample(ex.id, { files: held(), frame: ex.frame, video: ex.video });
+  if (ex) await startExample(ex.id, { files: held(), frame: ex.frame, video: ex.video });
   else {
     // A new project replaces the open session rather than mixing with it.
     if (!nothingLoaded()) clearAll();
@@ -317,7 +321,7 @@ function FileTable(): JSX.Element {
               {!projectsOn()
                 ? 'Not saved: engine off · work is kept in this browser'
                 : example()
-                  ? 'Not saved: example data is not kept as a project'
+                  ? 'Example data · Unsaved. Manage project → Save as project… keeps it as a project'
                   : 'Not saved: files chosen this way have no location on disk. Use Choose folder or Choose files.'}
             </span>
           }
@@ -433,7 +437,7 @@ export function NewSession(): JSX.Element {
           type="button"
           class="btn-primary"
           disabled={!(held().length || scanned().length) || busy()}
-          onClick={() => void next()}
+          onClick={next}
         >
           {busy() ? 'Loading…' : 'Next: Data setup'}
         </button>
