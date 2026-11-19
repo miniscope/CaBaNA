@@ -251,19 +251,20 @@ export function EventsSection(props: { s: PethSetupState }): JSX.Element {
         >
           Align windows to
         </Title>
-        <For each={['onset', 'offset', 'both'] as const}>
-          {(a) => (
-            <label class="cb-radio">
-              <input
-                type="radio"
-                name="peth-align"
-                checked={pethSettings.align === a}
-                onChange={() => setPethSettings('align', a)}
-              />
-              {a === 'both' ? 'Both (separate analyses)' : `Bout ${a}`}
-            </label>
-          )}
-        </For>
+        <div class="cb-seg" role="group" aria-label="Align windows to">
+          <For each={['onset', 'offset', 'both'] as const}>
+            {(a) => (
+              <button
+                type="button"
+                classList={{ 'cb-seg__on': pethSettings.align === a }}
+                aria-pressed={pethSettings.align === a}
+                onClick={() => setPethSettings('align', a)}
+              >
+                {a === 'both' ? 'Both (separate analyses)' : `Bout ${a}`}
+              </button>
+            )}
+          </For>
+        </div>
       </div>
       <div class="cb-pe-evgrid">
         <div>

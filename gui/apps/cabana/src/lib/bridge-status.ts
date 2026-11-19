@@ -8,6 +8,8 @@ export type BridgeState =
   | { kind: 'connecting' }
   | { kind: 'ready'; capabilities: Capabilities };
 
+const CONNECT_TIMEOUT_MS = 5000;
+
 export const START_COMMAND =
   'uv run --project gui/bridge cabana-bridge --project-dir gui/.project-dev --port 8791';
 
@@ -25,7 +27,14 @@ export async function connectBridge(): Promise<void> {
   }
   setBridgeState({ kind: 'connecting' });
   try {
-    setBridgeState({ kind: 'ready', capabilities: await bridge.capabilities() });
+    // An address that accepts connections but never answers must not leave the page "connecting".
+    const answer = await Promise.race([
+      bridge.capabilities(),
+      new Promise<never>((_, no) =>
+        setTimeout(() => no(new Error('Python engine not running')), CONNECT_TIMEOUT_MS),
+      ),
+    ]);
+    setBridgeState({ kind: 'ready', capabilities: answer });
   } catch (e) {
     setBridgeState({
       kind: 'offline',
