@@ -16,7 +16,6 @@ import {
 } from 'solid-js';
 import { ActionsMenu } from '../components/ActionsMenu.tsx';
 import { Pill } from '../components/Pill.tsx';
-import { Toast } from '../components/Toast.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
 import {
   BROWSER_ENGINE_NOTE,
@@ -49,13 +48,10 @@ import { active } from '../lib/runs.ts';
 import { resultIndex } from '../lib/result-index.ts';
 import { analysisWindow, openAnalysisWindow, setAnalysisWindow } from '../lib/analysis-window.ts';
 import { openItem } from '../components/Requirements.tsx';
-import { forgetBrowserRecord } from '../lib/browser-records.ts';
-import { openedRun, openRunOf } from '../lib/results-nav.ts';
 import { isNewestOfType, settingsStatus } from '../lib/results-runs.ts';
 import { newestMatches } from '../lib/run-match.ts';
 import { AnalysisConfigure } from './AnalysisConfigure.tsx';
 import { AnalysisLoad } from './AnalysisLoad.tsx';
-import { AnalysisPrevious } from './AnalysisPrevious.tsx';
 import { AnalysisPreview } from './AnalysisPreview.tsx';
 import { fitToWindow } from './QcPanel.tsx';
 import { ViewResultsMenu } from './ViewResultsMenu.tsx';
@@ -225,11 +221,6 @@ export function AnalysisCards(): JSX.Element {
     }
   }
 
-  const afterDelete = (r: RunRecord) => {
-    const id = r.analysis as AnalysisItem;
-    if (openedRun(id) === r.run_id) openRunOf(id, undefined);
-    void forgetBrowserRecord(r.run_id);
-  };
   const closeWindow = () => setAnalysisWindow(undefined);
 
   let root!: HTMLDivElement;
@@ -378,8 +369,6 @@ export function AnalysisCards(): JSX.Element {
         </div>
       </div>
 
-      <Toast />
-
       <Show when={analysisWindow()}>
         {(w) => (
           <Switch>
@@ -388,14 +377,6 @@ export function AnalysisCards(): JSX.Element {
             </Match>
             <Match when={w().kind === 'preview'}>
               <AnalysisPreview id={w().id} onClose={closeWindow} />
-            </Match>
-            <Match when={w().kind === 'previous'}>
-              <AnalysisPrevious
-                id={w().id}
-                records={records()}
-                onDeleted={afterDelete}
-                onClose={closeWindow}
-              />
             </Match>
             <Match when={w().kind === 'load'}>
               <AnalysisLoad id={w().id} records={records()} onClose={closeWindow} />

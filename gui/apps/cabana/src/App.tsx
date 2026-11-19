@@ -7,6 +7,8 @@ import { AnalyzePanel } from './panels/AnalyzePanel.tsx';
 import { ResultsPage } from './panels/ResultsPage.tsx';
 import { PlotEditor } from './panels/results/PlotEditor.tsx';
 import { ResultsWindowHost } from './panels/results/ResultsWindow.tsx';
+import { PreviousResultsHost } from './panels/AnalysisPrevious.tsx';
+import { Toast } from './components/Toast.tsx';
 import { ConfirmHost } from './components/ConfirmHost.tsx';
 // Preprocessing changes are logged for the Changes history from the start of the session.
 import './lib/prep-log.ts';
@@ -22,6 +24,8 @@ const App: Component = () => (
   <>
     <SidebarShell steps={STEPS} />
     <ResultsWindowHost />
+    <PreviousResultsHost />
+    <Toast />
     <PlotEditor />
     <ConfirmHost />
   </>

@@ -12,7 +12,7 @@ export const [analysisWindow, setAnalysisWindow] = createSignal<
 >();
 
 /**
- * Show the card grid with `kind` open over it. `before` is the settings text Configure should go
+ * Show the card grid with `kind` open over it (Previous results opens over the current page). `before` is the settings text Configure should go
  * back to on Discard, when something (Load configuration) changed the settings first.
  */
 export function openAnalysisWindow(
@@ -20,6 +20,7 @@ export function openAnalysisWindow(
   kind: AnalysisWindowKind,
   before?: string,
 ): void {
-  setAnalysisPageOpen(false);
+  // Previous results opens over whatever page asked for it; the others belong to the card grid.
+  if (kind !== 'previous') setAnalysisPageOpen(false);
   setAnalysisWindow({ id, kind, before });
 }

@@ -426,24 +426,19 @@
   text-align: left;
   border-bottom: 1px solid var(--border-subtle);
 }
-.cb-prev__table tbody tr {
+.cb-prev__row {
   cursor: pointer;
 }
-.cb-prev__on {
-  background: var(--correction-bg);
+.cb-prev__row:hover {
+  background: var(--bg-inset);
 }
-.cb-prev__facts {
-  display: grid;
-  grid-template-columns: repeat(4, auto);
-  justify-content: start;
-  gap: 6px 28px;
+.cb-prev__table td.cb-prev__act {
+  text-align: right;
+  white-space: nowrap;
 }
 .cb-prev__note {
   margin: 0;
   font-size: 12px;
-}
-.cb-prev__more {
-  margin-top: 4px;
 }
 
 /* Load configuration window. */
