@@ -5,7 +5,13 @@
 
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { parse } from 'yaml';
-import { beginAutosave, endAutosave, saveEverything, updateAutosaveProject } from './autosave.ts';
+import {
+  beginAutosave,
+  endAutosave,
+  saveEverything,
+  syncExperimentFile,
+  updateAutosaveProject,
+} from './autosave.ts';
 import { bridgeReady } from './bridge-status.ts';
 import { setAppliedNote } from './data-setup-view.ts';
 import {
@@ -126,6 +132,7 @@ async function loadProject(project: ProjectSummary, created = false): Promise<vo
   times.set('project.yaml', new Date(project.modified));
   beginAutosave(project, times);
   if (created) await saveEverything('Project created');
+  else await syncExperimentFile(experiment);
   goToStep('data');
 }
 

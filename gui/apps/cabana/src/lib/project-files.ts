@@ -3,7 +3,7 @@
 // change history. Pure data in, data out; project-state.ts connects it to the stores.
 // experiment.yaml is the session config the framework reads (session-config.ts).
 
-import { Document, isMap, visit } from 'yaml';
+import { Document, isMap, isNode, isScalar, visit } from 'yaml';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -32,7 +32,7 @@ export interface PrepValues {
 
 /** Everything QC and Preprocess decide for this session. */
 export interface ProcessingState {
-  /** 0-based cell indices, as the stores keep them (the lists show them 1-based). */
+  /** 0-based cell indices, as the stores keep them. The file writes them 1-based, as the app shows them. */
   rejectedCells: number[];
   /** Camera frame numbers of position jumps left out, and of jumps looked at and kept. */
   excludeFrames: number[];
@@ -48,6 +48,17 @@ export interface ProcessingState {
 
 export const PROCESSING_HEADER =
   'QC decisions and preprocessing for this session only. Never copied to another project.';
+/** Marks a file whose cells are numbered from 1; files without it (older) number them from 0. */
+const CELL_NUMBERING = 'from 1';
+
+/** Short notes written after a value in processing.yaml. */
+export const PROCESSING_COMMENTS: Record<string, string> = {
+  cell_numbering: 'rejected cells are numbered as in the app',
+  rejected_cells: 'left out of every analysis',
+  annotation_fixes: 'merge or remove',
+  event_smoothing_s: 'default 0 (off)',
+  bout_padding_s: 'default 0 (off)',
+};
 export const ANALYSIS_HEADER = 'Settings of all five analyses. Each run keeps its own copy.';
 
 /** The five analyses in analysis.yaml: file section name and the label used in summaries. */
@@ -64,7 +75,8 @@ export type AnalysisSections = Record<string, Obj>;
 export function processingToData(s: ProcessingState): Obj {
   return {
     qc: {
-      rejected_cells: [...s.rejectedCells].sort((a, b) => a - b),
+      cell_numbering: CELL_NUMBERING,
+      rejected_cells: [...s.rejectedCells].sort((a, b) => a - b).map((c) => c + 1),
       position_jumps: {
         ...(s.excludeFrames.length && { exclude_frames: s.excludeFrames }),
         ...(s.keptFrames.length && { kept_frames: s.keptFrames }),
@@ -95,6 +107,14 @@ export function processingToData(s: ProcessingState): Obj {
   };
 }
 
+/** Rejected cells as 0-based indices; only a file marked `from 1` is shifted. */
+const rejectedFrom = (qc: Obj): number[] => {
+  const shift = qc.cell_numbering === CELL_NUMBERING ? 1 : 0;
+  return nums(qc.rejected_cells)
+    .map((c) => c - shift)
+    .filter((c) => c >= 0);
+};
+
 /** The state a processing.yaml holds; anything missing keeps the value in `base` (the defaults). */
 export function processingFromData(raw: unknown, base: ProcessingState): ProcessingState {
   const data = isObj(raw) ? raw : {};
@@ -110,7 +130,7 @@ export function processingFromData(raw: unknown, base: ProcessingState): Process
   const decon = isObj(pre.deconvolution) ? pre.deconvolution : {};
   const p = base.prep;
   return {
-    rejectedCells: 'rejected_cells' in qc ? nums(qc.rejected_cells) : base.rejectedCells,
+    rejectedCells: 'rejected_cells' in qc ? rejectedFrom(qc) : base.rejectedCells,
     excludeFrames: nums(jumps.exclude_frames),
     keptFrames: nums(jumps.kept_frames),
     annotationFixes: { merge: fixes.includes('merge'), drop: fixes.includes('remove') },
@@ -162,11 +182,17 @@ export function analysisFromData(raw: unknown): AnalysisSections {
 }
 
 /** YAML text with a header comment; lists without nested maps are written on one line. */
-export function yamlText(data: Obj, header: string): string {
+export function yamlText(data: Obj, header: string, comments: Record<string, string> = {}): string {
   const doc = new Document(data);
   visit(doc, {
     Seq(_, node) {
       if (!node.items.some(isMap)) node.flow = true;
+    },
+    Pair(_, pair) {
+      const key = isScalar(pair.key) ? String(pair.key.value) : '';
+      // Notes go after scalars and one-line lists only.
+      if (comments[key] && isNode(pair.value) && !(isMap(pair.value) && !pair.value.flow))
+        pair.value.comment = ` ${comments[key]}`;
     },
   });
   doc.commentBefore = ` ${header}`;

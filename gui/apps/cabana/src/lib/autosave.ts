@@ -5,6 +5,7 @@
 
 import { createEffect, createRoot, untrack } from 'solid-js';
 import { BridgeError } from './bridge-client.ts';
+import { canonicalJson } from './settings-hash.ts';
 import { openProject } from './open-project.ts';
 import {
   analysisToData,
@@ -13,6 +14,7 @@ import {
   describeExperiment,
   describeProcessing,
   joinSummary,
+  PROCESSING_COMMENTS,
   PROCESSING_HEADER,
   processingToData,
   yamlText,
@@ -50,7 +52,9 @@ const keyOf = (s: Snapshot, f: Written) => JSON.stringify(dataOf(s, f));
 
 function textOf(s: Snapshot, f: Written): string {
   if (f === 'experiment.yaml') return experimentYaml(s.experiment);
-  return yamlText(dataOf(s, f), f === 'processing.yaml' ? PROCESSING_HEADER : ANALYSIS_HEADER);
+  return f === 'processing.yaml'
+    ? yamlText(dataOf(s, f), PROCESSING_HEADER, PROCESSING_COMMENTS)
+    : yamlText(dataOf(s, f), ANALYSIS_HEADER);
 }
 
 /** The history line for a change to `file`, in words. */
@@ -84,11 +88,11 @@ function showSaved(): void {
   setSaveStatus({ kind: 'saved', at: new Date(), dir: session.project.path, files: savedFiles() });
 }
 
-async function write(force: boolean, summary?: string): Promise<void> {
+async function write(force: boolean, summary?: string, only: Written[] = WRITTEN): Promise<void> {
   const s = session;
   if (!s) return;
   const snap = untrack(snapshot);
-  const changed = WRITTEN.filter((f) => force || keyOf(snap, f) !== keyOf(s.saved, f));
+  const changed = only.filter((f) => force || keyOf(snap, f) !== keyOf(s.saved, f));
   if (!changed.length) return showSaved();
   setSaveStatus({ kind: 'saving' });
   try {
@@ -133,6 +137,23 @@ export async function saveNow(): Promise<void> {
 function schedule(ms: number): void {
   clearTimeout(timer);
   timer = setTimeout(() => void saveNow(), ms);
+}
+
+/**
+ * Write experiment.yaml when the file on disk is empty or differs from the setup now (a project
+ * whose setup came from a loaded config.yaml), so the file always holds the real setup. Written
+ * even with manual saving: it records what was loaded, not a change.
+ */
+export async function syncExperimentFile(onDisk: unknown): Promise<void> {
+  if (!session) return;
+  const current = untrack(snapshot).experiment;
+  if (!Object.keys(current).length || canonicalJson(onDisk ?? {}) === canonicalJson(current))
+    return;
+  await writing;
+  writing = write(true, 'Experimental setup written from the loaded files', [
+    'experiment.yaml',
+  ]).finally(() => (writing = undefined));
+  await writing;
 }
 
 /** Whether the project has changes not yet on disk (manual saving). */

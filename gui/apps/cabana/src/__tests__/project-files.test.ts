@@ -9,6 +9,7 @@ import {
   describeProcessing,
   processingFromData,
   processingToData,
+  PROCESSING_COMMENTS,
   PROCESSING_HEADER,
   yamlText,
   type ProcessingState,
@@ -59,7 +60,7 @@ describe('processing.yaml', () => {
     const text = yamlText(processingToData(changed()), PROCESSING_HEADER);
     expect(text.startsWith('# QC decisions and preprocessing')).toBe(true);
     expect(text.indexOf('qc:')).toBeLessThan(text.indexOf('preprocess:'));
-    expect(text).toContain('rejected_cells: [3, 11]');
+    expect(text).toContain('rejected_cells: [4, 12]');
     expect(text).toContain('event_smoothing_s: 0.2');
   });
 
@@ -144,5 +145,28 @@ describe('default project name from paths', () => {
     expect(defaultNameFromPaths(['/Volumes/Disk/a.csv', '/Volumes/Disk/b.csv'], now)).toBe(
       'Project 2026-11-18',
     );
+  });
+});
+
+describe('rejected cell numbering in processing.yaml', () => {
+  it('writes cells as the app shows them and marks the file', () => {
+    const text = yamlText(
+      processingToData({ ...defaults(), rejectedCells: [11] }),
+      PROCESSING_HEADER,
+      PROCESSING_COMMENTS,
+    );
+    expect(text).toContain('cell_numbering: from 1');
+    expect(text).toMatch(/rejected_cells: \[12\]\s+# /);
+    expect(processingFromData(parse(text), defaults()).rejectedCells).toEqual([11]);
+  });
+
+  it('reads a file without the marker as 0-based, as older files were written', () => {
+    const old = parse('qc:\n  rejected_cells: [11, 3]\n');
+    expect(processingFromData(old, defaults()).rejectedCells).toEqual([11, 3]);
+  });
+
+  it('writes the short notes after values', () => {
+    const text = yamlText(processingToData(defaults()), PROCESSING_HEADER, PROCESSING_COMMENTS);
+    expect(text).toMatch(/event_smoothing_s: .*# default 0 \(off\)/);
   });
 });
