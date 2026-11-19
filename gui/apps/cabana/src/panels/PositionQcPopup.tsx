@@ -19,6 +19,7 @@ import type { Segment } from '../lib/qc-segments.ts';
 import { maxSpeed } from '../lib/store.ts';
 import { PathMap, posOk, segIndex, segments, selectSegment, SpeedPlot } from './BehaviorQc.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
+import { plural } from '../lib/plural.ts';
 
 const keyOf = (s: Segment) => String(s.first);
 const OPTIONS: [JumpChoice | undefined, string][] = [
@@ -54,7 +55,7 @@ export function PositionQcPopup(): JSX.Element {
       title="Position · QC"
       sub={
         segments().length
-          ? `${segments().filter((s) => s.kind === 'jump').length} jumps · ${segments().filter((s) => s.kind === 'lost').length} lost stretches`
+          ? `${plural(segments().filter((s) => s.kind === 'jump').length, 'jump')} · ${plural(segments().filter((s) => s.kind === 'lost').length, 'lost stretch', 'lost stretches')}`
           : 'none flagged'
       }
       width={1060}

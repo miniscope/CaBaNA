@@ -3,6 +3,7 @@
 // then Rust/WASM, once its definition is settled, with the same inputs and
 // outputs.
 
+import { plural } from './plural.ts';
 import { column, type Footprints, type Matrix, type Table } from './parse.ts';
 import type { TimingReport } from './framework.ts';
 
@@ -136,7 +137,7 @@ export function timingChecks(name: string, r: TimingReport): Check[] {
       status: bad ? 'warn' : 'pass',
       value: `${r.nDropped} dropped (${(100 * r.droppedFraction).toFixed(2)}%), jitter ${(1000 * r.jitterS).toFixed(2)} ms`,
       limit: `allow 1% dropped, jitter ${(1000 * limit).toFixed(1)} ms`,
-      detail: `${r.nFrames.toLocaleString()} frames at ${r.fsMean.toFixed(2)} Hz. ${r.nDropped} dropped (${(100 * r.droppedFraction).toFixed(2)}%, limit 1%) in ${r.gapStart.length} gaps. Interval jitter ${(1000 * r.jitterS).toFixed(2)} ms (limit ${(1000 * limit).toFixed(1)} ms).`,
+      detail: `${r.nFrames.toLocaleString()} frames at ${r.fsMean.toFixed(2)} Hz. ${r.nDropped} dropped (${(100 * r.droppedFraction).toFixed(2)}%, limit 1%) in ${plural(r.gapStart.length, 'gap')}. Interval jitter ${(1000 * r.jitterS).toFixed(2)} ms (limit ${(1000 * limit).toFixed(1)} ms).`,
       fix: 'Dropped frames shift the clock. Check the acquisition log, and align the two clocks again if the camera and miniscope drifted apart.',
     },
   ];
@@ -161,7 +162,9 @@ export function alignmentChecks(
       group: 'Behavior',
       title: 'Timestamps match the neural data',
       status: off.length ? 'fail' : 'pass',
-      value: off.length ? `${off.length} of ${frames.length} files differ` : 'match',
+      value: off.length
+        ? `${off.length} of ${frames.length} files differ`
+        : 'match',
       limit: `${neuralT.length.toLocaleString()} timestamps`,
       detail: `The miniscope timestamps have ${neuralT.length.toLocaleString()} rows. ${frames.map(([name, n]) => `${name}: ${n.toLocaleString()} frames`).join('; ')}.`,
       fix: 'Load the timestamps file from the same recording, and check that no frames were cut from the neural data or the timestamps.',
@@ -340,10 +343,10 @@ export function footprintChecks(
     group: 'Neural',
     title: 'Overlapping footprints',
     status: failIfOver((100 * pairs.length) / Math.max(active, 1), tol.overlapPct),
-    value: `${pairs.length} pairs`,
+    value: plural(pairs.length, 'pair'),
     limit: `allow ${tol.overlapPct}%`,
     detail: pairs.length
-      ? `${pairs.length} cell pairs (${((100 * pairs.length) / Math.max(active, 1)).toFixed(1)}% of cells) share over half of the smaller footprint (allowed: ${tol.overlapPct}%). Click a cell to see it on the map.`
+      ? `${plural(pairs.length, 'cell pair')} (${((100 * pairs.length) / Math.max(active, 1)).toFixed(1)}% of cells) share${pairs.length === 1 ? 's' : ''} over half of the smaller footprint (allowed: ${tol.overlapPct}%). Click a cell to see it on the map.`
       : 'No cell pairs overlap by more than half.',
     fix: 'Reject one cell of each pair below, or merge duplicates in your source extraction and re-export.',
     pairs: pairs
@@ -356,7 +359,7 @@ export function footprintChecks(
       group: 'Neural',
       title: 'Empty footprints',
       status: 'warn',
-      detail: `${empty.length} cells have an all-zero footprint.`,
+      detail: `${plural(empty.length, 'cell')} ${empty.length === 1 ? 'has' : 'have'} an all-zero footprint.`,
     });
   return checks;
 }

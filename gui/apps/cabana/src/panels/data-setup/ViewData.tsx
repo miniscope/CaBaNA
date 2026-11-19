@@ -14,6 +14,7 @@ import {
   cellsLabel,
   footprintCentres,
   spanFractions,
+  cellNoteFlags,
   splitChecks,
   type QcFlag,
   type Where,
@@ -245,7 +246,14 @@ function FlagList(props: {
 export function ViewDataPopup(props: { id: SlotId }): JSX.Element {
   const split = () =>
     qcShown(props.id)
-      ? splitChecks(qcChecks(props.id), placeFlags(props.id))
+      ? splitChecks(
+          qcChecks(props.id),
+          placeFlags(props.id),
+          // only where the cell checks are shown for this file
+          MATRIX[props.id] && qcChecks(props.id).some((c) => c.id === 'corr')
+            ? cellNoteFlags(cellScores() ?? [])
+            : [],
+        )
       : { flags: [], passed: [] };
   const remove = () => {
     confirmAction({

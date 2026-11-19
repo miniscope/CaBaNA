@@ -1,6 +1,7 @@
 // The text of the QC pop-ups' flags box: numbered flags, then one line of what passed. Pure
 // functions of the checks and per-cell notes the QC tests already compute.
 
+import { plural } from './plural.ts';
 import type { Check } from './qc.ts';
 
 export interface FlagLine {
@@ -13,7 +14,7 @@ const WITH = /^(low SNR|no events|dense events|events )/;
 
 /** "3 cells correlated with a neighbor", "1 cell with low SNR". */
 export const cellsPhrase = (count: number, note: string): string =>
-  `${count} ${count === 1 ? 'cell' : 'cells'} ${WITH.test(note) ? 'with ' : ''}${note}`;
+  `${plural(count, 'cell')} ${WITH.test(note) ? 'with ' : ''}${note}`;
 
 /** How many flagged cells have each note, most common first. */
 export function noteCounts(notes: string[][]): { note: string; count: number }[] {
@@ -94,10 +95,10 @@ export function segmentLine(s: {
   return s.kind === 'jump'
     ? {
         title: `Jump at ${clock(s.start)}`,
-        detail: `${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${s.n} steps` : ''}`,
+        detail: `${s.peak!.toFixed(0)} cm/s${s.n > 1 ? ` over ${plural(s.n, 'step')}` : ''}`,
       }
     : {
         title: `Lost for ${(s.stop - s.start).toFixed(1)} s at ${clock(s.start)}`,
-        detail: `${s.n} frames`,
+        detail: plural(s.n, 'frame'),
       };
 }

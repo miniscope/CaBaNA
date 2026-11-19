@@ -2,6 +2,7 @@
 // and each flag knows where it is on the plot (cells, or stretches of the session), so the number
 // in the list matches the marker drawn. Pure functions; the pop-up supplies the real checks.
 
+import { cellsPhrase, noteCounts } from './qc-flags.ts';
 import type { Check } from './qc.ts';
 
 export interface QcFlag {
@@ -35,15 +36,18 @@ const text = (c: Check) => [c.value, c.limit].filter(Boolean).join(' · ');
 
 /**
  * Numbered flags and the passed checks. A check with cell pairs gives one flag per pair; any other
- * check that did not pass gives one flag. `where` places a flag by the check's id.
+ * check that did not pass gives one flag. `where` places a flag by the check's id. `cellNotes`
+ * (see cellNoteFlags) come first, as in the QC pop-up.
  */
 export function splitChecks(
   checks: Check[],
   where: Record<string, Where> = {},
+  cellNotes: Omit<QcFlag, 'n'>[] = [],
 ): { flags: QcFlag[]; passed: QcPassed[] } {
   const flags: QcFlag[] = [];
   const passed: QcPassed[] = [];
   const add = (f: Omit<QcFlag, 'n'>) => flags.push({ n: flags.length + 1, ...f });
+  cellNotes.forEach(add);
   // Pairs first: each is a place on the map.
   for (const c of checks)
     for (const p of c.pairs ?? [])
@@ -59,6 +63,24 @@ export function splitChecks(
     else add({ title: c.title, text: text(c), fix: c.fix, ...where[c.id] });
   }
   return { flags, passed };
+}
+
+/**
+ * One flag per kind of cell note ("12 cells correlated with a neighbor"), most common first, with
+ * the cells it points at. These are the flags the QC pop-up lists, so the view and the pop-up agree
+ * even when a check as a whole passes (it allows a share of poor cells). Rejected cells are left out.
+ */
+export function cellNoteFlags(
+  scores: { notes: string[]; rejected: boolean }[],
+): { title: string; text: string; cells: number[] }[] {
+  const flagged = scores.flatMap((s, c) =>
+    !s.rejected && s.notes.length ? [{ c, notes: s.notes }] : [],
+  );
+  return noteCounts(flagged.map((f) => f.notes)).map(({ note, count }) => ({
+    title: cellsPhrase(count, note),
+    text: '',
+    cells: flagged.filter((f) => f.notes.includes(note)).map((f) => f.c),
+  }));
 }
 
 type Level = 'good' | 'warn' | 'bad';
