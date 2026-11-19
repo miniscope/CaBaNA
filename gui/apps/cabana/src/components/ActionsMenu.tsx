@@ -212,8 +212,8 @@ export function ActionsMenu(props: {
             }}
           >
             {item.label}
-            <Show when={item.disabled || item.sub}>
-              <span class="cb-menu__sub">{item.disabled || item.sub}</span>
+            <Show when={(!item.tipOnly && item.disabled) || item.sub}>
+              <span class="cb-menu__sub">{(!item.tipOnly && item.disabled) || item.sub}</span>
             </Show>
           </button>
         );

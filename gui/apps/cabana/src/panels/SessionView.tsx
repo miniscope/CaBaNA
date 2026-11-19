@@ -352,9 +352,12 @@ function HeatTrack(): JSX.Element {
         selectCell(Math.min(matrixOf(heat()!)!.cells - 1, Math.floor(f * matrixOf(heat()!)!.cells)))
       }
       draw={(ctx, H) => {
-        const m = matrixOf(heat()!)!;
-        const sc = heatScale()!;
-        const t = neuralT()!;
+        // Clearing the session empties the data before this box unmounts.
+        const h = heat();
+        const m = h && matrixOf(h);
+        const sc = heatScale();
+        const t = neuralT();
+        if (!m || !sc || !t) return;
         const [t0, t1] = win();
         const img = ctx.createImageData(W, m.cells);
         for (let x = 0; x < W; x++) {

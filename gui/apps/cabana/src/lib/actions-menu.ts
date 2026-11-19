@@ -11,6 +11,8 @@ export type MenuItem =
       sub?: string;
       danger?: boolean;
       disabled?: string;
+      /** Show the `disabled` reason only as a tooltip, not as a line on the row. */
+      tipOnly?: boolean;
       /** Leave the menu open after the action (a view setting that updates the plot at once). */
       keepOpen?: boolean;
       onSelect: () => void;
