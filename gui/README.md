@@ -59,16 +59,28 @@ Planned features include PETH, decoding, population and custom analyses, a Plott
 
 ## Getting started
 
-Requires Node.js 22 or newer. From a terminal:
+The current GUI is on the `gui-revamp` branch; `main` has an older version. Requires Node.js 22
+or newer, and [uv](https://docs.astral.sh/uv/) for the Python engine. From a terminal:
 
 ```bash
-git clone https://github.com/miniscope/CaBaNA.git
+git clone -b gui-revamp https://github.com/miniscope/CaBaNA.git
 cd CaBaNA/gui
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173/CaBaNA/](http://localhost:5173/CaBaNA/) and keep the terminal running.
+With an existing clone, run `git fetch && git checkout gui-revamp && git pull` in it first.
+
+To run the analyses that use the Python engine, start it in a second terminal from the `CaBaNA`
+folder (the first start takes a minute or so while uv downloads the framework):
+
+```bash
+uv run --project gui/bridge cabana-bridge --project-dir gui/.project-dev --port 8765
+```
+
+Open the address it prints (`http://localhost:5173/?bridge=...`) and keep both terminals running.
+Without the engine, open [http://localhost:5173/](http://localhost:5173/); the analyses that need
+it say so.
 
 Select **Example data** and choose a simulated session to explore the workflow. You can also load your own files or a folder. Everything runs locally in the browser; no files are uploaded.
 

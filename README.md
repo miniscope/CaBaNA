@@ -15,7 +15,7 @@ Early development. Nothing here is stable yet.
 
 `gui/` holds a browser interface for CaBaNA: load data, set up the experiment, check data
 quality, preprocess, and run the place-cell and auROC analyses. See [gui/README.md](gui/README.md)
-for how to run it and what is built.
+for how to run it and what is built. The current GUI is on the `gui-revamp` branch.
 
 ## Example data
 
