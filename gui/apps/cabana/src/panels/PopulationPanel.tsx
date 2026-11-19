@@ -8,8 +8,8 @@ import {
   populationSettingIssues,
   populationSettings as s,
 } from '../lib/population-settings.ts';
-import { openedRun, openRunOf } from '../lib/results-nav.ts';
-import { active, blockers, runAnalysis } from '../lib/runs.ts';
+import { openedRun } from '../lib/results-nav.ts';
+import { active, blockers } from '../lib/runs.ts';
 import { PopulationResults } from './PopulationResults.tsx';
 import { neuralSummary, readiness, syncLabels } from './population/data.ts';
 import { METHOD_NAME, MethodsSection } from './population/MethodsSection.tsx';
@@ -45,15 +45,6 @@ export function PopulationSetup(props: {
       : issues().length
         ? `${issues()[0]}${issues().length > 1 ? ` (${issues().length - 1} more)` : ''}`
         : undefined;
-  const start = async (scope: 'full' | 'preview') => {
-    g.setStage('run'); // the Preview window closes when a run starts
-    const rec = await runAnalysis('population', scope);
-    if (rec && rec.status !== 'failed') {
-      openRunOf('population', undefined);
-      setShowResults(true);
-    }
-  };
-
   const sectionBody = (id: string) => (
     <>
       <Show when={id === 'target'}>
@@ -88,13 +79,7 @@ export function PopulationSetup(props: {
       when={n()}
       fallback={<div class="cb-empty">Load deconvolved events to run this analysis.</div>}
     >
-      <ReviewStage
-        g={g}
-        engineOff={engineOff()}
-        issues={issues()}
-        blockedText={blockedText()}
-        onStart={(scope) => void start(scope)}
-      />
+      <ReviewStage engineOff={engineOff()} issues={issues()} blockedText={blockedText()} />
     </Show>
   );
 

@@ -8,7 +8,6 @@ import {
   placeOutcome,
   placeSettings,
   placeStatus,
-  runPlaceCells,
   placeShowResults,
   setPlaceShowResults,
   watchPlaceRuns,
@@ -25,6 +24,7 @@ import { PlaceResults } from './PlaceResults.tsx';
 import { PlaceReviewStage, placeSummary } from './PlaceReviewStage.tsx';
 import { auto } from './PlaceSettingFields.tsx';
 import { PlaceTuningSettings } from './PlaceTuningSettings.tsx';
+import { ENGINE_NEEDED } from './PreviewBody.tsx';
 
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('place', 'maps');
@@ -94,12 +94,7 @@ export function PlaceSetup(props: {
       : undefined;
   };
   const framework = () => engineFor('place') === 'framework';
-  const previewBlocked = () =>
-    !framework()
-      ? 'Needs the framework engine. This page runs on the browser engine; Quick preview runs only on the framework engine.'
-      : !frameworkReady()
-        ? 'Needs the framework engine, which is not connected.'
-        : undefined;
+  const previewBlocked = () => (framework() && frameworkReady() ? undefined : ENGINE_NEEDED);
   const blocked = () =>
     !ready()
       ? 'Load deconvolved neural data and position first.'
@@ -108,10 +103,6 @@ export function PlaceSetup(props: {
         : framework() && !frameworkReady()
           ? 'The framework engine is not connected. Use the browser engine button above, or connect the bridge.'
           : undefined;
-  const start = (preview: boolean) => {
-    g.setStage('run'); // the Preview window closes when a run starts
-    void runPlaceCells(preview ? { preview: true } : {});
-  };
 
   const sectionBody = () => (
     <>
@@ -161,12 +152,8 @@ export function PlaceSetup(props: {
       }
     >
       <PlaceReviewStage
-        g={g}
         groups={placeSummary(ok()?.used, framework())}
-        running={!!running()}
-        blocked={blocked()}
-        previewBlocked={previewBlocked()}
-        onRun={start}
+        blocked={previewBlocked() ?? (running() ? 'A run is in progress.' : blocked())}
       />
     </Show>
   );

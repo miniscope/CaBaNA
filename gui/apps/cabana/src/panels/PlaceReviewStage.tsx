@@ -1,18 +1,14 @@
-// The Review and preview stage of the Place cells page: every setting a run uses, the engine
-// notice and the choice between a quick preview and the full run.
+// The Preview window of the Place cells page, and the summary of every setting a run uses.
 
 import { type JSX } from 'solid-js';
-import { RunChoice, SettingsSummary, type SummaryGroup } from '../components/GuidedReview.tsx';
+import type { SummaryGroup } from '../components/GuidedReview.tsx';
 import { arena, effectiveBin, sizeCm } from '../lib/arena.ts';
-import type { Guided } from '../lib/guided.ts';
 import { placeSettings } from '../lib/place-run.ts';
 import { denomText, percentText } from '../lib/metrics.ts';
-import { shufflesFor } from '../lib/preview.ts';
 import { placeNeural } from '../lib/prepared.ts';
 import { prep } from '../lib/preprocess.ts';
 import { auto } from './PlaceSettingFields.tsx';
-import { EngineNotice } from './results/EngineNotice.tsx';
-import { ShuffleReach } from './parts.tsx';
+import { PreviewBody } from './PreviewBody.tsx';
 
 /** Every setting a run uses, grouped like the Configure sections. `used` is the retained frame count. */
 export function placeSummary(used: number | undefined, framework: boolean): SummaryGroup[] {
@@ -65,29 +61,32 @@ export function placeSummary(used: number | undefined, framework: boolean): Summ
   ];
 }
 
-/** The Review stage: the settings summary, the engine notice and the preview or full run choice. */
+/** The Preview window of Place cells: the preview run's maps, the shuffle count and Run preview. */
 export function PlaceReviewStage(props: {
-  g: Guided;
   groups: SummaryGroup[];
-  running: boolean;
   blocked?: string;
-  previewBlocked?: string;
-  onRun: (preview: boolean) => void;
 }): JSX.Element {
-  const ps = placeSettings;
   return (
-    <div class="cb-gs-review">
-      <SettingsSummary g={props.g} groups={props.groups} />
-      <EngineNotice mode="place" busy={props.running} onBrowserRun={() => props.onRun(false)} />
-      <RunChoice
-        full={ps.nShuffles}
-        preview={shufflesFor('preview', ps.nShuffles)}
-        previewBlocked={props.previewBlocked}
-        blocked={props.running ? 'A run is in progress.' : props.blocked}
-        onPreview={() => props.onRun(true)}
-        onFull={() => props.onRun(false)}
-      />
-      <ShuffleReach shuffles={ps.nShuffles} alpha={ps.alpha} preview={!props.previewBlocked} />
-    </div>
+    <PreviewBody
+      id="place"
+      groups={props.groups}
+      full={placeSettings.nShuffles}
+      alpha={placeSettings.alpha}
+      blocked={props.blocked}
+      how={
+        <>
+          <p>
+            A preview runs the whole analysis with fewer shuffles, so its p-values are coarser than
+            the full analysis's: the smallest p it can give is 1 / (shuffles + 1). Use it to check
+            the settings, not to report or rank cells.
+          </p>
+          <p>
+            Each map is one cell's event-rate map over the arena, scaled to that cell's own peak, so
+            compare shapes and not brightness. Cells are listed by spatial information, highest
+            first. Grey bins were visited too little to estimate a rate.
+          </p>
+        </>
+      }
+    />
   );
 }

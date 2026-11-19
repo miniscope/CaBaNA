@@ -1,15 +1,12 @@
 // auROC setup: the stage list and review summary, the review stage, and the run stage.
 import { type JSX } from 'solid-js';
 import type { GuidedSection } from '../components/GuidedSetup.tsx';
-import { RunChoice, SettingsSummary, type SummaryGroup } from '../components/GuidedReview.tsx';
-import type { Guided } from '../lib/guided.ts';
+import type { SummaryGroup } from '../components/GuidedReview.tsx';
 import { aurocPlan, aurocSettings, type AurocData } from '../lib/auroc-run.ts';
 import { frameSelection, percentOf } from '../lib/auroc-setup.ts';
-import { shufflesFor } from '../lib/preview.ts';
 import { prep } from '../lib/preprocess.ts';
-import { ShuffleReach } from './parts.tsx';
+import { PreviewBody } from './PreviewBody.tsx';
 import { ComparisonTimeline } from './AurocComparisonTimeline.tsx';
-import { EngineNotice } from './results/EngineNotice.tsx';
 
 /** What the stage list and the review summary read from the setup page. */
 export interface AurocSetupView {
@@ -119,47 +116,37 @@ export function aurocSummary(v: AurocSetupView): SummaryGroup[] {
   ];
 }
 
-/** The review stage: the settings summary beside the comparison timeline and the run buttons. */
+/** The Preview window of auROC: the preview run's result, the comparison timeline and Run preview. */
 export function AurocReviewStage(props: {
-  g: Guided;
   summary: () => SummaryGroup[];
   ok: () => AurocData;
   plan: () => NonNullable<ReturnType<typeof aurocPlan>>;
   pairMode: () => boolean;
-  running: () => unknown;
-  previewBlocked: () => string | undefined;
   blocked: () => string | undefined;
-  start: (preview: boolean, engine?: 'browser') => void;
 }): JSX.Element {
-  const { g, summary, ok, plan, pairMode, running, previewBlocked, blocked, start } = props;
   return (
-    <>
-      <div class="cb-gs-review cb-au-review">
-        <div class="cb-au-review__left">
-          <SettingsSummary g={g} groups={summary()} />
-        </div>
-        <div class="cb-au-review__right">
-          <ComparisonTimeline data={ok()!} plan={plan()!} pair={pairMode()} />
-          <EngineNotice
-            mode="auroc"
-            busy={!!running()}
-            onBrowserRun={() => start(false, 'browser')}
-          />
-          <RunChoice
-            full={aurocSettings.nShuffles}
-            preview={shufflesFor('preview', aurocSettings.nShuffles)}
-            previewBlocked={previewBlocked()}
-            blocked={blocked()}
-            onPreview={() => start(true)}
-            onFull={() => start(false)}
-          />
-          <ShuffleReach
-            shuffles={aurocSettings.nShuffles}
-            alpha={aurocSettings.alpha}
-            preview={!previewBlocked()}
-          />
-        </div>
-      </div>
-    </>
+    <PreviewBody
+      id="auroc"
+      groups={props.summary()}
+      full={aurocSettings.nShuffles}
+      alpha={aurocSettings.alpha}
+      blocked={props.blocked()}
+      below={
+        <ComparisonTimeline data={props.ok()} plan={props.plan()} pair={props.pairMode()} />
+      }
+      how={
+        <>
+          <p>
+            A preview runs the whole analysis with fewer shuffles, so its p-values are coarser than
+            the full analysis's: the smallest p it can give is 2 / (shuffles + 1). Use it to check
+            the settings, not to report or rank cells.
+          </p>
+          <p>
+            The timeline shows which frames are compared: frames in the behavior against the frames
+            it is compared with, after the frame selection.
+          </p>
+        </>
+      }
+    />
   );
 }

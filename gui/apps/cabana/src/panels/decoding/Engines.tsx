@@ -67,7 +67,7 @@ export function EngineSection(props: {
           request={props.request}
           note={
             props.frameworkRunning
-              ? 'Runs the full analysis and the Quick preview.'
+              ? 'Runs the full analysis and Preview runs.'
               : 'Not running. Start it from Checks below to use it.'
           }
         />

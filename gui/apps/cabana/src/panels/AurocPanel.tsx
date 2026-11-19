@@ -27,7 +27,6 @@ import {
   autoShift,
   DEFAULT_AUROC_SETTINGS,
   estimateMinShift,
-  runAuroc,
   setAurocSettings,
   setAurocShowResults,
   watchAurocRuns,
@@ -50,6 +49,7 @@ import {
   type AurocSetupView,
 } from './AurocSetupReview.tsx';
 import { AurocResults } from './AurocResults.tsx';
+import { ENGINE_NEEDED } from './PreviewBody.tsx';
 import { CloseX } from '../components/CloseX.tsx';
 
 const PALETTE = ['#1f77b4', '#2ca02c', '#8c6d3f', '#c9a227', '#9467bd', '#d62728', '#17becf'];
@@ -276,12 +276,7 @@ export function AurocSetup(props: {
 
   const settingIssues = () => aurocSettingIssues(aurocSettings);
   const framework = () => engineFor('auroc') === 'framework';
-  const previewBlocked = () =>
-    !framework()
-      ? 'Needs the framework engine. Against another behavior, auROC runs on the browser engine, and Quick preview runs only on the framework engine.'
-      : !frameworkReady()
-        ? 'Needs the framework engine, which is not connected.'
-        : undefined;
+  const previewBlocked = () => (framework() && frameworkReady() ? undefined : ENGINE_NEEDED);
   const blocked = () =>
     running()
       ? 'A run is in progress.'
@@ -294,10 +289,6 @@ export function AurocSetup(props: {
             : framework() && !frameworkReady()
               ? 'The framework engine is not connected. Use the browser engine button above, or connect the bridge.'
               : undefined;
-  const start = (preview: boolean, engine?: 'browser') => {
-    g.setStage('run'); // the Preview window closes when a run starts
-    void runAuroc({ ...(preview ? { preview: true } : {}), ...(engine ? { engine } : {}) });
-  };
 
   const behaviorNames = () => selected().join(', ') || 'none selected';
   const smoothing = () => (prep.eventSigmaS ? `Gaussian σ = ${prep.eventSigmaS} s` : 'none');
@@ -463,15 +454,11 @@ export function AurocSetup(props: {
       }
     >
       <AurocReviewStage
-        g={g}
         summary={summary}
         ok={okData}
         plan={plan as () => NonNullable<ReturnType<typeof aurocPlan>>}
         pairMode={pairMode}
-        running={running}
-        previewBlocked={previewBlocked}
-        blocked={blocked}
-        start={start}
+        blocked={() => previewBlocked() ?? blocked()}
       />
     </Show>
   );

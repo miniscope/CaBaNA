@@ -1,37 +1,38 @@
-// The Review and preview stage of the guided Population page: settings summary, data preview and run choice.
+// The Preview window of the Population page: the preview run's result, the shuffle count and Run preview.
 import { Show, type JSX } from 'solid-js';
-import type { Guided } from '../../lib/guided.ts';
-import { RunChoice, SettingsSummary } from '../../components/GuidedReview.tsx';
 import { populationSettings as s } from '../../lib/population-settings.ts';
-import { shufflesFor } from '../../lib/preview.ts';
-import { ShuffleReach } from '../parts.tsx';
 import { PopButton } from '../QcParts.tsx';
+import { ENGINE_NEEDED, PreviewBody } from '../PreviewBody.tsx';
 import { Unavailable } from '../results/FrameworkNotice.tsx';
-import { DataPreview } from './DataPreview.tsx';
 import { populationSummary } from './SetupSummary.tsx';
 
 export function ReviewStage(props: {
-  g: Guided;
   engineOff: boolean;
   issues: string[];
   blockedText?: string;
-  onStart: (scope: 'full' | 'preview') => void;
 }): JSX.Element {
   return (
-    <div class="cb-gs-review">
-      <SettingsSummary g={props.g} groups={populationSummary()} />
-      <DataPreview />
-      <Show when={props.engineOff}>
-        <Unavailable engineOff />
-      </Show>
-      <RunChoice
+    <>
+      <PreviewBody
+        id="population"
+        groups={populationSummary()}
         full={s.shuffles}
-        preview={shufflesFor('preview', s.shuffles)}
-        blocked={props.blockedText}
-        onPreview={() => props.onStart('preview')}
-        onFull={() => props.onStart('full')}
+        alpha={s.alpha}
+        blocked={props.engineOff ? ENGINE_NEEDED : props.blockedText}
+        how={
+          <>
+            <p>
+              A preview runs the selected methods with fewer shuffles, so its p-values are coarser
+              than the full analysis's: the smallest p it can give is 1 / (shuffles + 1). Use it to
+              check the settings, not to report.
+            </p>
+            <p>
+              The Python engine runs the preview and saves it as a Preview run. Its plots and
+              tables open from Previous results.
+            </p>
+          </>
+        }
       />
-      <ShuffleReach shuffles={s.shuffles} alpha={s.alpha} />
       <Show when={props.issues.length > 1}>
         <PopButton
           label="Why the run is blocked"
@@ -46,6 +47,6 @@ export function ReviewStage(props: {
           />
         </PopButton>
       </Show>
-    </div>
+    </>
   );
 }

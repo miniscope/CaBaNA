@@ -1,32 +1,21 @@
 // The Decoding setup on the shared guided setup: Configure (target and data, decoder, train and
-// test, significance), Review and preview (summary, engines, checks, Quick preview or full run) and
-// Run. Same structure as Place cells.
+// test, significance) and the Preview window. Same structure as Place cells.
 
 import { Show, onCleanup, onMount, type JSX } from 'solid-js';
 import { ConfigureBody, type ConfigureControl } from '../../components/ConfigureBody.tsx';
 import { type GuidedSection } from '../../components/GuidedSetup.tsx';
-import { RunChoice, SettingsSummary, type SummaryGroup } from '../../components/GuidedReview.tsx';
+import type { SummaryGroup } from '../../components/GuidedReview.tsx';
 import { hasCapability } from '../../lib/bridge-status.ts';
 import { decodeEvents } from '../../lib/decode-data.ts';
-import {
-  BROWSER_DECODING_RUN_LABEL,
-  browserBlock,
-  browserStatus,
-  foldedTimes,
-  runBrowserDecoding,
-  setShownEngine,
-} from '../../lib/decoding-browser.ts';
+import { browserStatus, foldedTimes } from '../../lib/decoding-browser.ts';
 import { guided } from '../../lib/guided.ts';
 import { prep } from '../../lib/preprocess.ts';
-import { shufflesFor } from '../../lib/preview.ts';
-import { active, runAnalysis } from '../../lib/runs.ts';
-import { ShuffleReach } from '../parts.tsx';
+import { active } from '../../lib/runs.ts';
+import { ENGINE_NEEDED, PreviewBody } from '../PreviewBody.tsx';
 import { fitToWindow } from '../QcPanel.tsx';
-import { EngineSection } from './Engines.tsx';
-import { gapBlock, type Request } from './engines.ts';
+import { gapBlock } from './engines.ts';
 import { reviewGroups, sectionSummary } from './review.ts';
 import {
-  ChecksView,
   DecoderView,
   FoldsView,
   FramesView,
@@ -38,19 +27,6 @@ import { checks, decodeView, runBlock, shared } from './state.ts';
 
 // Kept outside the page so the open stage and section survive a visit to the results.
 const g = guided('decoding', 'target');
-
-const request = (): Request => {
-  const v = decodeView();
-  return {
-    target: v.target,
-    decoder: v.decoder,
-    mode: v.mode,
-    overlap: v.overlap,
-    foldGapS: v.foldGapS,
-  };
-};
-
-const previewCount = () => shufflesFor('preview', shared().shuffles);
 
 /** The method in a few paragraphs, and where it comes from. */
 export function Method(): JSX.Element {
@@ -92,23 +68,9 @@ export function DecodingSetup(props: {
   const run = () => (active()?.id === 'decoding' ? active() : undefined);
   const c = () => checks();
   const frameworkRunning = () => !c().engineOff;
-  // The browser engine is offered, as its own labeled action, when the Python engine cannot run.
-  const browserOffered = () => c().engineOff || c().framework.length > 0;
   const browserRunning = () => browserStatus().kind === 'running';
-  const problems = () => c().needsInput.length + c().framework.length + (c().engineOff ? 1 : 0);
   const blocked = () => (run() || browserRunning() ? 'A run is in progress.' : runBlock());
-  const previewBlocked = () =>
-    frameworkRunning() ? undefined : 'Needs the Python framework, which is not running.';
-
-  const startFramework = (scope: 'full' | 'preview') => {
-    setShownEngine('framework');
-    g.setStage('run'); // the Preview window closes when a run starts
-    void runAnalysis('decoding', scope);
-  };
-  const startBrowser = () => {
-    g.setStage('run');
-    void runBrowserDecoding();
-  };
+  const previewBlocked = () => (frameworkRunning() ? undefined : ENGINE_NEEDED);
 
   const dataFacts = () => {
     const e = decodeEvents();
@@ -169,32 +131,26 @@ export function DecodingSetup(props: {
   );
 
   const reviewView = () => (
-    <div class="cb-gs-review">
-      <SettingsSummary g={g} groups={summary()} />
-      <EngineSection
-        request={request()}
-        frameworkRunning={frameworkRunning()}
-        browserOffered={browserOffered()}
-        browserBlock={browserBlock()}
-        busy={!!run() || browserRunning()}
-        onBrowserRun={startBrowser}
-        runLabel={BROWSER_DECODING_RUN_LABEL}
-      />
-      <Show when={problems()}>
-        <div class="cb-dg-checks">
-          <ChecksView />
-        </div>
-      </Show>
-      <RunChoice
-        full={shared().shuffles}
-        preview={previewCount()}
-        previewBlocked={previewBlocked()}
-        blocked={blocked()}
-        onPreview={() => startFramework('preview')}
-        onFull={() => startFramework('full')}
-      />
-      <ShuffleReach shuffles={shared().shuffles} alpha={shared().alpha} />
-    </div>
+    <PreviewBody
+      id="decoding"
+      groups={summary()}
+      full={shared().shuffles}
+      alpha={shared().alpha}
+      blocked={previewBlocked() ?? blocked()}
+      how={
+        <>
+          <p>
+            A preview runs the whole cross-validated decode with fewer label shuffles, so its
+            p-values are coarser than the full analysis's: the smallest p it can give is 1 /
+            (shuffles + 1). Use it to check the settings, not to report.
+          </p>
+          <p>
+            The Python engine runs the preview and saves it as a Preview run. Its plots and tables
+            open from Previous results.
+          </p>
+        </>
+      }
+    />
   );
 
   return (

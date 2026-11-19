@@ -1,8 +1,7 @@
-// The Review stage of the guided setup: a summary of every setting, the Quick preview / Full
-// analysis choice with live shuffle counts and the p floor, and the "How it works" button.
+// Shared pieces of the guided setups: a summary of every setting and the "How it works" button.
 
 import { createSignal, For, Show, type JSX } from 'solid-js';
-import { pFloorText, type Guided } from '../lib/guided.ts';
+import type { Guided } from '../lib/guided.ts';
 import { Popover } from '../panels/Popover.tsx';
 
 export interface SummaryGroup {
@@ -52,70 +51,6 @@ export function SettingsSummary(props: { g: Guided; groups: SummaryGroup[] }): J
           </section>
         )}
       </For>
-    </div>
-  );
-}
-
-/**
- * The two ways to run: Quick preview (fewer shuffles, saved as Preliminary) and the full analysis
- * with the configured count. Each says when to use it and the smallest p its shuffle count allows.
- */
-export function RunChoice(props: {
-  full: number;
-  preview: number;
-  /** Why Quick preview can't run here (e.g. it needs the framework engine), if it can't. */
-  previewBlocked?: string;
-  /** The analysis has no reduced-shuffle run at all, so the card only says why (with `previewBlocked`). */
-  noPreview?: boolean;
-  /** Why neither can run, if neither can. */
-  blocked?: string;
-  /** Text for a test that has no shuffles (PETH curves only, say); replaces the shuffle lines. */
-  noTest?: string;
-  onPreview: () => void;
-  onFull: () => void;
-}): JSX.Element {
-  return (
-    <div class="cb-gs-choice">
-      <div class="cb-gs-card" classList={{ 'cb-gs-card--off': !!props.previewBlocked }}>
-        <h4>Quick preview</h4>
-        <Show when={!props.noPreview}>
-          <p>
-            The full analysis with up to {props.preview} shuffles ({pFloorText(props.preview)}).
-            For checking settings, not for reporting or ranking cells. Saved as Preliminary.
-          </p>
-        </Show>
-        <Show when={props.previewBlocked}>
-          <p class="cb-warn">{props.previewBlocked}</p>
-        </Show>
-        <button
-          type="button"
-          class="btn-secondary"
-          disabled={!!props.previewBlocked || !!props.blocked}
-          onClick={() => props.onPreview()}
-        >
-          Run Quick preview ({props.preview} shuffles)
-        </button>
-      </div>
-      <div class="cb-gs-card">
-        <h4>Full analysis</h4>
-        <p>
-          <Show when={!props.noTest} fallback={props.noTest}>
-            {props.full.toLocaleString()} shuffles ({pFloorText(props.full)}). Use for results you
-            report.
-          </Show>
-        </p>
-        <button
-          type="button"
-          class="btn-primary"
-          disabled={!!props.blocked}
-          onClick={() => props.onFull()}
-        >
-          Run full analysis
-        </button>
-      </div>
-      <Show when={props.blocked}>
-        <p class="cb-warn cb-gs-choice__why">{props.blocked}</p>
-      </Show>
     </div>
   );
 }
