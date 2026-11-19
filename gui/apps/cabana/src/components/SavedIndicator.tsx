@@ -19,6 +19,11 @@ export function SavedIndicator(): JSX.Element {
         class={`cb-saved cb-saved--${line().tone}`}
         aria-haspopup="dialog"
         aria-expanded={open()}
+        title={
+          saveStatus().kind === 'example'
+            ? 'Not saved yet. Manage project → Save as project… keeps the work done so far.'
+            : undefined
+        }
         onClick={() => setOpen(!open())}
       >
         {line().text}

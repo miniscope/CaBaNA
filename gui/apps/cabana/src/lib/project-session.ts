@@ -32,16 +32,23 @@ import {
 } from './projects-client.ts';
 import { setSaveStatus } from './save-status.ts';
 import type { SlotId } from './slots.ts';
-import { addFiles, clearAll, goToStep, onClear, setSessionName } from './store.ts';
+import { addFiles, clearAll, exampleMedia, goToStep, onClear, setSessionName } from './store.ts';
 
 /** True when the engine can list and save projects. */
 export const projectsOn = (): boolean => bridgeReady();
 
-// The indicator reads "Not saved" for the reason that applies until a project is open.
+// Until a project is open the indicator reads "Example data · Unsaved" for an example, else
+// "Not saved" with the reason that applies.
 createRoot(() =>
   createEffect(() => {
-    if (!openProject())
-      setSaveStatus(bridgeReady() ? { kind: 'no-project' } : { kind: 'engine-off' });
+    if (openProject()) return;
+    setSaveStatus(
+      exampleMedia()
+        ? { kind: 'example' }
+        : bridgeReady()
+          ? { kind: 'no-project' }
+          : { kind: 'engine-off' },
+    );
   }),
 );
 

@@ -1,4 +1,4 @@
-// What the header's Saved indicator says. Nothing writes to disk yet, so it starts as engine-off.
+// What the header's Saved indicator says. It starts as engine-off until the engine is found.
 
 import { createSignal } from 'solid-js';
 
@@ -11,8 +11,10 @@ export type SaveStatus =
   | { kind: 'saved'; at: Date; dir: string; files: SavedFile[] }
   | { kind: 'saving' }
   | { kind: 'engine-off' }
-  /** The engine is on but no project is open (an example, or files not saved to a project yet). */
+  /** The engine is on but no project is open (files not saved to a project yet). */
   | { kind: 'no-project' }
+  /** Example data: a project that has not been saved yet. */
+  | { kind: 'example' }
   /** The engine refused a write. */
   | { kind: 'error'; message: string }
   /** Manual saving mode with edits not yet written. */
@@ -38,6 +40,8 @@ export function saveText(status: SaveStatus): { text: string; tone: SaveTone } {
       return { text: 'Not saved: engine off', tone: 'flag' };
     case 'no-project':
       return { text: 'Not saved: no project open', tone: 'flag' };
+    case 'example':
+      return { text: 'Example data · Unsaved', tone: 'neutral' };
     case 'error':
       return { text: 'Not saved: engine error', tone: 'flag' };
     case 'unsaved':
@@ -48,14 +52,21 @@ export function saveText(status: SaveStatus): { text: string; tone: SaveTone } {
 /** More than the indicator's words, for the readings that are not in the list below. */
 export function saveNote(status: SaveStatus): string | undefined {
   if (status.kind === 'no-project')
-    return 'Example data and files loaded without a project are not saved. Create a project with + New Project.';
+    return 'Files loaded without a project are not saved. Create a project with + New Project.';
+  if (status.kind === 'example')
+    return 'Example data is a project that has not been saved yet. Save it with Manage project → Save as project…, which keeps the work done so far.';
   if (status.kind === 'error') return status.message;
   return undefined;
 }
 
-/** The four readings of the indicator, explained in its popover. */
+/** The readings of the indicator, explained in its popover. */
 export const SAVE_STATES: { text: string; tone: SaveTone; detail: string }[] = [
   { text: 'Saved 10:42', tone: 'neutral', detail: 'All changes are in the project folder.' },
+  {
+    text: 'Example data · Unsaved',
+    tone: 'neutral',
+    detail: 'Not in a project folder yet (Manage project → Save as project…).',
+  },
   { text: 'Saving…', tone: 'neutral', detail: 'Written about a second after a change stops.' },
   {
     text: 'Not saved: engine off',
