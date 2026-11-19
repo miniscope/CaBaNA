@@ -287,3 +287,17 @@ def test_unknown_project_and_missing_secret(pb):
     c, _, _ = pb
     assert c.call("GET", "/projects/0123456789ab/history")[0] == 404
     assert c.call("GET", "/projects", secret=None)[0] == 403
+
+
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [
+        ("a: 1\nb: [1, 2\nc: 3\n", 2),  # list never closed: blame where it opens
+        ("a: 1\nb: 'x\nc: 3\n", 2),  # quote never closed
+        ("a: 1\nb: 2\n  c: 3\n", 3),  # the bad line itself
+        ("a: 1\nb: : 2\n", 2),
+    ],
+)
+def test_yaml_error_names_the_line_with_the_mistake(text, line):
+    data, error = project_files.parse_text(text)
+    assert data is None and error["line"] == line

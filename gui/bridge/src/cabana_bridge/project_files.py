@@ -30,14 +30,23 @@ def check_name(name: str) -> str:
     return name
 
 
+def _error_line(exc: yaml.YAMLError) -> int | None:
+    """1-based line to blame. A list, map or quoted text that is never closed is only noticed at
+    the next line that cannot belong to it, so the line where it was opened is reported instead."""
+    problem, context = getattr(exc, "problem_mark", None), getattr(exc, "context_mark", None)
+    opened = getattr(exc, "context", None) or ""
+    if context is not None and ("flow" in opened or "quoted scalar" in opened):
+        return context.line + 1
+    return problem.line + 1 if problem is not None else None
+
+
 def parse_text(text: str) -> tuple[dict | None, dict | None]:
     """Returns (data, error). Empty text is an empty mapping; any other top level is an error."""
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
         message = getattr(exc, "problem", None) or str(exc)
-        return None, {"line": mark.line + 1 if mark else None, "message": message}
+        return None, {"line": _error_line(exc), "message": message}
     if data is None:
         data = {}
     if not isinstance(data, dict):
