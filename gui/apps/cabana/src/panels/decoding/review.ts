@@ -152,7 +152,7 @@ export function reviewGroups(v: DecodeView, d: DataFacts): SummaryGroup[] {
 /** What the last run was, as the cards of the Run stage. */
 export interface LastRun {
   engine: EngineId;
-  preliminary: boolean;
+  preview: boolean;
   shuffles?: number;
   foldGapS?: number;
   outdated: boolean;
@@ -162,12 +162,12 @@ export function runCards(r: LastRun): MetricCard[] {
     { label: 'Engine', value: r.engine === 'framework' ? 'Framework' : 'Browser', tone: 'blue' },
     {
       label: 'Analysis',
-      value: r.preliminary ? 'Preliminary' : 'Full',
+      value: r.preview ? 'Preview' : 'Full',
       denom:
         r.shuffles === undefined
           ? 'shuffle count not recorded'
           : `${r.shuffles.toLocaleString()} shuffles`,
-      tone: r.preliminary ? 'warn' : 'neutral',
+      tone: r.preview ? 'warn' : 'neutral',
     },
     {
       label: 'Training/test separation',

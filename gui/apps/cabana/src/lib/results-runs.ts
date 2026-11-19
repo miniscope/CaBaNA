@@ -9,36 +9,42 @@ import {
   isInProgress,
   targetOf,
 } from './results-overview.ts';
+import { runType, type RunType } from './preview.ts';
 import type { AnalysisId } from './runs.ts';
 
+/**
+ * The Settings status of a run (its Type, Full analysis or Preview, is `runType`). The first four
+ * are states of the run itself rather than of its settings.
+ */
 export type RunKind =
   | 'running'
   | 'failed'
   | 'partial'
   | 'cancelled'
-  | 'preliminary'
   /** Its settings and inputs match the current ones. */
   | 'current'
+  /** The newest full run, and its settings or inputs have changed since. */
   | 'needs_rerun'
-  /** A newer run of the same analysis exists. */
-  | 'earlier'
-  /** The newest run, but it cannot be compared (Python engine off, or a browser-engine run). */
+  /** Its settings differ from the current ones, or a newer run of the same Type exists. */
+  | 'older'
+  /** Cannot be compared (Python engine off, or a browser-engine run that is not the newest). */
   | 'saved';
 
 export const RUN_KIND_TEXT: Record<RunKind, string> = {
-  running: 'running',
-  failed: 'failed',
-  partial: 'partial',
-  cancelled: 'cancelled',
-  preliminary: 'preliminary',
-  current: 'current',
-  needs_rerun: 'needs rerun',
-  earlier: 'earlier run',
-  saved: 'saved',
+  running: 'Running',
+  failed: 'Failed',
+  partial: 'Partial',
+  cancelled: 'Cancelled',
+  current: 'Current',
+  needs_rerun: 'Needs rerun',
+  older: 'Older settings',
+  saved: 'Not compared',
 };
 
+export { runType, type RunType };
+
 /** Whether the newest result of an analysis still matches the current settings, when known. */
-export type MatchOf = (r: RunRecord) => { matches: boolean } | undefined;
+export type MatchOf = (r: RunRecord) => { matches: boolean; diff?: string[] } | undefined;
 
 const SIGNAL_WORD = { deconvolved: 'events', denoised: 'denoised', raw: 'raw' } as const;
 
@@ -55,15 +61,47 @@ export function cellsOf(r: RunRecord): string {
   return out ? `all but ${out}` : 'all';
 }
 
-export function runKind(r: RunRecord, newestOfAnalysis: boolean, match?: ReturnType<MatchOf>) {
-  if (isInProgress(r)) return 'running';
-  if (r.status === 'failed') return 'failed';
-  if (r.status === 'partial') return 'partial';
-  if (r.status === 'cancelled') return 'cancelled';
-  if (r.scope === 'preview') return 'preliminary';
-  if (!newestOfAnalysis) return 'earlier';
-  if (match) return match.matches ? 'current' : 'needs_rerun';
-  return 'saved';
+export interface SettingsStatus {
+  kind: RunKind;
+  /** "Current", "Needs rerun", "Older settings", ... */
+  text: string;
+  /** What changed, under Needs rerun, when the comparison says. */
+  reason?: string;
+}
+
+/**
+ * The Settings status of one run. `newestOfType` is whether it is the newest run with results of
+ * its analysis and its Type (a Preview is not made older by a newer Full analysis, nor the
+ * reverse). Only the newest full run can need a rerun; a preview whose settings differ is older.
+ */
+export function settingsStatus(
+  r: RunRecord,
+  newestOfType: boolean,
+  match?: ReturnType<MatchOf>,
+): SettingsStatus {
+  const kind = ((): RunKind => {
+    if (isInProgress(r)) return 'running';
+    if (r.status === 'failed') return 'failed';
+    if (r.status === 'partial') return 'partial';
+    if (r.status === 'cancelled') return 'cancelled';
+    if (match?.matches) return 'current';
+    if (match) return newestOfType && r.scope !== 'preview' ? 'needs_rerun' : 'older';
+    return newestOfType ? 'saved' : 'older';
+  })();
+  const diff = match && !match.matches ? match.diff : undefined;
+  return {
+    kind,
+    text: RUN_KIND_TEXT[kind],
+    reason: kind === 'needs_rerun' && diff?.length ? diff.join(', ') : undefined,
+  };
+}
+
+/** Whether `r` is the newest run with results of its analysis and Type among `records`. */
+export function isNewestOfType(r: RunRecord, records: RunRecord[]): boolean {
+  const top = records
+    .filter((x) => x.analysis === r.analysis && x.scope === r.scope && x.status === 'ok' && hasResults(x))
+    .sort((a, b) => b.created_utc.localeCompare(a.created_utc))[0];
+  return top?.run_id === r.run_id;
 }
 
 export interface RunRow {
@@ -74,24 +112,31 @@ export interface RunRow {
   target: string;
   signal: string;
   cells: string;
+  /** Type: Full analysis or Preview, with the shuffle count when recorded. */
+  type: RunType;
+  /** Settings status. */
+  settings: SettingsStatus;
   kind: RunKind;
+  /** The settings status in words. */
   status: string;
 }
 
 /** One row per saved run, newest first, optionally of one analysis. */
 export function runRows(records: RunRecord[], matchOf: MatchOf, analysis?: AnalysisId): RunRow[] {
-  const newest = new Map<string, string>();
-  for (const id of ANALYSIS_IDS) {
-    const top = records
-      .filter((r) => r.analysis === id && r.status === 'ok' && hasResults(r))
-      .sort((a, b) => b.created_utc.localeCompare(a.created_utc))[0];
-    if (top) newest.set(id, top.run_id);
-  }
+  // The newest run with results of each analysis and Type.
+  const newest = new Set<string>();
+  for (const id of ANALYSIS_IDS)
+    for (const scope of ['full', 'preview']) {
+      const top = records
+        .filter((r) => r.analysis === id && r.scope === scope && r.status === 'ok' && hasResults(r))
+        .sort((a, b) => b.created_utc.localeCompare(a.created_utc))[0];
+      if (top) newest.add(top.run_id);
+    }
   return records
     .filter((r) => !analysis || r.analysis === analysis)
     .sort((a, b) => b.created_utc.localeCompare(a.created_utc))
     .map((record) => {
-      const kind = runKind(record, newest.get(record.analysis) === record.run_id, matchOf(record));
+      const settings = settingsStatus(record, newest.has(record.run_id), matchOf(record));
       return {
         record,
         analysis: record.analysis as AnalysisId,
@@ -99,28 +144,35 @@ export function runRows(records: RunRecord[], matchOf: MatchOf, analysis?: Analy
         target: hasResults(record) ? targetOf(record) : '',
         signal: signalOf(record),
         cells: cellsOf(record),
-        kind,
-        status: RUN_KIND_TEXT[kind],
+        type: runType(record),
+        settings,
+        kind: settings.kind,
+        status: settings.text,
       };
     });
 }
 
 export interface RunCounts {
   saved: number;
+  /** Full analyses whose settings match now. */
   current: number;
+  /** Full analyses that need a rerun. */
   needRerun: number;
-  preliminary: number;
+  /** Preview runs, whatever their Settings status. */
+  previews: number;
   /** Running, failed, partial or cancelled: not counted in the three above. */
   other: number;
 }
 
 export function runCounts(rows: RunRow[]): RunCounts {
-  const n = (kinds: RunKind[]) => rows.filter((r) => kinds.includes(r.kind)).length;
+  const ended = (r: RunRow) => !['running', 'failed', 'partial', 'cancelled'].includes(r.kind);
+  const n = (kinds: RunKind[], type: 'full' | 'preview') =>
+    rows.filter((r) => ended(r) && r.type.kind === type && kinds.includes(r.kind)).length;
   return {
     saved: rows.length,
-    current: n(['current']),
-    needRerun: n(['needs_rerun']),
-    preliminary: n(['preliminary']),
-    other: n(['running', 'failed', 'partial', 'cancelled']),
+    current: n(['current'], 'full'),
+    needRerun: n(['needs_rerun'], 'full'),
+    previews: rows.filter((r) => ended(r) && r.type.kind === 'preview').length,
+    other: rows.filter((r) => !ended(r)).length,
   };
 }

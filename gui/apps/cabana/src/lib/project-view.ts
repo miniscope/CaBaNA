@@ -47,7 +47,7 @@ const STORAGE_LABEL: Record<string, [string, string, string]> = {
     'Saved figures are deleted. Results stay; figures are made again when exported.',
   ],
   previews: [
-    'Preliminary previews',
+    'Preview runs',
     '',
     'Preview runs are deleted. They are made again by running a preview.',
   ],

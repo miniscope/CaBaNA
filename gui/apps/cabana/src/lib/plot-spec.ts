@@ -14,8 +14,8 @@ export interface Source {
   label: string;
   /** Run settings the numbers depend on, as recorded with the run. Read only. */
   settings: Record<string, string | number | boolean>;
-  /** "Preliminary: 50 shuffles" for a Quick preview. */
-  preliminary?: string;
+  /** "Preview · 50 shuffles" for a Preview run. */
+  preview?: string;
 }
 
 export interface HistogramData {
@@ -94,7 +94,7 @@ export function specCsv(spec: PlotSpec): string {
   const head = [
     `# ${spec.source.label}`,
     `# analysis=${spec.source.analysis}; engine=${spec.source.engine}${spec.source.runId ? `; run=${spec.source.runId}` : ''}`,
-    ...(spec.source.preliminary ? [`# ${spec.source.preliminary}`] : []),
+    ...(spec.source.preview ? [`# ${spec.source.preview}`] : []),
     ...Object.entries(spec.source.settings).map(([k, v]) => `# ${k}=${v}`),
   ];
   const d = spec.data;

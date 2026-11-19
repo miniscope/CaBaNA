@@ -125,7 +125,7 @@ export function AnalysisLoad(props: {
               {(r) => (
                 <option value={r.record.run_id}>
                   {formatWhen(r.record.finished_utc ?? r.record.created_utc)} ·{' '}
-                  {r.record.scope === 'preview' ? 'Quick preview' : 'Full analysis'}
+                  {r.type.text}
                 </option>
               )}
             </For>

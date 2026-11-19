@@ -16,7 +16,7 @@ describe('figure export', () => {
     // the raster sits under the text so the axes stay vector
     expect(out.indexOf('<image')).toBeLessThan(out.indexOf('<text'));
   });
-  it('writes csv with notes, quoting and a preliminary marker', () => {
+  it('writes csv with notes, quoting and a Preview marker', () => {
     const gui = { settings: { settingsVersion: 2, analysis: { shuffles: 20 } } };
     const csv = toCsv(
       ['state', 'value'],
@@ -28,7 +28,7 @@ describe('figure export', () => {
     );
     expect(csv.split('\n')).toEqual([
       '# run r1 (population)',
-      '# Preliminary: 20 shuffles (quick preview)',
+      '# Preview · 20 shuffles',
       'state,value',
       '"a,b",1.5',
       'c,',
@@ -36,7 +36,7 @@ describe('figure export', () => {
     ]);
     // A record that does not say how many ran does not guess.
     expect(exportNotes({ scope: 'preview', analysis: 'population', run_id: 'r1' })[1]).toBe(
-      'Preliminary (shuffle count not recorded) (quick preview)',
+      'Preview',
     );
   });
 });

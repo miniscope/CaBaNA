@@ -111,11 +111,11 @@ export function engineLines(engine: EngineId, req: Request, has: Has): EngineLin
     });
   }
   out.push({
-    label: 'Quick preview',
+    label: 'Preview',
     status: fw ? 'applied' : 'unavailable',
     text: fw
-      ? 'Available: a run with fewer shuffles, saved as Preliminary.'
-      : 'Unavailable: Quick preview runs only on the Python framework.',
+      ? 'Available: a run with a chosen number of shuffles, saved as a Preview run.'
+      : 'Unavailable: Preview runs only on the Python framework.',
   });
   if (!fw)
     out.push({

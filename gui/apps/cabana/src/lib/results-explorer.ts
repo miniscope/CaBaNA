@@ -6,7 +6,7 @@ import type { RunRecord } from './bridge-client.ts';
 import { RESPONSE_CSV, RESPONSE_LABEL } from './auroc-view.ts';
 import { OVERALL, type Overall } from './place-outcome.ts';
 import { POPULATION_RESULT } from './population-results.ts';
-import { preliminaryText } from './preview.ts';
+import { runType } from './preview.ts';
 import { finite, type LoadedResult, type Nd } from './results-load.ts';
 import { analysisLabel, formatWhen, openness } from './results-overview.ts';
 import type { AnalysisId } from './runs.ts';
@@ -458,7 +458,7 @@ const ENGINE_TEXT = { framework: 'Python framework', 'browser-ts': 'browser engi
 /** Sentences stating the saved numbers. No interpretation, no comparison with other runs. */
 export function summarySentences(i: SummaryInput): string[] {
   const r = i.record;
-  const scope = r.scope === 'preview' ? preliminaryText(r) : 'full analysis';
+  const scope = runType(r).text;
   const out = [
     `${analysisLabel(r.analysis)}: ${scope}, run ${r.run_id}, saved ${formatWhen(r.created_utc)}, ${ENGINE_TEXT[r.engine]}.`,
   ];

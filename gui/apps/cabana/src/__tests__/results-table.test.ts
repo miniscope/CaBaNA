@@ -55,12 +55,13 @@ describe('overview rows', () => {
     expect(row.reason).toBe('rejected cells and analysis settings changed since this run');
   });
 
-  it('marks a matching run current and a preview preliminary', () => {
+  it('marks a matching preview current and gives it the Preview type', () => {
     const preview = rec({ analysis: 'place', scope: 'preview' });
     const rows = tableRows([preview], () => ({ matches: true, diff: [] }));
     const row = rows.find((r) => r.analysis === 'place')!;
     expect(row.status).toBe('current');
-    expect(row.preliminary).toBe(true);
+    expect(row.type?.kind).toBe('preview');
+    expect(row.type?.text).toBe('Preview');
   });
 
   it('counts runs the way the previous Results page did', () => {

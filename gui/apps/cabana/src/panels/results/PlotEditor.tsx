@@ -99,9 +99,9 @@ function Editor(props: { original: PlotSpec; onClose: () => void }): JSX.Element
           <p class="cb-muted cb-ped-src">
             {spec.source.label} · {spec.source.engine}
             {spec.source.runId ? ` · run ${spec.source.runId}` : ' · not saved as a run'}
-            <Show when={spec.source.preliminary}>
+            <Show when={spec.source.preview}>
               {' · '}
-              <span class="cb-warn">{spec.source.preliminary}</span>
+              <span class="cb-warn">{spec.source.preview}</span>
             </Show>
           </p>
         </div>

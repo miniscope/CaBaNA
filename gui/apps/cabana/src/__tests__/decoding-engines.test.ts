@@ -76,7 +76,7 @@ describe('what each engine lists', () => {
       req({ decoder: 'logistic', mode: 'multiclass', target: 'behaviors' }),
       none,
     );
-    expect(line(b, 'Quick preview').status).toBe('unavailable');
+    expect(line(b, 'Preview').status).toBe('unavailable');
     expect(line(b, 'Multiclass logistic regression').status).toBe('unavailable');
     expect(line(b, 'Random draws')).toBeTruthy();
     expect(b.find((l) => l.label === 'Test window at block edges')).toBeUndefined();

@@ -8,7 +8,7 @@ import { aurocOf } from './auroc-view.ts';
 import type { PethOutcome } from './peth-run.ts';
 import { curveOf } from './peth-view.ts';
 import { DEFAULT_STYLE, PLOT_SPEC_VERSION, type PlotSpec, type Source } from './plot-spec.ts';
-import { preliminaryText } from './preview.ts';
+import { runType } from './preview.ts';
 
 const NULL_BINS = 40;
 
@@ -49,9 +49,9 @@ const sourceOf = (
   engine: out.engine,
   label,
   settings,
-  preliminary:
+  preview:
     out.record?.scope === 'preview'
-      ? preliminaryText(out.record as Parameters<typeof preliminaryText>[0])
+      ? runType(out.record as Parameters<typeof runType>[0]).text
       : undefined,
 });
 

@@ -8,7 +8,7 @@ import { Modal } from '../components/Modal.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
 import type { RunRecord } from '../lib/bridge-client.ts';
 import { capabilities } from '../lib/bridge-status.ts';
-import { preliminaryText, executedShuffles } from '../lib/preview.ts';
+import { executedShuffles } from '../lib/preview.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
 import { formatWhen, frameworkNote, openness } from '../lib/results-overview.ts';
 import { openExplorer } from '../lib/results-nav.ts';
@@ -110,8 +110,8 @@ export function AnalysisPrevious(props: {
                 <th>Compared or aligned to</th>
                 <th>Signal</th>
                 <th>Cells</th>
-                <th>Scope</th>
-                <th>Status</th>
+                <th>Type</th>
+                <th>Settings</th>
               </tr>
             </thead>
             <tbody>
@@ -134,7 +134,7 @@ export function AnalysisPrevious(props: {
                     <td>{r.target || '—'}</td>
                     <td>{r.signal}</td>
                     <td>{r.cells}</td>
-                    <td>{r.record.scope === 'preview' ? 'Quick preview' : 'Full analysis'}</td>
+                    <td>{r.type.text}</td>
                     <td>{r.status}</td>
                   </tr>
                 )}
@@ -152,9 +152,6 @@ export function AnalysisPrevious(props: {
                   <Fact k="Shuffles">
                     {shuffles() === undefined ? 'not recorded' : shuffles()!.toLocaleString()}
                   </Fact>
-                  <Show when={r().scope === 'preview'}>
-                    <Fact k="Preview">{preliminaryText(r())}</Fact>
-                  </Show>
                   <Show when={Object.keys(analysisSection(r())).length === 0}>
                     <Fact k="Settings">not recorded</Fact>
                   </Show>

@@ -71,7 +71,7 @@ describe('setup labels', () => {
   it('run cards separate analysis scope, separation and currency', () => {
     const cards = runCards({
       engine: 'browser',
-      preliminary: false,
+      preview: false,
       shuffles: 1000,
       foldGapS: 0,
       outdated: true,

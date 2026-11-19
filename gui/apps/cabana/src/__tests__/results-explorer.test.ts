@@ -144,9 +144,9 @@ describe('summarySentences', () => {
     expect(all).toContain('100 shuffles');
     expect(all).toContain('seed 1');
   });
-  it('flags a preliminary run and uses no first person or citations', () => {
+  it('names a preview run and uses no first person or citations', () => {
     const s = summarySentences({ record: record({ scope: 'preview' }), settings: {}, stats: [] });
-    expect(s[0]).toContain('Preliminary');
+    expect(s[0]).toContain('Preview');
     expect(sentences.join(' ')).not.toMatch(/\b(we|our|my|I)\b|et al/i);
   });
 });

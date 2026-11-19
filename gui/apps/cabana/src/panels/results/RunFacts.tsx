@@ -6,7 +6,7 @@ import { bridgeReady } from '../../lib/bridge-status.ts';
 import type { ExplorerData } from '../../lib/explorer-data.ts';
 import { showBrowserOutcome } from '../../lib/live-outcome.ts';
 import type { PopulationMethod } from '../../lib/population-settings.ts';
-import { PREVIEW_TEXT, preliminaryText } from '../../lib/preview.ts';
+import { PREVIEW_TEXT, runType } from '../../lib/preview.ts';
 import type { PlotEntry } from '../../lib/results-explorer.ts';
 import type { Match } from '../../lib/results-match.ts';
 import { requestPlot } from '../../lib/results-nav.ts';
@@ -68,10 +68,10 @@ export function OverviewPane(props: {
             <Row k="Engine">
               {r().engine === 'framework' ? 'Python framework' : 'Browser engine'}
             </Row>
-            <Row k="Scope">
+            <Row k="Type">
               {r().scope === 'preview'
-                ? `Preliminary (quick preview): ${preliminaryText(r())}. ${PREVIEW_TEXT}.`
-                : 'Full analysis'}
+                ? `${runType(r()).text}: ${PREVIEW_TEXT}.`
+                : runType(r()).text}
             </Row>
             <Row k="Settings">{matchText()}</Row>
             <Row k="Status">{r().status}</Row>

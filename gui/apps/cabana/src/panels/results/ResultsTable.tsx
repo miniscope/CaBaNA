@@ -1,6 +1,6 @@
 import { createResource, createSignal, For, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
-import { Pill } from '../../components/Pill.tsx';
+import { Pill, RunTypePill } from '../../components/Pill.tsx';
 import type { MenuItem } from '../../lib/actions-menu.ts';
 import { openAnalysisWindow } from '../../lib/analysis-window.ts';
 import { type RunRecord } from '../../lib/bridge-client.ts';
@@ -38,28 +38,32 @@ function Status(props: { row: TableRow }): JSX.Element {
       <Show when={r()} fallback={<span class="cb-muted">No runs yet</span>}>
         {(rec) => (
           <>
+            <Show when={props.row.type}>
+              {(t) => (
+                <>
+                  <RunTypePill type={t()} />{' '}
+                </>
+              )}
+            </Show>
             <Show when={props.row.status === 'needs_rerun'}>
-              <Pill tone="corr">needs rerun</Pill>
+              <Pill tone="corr">Needs rerun</Pill>
             </Show>
             <Show when={props.row.status === 'current'}>
-              <Pill tone="ok">current</Pill>
+              <Pill tone="ok">Current</Pill>
+            </Show>
+            <Show when={props.row.status === 'older'}>
+              <Pill tone="neutral">Older settings</Pill>
             </Show>
             <Show when={props.row.status === 'saved'}>
               <Pill tone="neutral" title="Cannot be compared with the settings now">
-                saved
+                Not compared
               </Pill>
             </Show>
             <Show when={props.row.status === 'running'}>
-              <Pill tone="flag">running</Pill>
+              <Pill tone="flag">Running</Pill>
             </Show>
             <Show when={props.row.status === 'failed'}>
-              <Pill tone="flag">{rec().status === 'failed' ? 'failed' : 'no results'}</Pill>
-            </Show>
-            <Show when={props.row.preliminary}>
-              {' '}
-              <Pill tone="flag" title={`Quick preview: ${PREVIEW_TEXT}`}>
-                preliminary
-              </Pill>
+              <Pill tone="flag">{rec().status === 'failed' ? 'Failed' : 'No results'}</Pill>
             </Show>
             <Show when={props.row.reason}>
               <span class="cb-rx__why">{props.row.reason}</span>
@@ -185,7 +189,7 @@ export function ResultsTable(props: {
     ['Saved runs', counts().saved],
     ['Current', counts().current],
     ['Need rerun', counts().needRerun],
-    ['Preliminary', counts().preliminary],
+    ['Previews', counts().previews],
   ];
   const explore = (row: TableRow) => {
     if (row.record && hasResults(row.record)) openExplorer(row.analysis, row.record.run_id);
@@ -200,8 +204,9 @@ export function ResultsTable(props: {
             never changes the current settings.
           </p>
           <p>
-            Current means the run matches the settings and inputs now. Needs rerun means they
-            changed since. Preliminary means a quick preview: {PREVIEW_TEXT}.
+            Type says how a run was made: a Full analysis, or a Preview, {PREVIEW_TEXT}. Settings
+            says whether it matches the settings and inputs now: Current, Needs rerun (they changed
+            since) or Older settings.
           </p>
         </InfoTip>
         <span class="cb-spacer" />

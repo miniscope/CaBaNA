@@ -10,17 +10,18 @@ import {
 } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { Modal } from '../../components/Modal.tsx';
-import { Pill } from '../../components/Pill.tsx';
+import { RunTypePill, SettingsPill } from '../../components/Pill.tsx';
 import type { MenuItem } from '../../lib/actions-menu.ts';
 import { bridge, type RunRecord } from '../../lib/bridge-client.ts';
 import { bridgeReady } from '../../lib/bridge-status.ts';
 import { browserOutcomeInMemory } from '../../lib/live-outcome.ts';
-import { executedShuffles, preliminaryText } from '../../lib/preview.ts';
+import { runType } from '../../lib/preview.ts';
 import { exportItems } from '../../lib/results-export.ts';
 import { plotsAvailable, plotsOf, summarySentences } from '../../lib/results-explorer.ts';
 import { matchOfRecord } from '../../lib/results-match.ts';
 import { closeExplorer, openExplorer, type ExplorerTarget } from '../../lib/results-nav.ts';
 import { analysisLabel, formatWhen, hasResults } from '../../lib/results-overview.ts';
+import { isNewestOfType, settingsStatus } from '../../lib/results-runs.ts';
 import { reasonText } from '../../lib/results-table.ts';
 import { active } from '../../lib/runs.ts';
 import { AnalysisRunSettings } from '../AnalysisRunSettings.tsx';
@@ -238,7 +239,7 @@ export function ExplorerFrame(props: {
                   {(r) => (
                     <option value={r.run_id}>
                       {formatWhen(r.created_utc)}
-                      {r.scope === 'preview' ? ' · preliminary' : ''}
+                      {r.scope === 'preview' ? ' · Preview' : ''}
                     </option>
                   )}
                 </For>
@@ -246,43 +247,11 @@ export function ExplorerFrame(props: {
                   <option value={rec().run_id}>{formatWhen(rec().created_utc)}</option>
                 </Show>
               </select>
-              <Show
-                when={match()}
-                fallback={
-                  <Pill tone="neutral" title="Cannot be compared with the settings now">
-                    saved
-                  </Pill>
-                }
-              >
-                {(m) => (
-                  <Show
-                    when={m().matches}
-                    fallback={
-                      <Pill tone="corr" title={reasonText(m().diff)}>
-                        needs rerun
-                      </Pill>
-                    }
-                  >
-                    <Pill tone="ok">current</Pill>
-                  </Show>
-                )}
-              </Show>
-              <Show
-                when={rec().scope === 'preview'}
-                fallback={
-                  <Pill tone="ok">
-                    full analysis
-                    <Show when={parts()?.tested && executedShuffles(rec()) !== undefined}>
-                      {' '}
-                      · {executedShuffles(rec())!.toLocaleString()} shuffles
-                    </Show>
-                  </Pill>
-                }
-              >
-                <Pill tone="flag" title="Quick preview with reduced shuffles">
-                  {preliminaryText(rec()).toLowerCase()}
-                </Pill>
-              </Show>
+              <RunTypePill type={runType(rec())} />
+              <SettingsPill
+                status={settingsStatus(rec(), isNewestOfType(rec(), props.records), match())}
+                reason={match() && !match()!.matches ? reasonText(match()!.diff) : undefined}
+              />
               <span class="cb-spacer" />
               <ActionsMenu items={() => actions(rec())} />
             </>

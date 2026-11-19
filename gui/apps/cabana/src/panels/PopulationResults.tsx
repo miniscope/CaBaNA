@@ -117,7 +117,7 @@ export function PopulationResults(props: { onSetup: () => void }): JSX.Element {
             <button class="cb-link" onClick={props.onSetup}>
               Choose a target and methods
             </button>{' '}
-            and run a quick preview or the full analysis.
+            and run the analysis.
           </div>
         </Match>
         <Match when={record()}>

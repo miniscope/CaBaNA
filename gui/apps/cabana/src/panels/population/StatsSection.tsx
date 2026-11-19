@@ -28,7 +28,7 @@ export function StatsSection(): JSX.Element {
         <div class="cb-pn-fields">
           <Field
             label="Shuffles"
-            tip="Number of shuffled sessions. More shuffles give finer p-values. A quick preview uses up to 50 and is marked Preliminary."
+            tip="Number of shuffled sessions. More shuffles give finer p-values. A Preview run uses fewer (50 by default) and is saved as a Preview."
           >
             <Num k="shuffles" label="Shuffles" step={50} whole />
           </Field>
@@ -67,8 +67,8 @@ export function StatsSection(): JSX.Element {
         <p class="cb-muted">
           Each shuffle shifts every cell's events in time by its own random amount (a circular
           shift). That keeps the cell's own timing but breaks its link to the states. The observed
-          value is compared with the shuffled values. Quick preview uses{' '}
-          {shufflesFor('preview', s.shuffles)} shuffles and is marked Preliminary.
+          value is compared with the shuffled values. A Preview run uses{' '}
+          {shufflesFor('preview', s.shuffles)} shuffles by default and is saved as a Preview.
         </p>
         <AdvancedSeed seed={s.seed} def={DEFAULT_POPULATION.seed} onSet={(v) => set('seed', v)} />
       </div>

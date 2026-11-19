@@ -69,7 +69,7 @@ export function lastRunLine(
   const state =
     record.status === 'ok'
       ? record.scope === 'preview'
-        ? 'saved, preliminary'
+        ? 'saved, Preview'
         : 'saved'
       : record.status === 'partial'
         ? 'partial result'

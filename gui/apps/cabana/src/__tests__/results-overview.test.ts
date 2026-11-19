@@ -183,7 +183,7 @@ describe('badges', () => {
     [...(RunBadges({ record: r, match }) as HTMLElement).querySelectorAll('.cb-pill')].map(
       (e) => e.textContent,
     );
-  it('Preliminary and settings-changed are separate badges, whichever the other is', () => {
+  it('Type and Settings are separate badges, whichever the other is', () => {
     // The badge shows the count the run executed, read from its saved settings.
     const preview = rec({
       scope: 'preview',
@@ -191,16 +191,16 @@ describe('badges', () => {
     });
     const full = rec({ scope: 'full' });
     expect(texts(preview, { matches: true, diff: [] })).toEqual([
-      'Preliminary: 50 shuffles',
-      'Matches current settings',
+      'Preview · 50 shuffles',
+      'Current',
     ]);
     expect(texts(preview, { matches: false, diff: ['x'] })).toEqual([
-      'Preliminary: 50 shuffles',
-      'Settings changed since this run',
+      'Preview · 50 shuffles',
+      'Older settings',
     ]);
     expect(texts(full, { matches: false, diff: ['x'] })).toEqual([
       'Full analysis',
-      'Settings changed since this run',
+      'Needs rerun',
     ]);
   });
 });

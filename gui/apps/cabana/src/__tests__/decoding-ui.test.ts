@@ -191,7 +191,7 @@ describe('position result views (every number equals the array)', () => {
     const v = (await loadPositionDecoding(src, d.manifest))!;
     const text = positionCsv(v, { scope: 'preview', analysis: 'decoding', run_id: 'r1' });
     const lines = text.trim().split('\n');
-    expect(lines.filter((l) => l.startsWith('#')).join(' ')).toMatch(/Preliminary.*not tested/s);
+    expect(lines.filter((l) => l.startsWith('#')).join(' ')).toMatch(/Preview.*not tested/s);
     const body = lines.filter((l) => !l.startsWith('#'));
     expect(body).toHaveLength(170);
     expect(body[1].split(',')[5]).toBe(String(a.sh_p_value.data[0]));

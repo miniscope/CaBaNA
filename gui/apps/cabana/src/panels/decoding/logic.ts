@@ -24,7 +24,7 @@ export const PLAIN_REQUIREMENT: Partial<Record<CapabilityName, string>> = {
     'The installed framework does not check that the Bayesian decoder gets unsmoothed deconvolved events. The page checks this itself.',
   bin_eligibility:
     'Minimum occupancy per bin from training frames is not in the installed framework.',
-  preview_flag: 'The installed framework does not mark preview results as preliminary.',
+  preview_flag: 'The installed framework does not flag preview results in its output.',
 };
 
 const SHORT_REQUIREMENT: Partial<Record<CapabilityName, string>> = {

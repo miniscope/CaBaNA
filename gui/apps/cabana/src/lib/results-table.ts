@@ -8,6 +8,7 @@ import { outcomeCounts, placeCells } from './results-saved.ts';
 import { TABLE_SPECS } from './results-explorer.ts';
 import { analysisLabel, hasResults, isInProgress, overviewRows } from './results-overview.ts';
 import type { Match } from './results-match.ts';
+import { runType, type RunType } from './preview.ts';
 import { runCounts, runRows, type RunCounts } from './results-runs.ts';
 import type { AnalysisId } from './runs.ts';
 
@@ -16,6 +17,8 @@ export type RowStatus =
   | 'running'
   | 'failed'
   | 'needs_rerun'
+  /** A preview whose settings differ from the current ones. */
+  | 'older'
   | 'current'
   /** Has results but cannot be compared with the settings now (engine off, or an older browser run). */
   | 'saved';
@@ -27,7 +30,8 @@ export interface TableRow {
   status: RowStatus;
   /** Under a "needs rerun" pill: what changed since the run. */
   reason?: string;
-  preliminary: boolean;
+  /** Full analysis or Preview, with its shuffle count when recorded. */
+  type?: RunType;
   /** Every saved run of this analysis, with or without results. */
   runs: number;
 }
@@ -45,7 +49,7 @@ function statusOf(r: RunRecord | undefined, match: Match | undefined): RowStatus
   if (!r) return 'none';
   if (isInProgress(r)) return 'running';
   if (!hasResults(r)) return 'failed';
-  if (match) return match.matches ? 'current' : 'needs_rerun';
+  if (match) return match.matches ? 'current' : r.scope === 'preview' ? 'older' : 'needs_rerun';
   return 'saved';
 }
 
@@ -63,13 +67,13 @@ export function tableRows(
       record,
       status,
       reason: status === 'needs_rerun' ? reasonText(match?.diff ?? []) : undefined,
-      preliminary: record?.scope === 'preview' && hasResults(record),
+      type: record && hasResults(record) ? runType(record) : undefined,
       runs: records.filter((r) => r.analysis === analysis).length,
     };
   });
 }
 
-/** The four counts above the table (pass 1's rule: a preliminary run counts only as preliminary). */
+/** The four counts above the table (a Preview run counts only under Previews). */
 export function tableCounts(
   records: RunRecord[],
   matchOf: (r: RunRecord) => Match | undefined,

@@ -77,7 +77,7 @@ export const FEATURES: Record<string, Pick<FrameworkNeed, 'text'>> = {
   bin_eligibility: {
     text: 'Minimum occupancy per bin from training data is not available.',
   },
-  preview_flag: { text: 'Quick previews cannot be marked as preliminary yet.' },
+  preview_flag: { text: 'Preview runs cannot be flagged in the framework output yet.' },
   cli_rejects_recipes: { text: 'The command line does not reject recipe files yet.' },
   peth_gui_extensions: {
     text: 'PETH offset alignment and same-direction latency are not available yet.',

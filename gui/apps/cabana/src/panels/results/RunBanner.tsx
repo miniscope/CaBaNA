@@ -1,8 +1,8 @@
 import { For, Show, type JSX } from 'solid-js';
 import type { RunRecord } from '../../lib/bridge-client.ts';
 import { placePopover } from '../parts.tsx';
-import { preliminaryText } from '../../lib/preview.ts';
-import { Pill } from '../../components/Pill.tsx';
+import { runType } from '../../lib/preview.ts';
+import { Pill, RunTypePill } from '../../components/Pill.tsx';
 
 export interface Match {
   matches: boolean;
@@ -13,8 +13,8 @@ const when = (utc: string | null) =>
   utc ? new Date(utc).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
 
 /**
- * The state of a result, as separate badges: how many shuffles it used (Preliminary or Full) and
- * whether it matches the current settings are different properties and never share a badge.
+ * The state of a result, as separate badges: its Type (Full analysis or Preview, with the shuffle
+ * count) and whether it matches the current settings are different properties and never share one.
  */
 export function RunBadges(props: {
   record: RunRecord;
@@ -24,13 +24,8 @@ export function RunBadges(props: {
   const r = () => props.record;
   return (
     <span class="cb-rb-badges">
-      <Show when={r().scope === 'preview'}>
-        <Pill tone="flag" title="Quick preview with reduced shuffles">
-          {preliminaryText(r())}
-        </Pill>
-      </Show>
-      <Show when={r().scope === 'full' && r().status === 'ok'}>
-        <Pill>Full analysis</Pill>
+      <Show when={r().status === 'ok' || r().scope === 'preview'}>
+        <RunTypePill type={runType(r())} />
       </Show>
       <Show when={r().status === 'partial'}>
         <Pill tone="flag">Partial: some analyses failed</Pill>
@@ -44,7 +39,7 @@ export function RunBadges(props: {
       <Show when={r().status === 'ok' || r().status === 'partial' ? props.match : undefined}>
         {(m) => (
           <Pill tone={m().matches ? 'ok' : 'flag'}>
-            {m().matches ? 'Matches current settings' : 'Settings changed since this run'}
+            {m().matches ? 'Current' : r().scope === 'preview' ? 'Older settings' : 'Needs rerun'}
           </Pill>
         )}
       </Show>

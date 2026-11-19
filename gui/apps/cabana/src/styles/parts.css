@@ -186,6 +186,11 @@
   background: var(--bg-secondary);
   color: var(--text-secondary);
 }
+.cb-pill--outline {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
 .cb-pill--flag {
   background: var(--flag-bg);
   color: var(--flag);
