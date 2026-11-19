@@ -1,16 +1,15 @@
-// The Preview window of one analysis. PETH shows its mean-curve preview beside the settings it was
-// drawn with. The other analyses show their review content: the settings summary and the Quick
-// preview / full analysis choice. The setup pages open this content on a "review" stage and move to
-// "run" when a run starts, so the window follows that stage: starting a run closes it, and an
-// Edit link in the summary opens Configure settings.
+// The Preview window of one analysis: the result of a preview run on the left, and on the right the
+// current settings, the number of shuffles and Run preview. A preview is a Preview run saved with
+// the other runs; running one keeps the window open and shows its result. PETH draws its preview in
+// the browser and saves nothing. The settings link opens Configure settings.
 
-import { createEffect, on, type Component, type JSX } from 'solid-js';
+import { Show, type Component, type JSX } from 'solid-js';
 import { Modal } from '../components/Modal.tsx';
-import { Pill } from '../components/Pill.tsx';
+import { Pill, RunTypePill } from '../components/Pill.tsx';
 import { ANALYSES } from '../lib/analyses.ts';
-import { guided } from '../lib/guided.ts';
+import { forgetPreview, previewRecord } from '../lib/preview-window.ts';
+import { runType } from '../lib/preview.ts';
 import type { AnalysisItem } from '../lib/readiness.ts';
-import { openAnalysisWindow } from '../lib/analysis-window.ts';
 import { AurocSetup } from './AurocPanel.tsx';
 import { DecodingSetup } from './decoding/GuidedPage.tsx';
 import { PethPreviewView } from './PethPanel.tsx';
@@ -30,27 +29,22 @@ export function AnalysisPreview(props: { id: AnalysisItem; onClose: () => void }
   // eslint-disable-next-line solid/reactivity
   const id = props.id;
   const label = ANALYSES.find((a) => a.id === id)!.label;
-  const g = guided(id, '');
-  g.setStage('review');
-  createEffect(
-    on(
-      g.stage,
-      (stage) => {
-        if (stage === 'configure') openAnalysisWindow(id, 'configure');
-        if (stage === 'run') props.onClose();
-        if (stage !== 'review') g.setStage('review');
-      },
-      { defer: true },
-    ),
-  );
+  // Opens with no preview shown; the result appears after Run preview.
+  forgetPreview(id);
   const View = VIEWS[id];
   return (
     <Modal
       label={`Preview, ${label}`}
       title={`Preview · ${label}`}
-      head={id === 'peth' ? <Pill tone="flag">Preview: no significance test</Pill> : undefined}
+      head={
+        id === 'peth' ? (
+          <Pill tone="flag">Preview: no significance test</Pill>
+        ) : (
+          <Show when={previewRecord(id)}>{(rec) => <RunTypePill type={runType(rec())} />}</Show>
+        )
+      }
       width={980}
-      height={560}
+      height={id === 'peth' ? 560 : 640}
       onClose={() => props.onClose()}
     >
       <div class="cb-prv">
