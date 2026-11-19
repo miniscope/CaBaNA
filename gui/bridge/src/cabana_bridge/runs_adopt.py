@@ -47,8 +47,11 @@ def adopt_runs(source: Project, project_folder: Path, run_ids: list[str]) -> dic
             skipped.append({"run_id": run_id, "reason": "already in the project"})
         else:
             session_id = record.get("session", {}).get("session_id")
-            if session_id and source.session_dir(session_id).is_dir():
-                _copy_session(source, target, session_id)
+            try:
+                if session_id and source.session_dir(session_id).is_dir():
+                    _copy_session(source, target, session_id)
+            except BadRequest:
+                pass  # browser-engine records name no session folder ("browser")
             shutil.move(str(source.run_dir(run_id)), str(target.run_dir(run_id)))
             script = target.run_dir(run_id) / "reproduce.sh"  # a project keeps sessions under processed/
             if script.exists():

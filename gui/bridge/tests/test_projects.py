@@ -332,3 +332,8 @@ def test_adopt_moves_workspace_runs_into_the_project(pb):
     assert c.json("POST", "/projects/open", {"id": info["id"]})[0] == 200
     assert [r["run_id"] for r in c.json("GET", "/runs")[1]] == [ids[0]]
     assert c.json("POST", f"/projects/{info['id']}/runs/adopt", {"run_ids": "x"})[0] == 400
+    # A browser-engine record names the session "browser": it moves, with no session to copy.
+    browser_run = "20260101-000003-dddddd"
+    ws.write_run(browser_run, {"run_id": browser_run, "status": "ok", "session": {"session_id": "browser"}})
+    status, out = c.json("POST", f"/projects/{info['id']}/runs/adopt", {"run_ids": [browser_run]})
+    assert status == 200 and [r["run_id"] for r in out["adopted"]] == [browser_run]
