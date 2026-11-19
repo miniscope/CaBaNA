@@ -3,7 +3,7 @@
 // when it opened: Discard changes (and closing with changes) puts it back, Save settings keeps
 // what is there. Nothing here changes what an analysis computes.
 
-import { createSignal, type Component, type JSX } from 'solid-js';
+import { createSignal, onMount, type Component, type JSX } from 'solid-js';
 import { ActionsMenu } from '../components/ActionsMenu.tsx';
 import type { ConfigureControl } from '../components/ConfigureBody.tsx';
 import { HowItWorks } from '../components/GuidedReview.tsx';
@@ -72,9 +72,14 @@ export function AnalysisConfigure(props: {
   const id = props.id;
   const label = ANALYSES.find((a) => a.id === id)!.label;
   // eslint-disable-next-line solid/reactivity
-  const before = props.before ?? snapshotSettings(id);
+  const [before, setBefore] = createSignal(props.before ?? snapshotSettings(id));
+  // Setup sections adjust some choices to the loaded data when they mount (for example the label
+  // list). Those are not edits, so the starting snapshot is retaken once they have settled.
+  // eslint-disable-next-line solid/reactivity
+  if (props.before === undefined)
+    onMount(() => queueMicrotask(() => setBefore(snapshotSettings(id))));
   const [reset, setReset] = createSignal(false);
-  const changed = () => reset() || settingsChanged(id, before);
+  const changed = () => reset() || settingsChanged(id, before());
   let kept = false;
 
   const save = () => {
@@ -84,7 +89,7 @@ export function AnalysisConfigure(props: {
   };
   // Closing any other way, including Discard changes, puts the earlier settings back.
   const leave = () => {
-    if (!kept) restoreSettings(id, before);
+    if (!kept) restoreSettings(id, before());
     props.onClose();
   };
   const needsAttention = () =>
