@@ -105,7 +105,12 @@ async function chooseExample(id: string): Promise<void> {
   setLoading(true);
   try {
     const got = await fetchExample(id);
-    if (!got.files.length) throw new Error('The example has no files.');
+    if (!got.files.length) {
+      setProblem(
+        `The files of this example are not in this copy of CaBaNA (example_data/${id}/ is missing or empty).`,
+      );
+      return;
+    }
     setExample({ id, frame: got.frame, video: got.video });
     setHeld(got.files);
   } catch {

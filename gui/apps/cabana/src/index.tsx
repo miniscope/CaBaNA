@@ -57,7 +57,9 @@ if (import.meta.env.DEV) {
   if (id !== 'none')
     void Promise.all([import('./lib/store.ts'), import('./lib/example-session.ts')]).then(
       async ([s, ex]) => {
-        await ex.startExample(id, await s.fetchExample(id));
+        const got = await s.fetchExample(id);
+        if (!got.files.length) return console.warn(`Example ${id}: no files in example_data/${id}/`);
+        await ex.startExample(id, got);
         s.goToStep(q.get('step') ?? 'data');
       },
     );
