@@ -4,6 +4,7 @@
 
 import { createSignal } from 'solid-js';
 import { history as changeLog } from './changes-log.ts';
+import { bridgeReady } from './bridge-status.ts';
 import { confirmAction } from './confirm.ts';
 import { openProject } from './open-project.ts';
 import { describeAnalysis, type AnalysisSections, type ProcessingState } from './project-files.ts';
@@ -143,11 +144,16 @@ export const [saveDialog, setSaveDialog] = createSignal<{ after?: () => void }>(
  */
 export function guardExample(next: () => void): void {
   if (!hasExampleWork()) return next();
+  const canSave = bridgeReady();
   confirmAction({
     title: 'Discard the example session?',
-    message: `This example has unsaved work: ${workText(exampleChanges())}. Discarding removes it. Save as project keeps it.`,
+    message: `This example has unsaved work: ${workText(exampleChanges())}. Discarding removes it.${canSave ? ' Save as project keeps it.' : ' Saving it as a project needs the Python engine.'}`,
     confirmLabel: 'Discard',
-    alternative: { label: 'Save as project…', onSelect: () => setSaveDialog({ after: next }) },
+    danger: true,
+    // Saving needs the engine; without it Discard is the only way on.
+    alternative: canSave
+      ? { label: 'Save as project…', onSelect: () => setSaveDialog({ after: next }) }
+      : undefined,
     onConfirm: next,
   });
 }
