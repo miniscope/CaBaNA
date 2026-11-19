@@ -24,7 +24,8 @@ import {
   undoAnnotationEdits,
 } from '../lib/store.ts';
 import { DEFAULT_TOL } from '../lib/store.ts';
-import { flaggedOf, PALETTE, ticks } from './BehaviorQc.tsx';
+import { flaggedOf, ticks } from './BehaviorQc.tsx';
+import { colorOf } from '../lib/viz-tracks.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
 
@@ -71,7 +72,7 @@ function EpochRows(props: { draft: AnnotationDraft; width: number }): JSX.Elemen
                     y={i() * ROW + 3}
                     width={Math.max(2, x(e.stop) - x(e.start))}
                     height={12}
-                    fill={PALETTE[i() % PALETTE.length]}
+                    fill={colorOf(r.label)}
                   />
                   <Show when={r.short.has(e)}>
                     <rect

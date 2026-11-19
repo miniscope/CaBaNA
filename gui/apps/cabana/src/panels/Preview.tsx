@@ -18,6 +18,7 @@ import {
   timingResults,
 } from '../lib/store.ts';
 import { Ethogram } from './BehaviorQc.tsx';
+import { colorOf } from '../lib/viz-tracks.ts';
 import { CellTraces } from './CellTraces.tsx';
 import { ConfigReport, fileMismatch } from './ConfigReport.tsx';
 import { outsideRecording } from '../lib/markers.ts';
@@ -189,7 +190,7 @@ function Annotations(props: { slot: SlotId }): JSX.Element {
           when={a() && !a()!.error}
           fallback={<div class="cb-note">{a()?.error ?? 'The epochs could not be read.'}</div>}
         >
-          <Ethogram epochs={a()!.epochs} duration={sessionDuration() ?? 0} />
+          <Ethogram epochs={a()!.epochs} duration={sessionDuration() ?? 0} colorOf={colorOf} />
         </Show>
       )}
     </PlotCard>

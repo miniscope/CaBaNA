@@ -14,7 +14,7 @@ import { DEFAULT_PREP } from '../lib/preprocess.ts';
 import { closeQcPopup, markPopupReviewed } from '../lib/qc-popup-view.ts';
 import { frameTimes } from '../lib/store.ts';
 import { win } from '../lib/viz.ts';
-import { PALETTE } from './BehaviorQc.tsx';
+import { colorOf } from '../lib/viz-tracks.ts';
 import { ImportPrepSettings } from './ImportPrepSettings.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Help, PlotCard } from './QcParts.tsx';
@@ -176,7 +176,7 @@ export function BehaviorPrepPopup(): JSX.Element {
                             y={i() * ROW + 1}
                             width={b.w}
                             height={16}
-                            fill={PALETTE[i() % PALETTE.length]}
+                            fill={colorOf(r.label)}
                             opacity="0.25"
                           />
                         )}
@@ -188,7 +188,7 @@ export function BehaviorPrepPopup(): JSX.Element {
                             y={i() * ROW + 5}
                             width={b.w}
                             height={8}
-                            fill={PALETTE[i() % PALETTE.length]}
+                            fill={colorOf(r.label)}
                           />
                         )}
                       </For>

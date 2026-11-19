@@ -66,6 +66,8 @@ describe('slider number', () => {
     expect(formatValue(0, 0.05, 'off')).toBe('off');
     expect(formatValue(0, 0.05)).toBe('0.00');
     expect(formatValue(0.4, 0.05, 'off')).toBe('0.40');
+    expect(formatValue(0.5, 0.1, undefined, 2)).toBe('0.50');
+    expect(formatValue(0.5, 0.1)).toBe('0.5');
   });
 });
 

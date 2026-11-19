@@ -23,7 +23,8 @@ export function SliderNumber(props: {
 }): JSX.Element {
   // While the number field is being typed in, show the typed text instead of the formatted value.
   const [draft, setDraft] = createSignal<string | null>(null);
-  const shown = () => draft() ?? formatValue(props.value, props.step, props.zeroLabel);
+  const shown = () => draft() ?? 
+    formatValue(props.value, props.step, props.zeroLabel, props.unit === 's' && props.step < 1 ? 2 : 0);
   const commit = () => {
     const text = draft();
     if (text === null) return;

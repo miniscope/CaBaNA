@@ -2,7 +2,7 @@
 // standard steps as a draft with a live preview of x position in the 10 s with the most lost
 // frames. Apply changes makes the draft the session's settings.
 
-import { createMemo, createSignal, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, Show, type JSX } from 'solid-js';
 import { QcPopup, SideHead } from '../components/QcPopup.tsx';
 import { SliderNumber } from '../components/SliderNumber.tsx';
 import { positionCm, positionPipeline } from '../lib/prepared.ts';
@@ -90,9 +90,14 @@ export function PositionPrepPopup(): JSX.Element {
         type="number"
         min={0}
         step={k === 'maxGapS' ? 0.1 : 0.05}
-        value={value(k)}
+        // Two decimals when not being typed in (0.50 s), so typing is not rewritten mid-entry.
+        ref={(el) =>
+          createEffect(() =>
+            document.activeElement === el ? undefined : (el.value = value(k).toFixed(2)),
+          )
+        }
         onInput={(e) => e.currentTarget.valueAsNumber >= 0 && set(k, e.currentTarget.valueAsNumber)}
-        onChange={(e) => (e.currentTarget.value = String(value(k)))}
+        onChange={(e) => (e.currentTarget.value = value(k).toFixed(2))}
       />
       <span class="cb-muted">s</span>
     </label>

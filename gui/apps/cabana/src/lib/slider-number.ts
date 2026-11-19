@@ -10,10 +10,15 @@ function decimals(step: number): number {
   return dot < 0 ? 0 : text.length - dot - 1;
 }
 
-/** Text for the number field. A value of 0 shows `zeroLabel` (e.g. "off") when one is given. */
-export function formatValue(value: number, step: number, zeroLabel?: string): string {
+/** Text for the number field. A value of 0 shows `zeroLabel` (e.g. "off") when one is given. `minDecimals` pads short steps (0.1 s shows as 0.10). */
+export function formatValue(
+  value: number,
+  step: number,
+  zeroLabel?: string,
+  minDecimals = 0,
+): string {
   if (value === 0 && zeroLabel) return zeroLabel;
-  return value.toFixed(decimals(step));
+  return value.toFixed(Math.max(decimals(step), minDecimals));
 }
 
 /** The value a typed entry means, clamped to the range. Unreadable text keeps `current`. */

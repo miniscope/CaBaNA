@@ -310,6 +310,8 @@ export function Ethogram(props: {
   selected?: Epoch;
   /** Height of one row in px. */
   rowH?: number;
+  /** Color of a label. Pass the one Data visualization uses so a label looks the same everywhere. */
+  colorOf?: (label: string) => string;
 }): JSX.Element {
   let canvas: HTMLCanvasElement | undefined;
   const labels = () => [...new Set(props.epochs.map((e) => e.label))];
@@ -327,7 +329,7 @@ export function Ethogram(props: {
       const row = labels().indexOf(e.label);
       const x = (Math.max(e.start, 0) / span) * W;
       const w = Math.max(((Math.max(e.stop, e.start) - Math.max(e.start, 0)) / span) * W, 2);
-      ctx.fillStyle = PALETTE[row % PALETTE.length];
+      ctx.fillStyle = props.colorOf?.(e.label) ?? PALETTE[row % PALETTE.length];
       ctx.fillRect(x, row * ROW + 4, w, ROW - 8);
       if (e === props.selected || e.flags.length || e.notes.length) {
         ctx.strokeStyle = e === props.selected ? '#1f2328' : e.flags.length ? '#d32f2f' : '#e09800';
