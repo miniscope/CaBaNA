@@ -24,7 +24,7 @@ import {
   startBlankCanvas,
   videoChoice,
 } from './spatial-state.ts';
-import { onClear } from './store.ts';
+import { onClear, onSlotLoaded } from './store.ts';
 
 export const [busy, setBusy] = createSignal('');
 export const [loadError, setLoadError] = createSignal('');
@@ -32,6 +32,12 @@ export const [loadError, setLoadError] = createSignal('');
 export const [replacedSize, setReplacedSize] = createSignal<[number, number]>();
 /** The video time shown while choosing a frame. */
 export const [scrubT, setScrubT] = createSignal(0);
+
+// A behavior video frame added in Data setup becomes the background when there is none yet; an
+// existing background is never replaced without the user asking.
+onSlotLoaded((slot, file) => {
+  if (slot === 'behavior_frame' && !frame()) void loadBackground(file);
+});
 
 onClear(() => {
   setBusy('');

@@ -51,12 +51,15 @@ import {
   type FrameLabelMapping,
 } from './frame-labels.ts';
 import { buildRegistry, resolveRole, type LabelInput, type LabelRole } from './labels.ts';
+import { shapeText } from './data-shape.ts';
 import { cellsText, clearHistory, logChange } from './changes-log.ts';
 
 export interface LoadedInfo {
   name: string;
   size: number;
   summary: string;
+  /** The data shape shown on the Data setup row, such as "(180, 9,000)" (data-shape.ts). */
+  shape?: string;
   warning?: string;
   error?: string;
 }
@@ -158,12 +161,24 @@ async function load(slot: SlotId, file: File): Promise<void> {
       show({
         ...base,
         summary: `${m.cells} cells x ${m.frames.toLocaleString()} frames`,
+        shape: shapeText(slot, { kind: 'matrix', ...m }),
         warning: note,
       });
     } else if (slot === 'footprints') {
       const f = await readFootprints(file);
       data[slot] = f;
-      show({ ...base, summary: `${f.cells} cells, ${f.height} x ${f.width} px` });
+      show({
+        ...base,
+        summary: `${f.cells} cells, ${f.height} x ${f.width} px`,
+        shape: shapeText(slot, { kind: 'footprints', ...f }),
+      });
+    } else if (slot === 'behavior_frame') {
+      const { width, height } = await imageSize(file);
+      show({
+        ...base,
+        summary: `${width} x ${height} px`,
+        shape: shapeText(slot, { kind: 'image', width, height }),
+      });
     } else if (slot === 'config') {
       const text = await file.text();
       configHooks.forEach((f) => f(text));
@@ -177,6 +192,7 @@ async function load(slot: SlotId, file: File): Promise<void> {
       show({
         ...base,
         summary: `${m.markers.length.toLocaleString()} markers, ${n} label${n === 1 ? '' : 's'}`,
+        shape: shapeText(slot, { kind: 'count', count: m.markers.length }),
         warning: m.problems.join(' ') || undefined,
       });
     } else if (slot === 'frame_labels') {
@@ -185,11 +201,19 @@ async function load(slot: SlotId, file: File): Promise<void> {
       if (!t.rows.length) throw new Error('The file has no data rows.');
       texts[slot] = text;
       setFrameRoles(rolesFor(t, configuredFrameMapping));
-      show({ ...base, summary: `${t.rows.length.toLocaleString()} rows` });
+      show({
+        ...base,
+        summary: `${t.rows.length.toLocaleString()} rows`,
+        shape: tableShape(slot, t),
+      });
     } else {
       const t = await readTable(file);
       data[slot] = t;
-      show({ ...base, summary: `${t.rows.length.toLocaleString()} rows` });
+      show({
+        ...base,
+        summary: `${t.rows.length.toLocaleString()} rows`,
+        shape: tableShape(slot, t),
+      });
     }
   } catch (e) {
     delete data[slot];
@@ -197,7 +221,30 @@ async function load(slot: SlotId, file: File): Promise<void> {
     show({ ...base, summary: '', error: e instanceof Error ? e.message : String(e) });
   }
   setVersion((v) => v + 1);
+  if (!loaded[slot]?.error) loadedHooks.forEach((f) => f(slot, file));
 }
+
+/** Annotations count their bouts or epochs; other tables give rows and value columns. */
+const tableShape = (slot: SlotId, t: Table) =>
+  slot === 'behavior_annotations' || slot === 'zone_annotations'
+    ? shapeText(slot, { kind: 'count', count: t.rows.length })
+    : shapeText(slot, { kind: 'table', columns: t.columns, rows: t.rows.length });
+
+/** Width and height of a picture file. */
+async function imageSize(file: File): Promise<{ width: number; height: number }> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const size = { width: bmp.width, height: bmp.height };
+    bmp.close();
+    return size;
+  } catch {
+    throw new Error('This file is not a picture CaBaNA can read. Use a .png or .jpg image.');
+  }
+}
+
+const loadedHooks: ((slot: SlotId, file: File) => void)[] = [];
+/** Run `f` each time a file is read into a data type without error. */
+export const onSlotLoaded = (f: (slot: SlotId, file: File) => void) => loadedHooks.push(f);
 
 /** Add files from a folder, a drop, or a single slot. Unmatched files wait for the user to assign them. */
 export async function addFiles(files: File[], slot?: SlotId): Promise<void> {

@@ -1,7 +1,8 @@
-// Reading the files a user drops in. Arrays come from @calab/io; tables are
+// Reading the files a user drops in. Arrays come from @calab/io (.npy, .npz or .mat); tables are
 // plain CSV (no quoted commas).
 
-import { parseNpy } from '@calab/io';
+import { parseMat, parseNpy, parseNpz, traceCandidates } from '@calab/io';
+import type { NpzResult } from '@calab/core';
 
 export interface Matrix {
   data: Float32Array | Float64Array;
@@ -14,12 +15,45 @@ export interface Table {
   rows: string[][];
 }
 
-/** Parse an .npy file, with a clearer message when the file is really a web page (a failed download). */
-async function readNpy(file: File) {
+const kindOf = (name: string) => /\.(npz|mat)$/i.exec(name)?.[1].toLowerCase() ?? 'npy';
+
+/**
+ * The one array of `dims` dimensions in a .npz or .mat file. Several that fit are an error naming
+ * them, since picking one silently could analyze the wrong data.
+ */
+export function pickArray(result: NpzResult, dims: 2 | 3): string {
+  const fits =
+    dims === 2
+      ? traceCandidates(result).filter((n) => result.arrays[n].shape.every((d) => d > 1))
+      : result.arrayNames.filter((n) => result.arrays[n].shape.length === 3);
+  if (fits.length === 1) return fits[0];
+  const what = dims === 2 ? '2D array (cells x frames)' : '3D array (cells x height x width)';
+  if (!fits.length)
+    throw new Error(
+      `No ${what} in this file. It holds: ${result.arrayNames.map((n) => `${n} (${result.arrays[n].shape.join(' x ')})`).join(', ') || 'nothing'}.`,
+    );
+  throw new Error(
+    `This file holds several arrays that could be the data: ${fits.join(', ')}. Save the one to use on its own.`,
+  );
+}
+
+/**
+ * Parse an array file (.npy, .npz or .mat), with a clearer message when the file is really a web
+ * page (a failed download). From .npz and .mat the one array of `dims` dimensions is taken.
+ */
+async function readArray(file: File, dims: 2 | 3) {
   const buf = await file.arrayBuffer();
   if (new Uint8Array(buf, 0, 1)[0] === 0x3c)
-    throw new Error('This is a web page, not a NumPy file. Reload the app and try again.');
-  const { data, shape, fortranOrder } = parseNpy(buf);
+    throw new Error('This is a web page, not an array file. Reload the app and try again.');
+  const kind = kindOf(file.name);
+  const arr =
+    kind === 'npy'
+      ? parseNpy(buf)
+      : (() => {
+          const all = kind === 'npz' ? parseNpz(buf) : parseMat(buf);
+          return all.arrays[pickArray(all, dims)];
+        })();
+  const { data, shape, fortranOrder } = arr;
   return { data: fortranOrder ? toCOrder(data, shape) : data, shape };
 }
 
@@ -38,7 +72,7 @@ function toCOrder<T extends ArrayLike<number>>(data: T, shape: number[]): T {
 }
 
 export async function readMatrix(file: File): Promise<{ matrix: Matrix; note?: string }> {
-  const { data, shape } = await readNpy(file);
+  const { data, shape } = await readArray(file, 2);
   if (shape.length !== 2)
     throw new Error(`Expected a 2D array (cells x frames), got shape ${shape.join(' x ')}.`);
   const [cells, frames] = shape;
@@ -54,7 +88,7 @@ export interface Footprints {
 }
 
 export async function readFootprints(file: File): Promise<Footprints> {
-  const { data, shape } = await readNpy(file);
+  const { data, shape } = await readArray(file, 3);
   if (shape.length !== 3)
     throw new Error(`Expected cells x height x width, got shape ${shape.join(' x ')}.`);
   return {
