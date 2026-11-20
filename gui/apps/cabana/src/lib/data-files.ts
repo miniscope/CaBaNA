@@ -3,6 +3,7 @@
 // path, and the first one makes a draft project (project-session.ts); without the engine, or for
 // example data, the browser reads them.
 
+import { createSignal } from 'solid-js';
 import { openProject, setDataFiles } from './open-project.ts';
 import { identify } from './other-files.ts';
 import { addOther, others, setOtherFile, type OtherType } from './other-types.ts';
@@ -32,6 +33,17 @@ import {
 export const byPath = (): boolean => projectsOn() && !(exampleMedia() && !openProject());
 
 const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+/** What is being read now ("Reading m42_day3…"), shown in the folder box; undefined when idle. */
+export const [adding, setAdding] = createSignal<string>();
+async function reading<T>(what: string, f: () => Promise<T>): Promise<T> {
+  setAdding(`Reading ${what}…`);
+  try {
+    return await f();
+  } finally {
+    setAdding(undefined);
+  }
+}
 
 /**
  * Sort a scanned folder: each data type takes the first file that matches it by name; a second
@@ -77,6 +89,10 @@ export async function addFolderByPath(): Promise<void> {
     await projects.dialog('folder', { title: 'Select the folder with your data' }),
   );
   if (!paths) return;
+  await reading(basename(paths[0]), () => addScanned(paths));
+}
+
+async function addScanned(paths: string[]): Promise<void> {
   const { files } = await projects.scan(paths);
   const sorted = sortScanned(files);
   if (openProject())
@@ -100,7 +116,7 @@ export async function addFolderByPath(): Promise<void> {
 export async function selectFileFor(slot: SlotId): Promise<void> {
   if (!byPath()) return pickFile((f) => void addFiles([f], slot), slotOf(slot).accept);
   const path = await chooseFilePath(`Select the ${slotOf(slot).label.toLowerCase()} file`);
-  if (path) await addPathToProject(slot, path);
+  if (path) await reading(basename(path), () => addPathToProject(slot, path));
 }
 
 /** Register a named data type's file in the project (making the draft if there is none). */

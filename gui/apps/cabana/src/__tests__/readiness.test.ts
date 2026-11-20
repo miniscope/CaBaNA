@@ -199,8 +199,8 @@ describe('Next', () => {
   const ready = base({ setupStarted: true, setupComplete: true });
   it('walks the steps in order and skips Complete ones', () => {
     expect(nextItem(ready, 'viz')).toBe('place');
-    // Data setup supplies the spatial setup place cells need, so Next stays there until it is done.
-    expect(nextItem(base({ spatialComplete: false }), 'data')).toBe('data');
+    // From Data setup Next needs only the required files; place cells show their own needs.
+    expect(nextItem(base({ spatialComplete: false }), 'data')).toBe('viz');
   });
   it('goes from Data setup to Data visualization, and from there to the analyses', () => {
     expect(nextItem(ready, 'data')).toBe('viz');
@@ -213,7 +213,7 @@ describe('Next', () => {
   });
   it('stays on the page that supplies what is missing, and says what', () => {
     const s = base({ neural: false, timing: false });
-    expect(nextStep(s, 'data')).toMatchObject({ item: 'data', blocked: 'Load neural data.' });
+    expect(nextStep(s, 'viz', ['place'])).toMatchObject({ item: 'data' });
   });
   it('skips analyses that need a framework update or the engine', () => {
     expect(nextItem(base({ ...ready, bridge: 'offline' }), 'viz', ['population', 'auroc'])).toBe(

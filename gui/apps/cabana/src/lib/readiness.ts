@@ -341,7 +341,8 @@ export function itemStatus(s: Snapshot, id: ItemId): Status {
     case 'data': {
       // Loading and the experiment config together: complete once every required file is loaded
       // and the setup it needs is done.
-      if (!s.neural && s.dataMissing.length >= 4) return status('not_started');
+      if (!s.neural && s.dataMissing.length >= 4)
+        return status('not_started', { text: 'Add data files' });
       if (s.dataMissing.length) {
         const n = s.dataMissing.length;
         return status('needs_input', {
@@ -410,7 +411,7 @@ export interface NextStep {
 
 /**
  * Next goes to the first later item that is not Complete and whose prerequisites are met. From
- * Data setup that is Data visualization, once Data setup itself needs nothing; otherwise Data
+ * Data setup that is Data visualization, once every required file is there; otherwise Data
  * visualization is skipped. Analyses are limited to those
  * recommended for the paradigm. When an item needs something an earlier step provides, Next goes
  * to that step; when the current page provides it, Next stays and says what is missing; framework
@@ -421,12 +422,13 @@ export function nextStep(
   current: ItemId,
   recommended: AnalysisItem[] = ANALYSIS_ITEMS,
 ): NextStep {
-  // Data setup's own requirements come first: Next stays and says what to add.
-  if (current === 'data' && s.dataMissing.length)
-    return { item: 'data', blocked: blockedText(s.dataMissing) };
-  const after = laterStep(s, current, recommended);
-  // Once Data setup has what it supplies, Next looks at the data before any analysis.
-  return current === 'data' && after.item !== 'data' && s.neural ? { item: 'viz' } : after;
+  // From Data setup, Next needs only the required files; then it looks at the data before any
+  // analysis. What each analysis needs is shown on that analysis.
+  if (current === 'data')
+    return s.dataMissing.length
+      ? { item: 'data', blocked: blockedText(s.dataMissing) }
+      : { item: 'viz' };
+  return laterStep(s, current, recommended);
 }
 
 function laterStep(s: Snapshot, current: ItemId, recommended: AnalysisItem[]): NextStep {

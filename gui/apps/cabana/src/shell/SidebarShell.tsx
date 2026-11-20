@@ -233,9 +233,10 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   // Steps are greyed while a project page is open with nothing loaded; with a session open they
   // stay reachable, and so does the page the user is on if its files were all removed.
   const locked = () => nothingLoaded() && isProjectPage(stepId());
-  // With the engine on, the pages after Data setup wait until the draft project has a name.
+  // With nothing loaded only Data setup is open; with the engine on, the pages after it wait until
+  // the draft project has a name.
   const lockOf = (id: string) =>
-    locked()
+    locked() || (id !== 'data' && nothingLoaded())
       ? 'Open a project first'
       : id !== 'data' && unsavedDraft()
         ? 'Save the project first'

@@ -11,7 +11,7 @@ import {
   openEntry,
   setAppliedNote,
 } from '../../lib/data-setup-view.ts';
-import { addFolderByPath, byPath } from '../../lib/data-files.ts';
+import { addFolderByPath, adding, byPath } from '../../lib/data-files.ts';
 import {
   activeLabel,
   clearActiveLabel,
@@ -51,7 +51,7 @@ function SelectFolder(props: { label: string; class: string }): JSX.Element {
   };
   return (
     <>
-      <button type="button" class={props.class} onClick={choose}>
+      <button type="button" class={props.class} disabled={!!adding()} onClick={choose}>
         {props.label}
       </button>
       <input
@@ -109,6 +109,11 @@ function FolderBox(): JSX.Element {
               change any assignment.
             </p>
             <SelectFolder label="Select folder" class="btn-secondary" />
+            <Show when={adding()}>
+              <span class="cb-muted cb-ld-folder__count" role="status">
+                {adding()}
+              </span>
+            </Show>
           </div>
           <div class="cb-ld-or">or select files one at a time below</div>
         </>
@@ -130,8 +135,10 @@ function FolderBox(): JSX.Element {
           </Show>
           <FolderInfoButton />
         </p>
-        <Show when={counts()}>
-          <span class="cb-muted cb-ld-folder__count">{counts()}</span>
+        <Show when={adding() ?? counts()}>
+          <span class="cb-muted cb-ld-folder__count" role="status">
+            {adding() ?? counts()}
+          </span>
         </Show>
         <SelectFolder
           label={label() ? 'Select another folder' : 'Select folder'}
