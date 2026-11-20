@@ -24,7 +24,7 @@ import {
   startBlankCanvas,
   videoChoice,
 } from './spatial-state.ts';
-import { onClear, onSlotLoaded } from './store.ts';
+import { onClear, onDetailsReset, onSlotLoaded, slotFile } from './store.ts';
 
 export const [busy, setBusy] = createSignal('');
 export const [loadError, setLoadError] = createSignal('');
@@ -37,6 +37,10 @@ export const [scrubT, setScrubT] = createSignal(0);
 // existing background is never replaced without the user asking.
 onSlotLoaded((slot, file) => {
   if (slot === 'behavior_frame' && !frame()) void loadBackground(file);
+});
+onDetailsReset(() => {
+  const f = slotFile('behavior_frame');
+  if (f) void loadBackground(f);
 });
 
 onClear(() => {

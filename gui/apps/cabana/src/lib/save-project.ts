@@ -6,8 +6,15 @@ import { createSignal } from 'solid-js';
 import { errorText, showMessage } from './confirm.ts';
 import { isExample, setSaveDialog } from './example-session.ts';
 import { openProject } from './open-project.ts';
-import { nameDraft, nameProblem, projectsOn, typedName, unsavedDraft } from './project-session.ts';
-import { folderInfo, sessionName } from './store.ts';
+import {
+  nameDraft,
+  nameProblem,
+  projectsOn,
+  setTypedName,
+  typedName,
+  unsavedDraft,
+} from './project-session.ts';
+import { folderInfo, sessionName, setSessionName } from './store.ts';
 
 /** The name window: from Next (`thenNext`) or from Save project; `after` runs once saved. */
 export const [namePrompt, setNamePrompt] = createSignal<{
@@ -18,8 +25,16 @@ export const [namePrompt, setNamePrompt] = createSignal<{
 /** The name the window starts with: what was typed, else the folder's name. */
 export const suggestedName = (): string => typedName().trim() || folderInfo()?.name || '';
 
-/** The Project name field: the typed name while the draft has none, else the project's name. */
-export const nameField = (): string => (unsavedDraft() ? typedName() : (sessionName() ?? ''));
+/**
+ * The Project name field. With a project open it edits a copy of the name (Save project renames);
+ * without one it is the session's name, as in browser-only mode.
+ */
+export const nameField = (): string => (openProject() ? typedName() : (sessionName() ?? ''));
+export const setNameField = (v: string): void =>
+  void (openProject() ? setTypedName(v) : setSessionName(v));
+/** The open project is saved under the name in the field. */
+export const nameSaved = (): boolean =>
+  !!openProject() && !unsavedDraft() && typedName().trim() === openProject()!.name;
 
 /** Name and save the project, then run `after`. Problems are shown, not thrown. */
 export async function saveAs(name: string, parent?: string, after?: () => void): Promise<void> {

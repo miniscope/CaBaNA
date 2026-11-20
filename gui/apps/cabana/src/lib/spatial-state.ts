@@ -22,7 +22,7 @@ import { arenaProblem, configReport } from './config-import.ts';
 import { blankFrame } from './frame.ts';
 import { regionNoticeProblem } from './region-notice.ts';
 import { spatialChecks, type SpatialSnapshot, type Stage } from './spatial-checks.ts';
-import { loaded, onClear, onConfig, source } from './store.ts';
+import { loaded, onSetupClear, onConfig, source } from './store.ts';
 
 // Kept in arena.ts, which uses it for the scale; re-exported for Spatial setup.
 export { setSizeEntered, sizeEntered };
@@ -36,7 +36,7 @@ export const [videoChoice, setVideoChoice] = createSignal<{ t?: number; median?:
 /** The stage shown; undefined follows the first stage with something left to do. */
 export const [chosenStage, setChosenStage] = createSignal<Stage>();
 
-onClear(() => {
+onSetupClear(() => {
   setUnverifiedZones(new Set<string>());
   setVideoChoice(undefined);
   setChosenStage(undefined);

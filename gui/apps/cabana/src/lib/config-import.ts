@@ -7,7 +7,7 @@ import { arena, setArena, setPendingZones } from './arena.ts';
 import { readConfig, type ConfigRead } from './config-read.ts';
 import { setPrep } from './preprocess.ts';
 import {
-  onClear,
+  onSetupClear,
   onConfig,
   setConfigFiles,
   setConfiguredFrameMapping,
@@ -27,7 +27,7 @@ export const [configReport, setConfigReport] = createSignal<ConfigRead>();
  * the arena would silently be the default size.
  */
 export const [arenaProblem, setArenaProblem] = createSignal<string>();
-onClear(() => {
+onSetupClear(() => {
   setConfigReport(undefined);
   setArenaProblem(undefined);
 });

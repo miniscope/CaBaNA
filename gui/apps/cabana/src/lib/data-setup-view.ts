@@ -5,10 +5,10 @@
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
-import { SLOTS, type SlotId } from './slots.ts';
+import { BEHAVIOR_ADD, NEURAL_ADD, SLOTS, type SlotId } from './slots.ts';
 import { openProject } from './open-project.ts';
 import { others } from './other-types.ts';
-import { goToStep, ignoredFiles, loaded, sessionName, unrecognized } from './store.ts';
+import { goToStep, ignoredFiles, loaded, onClear, sessionName, unrecognized } from './store.ts';
 
 /** Get started, a data type, the cross-data timing check, or an unassigned file (by name). */
 export type EntryId = 'start' | SlotId | 'sync' | `file:${string}`;
@@ -25,6 +25,16 @@ export const nothingLoaded = (): boolean =>
   !ignoredFiles().length &&
   !others.some((o) => o.file) &&
   !openProject();
+
+/** Data types added to a card from its + menu, in the order the menu lists them. */
+export const [addedRows, setAddedRows] = createSignal<SlotId[]>([]);
+export function addRow(id: SlotId): void {
+  if (addedRows().includes(id)) return;
+  const order = [...NEURAL_ADD, ...BEHAVIOR_ADD];
+  setAddedRows([...addedRows(), id].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
+}
+export const hideRow = (id: SlotId) => setAddedRows(addedRows().filter((x) => x !== id));
+onClear(() => setAddedRows([]));
 
 /** The line shown after settings from another session were applied; cleared with the session. */
 export const [appliedNote, setAppliedNote] = createSignal<string>();

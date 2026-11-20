@@ -14,7 +14,7 @@ import {
   zoneShares,
   type ZoneShape,
 } from './zone-occupancy.ts';
-import { cameraFps, onClear, positionResult, setPositionScale, source } from './store.ts';
+import { cameraFps, onSetupClear, positionResult, setPositionScale, source } from './store.ts';
 
 export type Pt = [number, number];
 export interface Zone {
@@ -47,7 +47,7 @@ export const [arena, setArena] = createStore({
   headOffset: 0,
 });
 
-onClear(() => {
+onSetupClear(() => {
   setFrame(undefined);
   setArena({
     shape: 'rectangle',
@@ -68,7 +68,7 @@ onClear(() => {
 
 /** The arena's real size was typed or read from config.yaml; the starting 40 x 40 cm is not a scale. */
 export const [sizeEntered, setSizeEntered] = createSignal(false);
-onClear(() => setSizeEntered(false));
+onSetupClear(() => setSizeEntered(false));
 
 /** Zones from a config.yaml, in cm, waiting for the arena outline so they can be put on the picture. */
 export const [pendingZones, setPendingZones] = createSignal<CmZone[]>();
@@ -141,7 +141,7 @@ export const toPx = (c: Pt): Pt | undefined => {
 };
 
 // Placed after toPx and pxPerCm, which the effect reads as soon as it is created.
-onClear(() => setPendingZones(undefined));
+onSetupClear(() => setPendingZones(undefined));
 createRoot(() =>
   createEffect(() => {
     const z = pendingZones();

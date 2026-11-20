@@ -379,6 +379,27 @@ export const onConfig = (f: (text: string) => void) => configHooks.push(f);
 const clearHooks: (() => void)[] = [];
 /** Run `f` whenever the loaded data is cleared, so other parts of the app can forget what belonged to it. */
 export const onClear = (f: () => void) => clearHooks.push(f);
+const setupHooks: (() => void)[] = [];
+/** Like onClear, and also when only the experiment details are removed (resetExperimentDetails). */
+export const onSetupClear = (f: () => void) => {
+  clearHooks.push(f);
+  setupHooks.push(f);
+};
+/** Run `f` after the experiment details were removed and set back to their defaults. */
+export const onDetailsReset = (f: () => void) => setupHooks.push(f);
+
+/**
+ * Remove the experiment details: the experiment type, arena, zones, frame rates, units and the
+ * experiment.yaml read as config go back to not set. The data files stay.
+ */
+export function resetExperimentDetails(): void {
+  setSource(reconcile(structuredClone(DEFAULT_SOURCE)));
+  setExperiment('custom');
+  setConfigFiles({});
+  setOverride({ neuralFps: undefined, cameraFps: undefined, durationS: undefined });
+  removeFile('config');
+  setupHooks.forEach((f) => f());
+}
 
 /** Forget the loaded dataset and put everything that belonged to it back to its defaults. */
 export function clearAll(): void {

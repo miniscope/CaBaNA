@@ -34,7 +34,15 @@ import {
 import { setSaveStatus } from './save-status.ts';
 import { setAllOthers } from './other-types.ts';
 import { isOtherId, type OtherId, type SlotId } from './slots.ts';
-import { addFiles, clearAll, exampleMedia, goToStep, onClear, setSessionName } from './store.ts';
+import {
+  addFiles,
+  clearAll,
+  exampleMedia,
+  goToStep,
+  onClear,
+  sessionName,
+  setSessionName,
+} from './store.ts';
 
 /** True when the engine can list and save projects. */
 export const projectsOn = (): boolean => bridgeReady();
@@ -69,6 +77,8 @@ export async function refreshLibrary(): Promise<void> {
 }
 
 let closing: Promise<unknown> | undefined;
+/** The Project name field while a project is open: its name, or what was typed over it. */
+export const [typedName, setTypedName] = createSignal('');
 // Clearing the session closes the project in this window; the folder stays on disk.
 onClear(() => {
   if (!openProject()) return;
@@ -143,6 +153,7 @@ async function loadProject(project: ProjectSummary, created = false): Promise<vo
   placed.sort(([a], [b]) => Number(a === 'config') - Number(b === 'config'));
   for (const [slot, file] of placed) await addFiles([file], slot);
   setSessionName(project.name);
+  setTypedName(project.name);
   if (proc.valid) applyProcessing(readYaml(proc.text));
   if (ana.valid) applyAnalysis(readYaml(ana.text));
   noteMoved(data);
@@ -295,8 +306,7 @@ export async function updateProjectYaml(
  * "Untitled project <date> <time>", until Save project or Next gives it the user's name.
  */
 const [draftId, setDraftId] = createSignal<string>();
-/** The name typed in the Project name field while the draft has none of its own. */
-export const [typedName, setTypedName] = createSignal('');
+
 onClear(() => {
   setDraftId(undefined);
   setTypedName('');
@@ -330,11 +340,14 @@ export interface DraftFile {
  */
 export async function createDraft(files: DraftFile[]): Promise<void> {
   if (openProject()) throw new Error('A project is already open.');
+  // A name typed before the first file is kept for when the draft is named.
+  const typed = sessionName() ?? '';
   await closing;
   const made = await projects.create(draftName());
   for (const f of files) await projects.registerData(made.id, f.slot, f.path, f.label);
   await loadProject(await projects.open({ id: made.id }), true);
   setDraftId(made.id);
+  setTypedName(typed);
 }
 
 /** Put a file into a data type: into the open project, else into a new draft. */
@@ -378,7 +391,7 @@ export async function nameDraft(name: string, parent?: string): Promise<void> {
   }
   setSessionName(now.name);
   setDraftId(undefined);
-  setTypedName('');
+  setTypedName(now.name);
   await saveEverything('Project saved');
 }
 

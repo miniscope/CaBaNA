@@ -139,5 +139,8 @@ export async function assignTo(u: UnassignedFile, target: SlotId | 'other'): Pro
   if (u.path) {
     await addPathToProject(target, u.path);
     dropUnassigned(u.key);
+  } else if (u.file && target === 'config') {
+    dropUnassigned(u.key);
+    await addFiles([u.file], 'config');
   } else if (u.file) await identify(u.file, target);
 }

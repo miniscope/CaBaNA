@@ -28,6 +28,10 @@ export function ActionsMenu(props: {
   side?: 'left' | 'right';
   /** Open the menu upward even when there is room below. */
   up?: boolean;
+  /** Show the ▾ after the label (default true); a square + button has none. */
+  caret?: boolean;
+  /** Name and tooltip of the button, when its label is only a symbol. */
+  title?: string;
 }): JSX.Element {
   let button!: HTMLButtonElement;
   let menu: HTMLDivElement | undefined;
@@ -272,6 +276,8 @@ export function ActionsMenu(props: {
         class={props.class ?? 'btn-secondary btn-small'}
         aria-haspopup="menu"
         aria-expanded={open()}
+        aria-label={props.title}
+        title={props.title}
         onClick={toggle}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' && !open()) {
@@ -280,7 +286,8 @@ export function ActionsMenu(props: {
           }
         }}
       >
-        {props.label ?? 'Actions'} ▾
+        {props.label ?? 'Actions'}
+        {props.caret === false ? '' : ' ▾'}
       </button>
       <Show when={open()}>
         <Portal>

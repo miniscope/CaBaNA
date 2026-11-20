@@ -30,7 +30,7 @@ import {
   labelRegistry,
   labelRoles,
   loaded,
-  onClear,
+  onSetupClear,
   onConfigLoaded,
   override,
   rejected,
@@ -215,7 +215,7 @@ onConfigLoaded(() => {
   const original = configReport()?.original;
   imported = original && { original, baseline: configFromSettings() };
 });
-onClear(() => (imported = undefined));
+onSetupClear(() => (imported = undefined));
 
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

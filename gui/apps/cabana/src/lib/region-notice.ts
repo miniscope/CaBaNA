@@ -7,7 +7,7 @@ import { batch, createEffect, createRoot, createSignal, on } from 'solid-js';
 import { unwrap } from 'solid-js/store';
 import { arena, frame, setArena, setFrame, toCm, toPx, type Pt, type Zone } from './arena.ts';
 import type { FrameSource } from './frame.ts';
-import { onClear } from './store.ts';
+import { onSetupClear } from './store.ts';
 
 /** Everything that decides where a picture point is in cm. */
 interface Calibration {
@@ -99,7 +99,7 @@ createRoot(() => {
   );
 });
 
-onClear(() => {
+onSetupClear(() => {
   setRegionNotice(undefined);
   setPreviewRegions(undefined);
   settled = undefined;
