@@ -103,7 +103,14 @@ export function AurocConditionsSection(props: {
           The selected behaviors cover {percentOf(Math.round(tiling() * 1000), 1000)} of eligible
           frames, so each behavior's reference group is mostly the other behaviors. A cell tuned to
           one of them will also be called, in the opposite direction, for the others. To test one
-          behavior against a specific other, choose <b>Another behavior</b>.
+          behavior against a specific other, choose <b>Another behavior</b>.{' '}
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            onClick={() => setAurocSettings('compare', 'behavior')}
+          >
+            Compare two behaviors instead
+          </button>
         </div>
       </Show>
       <div class="cb-au-counts" role="status">

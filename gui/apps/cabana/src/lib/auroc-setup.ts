@@ -221,3 +221,18 @@ export function selectedCoverage(
   }
   return kept ? covered / kept : 0;
 }
+
+/**
+ * Coverage of a finished "against the rest" run when its behaviors tile the session, else undefined
+ * (behavior-against-behavior runs, one behavior, or coverage below `TILING_COVERAGE`).
+ */
+export function tilingOf(out: {
+  against?: string;
+  labels: string[];
+  input: AurocInput;
+}): number | undefined {
+  if (out.against !== undefined || out.labels.length < 2) return undefined;
+  const { behaviors, frames, mask } = out.input;
+  const cov = selectedCoverage({ behaviors, frames, mask, labels: out.labels }, []);
+  return cov >= TILING_COVERAGE ? cov : undefined;
+}

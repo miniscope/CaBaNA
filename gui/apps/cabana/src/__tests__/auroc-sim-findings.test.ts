@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { halfRangeOf, shownHalfRange } from '../lib/auroc-population.ts';
-import { selectedCoverage, TILING_COVERAGE } from '../lib/auroc-setup.ts';
+import { selectedCoverage, tilingOf, TILING_COVERAGE } from '../lib/auroc-setup.ts';
 
 describe('halfRangeOf', () => {
   it('fits the scale to frame-wise auROC of sparse data', () => {
@@ -42,5 +42,17 @@ describe('selectedCoverage', () => {
     const mask = new Uint8Array(frames).fill(1);
     mask.fill(0, 5);
     expect(selectedCoverage({ ...data, mask }, ['closed'])).toBe(1);
+  });
+
+  it('flags a finished vs-rest run, not a behavior-against-behavior run', () => {
+    const input = { ...data, neural: new Float32Array(0), cells: 0, fs: 10, nBehaviors: 3 };
+    const out = { labels: data.labels, input };
+    expect(tilingOf(out)).toBe(1);
+    expect(tilingOf({ ...out, against: 'closed' })).toBeUndefined();
+    const mask = new Uint8Array(frames).fill(1);
+    const sparse = { ...input, behaviors: new Uint8Array(3 * frames) };
+    sparse.behaviors[0] = 1;
+    sparse.behaviors[frames + 1] = 1;
+    expect(tilingOf({ labels: data.labels, input: { ...sparse, mask } })).toBeUndefined();
   });
 });

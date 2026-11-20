@@ -8,6 +8,7 @@ import {
   isSingleBehavior,
 } from '../lib/auroc-population.ts';
 import { summarize } from '../lib/auroc-view.ts';
+import { percentOf, tilingOf } from '../lib/auroc-setup.ts';
 import { AurocHistogram } from './AurocPopulationPlots.tsx';
 import { Fit, HowTo, pct, type Ctx } from './AurocResults.tsx';
 
@@ -17,6 +18,7 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
   const s = createMemo(() => summarize(o()));
   const half = createMemo(() => (fitScale() ? heatHalfRange(o()) : 0.5));
   const single = () => isSingleBehavior(o());
+  const tiling = createMemo(() => tilingOf(o()));
   const bins = createMemo(() => aurocHistogram(o(), c().b, half()));
   // Cells by number of significant behaviors, grouped as 0, 1 and 2 or more
   const overlap = () => {
@@ -91,6 +93,16 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
             }}
           </For>
         </div>
+        <Show when={tiling()}>
+          {(cov) => (
+            <div class="cb-as-scope cb-au-tiling" role="note">
+              These behaviors cover {percentOf(Math.round(cov() * 1000), 1000)} of the included
+              frames, so each was compared mostly with the others. <b>Lower</b> for one behavior
+              often means a cell tuned to another one. To see which behavior a cell prefers, run the
+              analysis with <b>Another behavior</b> as the reference.
+            </div>
+          )}
+        </Show>
         <div class="cb-ar-pop__key">
           <span>
             <i style={{ background: SEGMENT.excited }} /> Higher activity
