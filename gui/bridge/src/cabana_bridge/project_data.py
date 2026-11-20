@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .projects import SLOT_KINDS, Conflict, Projects
+from .projects import Conflict, Projects, valid_slot
 from .store import BadRequest
 
 
@@ -31,8 +31,21 @@ class ProjectData:
     def _save(self, entries: list[dict[str, Any]]) -> None:
         Projects.update_meta(self.folder, {"data": entries})
 
-    def add(self, slot: str, path: str) -> dict[str, Any]:
-        if slot not in SLOT_KINDS:
+    def labels(self) -> dict[str, str]:
+        """The user's names of "other" data types, by slot."""
+        meta = Projects._read_meta(self.folder) or {}
+        return dict(meta.get("data_labels") or {})
+
+    def _save_label(self, slot: str, label: str | None) -> None:
+        labels = self.labels()
+        if label:
+            labels[slot] = label
+        else:
+            labels.pop(slot, None)
+        Projects.update_meta(self.folder, {"data_labels": labels})
+
+    def add(self, slot: str, path: str, label: str | None = None) -> dict[str, Any]:
+        if not valid_slot(slot):
             raise BadRequest(f"unknown slot {slot!r}")
         source = Path(path).expanduser()
         if not source.is_file():
@@ -47,11 +60,15 @@ class ProjectData:
             shutil.copy2(source, target)
             entry["copied"] = f"data/{target.name}"
         self._save([e for e in self.entries() if e.get("slot") != slot] + [entry])
+        if slot.startswith("other_"):
+            if label is not None and not isinstance(label, str):
+                raise BadRequest("label must be text")
+            self._save_label(slot, (label or "").strip() or None)
         return entry
 
     def add_copy(self, slot: str, source: Path, sha: str, name: str) -> dict[str, Any]:
         """Stores a copy of an uploaded input as the slot's file (the project then owns its data)."""
-        if slot not in SLOT_KINDS:
+        if not valid_slot(slot):
             raise BadRequest(f"unknown slot {slot!r}")
         if not name or name != Path(name).name or name.startswith(".") or "\\" in name or "\0" in name:
             raise BadRequest(f"bad file name {name!r}")
@@ -71,6 +88,8 @@ class ProjectData:
         if not any(e.get("slot") == slot for e in entries):
             raise FileNotFoundError(slot)
         self._save([e for e in entries if e.get("slot") != slot])
+        if slot in self.labels():
+            self._save_label(slot, None)
 
     def find(self, sha: str) -> Path | None:
         """Where the registered file with this hash can be read now (the original, else the project's copy)."""

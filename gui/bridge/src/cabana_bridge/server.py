@@ -518,7 +518,8 @@ def scan(h: Handler, q: dict) -> None:
 
 def data_post(h: Handler, q: dict, pid: str) -> None:
     body = h._body_json()
-    h._json(ProjectData(h.app.projects.folder_of(pid)).add(body.get("slot", ""), body.get("path", "")), 201)
+    data = ProjectData(h.app.projects.folder_of(pid))
+    h._json(data.add(body.get("slot", ""), body.get("path", ""), body.get("label")), 201)
 
 
 def data_from_input(h: Handler, q: dict, pid: str) -> None:
@@ -548,7 +549,8 @@ def data_delete(h: Handler, q: dict, pid: str, slot: str) -> None:
 
 
 def data_get(h: Handler, q: dict, pid: str) -> None:
-    h._json({"files": ProjectData(h.app.projects.folder_of(pid)).status()})
+    data = ProjectData(h.app.projects.folder_of(pid))
+    h._json({"files": data.status(), "labels": data.labels()})
 
 
 def registered_file(h: Handler, q: dict, sha: str) -> None:
@@ -612,7 +614,7 @@ ROUTES: list[Route] = [
     ("GET", rf"/projects/{PROJECT_ID}/data", data_get),
     ("POST", rf"/projects/{PROJECT_ID}/data/from-input", data_from_input),
     ("POST", rf"/projects/{PROJECT_ID}/runs/adopt", runs_adopt),
-    ("DELETE", rf"/projects/{PROJECT_ID}/data/([a-z_]+)", data_delete),
+    ("DELETE", rf"/projects/{PROJECT_ID}/data/([a-z0-9_]+)", data_delete),
     ("GET", r"/files/([0-9a-f]{64})", registered_file),
     ("GET", rf"/projects/{PROJECT_ID}/history", history_get),
     ("POST", rf"/projects/{PROJECT_ID}/history/([0-9]{{8}}-[0-9]{{6}}(?:-[0-9]+)?)/restore", history_restore),

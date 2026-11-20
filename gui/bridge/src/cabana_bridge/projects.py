@@ -83,8 +83,14 @@ SLOT_KINDS = {
     "neural_raw": "neural", "footprints": "neural",
     "behavior_timestamps": "behavior", "position": "position", "head_orientation": "position",
     "zone_annotations": "behavior", "behavior_annotations": "behavior", "time_markers": "behavior",
-    "frame_labels": "behavior", "config": None,
+    "frame_labels": "behavior", "behavior_frame": "behavior", "config": None,
 }
+# Data types the user names ("Other…" in Data setup): listed with the project, never analyzed.
+OTHER_SLOT = re.compile(r"^other_[1-9][0-9]{0,3}$")
+
+
+def valid_slot(slot: str) -> bool:
+    return slot in SLOT_KINDS or bool(OTHER_SLOT.match(slot))
 
 
 def data_kind(slot: str) -> str | None:

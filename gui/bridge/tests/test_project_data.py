@@ -186,3 +186,23 @@ def test_a_copied_file_is_not_missing_when_the_original_path_is_gone(tmp_path):
     data = [{"slot": "neural_raw", "path": "/gone/a.npy", "copied": "data/neural_raw-a.npy"},
             {"slot": "position", "path": "/gone/p.csv"}]
     assert summarize(tmp_path, {"id": "abc", "data": data})["missing_count"] == 1
+
+
+def test_behavior_frame_and_named_other_types(opened):
+    c, app, tmp, info, data = opened
+    pid = info["id"]
+    frame = tmp / "recording" / "behavior_frame.png"
+    frame.write_bytes(b"png bytes")
+    assert c.json("POST", f"/projects/{pid}/data", {"slot": "behavior_frame", "path": str(frame)})[0] == 201
+    status, _ = c.json("POST", f"/projects/{pid}/data", {"slot": "other_1", "path": str(data), "label": "Lick sensor"})
+    assert status == 201
+    assert c.json("POST", f"/projects/{pid}/data", {"slot": "other_x", "path": str(data)})[0] == 400
+    assert c.json("POST", f"/projects/{pid}/data", {"slot": "other_0", "path": str(data)})[0] == 400
+    got = c.json("GET", f"/projects/{pid}/data")[1]
+    assert {f["slot"] for f in got["files"]} == {"behavior_frame", "other_1"}
+    assert got["labels"] == {"other_1": "Lick sensor"}
+    meta = yaml.safe_load((Path(info["path"]) / "project.yaml").read_text())
+    assert meta["data_labels"] == {"other_1": "Lick sensor"}
+    # removing the file forgets its name
+    assert c.call("DELETE", f"/projects/{pid}/data/other_1")[0] == 204
+    assert c.json("GET", f"/projects/{pid}/data")[1]["labels"] == {}
