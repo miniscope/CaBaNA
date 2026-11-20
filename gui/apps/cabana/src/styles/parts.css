@@ -104,6 +104,11 @@
   display: inline-block;
   width: 18px;
 }
+.cb-menu__hint {
+  margin-left: 8px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
 .cb-menu__row--option input {
   margin: 0 8px 0 0;
   pointer-events: none;

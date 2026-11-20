@@ -13,6 +13,8 @@ export function InfoTip(props: {
   /** Replaces the i marker. */
   icon?: JSX.Element;
   class?: string;
+  /** Width of the explanation in px (default 280). */
+  width?: number;
   children: JSX.Element;
 }): JSX.Element {
   const [open, setOpen] = createSignal(false);
@@ -50,7 +52,7 @@ export function InfoTip(props: {
           onClose={close}
           id={id}
           role="tooltip"
-          width={280}
+          width={props.width ?? 280}
           class="cb-tip__body"
         >
           {props.children}

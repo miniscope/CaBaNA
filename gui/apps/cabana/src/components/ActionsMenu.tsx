@@ -203,6 +203,7 @@ export function ActionsMenu(props: {
             class="cb-menu__row"
             classList={{ 'cb-menu__row--danger': item.danger }}
             aria-disabled={item.disabled ? 'true' : undefined}
+            aria-label={item.mark ? `${item.label} (added)` : undefined}
             title={item.disabled}
             onPointerEnter={() => level === 0 && send({ type: 'enter-action' })}
             onClick={() => {
@@ -211,7 +212,15 @@ export function ActionsMenu(props: {
               item.onSelect();
             }}
           >
+            <Show when={item.mark !== undefined}>
+              <span class="cb-menu__mark" aria-hidden="true">
+                {item.mark ? '✓' : ''}
+              </span>
+            </Show>
             {item.label}
+            <Show when={item.hint}>
+              <span class="cb-menu__hint">{item.hint}</span>
+            </Show>
             <Show when={(!item.tipOnly && item.disabled) || item.sub}>
               <span class="cb-menu__sub">{(!item.tipOnly && item.disabled) || item.sub}</span>
             </Show>

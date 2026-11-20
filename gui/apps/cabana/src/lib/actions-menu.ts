@@ -15,6 +15,10 @@ export type MenuItem =
       tipOnly?: boolean;
       /** Leave the menu open after the action (a view setting that updates the plot at once). */
       keepOpen?: boolean;
+      /** Draw a mark column: ✓ when true (a data type already added), empty when false. */
+      mark?: boolean;
+      /** A short word after the label, on the same line ("recommended"). */
+      hint?: string;
       onSelect: () => void;
     }
   | { kind: 'separator' }
