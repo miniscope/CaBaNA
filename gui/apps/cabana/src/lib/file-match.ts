@@ -1,5 +1,5 @@
-// Which data type each picked file goes to. addFiles (store.ts) loads by this and the New Project
-// list shows it, so the preview cannot disagree with what loads.
+// Which data type each picked file goes to. addFiles (store.ts) loads by this, and the engine's
+// folder sorting (data-files.ts) uses the same rules.
 
 import { readConfig, isSessionConfig } from './config-read.ts';
 import { matchSlot, type SlotId } from './slots.ts';

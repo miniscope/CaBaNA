@@ -595,8 +595,8 @@ try {
 /** The name of the session: the folder that was loaded, or the example. */
 export const [sessionName, setSessionName] = createSignal<string | undefined>();
 
-/** The pages that are not a workflow step: Welcome, New Project, Project Library, About. */
-export const PROJECT_PAGES = ['welcome', 'new', 'library', 'about'];
+/** The pages that are not a workflow step: Getting started, Project Library, About. */
+export const PROJECT_PAGES = ['welcome', 'library', 'about'];
 export const isProjectPage = (id: string): boolean => PROJECT_PAGES.includes(id);
 
 /**
@@ -604,7 +604,7 @@ export const isProjectPage = (id: string): boolean => PROJECT_PAGES.includes(id)
  */
 export const [stepId, goToStep] = createSignal('welcome');
 
-/** Close the session: clear what is loaded in this window and go back to Welcome. */
+/** Close the session: clear what is loaded in this window and go back to Getting started. */
 export function closeSession(): void {
   clearAll();
   goToStep('welcome');

@@ -9,13 +9,14 @@ import { currentItem, nextFor, statusOfItem } from '../lib/readiness-snapshot.ts
 import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { READOUT_HINT, readout } from '../lib/viz-tracks.ts';
-import { guardExample, isExample } from '../lib/example-session.ts';
+import { isExample } from '../lib/example-session.ts';
+import { guardLeave, startNewProject } from '../lib/leave.ts';
+import { unsavedDraft } from '../lib/project-session.ts';
 import { nextLine, saveProject } from '../lib/save-project.ts';
 import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { About } from '../panels/projects/About.tsx';
-import { NewSession } from '../panels/projects/NewSession.tsx';
 import { ProjectLibrary } from '../panels/projects/ProjectLibrary.tsx';
-import { Welcome } from '../panels/projects/Welcome.tsx';
+import { GettingStarted } from '../panels/projects/Welcome.tsx';
 import type { Step } from './types.ts';
 
 /** One sidebar row: the page name with its current status in words underneath. */
@@ -58,8 +59,8 @@ function SideItem(props: {
 }
 
 const PAGES = [
-  { id: 'new', label: '+ New Project' },
-  { id: 'library', label: 'Project Library' },
+  { id: 'new', label: '+ Project', go: startNewProject },
+  { id: 'library', label: 'Project Library', go: () => guardLeave(() => goToStep('library')) },
 ];
 /** How long the Projects menu stays after the pointer leaves it, so a slight overshoot is forgiven. */
 const MENU_CLOSE_MS = 300;
@@ -88,7 +89,9 @@ function ProjectsRow(): JSX.Element {
       ? 'No project open'
       : isExample()
         ? 'Example data · Unsaved'
-        : sessionName() || 'Untitled project';
+        : unsavedDraft()
+          ? 'Untitled project · Not saved'
+          : sessionName() || 'Untitled project';
   return (
     <>
       <div
@@ -109,7 +112,11 @@ function ProjectsRow(): JSX.Element {
             aria-haspopup="menu"
             aria-expanded={menu()}
             aria-label={`Projects: ${status()}`}
-            onClick={() => (menu() ? hide() : show())}
+            title="Getting started"
+            onClick={() => {
+              hide();
+              guardLeave(() => goToStep('welcome'));
+            }}
           >
             <span class="cb-side__name">
               Projects
@@ -130,7 +137,7 @@ function ProjectsRow(): JSX.Element {
                   classList={{ 'cb-side__menu--on': stepId() === p.id }}
                   onClick={() => {
                     hide();
-                    guardExample(() => goToStep(p.id));
+                    p.go();
                   }}
                 >
                   {p.label}
@@ -146,8 +153,7 @@ function ProjectsRow(): JSX.Element {
 }
 
 const PROJECT_PANELS: Record<string, Component> = {
-  welcome: Welcome,
-  new: NewSession,
+  welcome: GettingStarted,
   library: ProjectLibrary,
   about: About,
 };
@@ -227,6 +233,13 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
   // Steps are greyed while a project page is open with nothing loaded; with a session open they
   // stay reachable, and so does the page the user is on if its files were all removed.
   const locked = () => nothingLoaded() && isProjectPage(stepId());
+  // With the engine on, the pages after Data setup wait until the draft project has a name.
+  const lockOf = (id: string) =>
+    locked()
+      ? 'Open a project first'
+      : id !== 'data' && unsavedDraft()
+        ? 'Save the project first'
+        : undefined;
   return (
     <DashboardShell header={<Header />}>
       <div class="cb-app">
@@ -242,7 +255,7 @@ export function SidebarShell(props: { steps: Step[] }): JSX.Element {
                     ? analysisSummary(ANALYSES.map((a) => statusOfItem(a.id)))
                     : undefined
                 }
-                disabled={locked() ? 'Open a project first' : undefined}
+                disabled={lockOf(s.id)}
                 on={s.id === stepId()}
                 onClick={() => goToStep(s.id)}
               />

@@ -36,11 +36,12 @@ describe('recent sessions', () => {
 describe('project pages and renaming', () => {
   it('knows which pages are not workflow steps', async () => {
     const { isProjectPage } = await import('../lib/store.ts');
-    for (const id of ['welcome', 'new', 'library', 'about']) expect(isProjectPage(id)).toBe(true);
-    for (const id of ['data', 'viz', 'analyze', 'results']) expect(isProjectPage(id)).toBe(false);
+    for (const id of ['welcome', 'library', 'about']) expect(isProjectPage(id)).toBe(true);
+    for (const id of ['new', 'data', 'viz', 'analyze', 'results'])
+      expect(isProjectPage(id)).toBe(false);
   });
 
-  it('opens on Welcome and closing a session returns there', async () => {
+  it('opens on Getting started and closing a session returns there', async () => {
     const { closeSession, goToStep, stepId } = await import('../lib/store.ts');
     expect(stepId()).toBe('welcome');
     goToStep('data');

@@ -32,6 +32,7 @@ import {
 } from '../lib/example-session.ts';
 import { sizeText } from '../lib/project-view.ts';
 import { ProjectWindows } from '../panels/projects/ProjectWindows.tsx';
+import { guardLeave } from '../lib/leave.ts';
 import type { MenuItem } from '../lib/actions-menu.ts';
 import { SaveExample } from '../panels/projects/SaveExample.tsx';
 import {
@@ -179,7 +180,7 @@ export function Header(): JSX.Element {
       <CompactHeader
         title="CaBaNA"
         version={`CaLab v${pkg.version}`}
-        onBrandClick={() => goToStep('welcome')}
+        onBrandClick={() => guardLeave(() => goToStep('welcome'))}
         info={
           <span class="cb-hd-line">
             {nothingLoaded() ? 'No project open' : headerLine(facts())}

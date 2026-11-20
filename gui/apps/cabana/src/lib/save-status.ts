@@ -52,7 +52,7 @@ export function saveText(status: SaveStatus): { text: string; tone: SaveTone } {
 /** More than the indicator's words, for the readings that are not in the list below. */
 export function saveNote(status: SaveStatus): string | undefined {
   if (status.kind === 'no-project')
-    return 'Files loaded without a project are not saved. Create a project with + New Project.';
+    return 'Files loaded without a project are not saved. Start a project with + Project.';
   if (status.kind === 'example')
     return 'Example data is a project that has not been saved yet. Save it with Manage project → Save as project…, which keeps the work done so far.';
   if (status.kind === 'error') return status.message;

@@ -5,7 +5,7 @@
 import { createSignal, For, onMount, Show, type JSX } from 'solid-js';
 import { ActionsMenu } from '../../components/ActionsMenu.tsx';
 import { setAppliedNote } from '../../lib/data-setup-view.ts';
-import { guardExample } from '../../lib/example-session.ts';
+import { guardLeave } from '../../lib/leave.ts';
 import { formatBytes } from '../../lib/new-project.ts';
 import { savedWhen, recentSessions, type RecentSession } from '../../lib/project-library.ts';
 import {
@@ -72,7 +72,7 @@ function DiskLibrary(props: { query: string }): JSX.Element {
     }
   };
   const open = (p: ProjectSummary) =>
-    guardExample(() => void attempt(() => openExisting({ id: p.id })));
+    guardLeave(() => void attempt(() => openExisting({ id: p.id })));
   const items = (p: ProjectSummary) =>
     [
       { kind: 'action', label: 'Open', onSelect: () => open(p) },
@@ -102,7 +102,7 @@ function DiskLibrary(props: { query: string }): JSX.Element {
             <p class="cb-muted cb-pl__empty">
               {props.query.trim()
                 ? 'No project matches the search.'
-                : 'No projects yet. Use + New Project in the sidebar to start one.'}
+                : 'No projects yet. Use + Project in the sidebar to start one.'}
             </p>
           }
         >
@@ -235,7 +235,7 @@ export function ProjectLibrary(): JSX.Element {
             type="button"
             class="btn-secondary"
             title="A project folder, a project.yaml or a .cabana.zip that is not in the list"
-            onClick={() => guardExample(() => void openFromDialog().then(setOpenProblem))}
+            onClick={() => guardLeave(() => void openFromDialog().then(setOpenProblem))}
           >
             Open from file…
           </button>
@@ -273,7 +273,7 @@ export function ProjectLibrary(): JSX.Element {
               <p class="cb-muted cb-pl__empty">
                 {query().trim()
                   ? 'No project matches the search.'
-                  : 'No projects opened in this browser yet. Use + New Project in the sidebar to start one.'}
+                  : 'No projects opened in this browser yet. Use + Project in the sidebar to start one.'}
               </p>
             }
           >
