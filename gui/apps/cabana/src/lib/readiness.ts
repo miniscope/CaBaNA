@@ -6,6 +6,8 @@
 // framework feature or a stopped Python engine is separate ("Framework update required",
 // "Python engine not running"): the user cannot fix it from the page, so Next never goes there.
 
+import { blockedText } from './setup-rows.ts';
+
 export type ItemId =
   | 'data'
   | 'load'
@@ -105,6 +107,11 @@ export interface RunState {
 
 export interface Snapshot {
   neural: boolean;
+  /**
+   * What Data setup still needs before Next, in words ("neural timestamps", "one behavioral
+   * activity file"); empty once every required file is there.
+   */
+  dataMissing: string[];
   /** Timestamps or a sampling rate are present. */
   timing: boolean;
   deconvolved: boolean;
@@ -332,9 +339,16 @@ export function analysisStatus(s: Snapshot, id: AnalysisItem): Status {
 export function itemStatus(s: Snapshot, id: ItemId): Status {
   switch (id) {
     case 'data': {
-      // Loading and the experiment config together: complete once data is loaded and the setup
-      // it needs is done.
-      if (!s.neural) return status('not_started');
+      // Loading and the experiment config together: complete once every required file is loaded
+      // and the setup it needs is done.
+      if (!s.neural && s.dataMissing.length >= 4) return status('not_started');
+      if (s.dataMissing.length) {
+        const n = s.dataMissing.length;
+        return status('needs_input', {
+          text: `${n} required ${n === 1 ? 'file' : 'files'} missing`,
+          input: [{ text: blockedText(s.dataMissing), link: LOAD }],
+        });
+      }
       const setup = itemStatus(s, 'setup');
       return setup.kind === 'complete' || setup.kind === 'optional'
         ? status('complete')
@@ -407,6 +421,9 @@ export function nextStep(
   current: ItemId,
   recommended: AnalysisItem[] = ANALYSIS_ITEMS,
 ): NextStep {
+  // Data setup's own requirements come first: Next stays and says what to add.
+  if (current === 'data' && s.dataMissing.length)
+    return { item: 'data', blocked: blockedText(s.dataMissing) };
   const after = laterStep(s, current, recommended);
   // Once Data setup has what it supplies, Next looks at the data before any analysis.
   return current === 'data' && after.item !== 'data' && s.neural ? { item: 'viz' } : after;

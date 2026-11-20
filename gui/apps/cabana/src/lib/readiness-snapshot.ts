@@ -46,6 +46,8 @@ import {
   samplingRate,
 } from './store.ts';
 import type { LabelEntry } from './labels.ts';
+import { othersWithFiles } from './other-types.ts';
+import { missingRequired } from './setup-rows.ts';
 
 /** Analyses that always compute through the Python engine. Place cells and auROC depend on the mode (lib/engine.ts); PETH uses the browser. */
 export const FRAMEWORK_ENGINE: Record<AnalysisItem, boolean> = {
@@ -169,6 +171,10 @@ export function buildSnapshot(): Snapshot {
       if (typeof v === 'boolean') caps[k] = v;
   return {
     neural: !!(deconvolved() ?? rawTrace() ?? denoisedTrace()),
+    dataMissing: missingRequired(
+      (id) => !!loaded[id]?.summary && !loaded[id]!.error,
+      othersWithFiles(),
+    ),
     timing: samplingRate() !== undefined,
     deconvolved: !!deconvolved(),
     analysisKind: analysisKind(),

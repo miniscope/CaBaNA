@@ -13,6 +13,7 @@ import {
 import { PARADIGMS } from '../lib/experiments.ts';
 
 const base = (over: Partial<Snapshot> = {}): Snapshot => ({
+  dataMissing: [],
   neural: true,
   timing: true,
   deconvolved: true,
@@ -56,12 +57,31 @@ describe('item status', () => {
       expect(itemStatus(base(), id)).toMatchObject({ kind: 'optional', text: 'Optional' });
   });
   it('Data setup is complete once data is loaded and the setup it needs is done', () => {
-    expect(itemStatus(base({ neural: false }), 'data').kind).toBe('not_started');
+    const nothing = ['a', 'b', 'c', 'd'];
+    expect(itemStatus(base({ neural: false, dataMissing: nothing }), 'data').kind).toBe(
+      'not_started',
+    );
     expect(itemStatus(base(), 'data').kind).toBe('in_progress');
     expect(itemStatus(base({ setupStarted: true, setupComplete: true }), 'data').kind).toBe(
       'complete',
     );
     expect(itemStatus(base({ setupRequired: false }), 'data').kind).toBe('complete');
+  });
+  it('Data setup needs every required file, and Next says which are missing', () => {
+    const missing = ['behavioral timestamps', 'one behavioral activity file'];
+    expect(itemStatus(base({ dataMissing: missing }), 'data')).toMatchObject({
+      kind: 'needs_input',
+      text: '2 required files missing',
+    });
+    expect(
+      itemStatus(base({ neural: false, dataMissing: ['a', 'b', 'c', 'd'] }), 'data').kind,
+    ).toBe('not_started');
+    const ready = base({ setupStarted: true, setupComplete: true });
+    expect(nextStep({ ...ready, dataMissing: missing }, 'data')).toEqual({
+      item: 'data',
+      blocked: 'To continue, add behavioral timestamps and one behavioral activity file',
+    });
+    expect(nextStep(ready, 'data')).toEqual({ item: 'viz' });
   });
   it('setup status comes from its cards, never from visits', () => {
     expect(itemStatus(base(), 'setup').kind).toBe('not_started');
