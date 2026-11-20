@@ -198,3 +198,41 @@ export function segments(classes: FrameClass[], fs: number): Segment[] {
   }
   return out;
 }
+
+/** At or above this share of eligible frames in a selected behavior, "against the rest" is mostly the other behaviors. */
+export const TILING_COVERAGE = 0.9;
+
+/**
+ * Fraction of eligible frames inside at least one selected behavior. Near 1 the behaviors tile the
+ * session (zones, exclusive states): each behavior's reference is then the other behaviors, so a cell
+ * tuned to one behavior is also called, with the opposite sign, for the others.
+ */
+export function selectedCoverage(
+  data: { behaviors: Uint8Array; frames: number; mask: Uint8Array; labels: string[] },
+  unselected: string[],
+): number {
+  const rows = data.labels.flatMap((l, b) => (unselected.includes(l) ? [] : [b]));
+  let kept = 0;
+  let covered = 0;
+  for (let t = 0; t < data.frames; t++) {
+    if (!data.mask[t]) continue;
+    kept++;
+    if (rows.some((b) => data.behaviors[b * data.frames + t])) covered++;
+  }
+  return kept ? covered / kept : 0;
+}
+
+/**
+ * Coverage of a finished "against the rest" run when its behaviors tile the session, else undefined
+ * (behavior-against-behavior runs, one behavior, or coverage below `TILING_COVERAGE`).
+ */
+export function tilingOf(out: {
+  against?: string;
+  labels: string[];
+  input: AurocInput;
+}): number | undefined {
+  if (out.against !== undefined || out.labels.length < 2) return undefined;
+  const { behaviors, frames, mask } = out.input;
+  const cov = selectedCoverage({ behaviors, frames, mask, labels: out.labels }, []);
+  return cov >= TILING_COVERAGE ? cov : undefined;
+}

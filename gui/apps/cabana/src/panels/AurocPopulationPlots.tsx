@@ -1,7 +1,7 @@
 // Plots of the auROC population views. They take plain values, so they hold no selection state.
 
 import { createMemo, For, Show, type JSX } from 'solid-js';
-import { heatColor, type HistogramBin } from '../lib/auroc-population.ts';
+import { fitScale, heatColor, setFitScale, type HistogramBin } from '../lib/auroc-population.ts';
 
 const ORANGE = '#e8851a';
 const PURPLE = '#6a3db8';
@@ -10,8 +10,24 @@ const BLUE = '#1f6fb2';
 const fixed = (v: number, d = 2) => v.toFixed(d);
 
 /** The color scale with its real range: purple at 0.5 - half, light gray at 0.5, orange at 0.5 + half. */
+/** Fit the auROC color scale to the run, or show the full 0 to 1. */
+export function ScaleToggle(): JSX.Element {
+  return (
+    <label
+      class="cb-as-check cb-ar-scale"
+      title="Fitted: 0.5 ± the largest deviation in this run, so small effects stay visible. Off: 0 to 1."
+    >
+      <input
+        type="checkbox"
+        checked={fitScale()}
+        onChange={(e) => setFitScale(e.currentTarget.checked)}
+      />
+      Scale colors to the data
+    </label>
+  );
+}
+
 export function HeatLegend(props: { half: number }): JSX.Element {
-  const stops = Array.from({ length: 11 }, (_, i) => 0.5 - props.half + (i / 10) * 2 * props.half);
   return (
     <div class="cb-ar-legend">
       <div class="cb-ar-legend__scale">
@@ -20,7 +36,14 @@ export function HeatLegend(props: { half: number }): JSX.Element {
           role="img"
           aria-label={`auROC color scale from ${fixed(0.5 - props.half)} (lower) to ${fixed(0.5 + props.half)} (higher)`}
         >
-          <For each={stops}>{(v) => <span style={{ background: heatColor(v, props.half) }} />}</For>
+          <For
+            each={Array.from(
+              { length: 11 },
+              (_, i) => 0.5 - props.half + (i / 10) * 2 * props.half,
+            )}
+          >
+            {(v) => <span style={{ background: heatColor(v, props.half) }} />}
+          </For>
         </div>
         <div class="cb-ar-legend__ticks">
           <span>{fixed(0.5 - props.half)}</span>
@@ -32,6 +55,7 @@ export function HeatLegend(props: { half: number }): JSX.Element {
           <span style={{ color: '#a85c0c' }}>Higher activity</span>
         </div>
       </div>
+      <ScaleToggle />
       <div class="cb-ar-legend__keys">
         <span>
           <i class="cb-ar-dot" aria-hidden="true" /> Significant (adjusted p below α)

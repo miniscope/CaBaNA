@@ -4,6 +4,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } fro
 import {
   aurocHistogram,
   heatColor,
+  fitScale,
   heatHalfRange,
   isSingleBehavior,
   rankedByBehavior,
@@ -33,7 +34,7 @@ import { Note } from './parts.tsx';
 export function Heatmap(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
   const o = () => c().out;
-  const half = createMemo(() => heatHalfRange(o()));
+  const half = createMemo(() => (fitScale() ? heatHalfRange(o()) : 0.5));
   const single = () => isSingleBehavior(o());
   const [hover, setHover] = createSignal<[number, number] | undefined>();
   const order = () => c().list.slice(c().heatPage * heatRows(), (c().heatPage + 1) * heatRows());
@@ -92,10 +93,11 @@ export function Heatmap(props: { ctx: Ctx }): JSX.Element {
                 </>
               )}{' '}
               The scale is diverging around 0.5: orange is higher during the behavior, purple is
-              lower, and the range is set by the largest deviation from 0.5 in this run (
-              {num(0.5 - half(), 2)} to {num(0.5 + half(), 2)}), so small effects stay visible. Gray
-              means not evaluated. A dot marks a result that is significant after correction. The
-              blue outline marks the selected cell
+              lower. With Scale colors to the data on, the range is set by the largest deviation
+              from 0.5 in this run, so small effects stay visible; off, it runs from 0 to 1. Now{' '}
+              {num(0.5 - half(), 2)} to {num(0.5 + half(), 2)}. Gray means not evaluated. A dot
+              marks a result that is significant after correction. The blue outline marks the
+              selected cell
               {single() ? '' : ' and the highlighted column is the selected behavior'}.
             </p>
             <p>

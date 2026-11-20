@@ -190,3 +190,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.cb-au-tiling {
+  border-left: 3px solid var(--warning);
+  background: var(--warning-bg);
+}

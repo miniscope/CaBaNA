@@ -6,6 +6,8 @@ import {
   conditionGroups,
   percentOf,
   referenceChoices,
+  selectedCoverage,
+  TILING_COVERAGE,
   type groupCounts,
 } from '../lib/auroc-setup.ts';
 import { InfoTip } from './InfoTip.tsx';
@@ -30,6 +32,7 @@ export function AurocConditionsSection(props: {
   toggle: (label: string) => void;
 }): JSX.Element {
   const { ok, pairMode, pair, counts, eligible, rowCounts, tooFew, insufficient, toggle } = props;
+  const tiling = () => selectedCoverage(ok()!, aurocSettings.unselected);
   return (
     <>
       <Field
@@ -95,6 +98,21 @@ export function AurocConditionsSection(props: {
           ? `Compares neural events in frames labeled ${ok()!.labels[pair()[0]]} only with frames labeled ${ok()!.labels[pair()[1]]} only. Frames in both or neither are left out. auROC above 0.5 means higher neural events during ${ok()!.labels[pair()[0]]}.`
           : 'Compares neural events during each selected behavior with all other eligible frames: unlabeled frames and frames with other behaviors. auROC above 0.5 means higher neural events during the behavior.'}
       </div>
+      <Show when={!pairMode() && counts().length >= 2 && tiling() >= TILING_COVERAGE}>
+        <div class="cb-as-scope cb-au-tiling" role="note">
+          The selected behaviors cover {percentOf(Math.round(tiling() * 1000), 1000)} of eligible
+          frames, so each behavior's reference group is mostly the other behaviors. A cell tuned to
+          one of them will also be called, in the opposite direction, for the others. To test one
+          behavior against a specific other, choose <b>Another behavior</b>.{' '}
+          <button
+            type="button"
+            class="btn-secondary btn-small"
+            onClick={() => setAurocSettings('compare', 'behavior')}
+          >
+            Compare two behaviors instead
+          </button>
+        </div>
+      </Show>
       <div class="cb-au-counts" role="status">
         <Show
           when={counts().length === 1}
