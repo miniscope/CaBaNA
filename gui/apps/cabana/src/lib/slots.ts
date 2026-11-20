@@ -108,7 +108,7 @@ export const SLOTS: Slot[] = [
     accept: TABLE,
     activity: true,
     file: 'position.csv',
-    format: 'One row per camera frame. Columns: frame, x, y (in cm). -1 marks a lost frame.',
+    format: 'One row per camera frame. Columns: frame, x, y (cm or pixels). -1 marks a lost frame.',
     match: /^position/i,
   },
   {

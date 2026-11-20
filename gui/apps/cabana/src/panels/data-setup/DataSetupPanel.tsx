@@ -126,7 +126,9 @@ function FolderBox(): JSX.Element {
             fallback={
               isExample()
                 ? `Example data: ${sessionName() ?? ''}`
-                : 'Add a folder to fill the data types below'
+                : dataFiles().length
+                  ? 'The files are in several folders'
+                  : 'Add a folder to fill the data types below'
             }
           >
             <span>

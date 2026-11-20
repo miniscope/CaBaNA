@@ -311,9 +311,7 @@ const neuralMenu = (): MenuItem[] => [
 
 /** Focus the name field of a new named data type once it is drawn. */
 const focusOther = (id: OtherId) =>
-  requestAnimationFrame(() =>
-    document.querySelector<HTMLInputElement>(`[data-other="${id}"]`)?.focus(),
-  );
+  setTimeout(() => document.querySelector<HTMLInputElement>(`[data-other="${id}"]`)?.focus(), 50);
 
 const behaviorMenu = (): MenuItem[] => [
   { kind: 'header', label: 'Add behavioral data' },

@@ -7,6 +7,7 @@ import { beginAutosave, saveEverything } from './autosave.ts';
 import { resendBrowserRecords } from './browser-records.ts';
 import { exampleRuns } from './example-session.ts';
 import { setDataFiles, setOpenProject } from './open-project.ts';
+import { setTypedName } from './project-session.ts';
 import { projects } from './projects-client.ts';
 import { refreshHistory } from './runs.ts';
 import { SLOTS, type SlotId } from './slots.ts';
@@ -66,6 +67,7 @@ export async function saveExampleAsProject(
     setOpenProject(project);
     setDataFiles(await projects.listData(project.id));
     setSessionName(project.name);
+    setTypedName(project.name);
     beginAutosave(project, new Map([['project.yaml', new Date(project.modified)]]));
     await saveEverything('Saved from example data');
     await resendBrowserRecords(browserIds);

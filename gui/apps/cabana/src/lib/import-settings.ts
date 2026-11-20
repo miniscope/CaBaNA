@@ -52,7 +52,16 @@ export async function importYaml(kind: 'processing' | 'analysis', file: File): P
     );
     record({ label: LABEL.processing, source: file.name, groups: ['prep', 'qc'], before });
   } else {
-    applySettings({ analyses: analysesFromYaml(raw) }, ['analyses']);
+    // A section the file gives only in part keeps the current values of the rest.
+    const now = before.analyses as Record<string, unknown>;
+    const isObj = (v: unknown): v is object => !!v && typeof v === 'object' && !Array.isArray(v);
+    const merged = Object.fromEntries(
+      Object.entries(analysesFromYaml(raw)).map(([k, v]) => [
+        k,
+        isObj(v) && isObj(now[k]) ? { ...now[k], ...v } : v,
+      ]),
+    );
+    applySettings({ analyses: merged }, ['analyses']);
     record({ label: LABEL.analysis, source: file.name, groups: ['analyses'], before });
   }
 }

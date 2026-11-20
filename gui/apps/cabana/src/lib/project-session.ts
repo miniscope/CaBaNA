@@ -156,7 +156,7 @@ async function loadProject(project: ProjectSummary, created = false): Promise<vo
   setTypedName(project.name);
   if (proc.valid) applyProcessing(readYaml(proc.text));
   if (ana.valid) applyAnalysis(readYaml(ana.text));
-  noteMoved(data);
+  if (!created) noteMoved(data, project.name);
   // Loading settles through a few effects; the saved copy is taken after them.
   await new Promise((r) => setTimeout(r, 100));
   const times = new Map<string, Date>(
@@ -169,10 +169,14 @@ async function loadProject(project: ProjectSummary, created = false): Promise<vo
   goToStep('data');
 }
 
-/** One line on Data setup for files found at a new place; the engine saved the new paths. */
-function noteMoved(data: DataFile[]): void {
+/**
+ * One line on Data setup once a project opens: files found at a new place (the engine saved the
+ * new paths), else what was opened.
+ */
+function noteMoved(data: DataFile[], name: string): void {
   const moved = data.filter((f) => f.status === 'moved');
-  if (moved.length)
+  if (!moved.length) setAppliedNote(`Opened ${name} with its files, settings and results.`);
+  else
     setAppliedNote(
       `${moved.length === 1 ? 'A data file was' : `${moved.length} data files were`} found at a new location and loaded from there: ${moved.map((f) => f.name).join(', ')}.`,
     );
