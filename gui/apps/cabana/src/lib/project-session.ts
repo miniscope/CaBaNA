@@ -4,6 +4,7 @@
 // With the engine off none of this is used and the app works as it does without projects.
 
 import { createEffect, createRoot, createSignal } from 'solid-js';
+import { confirmAction, showMessage, errorText } from './confirm.ts';
 import { parse } from 'yaml';
 import {
   beginAutosave,
@@ -284,4 +285,132 @@ export async function updateProjectYaml(
   const now = (await projects.current()) ?? { ...project, ...patch };
   setOpenProject(now);
   updateAutosaveProject(now);
+}
+
+// ---- The draft project of a new Data setup
+
+/**
+ * With the engine on, the first file added on an empty Data setup makes a project in the
+ * background (the engine reads a file only once a project lists it). It is a draft, named
+ * "Untitled project <date> <time>", until Save project or Next gives it the user's name.
+ */
+const [draftId, setDraftId] = createSignal<string>();
+/** The name typed in the Project name field while the draft has none of its own. */
+export const [typedName, setTypedName] = createSignal('');
+onClear(() => {
+  setDraftId(undefined);
+  setTypedName('');
+});
+
+/** A draft is open that the user has not named yet. */
+export const unsavedDraft = (): boolean => !!draftId() && openProject()?.id === draftId();
+
+const pad = (n: number) => String(n).padStart(2, '0');
+/** "Untitled project 2026-11-19 2210". */
+export const draftName = (d = new Date()): string =>
+  `Untitled project ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
+
+/** Why a project name cannot be used, or undefined when it can. */
+export function nameProblem(name: string): string | undefined {
+  if (!name.trim()) return 'Enter a project name.';
+  if (/[/\\:]/.test(name)) return 'A project name cannot contain / \\ or :';
+  return undefined;
+}
+
+/** A file for the draft: its path and the data type it fills (`label` names an other type). */
+export interface DraftFile {
+  path: string;
+  slot: SlotId | OtherId;
+  label?: string;
+}
+
+/**
+ * Make the draft project, register `files` and load them. What was set on the page before the first
+ * file (the experiment details, named data types) stays.
+ */
+export async function createDraft(files: DraftFile[]): Promise<void> {
+  if (openProject()) throw new Error('A project is already open.');
+  await closing;
+  const made = await projects.create(draftName());
+  for (const f of files) await projects.registerData(made.id, f.slot, f.path, f.label);
+  await loadProject(await projects.open({ id: made.id }), true);
+  setDraftId(made.id);
+}
+
+/** Put a file into a data type: into the open project, else into a new draft. */
+export async function addPathToProject(slot: SlotId, path: string): Promise<void> {
+  if (openProject()) await useFileForSlot(slot, path);
+  else await createDraft([{ path, slot }]);
+}
+
+/**
+ * Give the draft (or the open project) its name: the folder is renamed, and with `parent` the
+ * project moves there (a new folder with the same data references and settings; the draft's folder
+ * goes to the Trash). The project then counts as saved.
+ */
+export async function nameDraft(name: string, parent?: string): Promise<void> {
+  const project = openProject();
+  if (!project) return;
+  const problem = nameProblem(name);
+  if (problem) throw new Error(problem);
+  const here = project.path.replace(/[\\/][^\\/]+$/, '');
+  let now: ProjectSummary;
+  if (parent && parent !== here) {
+    await saveEverything('Saved before moving');
+    now = await projects.create(name.trim(), parent);
+    const { files, labels } = await projects.listDataAndLabels(project.id);
+    for (const f of files) await projects.registerData(now.id, f.slot, f.path, labels[f.slot]);
+    for (const file of ['experiment.yaml', 'processing.yaml', 'analysis.yaml'] as const) {
+      const f = await projects.readFile(project.id, file);
+      if (f.valid)
+        await projects.writeFile(now.id, file, { text: f.text }, `Copied from ${project.name}`);
+    }
+    endAutosave();
+    now = await projects.open({ id: now.id });
+    await projects.remove(project.id).catch(() => undefined);
+    setOpenProject(now);
+    setDataFiles(await projects.listData(now.id));
+    beginAutosave(now, new Map([['project.yaml', new Date(now.modified)]]));
+  } else {
+    now = name.trim() === project.name ? project : await projects.rename(project.id, name.trim());
+    setOpenProject(now);
+    updateAutosaveProject(now);
+  }
+  setSessionName(now.name);
+  setDraftId(undefined);
+  setTypedName('');
+  await saveEverything('Project saved');
+}
+
+/** Close the draft and move its folder to the Trash; the data files are not touched. */
+export async function discardDraft(): Promise<void> {
+  const id = draftId();
+  clearAll();
+  await closing;
+  if (id) await projects.remove(id).catch(() => undefined);
+}
+
+/**
+ * Run `next`, which leaves Data setup or replaces the session, after asking what to do with an
+ * unsaved draft: keep it (it stays in the Project Library under its Untitled name) or delete it.
+ */
+export function guardDraft(next: () => void): void {
+  if (!unsavedDraft()) return next();
+  confirmAction({
+    title: 'Keep this draft or delete it?',
+    message: `This project has not been named, so it is saved as ${openProject()!.name}. Keep draft leaves it in the Project Library; Delete draft moves its folder to the Trash. The data files themselves are not changed.`,
+    confirmLabel: 'Delete draft',
+    danger: true,
+    alternative: {
+      label: 'Keep draft',
+      onSelect: () => {
+        setDraftId(undefined);
+        next();
+      },
+    },
+    onConfirm: () =>
+      void discardDraft()
+        .then(next)
+        .catch((e) => showMessage('The draft could not be deleted', errorText(e))),
+  });
 }
