@@ -10,7 +10,7 @@ import {
   splitChecks,
 } from '../lib/qc-markers.ts';
 import type { Check } from '../lib/qc.ts';
-import { cardActions, cardStatus, rowDescription } from '../lib/setup-rows.ts';
+import { cardActions, rowMark } from '../lib/setup-rows.ts';
 import {
   alignmentText,
   arenaText,
@@ -46,7 +46,7 @@ describe('format check', () => {
       checkFormat(
         'neural_timestamps',
         csv('t.csv', 'Frame Number,Time Stamp (ms)\n0,0\n'),
-        'Miniscope timestamps',
+        'Neural timestamps',
       ).ok,
     ).toBe(true);
     expect(
@@ -153,34 +153,25 @@ describe('QC markers', () => {
 
 describe('card rows', () => {
   const base = { level: 'required' as const, loaded: true };
-  it('says the status in words', () => {
-    expect(cardStatus(base)).toMatchObject({ text: 'Loaded', tone: 'ok' });
-    expect(cardStatus({ ...base, qc: { fails: 0, notes: 1 } })).toMatchObject({
-      text: '1 check flagged',
-      tone: 'warn',
+  it('marks the row ✓, ⚠ or ✕, with the status in words', () => {
+    expect(rowMark(base)).toEqual({ mark: '✓', tone: 'ok', text: 'Loaded' });
+    expect(rowMark({ ...base, qc: { fails: 0, notes: 1 } })).toMatchObject({
+      mark: '⚠',
+      text: 'Loaded · 1 check flagged',
     });
-    expect(cardStatus({ ...base, qc: { fails: 2, notes: 1 } })).toMatchObject({
-      text: '2 checks failed',
-      tone: 'fail',
+    expect(rowMark({ ...base, qc: { fails: 2, notes: 1 } })).toMatchObject({
+      mark: '✕',
+      text: 'Loaded · 2 checks failed',
     });
-    expect(cardStatus({ ...base, error: 'bad' })).toMatchObject({
-      text: 'Could not be read',
-      tone: 'fail',
+    expect(rowMark({ ...base, error: 'bad' })).toMatchObject({
+      mark: '✕',
+      text: 'Could not be read: bad',
     });
-    expect(cardStatus({ ...base, loaded: false })).toMatchObject({
-      text: 'Not loaded',
-      tone: 'muted',
-    });
+    expect(rowMark({ ...base, loaded: false }).mark).toBe('');
   });
   it('allows View data only for a file that was read', () => {
     expect(cardActions({ loaded: true })).toEqual({ view: true });
     expect(cardActions({ loaded: false, error: 'x' })).toEqual({ view: false });
-  });
-  it('describes a row by type, level and facts', () => {
-    expect(rowDescription('Raw traces', 'recommended')).toBe('Raw traces · recommended');
-    expect(rowDescription('Position', 'recommended', '15,002 rows')).toBe(
-      'Position · recommended · 15,002 rows',
-    );
   });
 });
 

@@ -67,9 +67,9 @@ describe('New Project list', () => {
   it('names the project after the shared folder, else by date', () => {
     const inFolder = [file('a.csv', '', 'run1/a.csv'), file('b.csv', '', 'run1/sub/b.csv')];
     expect(defaultProjectName(inFolder)).toBe('run1');
-    expect(defaultProjectName([file('a.csv', '', 'x/a.csv'), file('b.csv', '', 'y/b.csv')])).toMatch(
-      /^Project \d{4}-\d{2}-\d{2}$/,
-    );
+    expect(
+      defaultProjectName([file('a.csv', '', 'x/a.csv'), file('b.csv', '', 'y/b.csv')]),
+    ).toMatch(/^Project \d{4}-\d{2}-\d{2}$/);
     expect(defaultProjectName([file('a.csv')], new Date(2026, 10, 18))).toBe('Project 2026-11-18');
   });
 
@@ -84,7 +84,12 @@ describe('New Project list', () => {
     expect(formatBytes(627)).toBe('627 B');
     expect(formatBytes(122_000)).toBe('122 KB');
     expect(formatBytes(6_480_128)).toBe('6.5 MB');
-    expect(requiredNote(new Set(['neural_timestamps', 'neural_deconvolved'])).ok).toBe(true);
-    expect(requiredNote(new Set(['neural_timestamps'])).missing).toEqual(['Deconvolved events']);
+    expect(
+      requiredNote(new Set(['neural_timestamps', 'neural_deconvolved', 'behavior_timestamps'])).ok,
+    ).toBe(true);
+    expect(requiredNote(new Set(['neural_timestamps'])).missing).toEqual([
+      'Deconvolved events',
+      'Behavioral timestamps',
+    ]);
   });
 });

@@ -20,13 +20,7 @@ import {
   projectsOn,
   useFileForSlot,
 } from '../../lib/project-session.ts';
-import {
-  ACTIVITY_SLOTS,
-  cardActions,
-  cardStatus,
-  rowDescription,
-  type RowFacts,
-} from '../../lib/setup-rows.ts';
+import { ACTIVITY_SLOTS, cardActions, rowMark, type RowFacts } from '../../lib/setup-rows.ts';
 import {
   alignmentText,
   arenaText,
@@ -122,16 +116,14 @@ const rowMenu = (id: SlotId, canView: boolean): MenuItem[] => [
 function SlotRow(props: { id: SlotId; sub?: boolean }): JSX.Element {
   const s = () => slot(props.id);
   const f = () => facts(props.id);
-  const st = () => (gone() ? { text: 'Missing', tone: 'fail' as const } : cardStatus(f()));
+  const st = () => (gone() ? { text: 'Missing', tone: 'fail' as const } : rowMark(f()));
   const present = () => f().loaded || !!f().error;
   // A file the open project lists that is not at its recorded path any more.
   const gone = () => (present() ? undefined : missingFileOf(props.id));
   const description = () =>
     gone()
       ? `Missing: ${gone()!.name}, last seen at ${gone()!.last_seen_path ?? gone()!.path}`
-      : present()
-        ? rowDescription(s().label, f().level, f().loaded ? loaded[props.id]!.summary : undefined)
-        : rowDescription(s().label, f().level, undefined, s().format);
+      : [s().label, f().loaded ? loaded[props.id]!.summary : s().format].join(' · ');
   return (
     <div class="cb-sp-row" classList={{ 'cb-sp-row--sub': props.sub }}>
       <div class="cb-sp-row__main">
@@ -147,7 +139,7 @@ function SlotRow(props: { id: SlotId; sub?: boolean }): JSX.Element {
           {description()}
         </div>
       </div>
-      <span class={`cb-sp-row__status cb-ds-tone--${st().tone}`} title={st().detail}>
+      <span class={`cb-sp-row__status cb-ds-tone--${st().tone}`} title={st().text}>
         {st().text}
       </span>
       <span class="cb-sp-row__act">
