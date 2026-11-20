@@ -10,6 +10,7 @@ import { startResultIndex } from '../lib/result-index.ts';
 import { nothingLoaded } from '../lib/data-setup-view.ts';
 import { READOUT_HINT, readout } from '../lib/viz-tracks.ts';
 import { guardExample, isExample } from '../lib/example-session.ts';
+import { nextLine, saveProject } from '../lib/save-project.ts';
 import { goToStep, isProjectPage, sessionName, stepId } from '../lib/store.ts';
 import { About } from '../panels/projects/About.tsx';
 import { NewSession } from '../panels/projects/NewSession.tsx';
@@ -162,34 +163,58 @@ function Footer(): JSX.Element {
     stepId() === 'data' && next().item !== 'viz' && statusOfItem('viz').kind !== 'needs_input';
   return (
     <Show when={stepId() !== 'results' && !isProjectPage(stepId())}>
-      <div class="cb-foot">
-        <span class="cb-foot__hint cb-muted">
-          <Show when={stepId() !== 'viz'} fallback={readout() ?? READOUT_HINT}>
-            <Show
-              when={next().blocked}
-              fallback={
-                <Show when={optionalHint()}>
-                  Optional:{' '}
-                  <button type="button" class="cb-link" onClick={() => goToStep('viz')}>
-                    Data visualization
-                  </button>
-                </Show>
-              }
-            >
-              {next().blocked}
+      <Show when={stepId() !== 'data'} fallback={<DataFooter next={next()} stuck={stuck()} />}>
+        <div class="cb-foot">
+          <span class="cb-foot__hint cb-muted">
+            <Show when={stepId() !== 'viz'} fallback={readout() ?? READOUT_HINT}>
+              <Show
+                when={next().blocked}
+                fallback={
+                  <Show when={optionalHint()}>
+                    Optional:{' '}
+                    <button type="button" class="cb-link" onClick={() => goToStep('viz')}>
+                      Data visualization
+                    </button>
+                  </Show>
+                }
+              >
+                {next().blocked}
+              </Show>
             </Show>
-          </Show>
-        </span>
+          </span>
+          <button
+            type="button"
+            class="btn-primary"
+            disabled={stuck()}
+            onClick={() => openItem(next().item)}
+          >
+            {stuck() ? 'Next' : `Next: ${ITEM_LABEL[next().item]}`}
+          </button>
+        </div>
+      </Show>
+    </Show>
+  );
+}
+
+/**
+ * Data setup's footer: Next at the bottom right with one line under it, saying what is missing or
+ * whether Next saves the project. Next names and saves an unsaved project first.
+ */
+function DataFooter(props: { next: NextStep; stuck: boolean }): JSX.Element {
+  return (
+    <div class="cb-foot cb-foot--stack">
+      <span class="cb-foot__next">
         <button
           type="button"
           class="btn-primary"
-          disabled={stuck()}
-          onClick={() => openItem(next().item)}
+          disabled={props.stuck}
+          onClick={() => saveProject(true, () => openItem(props.next.item))}
         >
-          {stuck() ? 'Next' : `Next: ${ITEM_LABEL[next().item]}`}
+          {props.stuck ? 'Next: Data visualization' : `Next: ${ITEM_LABEL[props.next.item]}`}
         </button>
-      </div>
-    </Show>
+        <span class="cb-muted">{nextLine(props.next.blocked)}</span>
+      </span>
+    </div>
   );
 }
 

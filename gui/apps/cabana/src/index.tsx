@@ -25,6 +25,7 @@ import './styles/data-setup.css';
 import './styles/parts.css';
 import './styles/projects.css';
 import './styles/setup-page.css';
+import './styles/load-data.css';
 import './styles/setup-view.css';
 import './styles/setup-edit.css';
 import './styles/viz.css';
