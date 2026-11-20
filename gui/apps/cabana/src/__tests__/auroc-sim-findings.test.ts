@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { halfRangeOf } from '../lib/auroc-population.ts';
+import { halfRangeOf, shownHalfRange } from '../lib/auroc-population.ts';
 import { selectedCoverage, TILING_COVERAGE } from '../lib/auroc-setup.ts';
 
 describe('halfRangeOf', () => {
@@ -9,6 +9,13 @@ describe('halfRangeOf', () => {
   it('never drops below 0.01 or above 0.5', () => {
     expect(halfRangeOf([0.5, 0.5])).toBe(0.01);
     expect(halfRangeOf([0, 1])).toBe(0.5);
+  });
+});
+
+describe('shownHalfRange', () => {
+  it('fits the scale when on and spans 0 to 1 when off', () => {
+    expect(shownHalfRange([0.41, 0.583], true)).toBe(0.09);
+    expect(shownHalfRange([0.41, 0.583], false)).toBe(0.5);
   });
 });
 

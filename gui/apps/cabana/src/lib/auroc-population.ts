@@ -1,6 +1,7 @@
 // Counts and scales for the auROC results cards, population heatmap and summary. All numbers come
 // from the run's observed values and p-values; nothing is recomputed.
 
+import { createSignal } from 'solid-js';
 import { aurocColor, aurocOf, nBehaviors, responseAt, summarize } from './auroc-view.ts';
 import type { AurocOutcome } from './auroc-run.ts';
 import type { MetricCard } from '../components/MetricCards.tsx';
@@ -103,6 +104,16 @@ export function halfRangeOf(values: Iterable<number>): number {
   const hundredths = Math.ceil(Math.round(dev * 1e6) / 1e4) / 100;
   return Math.min(0.5, Math.max(0.01, hundredths));
 }
+
+/**
+ * Whether auROC color scales are fitted to the run (0.5 ± the largest deviation) or span 0 to 1.
+ * One switch for the analysis page and the Results window, so both read the same.
+ */
+export const [fitScale, setFitScale] = createSignal(true);
+
+/** The half range a scale shows: fitted to `values` when `fitScale` is on, else 0.5 (0 to 1). */
+export const shownHalfRange = (values: Iterable<number>, fit = fitScale()): number =>
+  fit ? halfRangeOf(values) : 0.5;
 
 /** Diverging color around 0.5, symmetric over 0.5 ± half. Gray only for a missing value. */
 export const heatColor = (v: number, half: number): string => aurocColor(v, 0.5 - half, 0.5 + half);

@@ -3,7 +3,8 @@
 import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import type { ExplorerData } from '../../lib/explorer-data.ts';
 import { aurocColor } from '../../lib/auroc-view.ts';
-import { halfRangeOf } from '../../lib/auroc-population.ts';
+import { shownHalfRange } from '../../lib/auroc-population.ts';
+import { ScaleToggle } from '../AurocPopulationPlots.tsx';
 import { OVERALL, type Overall } from '../../lib/place-outcome.ts';
 import {
   aurocOrder,
@@ -36,9 +37,9 @@ function AurocHeat(props: { m: AurocModel; sortBy: number; w: number; h: number 
       label="Heat map of the auROC of every cell for every behavior"
       draw={(ctx) => {
         const { m } = props;
-        // Symmetric around 0.5 and fitted to the data, as on the analysis page: frame-wise auROC of
-        // sparse deconvolved events rarely leaves 0.4-0.6, which a fixed 0-1 scale paints as flat gray.
-        const half = halfRangeOf(m.auroc.flat());
+        // Fitted to the data unless switched off: frame-wise auROC of sparse deconvolved events rarely
+        // leaves 0.4-0.6, which a fixed 0-1 scale paints as flat gray.
+        const half = shownHalfRange(m.auroc.flat());
         const [lo, hi] = [0.5 - half, 0.5 + half];
         const [pw, ph] = [props.w - L - R, props.h - TOP - 4];
         const [cw, rh] = [pw / m.behaviors.length, ph / Math.max(1, m.cells.length)];
@@ -114,8 +115,9 @@ export function aurocParts(
             <p>
               One row per cell and one column per behavior. Color is the auROC of that cell for that
               behavior: 0.5 is no discrimination, orange is above 0.5, purple below. Gray cells were
-              not evaluated. The scale is symmetric around 0.5 and fitted to the largest deviation
-              in the run, so small effects stay visible.
+              not evaluated. With Scale colors to the data on, the scale is symmetric around 0.5 and
+              fitted to the largest deviation in the run, so small effects stay visible; off, it
+              runs from 0 to 1.
             </p>
             <p>
               Rows are sorted by the auROC for the behavior chosen at the right. Significance comes
@@ -125,6 +127,7 @@ export function aurocParts(
         ),
         main: () => (
           <div class="cb-rx__plots">
+            <ScaleToggle />
             <div class="cb-rx__heat">
               <Fit>{(w, h) => <AurocHeat m={m} sortBy={sortBy()} w={w} h={h} />}</Fit>
             </div>

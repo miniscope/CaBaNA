@@ -1,7 +1,12 @@
 // The auROC Population summary tab: responses by behavior, the auROC histogram and the response patterns.
 
 import { createMemo, For, Show, type JSX } from 'solid-js';
-import { aurocHistogram, heatHalfRange, isSingleBehavior } from '../lib/auroc-population.ts';
+import {
+  aurocHistogram,
+  fitScale,
+  heatHalfRange,
+  isSingleBehavior,
+} from '../lib/auroc-population.ts';
 import { summarize } from '../lib/auroc-view.ts';
 import { AurocHistogram } from './AurocPopulationPlots.tsx';
 import { Fit, HowTo, pct, type Ctx } from './AurocResults.tsx';
@@ -10,7 +15,7 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
   const c = () => props.ctx;
   const o = () => c().out;
   const s = createMemo(() => summarize(o()));
-  const half = createMemo(() => heatHalfRange(o()));
+  const half = createMemo(() => (fitScale() ? heatHalfRange(o()) : 0.5));
   const single = () => isSingleBehavior(o());
   const bins = createMemo(() => aurocHistogram(o(), c().b, half()));
   // Cells by number of significant behaviors, grouped as 0, 1 and 2 or more
@@ -74,8 +79,9 @@ export function BehaviorSummary(props: { ctx: Ctx }): JSX.Element {
                     </For>
                   </span>
                   <span class="cb-muted cb-ar-pop__counts">
-                    {b.counts.excited} higher ({pct(b.counts.excited, total())}) · {b.counts.inhibited} lower{' '}
-                    ({pct(b.counts.inhibited, total())}) · {b.counts['not significant']} n.s.
+                    {b.counts.excited} higher ({pct(b.counts.excited, total())}) ·{' '}
+                    {b.counts.inhibited} lower ({pct(b.counts.inhibited, total())}) ·{' '}
+                    {b.counts['not significant']} n.s.
                     {b.counts['not evaluated']
                       ? ` · ${b.counts['not evaluated']} not evaluated`
                       : ''}
