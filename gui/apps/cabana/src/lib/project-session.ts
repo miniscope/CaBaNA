@@ -31,7 +31,8 @@ import {
   type ProjectSummary,
 } from './projects-client.ts';
 import { setSaveStatus } from './save-status.ts';
-import type { SlotId } from './slots.ts';
+import { setAllOthers } from './other-types.ts';
+import { isOtherId, type OtherId, type SlotId } from './slots.ts';
 import { addFiles, clearAll, exampleMedia, goToStep, onClear, setSessionName } from './store.ts';
 
 /** True when the engine can list and save projects. */
@@ -97,36 +98,49 @@ const hasKeys = (v: unknown): boolean => !!v && typeof v === 'object' && Object.
  * be found stay listed in Data setup with Locate file. The caller has cleared the session.
  */
 async function loadProject(project: ProjectSummary, created = false): Promise<void> {
-  const [exp, proc, ana, data] = await Promise.all([
+  const [exp, proc, ana, listed] = await Promise.all([
     projects.readFile(project.id, 'experiment.yaml'),
     projects.readFile(project.id, 'processing.yaml'),
     projects.readFile(project.id, 'analysis.yaml'),
-    projects.listData(project.id),
+    projects.listDataAndLabels(project.id),
   ]);
+  const data = listed.files;
   setOpenProject(project);
   setDataFiles(data);
   const experiment = exp.valid ? readYaml(exp.text) : undefined;
   // The project's experiment.yaml is the session config; a config file kept as data is only the
   // starting point of a new project.
   const useExperiment = hasKeys(experiment);
-  const usable = data.filter(
-    (f) => f.status !== 'missing' && !(useExperiment && f.slot === 'config'),
+  // Named data types are listed, never read.
+  setAllOthers(
+    data
+      .filter((f) => isOtherId(f.slot))
+      .map((f) => ({
+        id: f.slot as OtherId,
+        name: listed.labels[f.slot] ?? '',
+        file: { name: f.name, size: f.size, path: f.path },
+      })),
   );
-  const seen = new Set<string>();
-  const files: File[] = [];
+  const usable = data.filter(
+    (f) => f.status !== 'missing' && !isOtherId(f.slot) && !(useExperiment && f.slot === 'config'),
+  );
+  // Each file goes into the data type it was registered for (one file filling two types is
+  // fetched once); the config last, so its settings apply with every file in place.
+  const fetched = new Map<string, File>();
+  const placed: [SlotId, File][] = [];
   for (const f of usable) {
     const key = `${f.sha256}|${f.name}`;
-    if (seen.has(key)) continue; // one file filling two data types is loaded once
-    seen.add(key);
     try {
-      files.push(await fetchFile(f));
+      if (!fetched.has(key)) fetched.set(key, await fetchFile(f));
+      placed.push([f.slot as SlotId, fetched.get(key)!]);
     } catch {
       f.status = 'missing';
     }
   }
-  if (useExperiment) files.push(new File([exp.text], 'config.yaml'));
+  if (useExperiment) placed.push(['config', new File([exp.text], 'config.yaml')]);
   setDataFiles([...data]);
-  if (files.length) await addFiles(files);
+  placed.sort(([a], [b]) => Number(a === 'config') - Number(b === 'config'));
+  for (const [slot, file] of placed) await addFiles([file], slot);
   setSessionName(project.name);
   if (proc.valid) applyProcessing(readYaml(proc.text));
   if (ana.valid) applyAnalysis(readYaml(ana.text));

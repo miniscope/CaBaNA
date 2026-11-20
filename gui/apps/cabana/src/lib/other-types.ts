@@ -4,6 +4,7 @@
 
 import { createStore, produce } from 'solid-js/store';
 import type { OtherId } from './slots.ts';
+import { onClear } from './store.ts';
 
 export interface OtherType {
   id: OtherId;
@@ -14,6 +15,7 @@ export interface OtherType {
 
 const [others, setOthers] = createStore<OtherType[]>([]);
 export { others };
+onClear(() => setOthers([]));
 
 /** The next free id: one more than the highest in use. */
 export const nextOtherId = (list: { id: string }[]): OtherId =>

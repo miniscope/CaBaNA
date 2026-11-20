@@ -91,7 +91,7 @@ export function OtherFiles(): JSX.Element {
         </span>
       </header>
       <div class="cb-sp-other__rows">
-        <For each={unrecognized()}>{(f) => <Row file={f} />}</For>
+        <For each={unrecognized().filter((u) => u.file)}>{(u) => <Row file={u.file!} />}</For>
       </div>
     </section>
   );

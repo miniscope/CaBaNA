@@ -1,7 +1,7 @@
 // Typed calls for the engine's Projects endpoints (gui/bridge/README.md, "Projects").
 
 import { bridgeCall, bridgeJson, type RunRecord } from './bridge-client.ts';
-import type { SlotId } from './slots.ts';
+import type { OtherId, SlotId } from './slots.ts';
 
 export type FileName = 'project.yaml' | 'experiment.yaml' | 'processing.yaml' | 'analysis.yaml';
 export const CONFIG_FILES: FileName[] = [
@@ -41,7 +41,7 @@ export interface ConfigFile {
 
 export type DataStatus = 'present' | 'changed' | 'moved' | 'missing';
 export interface DataEntry {
-  slot: SlotId;
+  slot: SlotId | OtherId;
   path: string;
   size: number;
   mtime: number;
@@ -150,8 +150,11 @@ export const projects = {
   dialog: (kind: DialogKind, opts: { title?: string; default_name?: string } = {}) =>
     postJson<DialogResult>('/dialog', { kind, ...opts }),
   scan: (paths: string[]) => postJson<{ files: ScannedFile[] }>('/scan', { paths }),
-  registerData: async (id: string, slot: SlotId, path: string) =>
-    (await (await post(`/projects/${id}/data`, { slot, path })).json()) as DataEntry,
+  /** `label` is the user's name of an other_<n> data type, kept in project.yaml. */
+  registerData: async (id: string, slot: SlotId | OtherId, path: string, label?: string) =>
+    (await (
+      await post(`/projects/${id}/data`, { slot, path, ...(label !== undefined && { label }) })
+    ).json()) as DataEntry,
   /** Copy a file the engine already holds (uploaded by hash) into the project's data folder. */
   dataFromInput: async (id: string, slot: SlotId, sha: string, name: string) =>
     (await (
@@ -163,9 +166,17 @@ export const projects = {
       `/projects/${id}/runs/adopt`,
       { run_ids: runIds },
     ),
-  removeData: (id: string, slot: SlotId) => bridgeCall('DELETE', `/projects/${id}/data/${slot}`),
+  removeData: (id: string, slot: SlotId | OtherId) =>
+    bridgeCall('DELETE', `/projects/${id}/data/${slot}`),
   listData: async (id: string) =>
     (await bridgeJson<{ files: DataFile[] }>(`/projects/${id}/data`)).files,
+  /** The files, and the names of the user's other data types by slot. */
+  listDataAndLabels: async (id: string) => {
+    const r = await bridgeJson<{ files: DataFile[]; labels?: Record<string, string> }>(
+      `/projects/${id}/data`,
+    );
+    return { files: r.files, labels: r.labels ?? {} };
+  },
   /** The bytes of a registered file, by hash. */
   fileBytes: async (sha: string) => (await bridgeCall('GET', `/files/${sha}`)).arrayBuffer(),
 

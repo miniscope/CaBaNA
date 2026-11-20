@@ -4,7 +4,7 @@
 
 import { createMemo, createSignal } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import { SLOTS, type Level, type SlotId } from './slots.ts';
+import { isVideo, SLOTS, type Level, type SlotId } from './slots.ts';
 import { PARADIGMS } from './experiments.ts';
 import {
   readFootprints,
@@ -65,7 +65,54 @@ export interface LoadedInfo {
 }
 
 const [loaded, setLoaded] = createStore<Partial<Record<SlotId, LoadedInfo>>>({});
-const [unrecognized, setUnrecognized] = createSignal<File[]>([]);
+/**
+ * A file no data type matched, waiting in Data setup's Unassigned card: a browser file, or (with
+ * the engine) a file known by its path on disk.
+ */
+export interface UnassignedFile {
+  key: string;
+  name: string;
+  size: number;
+  file?: File;
+  path?: string;
+}
+const [unrecognized, setUnrecognized] = createSignal<UnassignedFile[]>([]);
+/** Files of a chosen folder that are never data (videos), by name. */
+const [ignoredFiles, setIgnoredFiles] = createSignal<string[]>([]);
+/** The folder last added, with how its files were sorted, for the line above the cards. */
+export interface FolderInfo {
+  name: string;
+  total: number;
+  identified: number;
+  unassigned: number;
+  ignored: number;
+}
+const [folderInfo, setFolderInfo] = createSignal<FolderInfo>();
+export { ignoredFiles, folderInfo, setFolderInfo };
+
+const fileKey = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+export const unassignedOf = (f: File): UnassignedFile => ({
+  key: fileKey(f),
+  name: f.name,
+  size: f.size,
+  file: f,
+});
+/** Add files to the Unassigned card (ones already there are not listed twice). */
+export function addUnassigned(entries: UnassignedFile[]): void {
+  setUnrecognized((u) => [...u, ...entries.filter((e) => !u.some((x) => x.key === e.key))]);
+}
+/** Take a file off the Unassigned card: assigned elsewhere, or ignored (`ignore`). */
+export function dropUnassigned(key: string, ignore = false): void {
+  const gone = unrecognized().find((u) => u.key === key);
+  setUnrecognized((u) => u.filter((x) => x.key !== key));
+  if (ignore && gone) setIgnoredFiles((l) => [...l, gone.name]);
+}
+export const addIgnored = (names: string[]) => setIgnoredFiles((l) => [...l, ...names]);
+/** Forget the Unassigned and ignored files of the last folder, before another folder is added. */
+export function clearFolderLists(): void {
+  setUnrecognized([]);
+  setIgnoredFiles([]);
+}
 const [version, setVersion] = createSignal(0);
 /** cm/s. Frame steps faster than this are implausible jumps. */
 const DEFAULT_MAX_SPEED = 60;
@@ -257,6 +304,10 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
     if (SLOTS.some((s) => loaded[s.id])) clearAll();
     setSessionName(folder);
   }
+  // Hidden files are skipped and videos are never data: they are listed as ignored.
+  if (!slot) files = files.filter((f) => !f.name.startsWith('.'));
+  const videos = slot ? [] : files.filter((f) => isVideo(f.name));
+  files = files.filter((f) => !videos.includes(f));
   // A config is read first, so the file names it gives decide where the other files go.
   const config = slot ? undefined : await findConfig(files);
   if (config) await load('config', config);
@@ -268,7 +319,16 @@ export async function addFiles(files: File[], slot?: SlotId): Promise<void> {
       return Promise.all(slots.map((id) => load(id, file)));
     }),
   );
-  setUnrecognized((u) => [...u, ...rest]);
+  addUnassigned(rest.map(unassignedOf));
+  addIgnored(videos.map((f) => f.name));
+  if (folder)
+    setFolderInfo({
+      name: folder,
+      total: files.length + videos.length,
+      identified: files.length - rest.length,
+      unassigned: rest.length,
+      ignored: videos.length,
+    });
   if (config || slot === 'config') loadHooks.forEach((f) => f());
 }
 
@@ -277,7 +337,7 @@ const loadHooks: (() => void)[] = [];
 export const onConfigLoaded = (f: () => void) => loadHooks.push(f);
 
 export async function assignFile(file: File, slot: SlotId): Promise<void> {
-  setUnrecognized((u) => u.filter((f) => f !== file));
+  dropUnassigned(fileKey(file));
   await load(slot, file);
   if (slot === 'config') loadHooks.forEach((f) => f());
 }
@@ -349,6 +409,8 @@ export function clearAll(): void {
     setLoaded(s.id, undefined as unknown as LoadedInfo);
   }
   setUnrecognized([]);
+  setIgnoredFiles([]);
+  setFolderInfo(undefined);
   setVersion((v) => v + 1);
 }
 

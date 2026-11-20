@@ -6,16 +6,25 @@ import { createEffect, createRoot, createSignal, on } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { sectionsFor, type SectionId } from './file-sections.ts';
 import { SLOTS, type SlotId } from './slots.ts';
-import { goToStep, loaded, sessionName, unrecognized } from './store.ts';
+import { openProject } from './open-project.ts';
+import { others } from './other-types.ts';
+import { goToStep, ignoredFiles, loaded, sessionName, unrecognized } from './store.ts';
 
 /** Get started, a data type, the cross-data timing check, or an unassigned file (by name). */
 export type EntryId = 'start' | SlotId | 'sync' | `file:${string}`;
 
 export const [entry, setEntry] = createSignal<EntryId>('start');
 
-/** Nothing loaded, not even a file that failed to read or matched no data type: the start screen. */
+/**
+ * Nothing loaded, not even a file that failed to read, matched no data type or was ignored, and no
+ * project open: the empty Data setup.
+ */
 export const nothingLoaded = (): boolean =>
-  !SLOTS.some((s) => loaded[s.id]) && !unrecognized().length;
+  !SLOTS.some((s) => loaded[s.id]) &&
+  !unrecognized().length &&
+  !ignoredFiles().length &&
+  !others.some((o) => o.file) &&
+  !openProject();
 
 /** The line shown after settings from another session were applied; cleared with the session. */
 export const [appliedNote, setAppliedNote] = createSignal<string>();
