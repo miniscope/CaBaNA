@@ -92,9 +92,13 @@ export function aurocCards(out: AurocOutcome, behavior: number): MetricCard[] {
  * its full range on small effects (0.5 ± 0.06 shows 0.44 to 0.56). At least 0.01.
  */
 export function heatHalfRange(out: AurocOutcome): number {
+  return halfRangeOf(out.result.observed);
+}
+
+/** `heatHalfRange` for any set of auROC values (NaN ignored). */
+export function halfRangeOf(values: Iterable<number>): number {
   let dev = 0;
-  for (const v of out.result.observed)
-    if (Number.isFinite(v)) dev = Math.max(dev, Math.abs(v - 0.5));
+  for (const v of values) if (Number.isFinite(v)) dev = Math.max(dev, Math.abs(v - 0.5));
   // Round away float noise before taking the ceiling
   const hundredths = Math.ceil(Math.round(dev * 1e6) / 1e4) / 100;
   return Math.min(0.5, Math.max(0.01, hundredths));

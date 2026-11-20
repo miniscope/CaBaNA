@@ -19,7 +19,8 @@ export function aurocCsv(out: AurocOutcome): string {
     `# compared against: ${out.against ?? 'all other included frames'}`,
     `# frames excluded below a minimum speed: ${s.speedFilter ? `${s.minSpeed} cm/s (behavior and reference frames; frames with missing speed are also excluded)` : 'no speed filter'}`,
     `# shuffles=${s.nShuffles}; minimum_shift_s=${out.minShiftS}; seed=${s.seed}; method=${s.method === 'speed' ? 'speed-matched circular shift' : 'circular shift'}`,
-    'cell,behavior,auroc,p_unadjusted,p_adjusted,response',
+    '# cell is numbered from 1; cell_index is the 0-based row in the neural data file',
+    'cell,cell_index,behavior,auroc,p_unadjusted,p_adjusted,response',
   ];
   const v = (x: number) => (Number.isNaN(x) ? '' : x);
   const rows: string[] = [];
@@ -28,6 +29,7 @@ export function aurocCsv(out: AurocOutcome): string {
       rows.push(
         [
           id + 1,
+          id,
           JSON.stringify(label),
           v(aurocOf(out, c, b)),
           v(pRawOf(out, c, b)),
