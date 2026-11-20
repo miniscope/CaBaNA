@@ -136,7 +136,7 @@ function Modal(props: {
 }
 
 /** Whether the setting differs from its starting value, to highlight the box. */
-const changed = (k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed') =>
+const changed = (k: 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed' | 'binS') =>
   aurocSettings[k] !== DEFAULT_AUROC_SETTINGS[k];
 
 /** A setting's name with its explanation in a tooltip. */
@@ -147,7 +147,7 @@ const Title = (props: { text: string; children: JSX.Element }): JSX.Element => (
   </div>
 );
 
-type NumKey = 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed';
+type NumKey = 'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed' | 'binS';
 
 /** A number box; an out-of-range value is kept and marked, and the run says why it is blocked. */
 export function NumInput(props: {
@@ -224,7 +224,8 @@ export function AurocSetup(props: {
   const selected = () => plan()?.labels ?? [];
   const pairMode = () => aurocSettings.compare === 'behavior' && ok()!.labels.length >= 2;
   const pair = () => pairIndexes(ok()!, aurocSettings);
-  const eligible = () => countOf(ok()!.mask);
+  // Eligible frames, or bins when the run bins time (the plan's mask is the run's).
+  const eligible = () => countOf(plan()?.input.mask ?? ok()!.mask);
   const counts = createMemo(() => (plan() ? groupCounts(plan()!, eligible()) : []));
   const frames = createMemo(() => (ok() ? frameSelection(ok()!) : undefined));
   const tooFew = (i: number) =>

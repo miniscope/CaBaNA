@@ -138,6 +138,13 @@ describe('place cell and auROC specs (framework engine, not yet used by the page
     const matched = aurocPipeline({ ...DEFAULT_AUROC_SETTINGS, method: 'speed' }, common, 'social_epochs', social);
     await snap('auroc-speed-matched', matched);
   });
+  it('auROC time bin adds rebin_time last, only when a bin is set', () => {
+    const rebin = (binMode: 'off' | 'auto' | 'manual', binS: number) =>
+      (aurocPipeline({ ...DEFAULT_AUROC_SETTINGS, binMode, binS }, common, 'social_epochs', social).pipeline.preprocess as { name: string }[]).at(-1);
+    expect(rebin('off', 0.5)?.name).not.toBe('rebin_time');
+    expect(rebin('auto', 0)?.name).not.toBe('rebin_time');
+    expect(rebin('manual', 0.5)).toEqual({ name: 'rebin_time', bin_s: 0.5, activity_method: 'sum', min_fraction: 0.5 });
+  });
   it('auROC behavior A against B is reported as not on the framework engine yet', () => {
     expect(aurocPipeline({ ...DEFAULT_AUROC_SETTINGS, compare: 'behavior' }, common, 'social_epochs', social).problems[0]).toMatch(/browser engine/);
   });

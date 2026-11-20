@@ -24,6 +24,12 @@ export interface AurocSetupView {
   correctionText: () => string;
 }
 
+/** ' · 0.5 s bins (suggested)' when the run bins time, else ''. */
+const binSummary = () =>
+  aurocSettings.binMode !== 'off' && aurocSettings.binS > 0
+    ? ` · ${aurocSettings.binS} s bins${aurocSettings.binMode === 'auto' ? ' (suggested)' : ''}`
+    : '';
+
 export function aurocSections(v: AurocSetupView): GuidedSection[] {
   const { ok, pairMode, pair, selected, frames, settingIssues, methodText } = v;
   return [
@@ -40,9 +46,12 @@ export function aurocSections(v: AurocSetupView): GuidedSection[] {
       id: 'frames',
       title: 'Frame selection',
       optional: true,
-      summary: aurocSettings.speedFilter
-        ? `Speed ≥ ${aurocSettings.minSpeed} cm/s · ${frames()!.kept.toLocaleString()} of ${frames()!.total.toLocaleString()} kept`
-        : `Off · all ${frames()!.total.toLocaleString()} frames kept`,
+      summary:
+        (aurocSettings.speedFilter
+          ? `Speed ≥ ${aurocSettings.minSpeed} cm/s · ${frames()!.kept.toLocaleString()} of ${frames()!.total.toLocaleString()} kept`
+          : binSummary()
+            ? `All ${frames()!.total.toLocaleString()} frames kept`
+            : `Off · all ${frames()!.total.toLocaleString()} frames kept`) + binSummary(),
       attention: aurocSettings.speedFilter && !frames()!.kept ? 'no frame is kept' : undefined,
     },
     {
@@ -85,6 +94,7 @@ export function aurocSummary(v: AurocSetupView): SummaryGroup[] {
             ? `Below ${aurocSettings.minSpeed} cm/s excluded`
             : 'Off',
         },
+        { label: 'Time bin', value: binSummary().replace(' · ', '') || 'Off (every frame)' },
         {
           label: 'Frames kept',
           value: `${frames()!.kept.toLocaleString()} of ${frames()!.total.toLocaleString()} (${percentOf(frames()!.kept, frames()!.total)})`,
