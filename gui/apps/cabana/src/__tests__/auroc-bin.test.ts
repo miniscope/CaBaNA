@@ -59,6 +59,23 @@ describe('rebinAuroc', () => {
     expect(Array.from(b.mask)).toEqual([1, 0, 1]);
     expect(Array.from(b.speed!)).toEqual([2, 5, 2]);
   });
+  it('leaves out bins that are partly in a compared behavior', () => {
+    const m: BinInput = {
+      neural: Float32Array.from([1, 0, 2, 0, 0, 3, 4, 4]),
+      cells: 1,
+      frames: 8,
+      fs: 10,
+      // row 0: bin 0 pure in, bin 1 mixed, bin 2 pure out, bin 3 mixed; row 1 mixed only in bin 2
+      behaviors: Uint8Array.from([1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]),
+      nBehaviors: 2,
+      mask: new Uint8Array(8).fill(1),
+    };
+    const one = rebinAuroc(m, 0.2, [0]);
+    expect(Array.from(one.mask)).toEqual([1, 0, 1, 0]);
+    expect(one.mixed).toBe(2);
+    expect(Array.from(rebinAuroc(m, 0.2, [0, 1]).mask)).toEqual([1, 0, 0, 0]);
+    expect(Array.from(rebinAuroc(m, 0.2).mask)).toEqual([1, 1, 1, 1]);
+  });
   it('refuses a bin that leaves fewer than two bins', () => {
     expect(() => rebinAuroc(session(1, 1), 1000)).toThrow(/too long/);
   });
@@ -71,11 +88,11 @@ describe('bin suggestion', () => {
     expect(zeroFraction(m, 1)).toBeGreaterThan(0.9);
     expect(zeroFraction(m, 20)).toBeLessThan(zeroFraction(m, 1));
   });
-  it('bins sparse events, capped at half the shortest bout', () => {
+  it('bins sparse events, capped at a third of the shortest bout', () => {
     const s = suggestAurocBin(session(20, 0.5), [0]);
-    expect(s.maxS).toBe(1);
+    expect(s.maxS).toBeCloseTo(2 / 3);
     expect(s.binS).toBeGreaterThan(0);
-    expect(s.binS).toBeLessThanOrEqual(1);
+    expect(s.binS).toBeLessThanOrEqual(2 / 3);
   });
   it('keeps frames for dense data', () => {
     const s = suggestAurocBin(session(5, 0.5, true), [0]);
@@ -86,7 +103,7 @@ describe('bin suggestion', () => {
     const asInput = (x: BinInput) => ({ ...x, neural: Float64Array.from(x.neural) });
     const med = (a: Float64Array) => [...a].sort((p, q) => p - q)[a.length >> 1];
     const frames = med(observedAuroc(asInput(m)));
-    const bins = med(observedAuroc(asInput(rebinAuroc(m, suggestAurocBin(m, [0]).binS))));
+    const bins = med(observedAuroc(asInput(rebinAuroc(m, suggestAurocBin(m, [0]).binS, [0]))));
     expect(bins).toBeGreaterThan(frames + 0.1);
   });
 });

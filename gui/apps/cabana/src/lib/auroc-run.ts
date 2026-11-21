@@ -384,7 +384,8 @@ type PlanSettings = Pick<AurocSettings, 'compare' | 'pairA' | 'pairB' | 'unselec
 export function aurocPlan(data: AurocData, cfg: PlanSettings) {
   const binS = aurocBinOf(cfg);
   // Binned: every count below is in bins, and the run tests bins instead of frames.
-  if (binS) data = rebinAuroc({ ...data, nBehaviors: data.labels.length }, binS);
+  if (binS)
+    data = rebinAuroc({ ...data, nBehaviors: data.labels.length }, binS, comparedRows(data, cfg));
   const { frames } = data;
   const row = (b: number) => data.behaviors.subarray(b * frames, (b + 1) * frames);
   const base = { neural: data.neural, cells: data.cells, frames, fs: data.fs };

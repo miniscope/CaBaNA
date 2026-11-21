@@ -143,7 +143,7 @@ describe('place cell and auROC specs (framework engine, not yet used by the page
       (aurocPipeline({ ...DEFAULT_AUROC_SETTINGS, binMode, binS }, common, 'social_epochs', social).pipeline.preprocess as { name: string }[]).at(-1);
     expect(rebin('off', 0.5)?.name).not.toBe('rebin_time');
     expect(rebin('auto', 0)?.name).not.toBe('rebin_time');
-    expect(rebin('manual', 0.5)).toEqual({ name: 'rebin_time', bin_s: 0.5, activity_method: 'sum', min_fraction: 0.5 });
+    expect(rebin('manual', 0.5)).toEqual({ name: 'rebin_time', bin_s: 0.5, activity_method: 'sum', min_fraction: 0.5, drop_mixed: ['auroc_target'] });
   });
   it('auROC behavior A against B is reported as not on the framework engine yet', () => {
     expect(aurocPipeline({ ...DEFAULT_AUROC_SETTINGS, compare: 'behavior' }, common, 'social_epochs', social).problems[0]).toMatch(/browser engine/);

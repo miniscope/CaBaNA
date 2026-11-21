@@ -19,7 +19,7 @@ export function aurocCsv(out: AurocOutcome): string {
     `# compared against: ${out.against ?? 'all other included frames'}`,
     `# frames excluded below a minimum speed: ${s.speedFilter ? `${s.minSpeed} cm/s (behavior and reference frames; frames with missing speed are also excluded)` : 'no speed filter'}`,
     `# shuffles=${s.nShuffles}; minimum_shift_s=${out.minShiftS}; seed=${s.seed}; method=${s.method === 'speed' ? 'speed-matched circular shift' : 'circular shift'}`,
-    `# time bin: ${s.binMode !== 'off' && s.binS > 0 ? `${s.binS} s (${s.binMode === 'auto' ? 'suggested from the data' : 'set by hand'}); events summed per bin, a bin is in a behavior when at least half of it is` : 'none (every frame)'}`,
+    `# time bin: ${s.binMode !== 'off' && s.binS > 0 ? `${s.binS} s (${s.binMode === 'auto' ? 'suggested from the data' : 'set by hand'}); events summed per bin, bins partly in a compared behavior left out` : 'none (every frame)'}`,
     'cell,behavior,auroc,p_unadjusted,p_adjusted,response',
   ];
   const v = (x: number) => (Number.isNaN(x) ? '' : x);
@@ -62,7 +62,7 @@ export function aurocMetadata(out: AurocOutcome) {
     time_bin: {
       mode: s.binMode,
       bin_s: s.binMode !== 'off' && s.binS > 0 ? s.binS : null,
-      rule: 'events summed per bin; a bin is in a behavior, and included, when at least half of its frames are',
+      rule: 'events summed per bin; a bin partly in a compared behavior is left out of both groups; a bin is included when at least half of its frames are',
     },
     frame_selection: {
       speed_filter: s.speedFilter,

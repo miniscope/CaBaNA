@@ -99,11 +99,13 @@ function TimeBin(): JSX.Element {
           Deconvolved events are mostly exact zeros, and tied zeros cannot be ranked, so auROC on
           single frames stays close to 0.5 even for strongly responding cells. Summing events in
           time bins first lets auROC reflect the size of the response. Significance is tested the
-          same way either way (circular shifts, now in whole bins). A bin counts as part of a
-          behavior, and as included, when at least half of its frames are. Keep bins shorter than
-          the behavior bouts: bins much longer than a bout lose it. The suggestion is the shortest
-          bin in which a typical cell is zero in at most a quarter of the bins, no longer than half
-          the shortest typical bout. The minimum of 20 frames per group then counts bins.
+          same way either way (circular shifts, now in whole bins). A bin that is only partly in a
+          compared behavior is left out of both groups, so activity just before or after a bout is
+          not counted for it; a bin counts as included when at least half of its frames are. Keep
+          bins well inside the bouts: the longer the bin, the more bins straddle a bout's start or
+          end and are left out. The suggestion is the shortest bin in which a typical cell is zero
+          in at most a quarter of the bins, no longer than a third of the shortest typical bout. The
+          minimum of 20 frames per group then counts bins.
         </InfoTip>
       </div>
       <div class="cb-au-refs" role="radiogroup" aria-label="Time bin">
@@ -134,8 +136,8 @@ function TimeBin(): JSX.Element {
         </div>
         <Show when={sug() && Number.isFinite(sug()!.maxS) && aurocSettings.binS > sug()!.maxS}>
           <div class="cb-warn">
-            Longer than half the shortest typical bout ({+sug()!.maxS.toFixed(2)} s): short bouts
-            may fill less than half a bin and drop out.
+            Longer than a third of the shortest typical bout ({+sug()!.maxS.toFixed(2)} s): many
+            bins will straddle a bout's start or end and be left out.
           </div>
         </Show>
       </Show>

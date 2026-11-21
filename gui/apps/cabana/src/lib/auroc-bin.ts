@@ -9,8 +9,12 @@ import { roundHalfEven } from './decode-shared.ts';
 export const BIN_CANDIDATES_S = [0.1, 0.25, 0.5, 1, 2, 5];
 /** Suggest the shortest bin in which a typical cell is exactly zero in at most this share of bins. */
 export const TARGET_ZERO_FRACTION = 0.25;
-/** A bin is at most this share of the shortest typical bout of the compared behaviors. */
-export const MAX_BOUT_SHARE = 0.5;
+/**
+ * A bin is at most this share of the shortest typical bout of the compared behaviors, so most of a
+ * bout's bins lie wholly inside it (on simulated 1.5 s bouts, bins of 2/3 of a bout let activity
+ * just before and after the bout count for it; a third did not).
+ */
+export const MAX_BOUT_SHARE = 1 / 3;
 /** A bin counts as in a behavior (or as included) when at least this share of its frames is. */
 export const BIN_MIN_FRACTION = 0.5;
 
@@ -30,11 +34,17 @@ export interface BinInput {
 export const framesPerBin = (binS: number, fs: number) => Math.max(1, roundHalfEven(binS * fs));
 
 /**
- * `Session.rebin(bin_s, "sum", 0.5)`: events summed per bin; each behavior row, and the mask, on when
- * at least half of the bin's frames are; speed averaged over its finite values. Frames that do not
- * fill a last bin are dropped.
+ * `Session.rebin(bin_s, "sum", 0.5, drop_mixed=[...])`: events summed per bin; each behavior row, and
+ * the mask, on when at least half of the bin's frames are; speed averaged over its finite values.
+ * Bins that are partly in one of `mixedRows` (the compared behaviors) are left out (mask 0), so
+ * activity just before or after a bout is not counted for it or for its reference. Frames that do
+ * not fill a last bin are dropped.
  */
-export function rebinAuroc<T extends BinInput>(m: T, binS: number): T & { k: number } {
+export function rebinAuroc<T extends BinInput>(
+  m: T,
+  binS: number,
+  mixedRows: number[] = [],
+): T & { k: number; mixed: number } {
   const k = framesPerBin(binS, m.fs);
   const n = Math.floor(m.frames / k);
   if (n < 2) throw new Error('The time bin is too long: fewer than two bins would remain.');
@@ -53,7 +63,18 @@ export function rebinAuroc<T extends BinInput>(m: T, binS: number): T & { k: num
   const behaviors = new Uint8Array(m.nBehaviors * n);
   for (let r = 0; r < m.nBehaviors; r++)
     for (let b = 0; b < n; b++) behaviors[r * n + b] = share(m.behaviors, r * m.frames, b);
-  const mask = Uint8Array.from({ length: n }, (_, b) => share(m.mask, 0, b));
+  const isMixed = (b: number) =>
+    mixedRows.some((r) => {
+      let on = 0;
+      for (let j = 0; j < k; j++) on += m.behaviors[r * m.frames + b * k + j] ? 1 : 0;
+      return on > 0 && on < k;
+    });
+  let mixed = 0;
+  const mask = Uint8Array.from({ length: n }, (_, b) => {
+    if (!isMixed(b)) return share(m.mask, 0, b);
+    mixed++;
+    return 0;
+  });
   let speed: Float64Array | undefined;
   if (m.speed) {
     speed = new Float64Array(n);
@@ -70,7 +91,7 @@ export function rebinAuroc<T extends BinInput>(m: T, binS: number): T & { k: num
       speed[b] = c ? s / c : NaN;
     }
   }
-  return { ...m, neural, behaviors, mask, speed, frames: n, fs: m.fs / k, k };
+  return { ...m, neural, behaviors, mask, speed, frames: n, fs: m.fs / k, k, mixed };
 }
 
 /** Median length (frames) of the runs of included frames inside behavior row `r`; 0 without any. */
@@ -168,5 +189,5 @@ export function suggestionText(s: BinSuggestion): string {
   const base = `A typical cell is zero in ${pct(s.frameZeros)} of frames and ${pct(s.binZeros)} of ${s.binS} s bins`;
   return s.reason === 'target'
     ? `${base}.`
-    : `${base}; longer bins would exceed half the shortest typical bout (${+s.maxS.toFixed(2)} s).`;
+    : `${base}; longer bins would exceed a third of the shortest typical bout (${+s.maxS.toFixed(2)} s).`;
 }
