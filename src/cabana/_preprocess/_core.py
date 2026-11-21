@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -182,6 +182,22 @@ class RebinTime(PreprocessStep):
         le=1,
         description="Fraction of frames that must be True/in-state for a bin to count.",
     )
+    drop_mixed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "State spaces whose bins that are partly in a state are dropped (support False), "
+            "so activity next to a behavior's start or end is not attributed to it."
+        ),
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        # Left out when unused, so specs (and their hashes) without it stay as they were.
+        d = super().to_dict()
+        if not self.drop_mixed:
+            d.pop("drop_mixed")
+        return d
 
     def apply(self, session: Session) -> Session:
-        return session.rebin(self.bin_s, self.activity_method, self.min_fraction)
+        return session.rebin(
+            self.bin_s, self.activity_method, self.min_fraction, drop_mixed=self.drop_mixed
+        )

@@ -320,3 +320,53 @@ def test_pipeline_with_rebin_roundtrips() -> None:
         r1.get("_test_rebin_mean_per_state", "social").values,
         r2.get("_test_rebin_mean_per_state", "social").values,
     )
+
+
+# --------------------------------------------------------------- drop_mixed
+
+
+def _behavior(on: np.ndarray) -> StateSpace:
+    return StateSpace(
+        name="b", onehot=on[:, None], state_names=["social"], kind="categorical", exclusive=False
+    )
+
+
+def test_rebin_drop_mixed_removes_partial_bins_from_support() -> None:
+    # 5-frame bins at 10 Hz
+    on = np.zeros(N, bool)
+    on[3:13] = True  # bin 0: 2/5, bin 1: 5/5, bin 2: 3/5, rest 0
+    s = _session(states={"b": _behavior(on)})
+    half = s.rebin(0.5, min_fraction=0.5)
+    assert half.states["b"].onehot[:4, 0].tolist() == [False, True, True, False]
+    assert half.states["b"].support is None
+    out = s.rebin(0.5, min_fraction=0.5, drop_mixed=["b"])
+    assert out.states["b"].onehot[:4, 0].tolist() == [False, True, True, False]
+    assert out.states["b"].support[:4].tolist() == [False, True, False, True]
+    assert out.states["b"].support[4:].all()
+    assert out.meta["rebin"]["mixed_bins_dropped"] == {"b": 2}
+
+
+def test_rebin_drop_mixed_keeps_existing_support_and_checks_names() -> None:
+    on = np.zeros(N, bool)
+    on[3:13] = True
+    support = np.ones(N, bool)
+    support[50:60] = False
+    st = _behavior(on).model_copy(update={"support": support})
+    out = _session(states={"b": st}).rebin(0.5, drop_mixed=["b"])
+    assert not out.states["b"].support[10:12].any() and not out.states["b"].support[0]
+    with pytest.raises(ValueError, match="not in session.states"):
+        _session(states={"b": st}).rebin(0.5, drop_mixed=["nope"])
+
+
+def test_rebin_time_step_passes_drop_mixed() -> None:
+    on = np.zeros(N, bool)
+    on[3:13] = True
+    out = RebinTime(bin_s=0.5, drop_mixed=["b"]).apply(_session(states={"b": _behavior(on)}))
+    assert out.states["b"].support[:3].tolist() == [False, True, False]
+
+
+def test_rebin_time_to_dict_lists_drop_mixed_only_when_set() -> None:
+    assert "drop_mixed" not in RebinTime(bin_s=0.5).to_dict()
+    d = RebinTime(bin_s=0.5, drop_mixed=["b"]).to_dict()
+    assert d["drop_mixed"] == ["b"]
+    assert Pipeline.from_dict({"preprocess": [d]}).preprocess[0].drop_mixed == ["b"]
