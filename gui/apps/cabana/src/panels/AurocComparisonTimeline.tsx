@@ -3,7 +3,12 @@ import type { AurocData } from '../lib/auroc-run.ts';
 import { frameClasses, segments, type FrameClass } from '../lib/auroc-setup.ts';
 import { PlotCard } from './QcParts.tsx';
 
-type Plan = { input: Parameters<typeof frameClasses>[1]; labels: string[] };
+type Plan = {
+  input: Parameters<typeof frameClasses>[1] & { fs: number };
+  labels: string[];
+  /** Frames (or bins) kept by frame selection. */
+  eligible: Uint8Array;
+};
 
 const FILL: Record<FrameClass, string> = {
   behavior: 'var(--accent)',
@@ -25,7 +30,7 @@ function Rows(props: { data: AurocData; plan: Plan; w: number; h: number }): JSX
   const axisY = () => T + props.plan.labels.length * ROW();
   const rows = createMemo(() =>
     props.plan.labels.map((_, i) =>
-      segments(frameClasses(props.data.mask, props.plan.input, i), props.data.fs).filter(
+      segments(frameClasses(props.plan.eligible, props.plan.input, i), props.plan.input.fs).filter(
         (s) => s.cls !== 'comparison',
       ),
     ),

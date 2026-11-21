@@ -120,7 +120,21 @@ export function aurocPipeline(
           output: 'auroc_target',
         },
       ],
-      preprocess: steps.preprocess,
+      // Optional time bins last, after the steps that build the states and masks (`Session.rebin`).
+      preprocess:
+        s.binMode !== 'off' && s.binS > 0
+          ? [
+              ...steps.preprocess,
+              {
+                name: 'rebin_time',
+                bin_s: s.binS,
+                activity_method: 'sum',
+                min_fraction: 0.5,
+                // Bins partly in a compared behavior count for neither side (lib/auroc-bin.ts).
+                drop_mixed: ['auroc_target'],
+              },
+            ]
+          : steps.preprocess,
       // The framework's automatic timescale acts on circular shifts only; speed matching keeps `min_shift_s`.
       selectors: s.shiftAuto && !speedMatched ? [{ name: 'auto_null_timescale' }] : [],
       analyses: [

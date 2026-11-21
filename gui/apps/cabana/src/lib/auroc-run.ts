@@ -31,6 +31,7 @@ import { rangeIssue, type Range } from './ranges.ts';
 import { runDeps, type Uses } from './run-deps.ts';
 import { saveBrowserRun } from './browser-records.ts';
 import { aurocCsv, aurocMetadata } from './auroc-export.ts';
+import { rebinAuroc, suggestAurocBin } from './auroc-bin.ts';
 
 /** Behaviors to leave out when the panel first opens: those not marked measured (a preselection only). */
 export const aurocPreselected = (labels: string[]) =>
@@ -88,10 +89,14 @@ export const DEFAULT_AUROC_SETTINGS = {
   /** cm/s. auROC's own value: not shared with Preprocess or Place cells. */
   minSpeed: 2,
   match: { ...DEFAULT_MATCH } as MatchOptions,
+  /** Time bins before auROC: off (every frame), auto (suggested from the data) or manual (`binS`). */
+  binMode: 'off' as 'off' | 'auto' | 'manual',
+  /** Bin length in seconds when `binMode` is not off; follows the suggestion in auto mode. 0 = frames. */
+  binS: 0,
 };
 /** Valid range and name of each numeric setting. */
 export const AUROC_RANGES: Record<
-  'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed',
+  'nShuffles' | 'alpha' | 'seed' | 'minShiftS' | 'minSpeed' | 'binS',
   Range & { name: string }
 > = {
   nShuffles: { name: 'Shuffles', min: 1, whole: true },
@@ -99,6 +104,7 @@ export const AUROC_RANGES: Record<
   seed: { name: 'Random seed', min: 0, whole: true },
   minShiftS: { name: 'Minimum shift', min: 0.5 },
   minSpeed: { name: 'Minimum speed', min: 0 },
+  binS: { name: 'Time bin', min: 0.01 },
 };
 
 /** Settings the run would use that are outside their range, as reasons. */
@@ -106,6 +112,7 @@ export function aurocSettingIssues(s: typeof DEFAULT_AUROC_SETTINGS): string[] {
   const used: (keyof typeof AUROC_RANGES)[] = ['nShuffles', 'alpha', 'seed'];
   if (s.method === 'circular' && !s.shiftAuto) used.push('minShiftS');
   if (s.speedFilter) used.push('minSpeed');
+  if (s.binMode === 'manual') used.push('binS');
   return used
     .map((k) => rangeIssue(AUROC_RANGES[k].name, s[k], AUROC_RANGES[k]))
     .filter((m): m is string => !!m);
@@ -235,6 +242,32 @@ export const aurocData = createMemo<AurocData | { error: string }>(() => {
   };
 });
 
+/** The behavior rows a run with `cfg` compares: the pair, or the selected behaviors. */
+function comparedRows(data: AurocData, cfg: PlanSettings): number[] {
+  if (cfg.compare === 'behavior' && data.labels.length >= 2) return pairIndexes(data, cfg);
+  return data.labels.flatMap((l, i) => (cfg.unselected.includes(l) ? [] : [i]));
+}
+
+/** The time bin suggested for the loaded data and the current comparison (lib/auroc-bin.ts). */
+export const aurocBinSuggestion = createMemo(() => {
+  const d = aurocData();
+  if ('error' in d) return undefined;
+  return suggestAurocBin({ ...d, nBehaviors: d.labels.length }, comparedRows(d, aurocSettings));
+});
+
+/** The bin length (s) a run with these settings uses, or undefined when it keeps every frame. */
+export const aurocBinOf = (s: Partial<Pick<AurocSettings, 'binMode' | 'binS'>>) =>
+  s.binMode && s.binMode !== 'off' && s.binS && s.binS > 0 ? s.binS : undefined;
+
+// In auto mode the setting follows the suggestion, so both engines and the saved settings see the bin used.
+createRoot(() =>
+  createEffect(() => {
+    if (aurocSettings.binMode !== 'auto') return;
+    const b = aurocBinSuggestion()?.binS ?? 0;
+    if (b !== aurocSettings.binS) setAurocSettings('binS', b);
+  }),
+);
+
 /** What a finished run used and found. */
 export interface AurocOutcome {
   labels: string[];
@@ -340,7 +373,8 @@ export function pairIndexes(
   return [a, b >= 0 && b !== a ? b : a === 0 ? 1 : 0];
 }
 
-type PlanSettings = Pick<AurocSettings, 'compare' | 'pairA' | 'pairB' | 'unselected'>;
+type PlanSettings = Pick<AurocSettings, 'compare' | 'pairA' | 'pairB' | 'unselected'> &
+  Partial<Pick<AurocSettings, 'binMode' | 'binS'>>;
 
 /**
  * What one run tests: the input, a label and frame counts for each row, and the behavior compared against.
@@ -348,6 +382,10 @@ type PlanSettings = Pick<AurocSettings, 'compare' | 'pairA' | 'pairB' | 'unselec
  * behavior, there is one row (A against B) on the frames in exactly one of the two; frames in neither are left out.
  */
 export function aurocPlan(data: AurocData, cfg: PlanSettings) {
+  const binS = aurocBinOf(cfg);
+  // Binned: every count below is in bins, and the run tests bins instead of frames.
+  if (binS)
+    data = rebinAuroc({ ...data, nBehaviors: data.labels.length }, binS, comparedRows(data, cfg));
   const { frames } = data;
   const row = (b: number) => data.behaviors.subarray(b * frames, (b + 1) * frames);
   const base = { neural: data.neural, cells: data.cells, frames, fs: data.fs };
@@ -368,17 +406,30 @@ export function aurocPlan(data: AurocData, cfg: PlanSettings) {
         outside: n0[0],
       },
     ];
-    return { input, labels: [info[0].label], info, against: data.labels[b] };
+    return {
+      input,
+      labels: [info[0].label],
+      info,
+      against: data.labels[b],
+      speed: data.speed,
+      binS,
+      eligible: data.mask,
+    };
   }
   const idx = data.labels.flatMap((l, i) => (cfg.unselected.includes(l) ? [] : [i]));
   const rows = new Uint8Array(idx.length * frames);
   idx.forEach((b, j) => rows.set(row(b), j * frames));
   const input: AurocInput = { ...base, behaviors: rows, nBehaviors: idx.length, mask: data.mask };
+  const { n1, n0 } = frameCounts(input);
   return {
     input,
     labels: idx.map((b) => data.labels[b]),
-    info: idx.map((b) => data.info[b]),
+    info: idx.map((b, j) => ({ ...data.info[b], during: n1[j], outside: n0[j] })),
     against: undefined,
+    speed: data.speed,
+    binS,
+    /** Frames (or bins) kept by frame selection, before the comparison leaves any out. */
+    eligible: data.mask,
   };
 }
 
@@ -396,12 +447,12 @@ async function runAurocBrowser(): Promise<void> {
     match: { ...aurocSettings.match },
   };
   const deps = runDeps(aurocUses(cfg));
-  const { input, labels, info, against } = aurocPlan(data, cfg);
+  const { input, labels, info, against, speed } = aurocPlan(data, cfg);
   if (!labels.length) {
     setAurocStatus({ kind: 'error', message: 'Select at least one behavior.' });
     return;
   }
-  if (cfg.method === 'speed' && !data.speed) {
+  if (cfg.method === 'speed' && !speed) {
     setAurocStatus({ kind: 'error', message: 'Speed matching needs a loaded position file.' });
     return;
   }
@@ -425,7 +476,7 @@ async function runAurocBrowser(): Promise<void> {
       minShift: Math.round(minShiftS * input.fs),
       nShuffles: cfg.nShuffles,
       seed: cfg.seed,
-      match: cfg.method === 'speed' ? { speed: data.speed!, options: { ...cfg.match } } : undefined,
+      match: cfg.method === 'speed' ? { speed: speed!, options: { ...cfg.match } } : undefined,
       onComplete,
     }));
 

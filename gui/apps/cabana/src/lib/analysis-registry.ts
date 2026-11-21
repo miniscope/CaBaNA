@@ -119,6 +119,7 @@ export function registerAnalyses(): void {
       delete used.pairB;
     }
     if (!settings.speedFilter) delete used.minSpeed;
+    if (settings.binMode === 'off') delete used.binS;
     if (settings.method === 'circular') delete used.match;
     const uses = aurocUses(settings);
     return {
