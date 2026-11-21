@@ -430,7 +430,10 @@ modules. Contract changes:
 - **Re-binning.** `Session.rebin(bin_s)` resamples every per-frame object
   together (activity summed or averaged by kind, masks and states by
   occupancy fraction). `rebin_time` is the preprocess step. Population
-  analyses run on re-binned sessions.
+  analyses run on re-binned sessions. `drop_mixed=[space, ...]` leaves bins that
+  are partly in a state of those spaces out of their `support`, so activity next
+  to a behavior's start or end is not counted for it (state-vs-rest auROC on
+  short bouts).
 - **Activity kinds** (`deconvolved`, `dff`, `spike_counts`, `raw`, `zscored`; `zscore_activity` sets the last). `Metric.accepts_kinds` is meant to let a metric refuse a
   trace type it is not defined for, but it is currently unused: every metric
   leaves it `None`. The one real guard is in `information_content`, which

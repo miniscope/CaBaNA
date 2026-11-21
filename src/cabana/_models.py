@@ -649,6 +649,7 @@ class Session(_ArrayModel):
         bin_s: float,
         activity_method: Literal["sum", "mean", "auto"] = "auto",
         min_fraction: float = 0.5,
+        drop_mixed: list[str] | None = None,
     ) -> Session:
         """Re-bin every per-frame object to ``bin_s`` seconds (changes ``n_time``).
 
@@ -666,6 +667,11 @@ class Session(_ArrayModel):
         * ``states``: a state is active when it occupies at least
           ``min_fraction`` of the bin; for exclusive spaces only the dominant
           state can be active.  Topology is kept.
+        * ``drop_mixed``: for the state spaces named here, a bin in which any state
+          covers part but not all of the frames is left out of the space's
+          ``support``, so it counts for neither the state nor its reference.
+          Without it, a bin that is 60% in a behavior counts as fully in it and the
+          other 40% of activity is attributed to the behavior (and vice versa).
 
         ``bin_s`` is rounded to a whole number of frames (a warning is issued
         when it is not one); ``meta["rebin"]["bin_s"]`` records the actual width.
@@ -681,6 +687,8 @@ class Session(_ArrayModel):
         min_fraction : float, default 0.5
             Minimum fraction of a bin's frames that must be True for a mask,
             support or state to be True in the new bin.
+        drop_mixed : list of str, optional
+            State spaces whose mixed bins are removed from ``support`` (see above).
 
         Returns
         -------
@@ -691,8 +699,13 @@ class Session(_ArrayModel):
         Raises
         ------
         ValueError
-            If ``bin_s`` is shorter than one frame or fewer than two bins remain.
+            If ``bin_s`` is shorter than one frame or fewer than two bins remain, or
+            ``drop_mixed`` names a state space the session does not have.
         """
+        drop = list(drop_mixed or [])
+        unknown = [name for name in drop if name not in self.states]
+        if unknown:
+            raise ValueError(f"drop_mixed: state spaces {unknown} not in session.states")
         k = int(round(bin_s * self.fs))
         if abs(bin_s * self.fs - k) > 1e-6 and k >= 1:
             warnings.warn(
@@ -725,6 +738,7 @@ class Session(_ArrayModel):
             signals = {name: np.nanmean(blocks(v), axis=1) for name, v in self.signals.items()}
         masks = {name: blocks(m).mean(axis=1) >= min_fraction for name, m in self.masks.items()}
         states: dict[str, StateSpace] = {}
+        dropped: dict[str, int] = {}
         for name, st in self.states.items():
             frac = blocks(st.onehot).mean(axis=1)  # (n_new, n_states)
             if st.exclusive:
@@ -738,10 +752,19 @@ class Session(_ArrayModel):
             support = (
                 None if st.support is None else blocks(st.support).mean(axis=1) >= min_fraction
             )
+            if name in drop:
+                pure = ~((frac > 0) & (frac < 1)).any(axis=1)
+                support = pure if support is None else support & pure
+                dropped[name] = int((~pure).sum())
             states[name] = st.model_copy(update={"onehot": oh, "support": support})
         meta = {
             **self.meta,
-            "rebin": {"bin_s": k / self.fs, "frames_per_bin": k, "method": method},
+            "rebin": {
+                "bin_s": k / self.fs,
+                "frames_per_bin": k,
+                "method": method,
+                **({"mixed_bins_dropped": dropped} if drop else {}),
+            },
         }
         return Session(
             activity=activity,
